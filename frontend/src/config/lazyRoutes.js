@@ -3,7 +3,9 @@
  * Import these in App.jsx to keep the route tree in one place and reduce inline lazy() calls.
  */
 
-import { lazy } from 'react';
+import { lazyWithRetry } from './lazyImport';
+
+const lazy = lazyWithRetry;
 
 export const Connect = lazy(() => import('../components/Connect/Connect'));
 export const MarketingLanding = lazy(

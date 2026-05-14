@@ -126,6 +126,50 @@ describe('checkoutExperienceConfigService', () => {
     });
   });
 
+  it('normalizes v2 product offer metadata and requires merchandise ids for manual add-to-cart', () => {
+    const result = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_action: 'add_to_cart',
+            product_items: [
+              {
+                title: 'Gift wrap',
+                merchandise_id: 'gid://shopify/ProductVariant/1',
+                quantity: '2',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.normalizedConfig.checkout_config_version).toBe(2);
+    expect(result.normalizedConfig.checkout_sections[0].props.product_items[0]).toMatchObject({
+      title: 'Gift wrap',
+      merchandise_id: 'gid://shopify/ProductVariant/1',
+      variant_gid: 'gid://shopify/ProductVariant/1',
+      quantity: 2,
+    });
+
+    const missingMerchandise = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_action: 'add_to_cart',
+            product_items: [{ title: 'Gift wrap' }],
+          },
+        },
+      ],
+    });
+    expect(missingMerchandise.errors.some(error => error.includes('merchandise_id'))).toBe(true);
+  });
+
   it('does not count blank product cards as renderable checkout content', () => {
     const result = validateCheckoutExperienceConfig({
       checkout_sections: [
@@ -194,5 +238,33 @@ describe('checkoutExperienceConfigService', () => {
         { id: 'gid://shopify/Collection/999', title: 'New', handle: 'new' },
       ],
     });
+  });
+
+  it('rejects raw invalid enums and invalid collection ids before coercion', () => {
+    const result = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            title: 'Recommended add-ons',
+            tone: 'loud',
+            layout: 'floating',
+            cta_kind: 'launch',
+            product_source_mode: 'collection',
+            product_source_collections: [{ id: 'not-a-gid', title: 'Broken' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        'checkout_sections[0] tone is invalid',
+        'checkout_sections[0] layout is invalid',
+        'checkout_sections[0] cta_kind is invalid',
+        'checkout_sections[0] product_source_collections[0] must be a Shopify Collection GID',
+      ])
+    );
   });
 });

@@ -13,6 +13,7 @@ const {
   getTestAnalytics,
   getSecondaryEventMetrics,
   getEventCollectionStats,
+  getCheckoutEventBreakdown,
 } = require('../models/analytics');
 const { getTestById } = require('../models/test');
 const { STATISTICAL_THRESHOLD, SETTINGS_BOUNDS } = require('../constants');
@@ -23,6 +24,11 @@ const CHECKOUT_SECTION_EVENT_NAMES = Object.freeze([
   'checkout_section_impression',
   'checkout_section_cta_click',
   'checkout_section_offer_apply',
+  'checkout_product_impression',
+  'checkout_product_click',
+  'checkout_product_add_attempt',
+  'checkout_product_add_success',
+  'checkout_product_add_failed',
 ]);
 const CHECKOUT_PHASE_EVENT_NAMES = Object.freeze([
   'checkout_phase_impression',
@@ -93,6 +99,291 @@ function orderVariantsForComparison(variants = [], test = {}) {
     const bOrder = configuredOrder.get(String(b.id)) ?? configuredOrder.get(String(b.name)) ?? 999;
     return aOrder - bOrder;
   });
+}
+
+function toPercent(numerator, denominator) {
+  const top = Number(numerator) || 0;
+  const bottom = Number(denominator) || 0;
+  return bottom > 0 ? (top / bottom) * 100 : 0;
+}
+
+function getEventCountForVariant(variant = {}, eventName) {
+  return Number(variant.checkoutSectionEvents?.[eventName]?.count) || 0;
+}
+
+function buildCheckoutJourneyStep(id, label, eventName, variants = []) {
+  const variantRows = variants.map(variant => {
+    const visitors = Number(variant.visitors) || 0;
+    const count = getEventCountForVariant(variant, eventName);
+    return {
+      variantId: variant.id,
+      variantName: variant.name,
+      count,
+      rate: toPercent(count, visitors),
+    };
+  });
+  const total = variantRows.reduce((sum, row) => sum + row.count, 0);
+  const leader = variantRows.reduce((best, row) => {
+    if (!best) {
+      return row;
+    }
+    return row.rate > best.rate ? row : best;
+  }, null);
+  return {
+    id,
+    label,
+    eventName,
+    total,
+    leader,
+    variants: variantRows,
+  };
+}
+
+function addVariantEventCount(target, variantId, variantName, eventName, count) {
+  if (!variantId) {
+    return;
+  }
+  if (!target.variants[variantId]) {
+    target.variants[variantId] = {
+      variantId,
+      variantName: variantName || variantId,
+      impressions: 0,
+      ctaClicks: 0,
+      offerApplies: 0,
+    };
+  }
+  if (eventName === 'checkout_section_impression') {
+    target.variants[variantId].impressions += count;
+  } else if (eventName === 'checkout_section_cta_click') {
+    target.variants[variantId].ctaClicks += count;
+  } else if (eventName === 'checkout_section_offer_apply') {
+    target.variants[variantId].offerApplies += count;
+  }
+}
+
+function buildCheckoutAdvancedOutput({
+  checkoutPhase,
+  checkoutSectionEventNames,
+  variants,
+  checkoutEventBreakdown,
+}) {
+  if (!checkoutSectionEventNames.length) {
+    return null;
+  }
+
+  const variantNames = new Map(variants.map(variant => [String(variant.id), variant.name]));
+  const sectionGroups = new Map();
+  const productGroups = new Map();
+  const diagnosticGroups = new Map();
+  const methodActionGroups = new Map();
+
+  (checkoutEventBreakdown || []).forEach(row => {
+    const eventName = row.eventName;
+    const count = Number(row.uniqueUsers) || Number(row.totalEvents) || 0;
+    const variantId = row.variantId ? String(row.variantId) : '';
+    const variantName = variantNames.get(variantId) || variantId;
+
+    if (eventName && eventName.startsWith('checkout_section_')) {
+      const sectionId = row.checkoutSectionId || 'unknown-section';
+      const sectionType = row.checkoutSectionType || 'checkout_section';
+      const key = `${sectionId}:${sectionType}`;
+      if (!sectionGroups.has(key)) {
+        sectionGroups.set(key, {
+          sectionId,
+          sectionType,
+          impressions: 0,
+          ctaClicks: 0,
+          offerApplies: 0,
+          variants: {},
+        });
+      }
+      const group = sectionGroups.get(key);
+      if (eventName === 'checkout_section_impression') {
+        group.impressions += count;
+      } else if (eventName === 'checkout_section_cta_click') {
+        group.ctaClicks += count;
+      } else if (eventName === 'checkout_section_offer_apply') {
+        group.offerApplies += count;
+      }
+      addVariantEventCount(group, variantId, variantName, eventName, count);
+    }
+
+    if (eventName && eventName.startsWith('checkout_product_')) {
+      const productId = row.checkoutProductId || row.checkoutMerchandiseId || 'unknown-product';
+      const sectionId = row.checkoutSectionId || 'unknown-section';
+      const key = `${sectionId}:${productId}:${row.checkoutProductAnalyticsKey || ''}`;
+      if (!productGroups.has(key)) {
+        productGroups.set(key, {
+          productId,
+          merchandiseId: row.checkoutMerchandiseId || null,
+          analyticsKey: row.checkoutProductAnalyticsKey || null,
+          sectionId,
+          sectionType: row.checkoutSectionType || 'product_list',
+          sourceMode: row.checkoutProductSourceMode || 'manual',
+          strategy: row.checkoutProductStrategy || '',
+          action: row.checkoutProductAction || 'display_only',
+          rank: row.checkoutProductRank || null,
+          impressions: 0,
+          clicks: 0,
+          addAttempts: 0,
+          addSuccesses: 0,
+          addFailures: 0,
+          failureReasons: {},
+          variants: {},
+        });
+      }
+      const group = productGroups.get(key);
+      if (eventName === 'checkout_product_impression') {
+        group.impressions += count;
+      } else if (eventName === 'checkout_product_click') {
+        group.clicks += count;
+      } else if (eventName === 'checkout_product_add_attempt') {
+        group.addAttempts += count;
+      } else if (eventName === 'checkout_product_add_success') {
+        group.addSuccesses += count;
+      } else if (eventName === 'checkout_product_add_failed') {
+        group.addFailures += count;
+        const reason = row.checkoutProductFailureReason || 'add_failed';
+        group.failureReasons[reason] = (group.failureReasons[reason] || 0) + count;
+      }
+      if (variantId) {
+        group.variants[variantId] = group.variants[variantId] || {
+          variantId,
+          variantName,
+          impressions: 0,
+          clicks: 0,
+          addAttempts: 0,
+          addSuccesses: 0,
+          addFailures: 0,
+        };
+        const variant = group.variants[variantId];
+        if (eventName === 'checkout_product_impression') {
+          variant.impressions += count;
+        } else if (eventName === 'checkout_product_click') {
+          variant.clicks += count;
+        } else if (eventName === 'checkout_product_add_attempt') {
+          variant.addAttempts += count;
+        } else if (eventName === 'checkout_product_add_success') {
+          variant.addSuccesses += count;
+        } else if (eventName === 'checkout_product_add_failed') {
+          variant.addFailures += count;
+        }
+      }
+    }
+
+    if (eventName === 'checkout_runtime_diagnostic') {
+      const reason = row.diagnosticReason || 'runtime_diagnostic';
+      if (!diagnosticGroups.has(reason)) {
+        diagnosticGroups.set(reason, {
+          reason,
+          count: 0,
+          variants: {},
+          lastSeen: row.lastSeen || null,
+        });
+      }
+      const group = diagnosticGroups.get(reason);
+      group.count += Number(row.totalEvents) || count;
+      if (variantId) {
+        group.variants[variantId] =
+          (group.variants[variantId] || 0) + (Number(row.totalEvents) || count);
+      }
+      if (row.lastSeen) {
+        group.lastSeen = row.lastSeen;
+      }
+    }
+
+    if (
+      eventName === 'checkout_payment_method_action' ||
+      eventName === 'checkout_delivery_method_action' ||
+      eventName === 'checkout_customization_match'
+    ) {
+      const action = row.checkoutMethodAction || row.checkoutCustomizationType || 'matched';
+      const key = `${eventName}:${action}`;
+      if (!methodActionGroups.has(key)) {
+        methodActionGroups.set(key, {
+          eventName,
+          action,
+          count: 0,
+          variants: {},
+        });
+      }
+      const group = methodActionGroups.get(key);
+      group.count += count;
+      if (variantId) {
+        group.variants[variantId] = (group.variants[variantId] || 0) + count;
+      }
+    }
+  });
+
+  const sectionPerformanceRows = Array.from(sectionGroups.values())
+    .map(row => ({
+      ...row,
+      ctr: toPercent(row.ctaClicks, row.impressions),
+      offerApplyRate: toPercent(row.offerApplies, row.impressions),
+      variants: Object.values(row.variants).map(variant => ({
+        ...variant,
+        ctr: toPercent(variant.ctaClicks, variant.impressions),
+        offerApplyRate: toPercent(variant.offerApplies, variant.impressions),
+      })),
+    }))
+    .sort((a, b) => b.impressions - a.impressions || b.ctaClicks - a.ctaClicks);
+
+  const productPerformanceRows = Array.from(productGroups.values())
+    .map(row => ({
+      ...row,
+      clickRate: toPercent(row.clicks, row.impressions),
+      addAttemptRate: toPercent(row.addAttempts, row.impressions),
+      addSuccessRate: toPercent(row.addSuccesses, row.addAttempts),
+      failureRate: toPercent(row.addFailures, row.addAttempts),
+      variants: Object.values(row.variants).map(variant => ({
+        ...variant,
+        clickRate: toPercent(variant.clicks, variant.impressions),
+        addSuccessRate: toPercent(variant.addSuccesses, variant.addAttempts),
+      })),
+    }))
+    .sort((a, b) => b.impressions - a.impressions || b.addSuccesses - a.addSuccesses);
+
+  const journeyEvents =
+    checkoutPhase === 'payment_method'
+      ? [
+          ['phase_impression', 'Checkout Viewed', 'checkout_phase_impression'],
+          ['customization_match', 'Customization Matched', 'checkout_customization_match'],
+          ['payment_action', 'Payment Action', 'checkout_payment_method_action'],
+          ['offer_apply', 'Offer Applied', 'checkout_phase_offer_apply'],
+        ]
+      : checkoutPhase === 'delivery_method'
+        ? [
+            ['phase_impression', 'Checkout Viewed', 'checkout_phase_impression'],
+            ['customization_match', 'Customization Matched', 'checkout_customization_match'],
+            ['delivery_action', 'Delivery Action', 'checkout_delivery_method_action'],
+            ['offer_apply', 'Offer Applied', 'checkout_phase_offer_apply'],
+          ]
+        : [
+            ['phase_impression', 'Checkout Viewed', 'checkout_phase_impression'],
+            ['section_impression', 'Section Viewed', 'checkout_section_impression'],
+            ['cta_click', 'CTA Clicked', 'checkout_section_cta_click'],
+            ['offer_apply', 'Offer Applied', 'checkout_section_offer_apply'],
+          ];
+
+  return {
+    phase: checkoutPhase,
+    journeySteps: journeyEvents.map(([id, label, eventName]) =>
+      buildCheckoutJourneyStep(id, label, eventName, variants)
+    ),
+    sectionPerformanceRows,
+    productPerformanceRows,
+    diagnostics: Array.from(diagnosticGroups.values()).sort((a, b) => b.count - a.count),
+    methodActions: Array.from(methodActionGroups.values()).sort((a, b) => b.count - a.count),
+    signalTotals: {
+      totalCheckoutEvents: (checkoutEventBreakdown || []).reduce(
+        (sum, row) => sum + (Number(row.totalEvents) || 0),
+        0
+      ),
+      uniqueCheckoutSignals: checkoutSectionEventNames.length,
+      sectionsTracked: sectionPerformanceRows.length,
+      productsTracked: productPerformanceRows.length,
+    },
+  };
 }
 
 class AnalyticsService {
@@ -340,6 +631,10 @@ class AnalyticsService {
     return [...CHECKOUT_PHASE_EVENT_NAMES, ...CHECKOUT_SECTION_EVENT_NAMES];
   }
 
+  _buildCheckoutAdvancedOutput(input = {}) {
+    return buildCheckoutAdvancedOutput(input);
+  }
+
   /**
    * Sample Ratio Mismatch (SRM) detection
    * Detects if observed traffic split deviates significantly from expected allocation.
@@ -566,10 +861,14 @@ class AnalyticsService {
     );
     let eventMetrics = {};
     let secondaryEventStats = {};
+    let checkoutEventBreakdown = [];
     if (eventNamesForMetrics.length > 0) {
-      [eventMetrics, secondaryEventStats] = await Promise.all([
+      [eventMetrics, secondaryEventStats, checkoutEventBreakdown] = await Promise.all([
         getSecondaryEventMetrics(testId, shopDomain, eventNamesForMetrics, options),
         getEventCollectionStats(testId, shopDomain, eventNamesForMetrics, options),
+        checkoutSectionEventNames.length > 0
+          ? getCheckoutEventBreakdown(testId, shopDomain, options)
+          : Promise.resolve([]),
       ]);
     }
 
@@ -627,6 +926,12 @@ class AnalyticsService {
       }),
       test
     );
+    const checkoutAdvanced = buildCheckoutAdvancedOutput({
+      checkoutPhase: getCheckoutPhaseFromTest(test),
+      checkoutSectionEventNames,
+      variants,
+      checkoutEventBreakdown,
+    });
 
     if (!rawData || rawData.length < 2) {
       const totalVisitors = variants.reduce((sum, v) => sum + (v.visitors || 0), 0);
@@ -636,6 +941,7 @@ class AnalyticsService {
         secondaryEventNames,
         secondaryEventStats,
         checkoutSectionEventNames,
+        checkoutAdvanced,
         significance: {
           significant: false,
           pValue: 1,
@@ -758,6 +1064,7 @@ class AnalyticsService {
       secondaryEventNames,
       secondaryEventStats,
       checkoutSectionEventNames,
+      checkoutAdvanced,
       srm,
       summary: {
         totalVisitors,

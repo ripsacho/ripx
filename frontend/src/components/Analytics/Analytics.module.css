@@ -1171,6 +1171,26 @@
   color: var(--text-secondary);
 }
 
+.variantScoreSecondaryMetric {
+  display: grid;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+}
+
+.variantScoreSecondaryMetric span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.variantScoreSecondaryMetric strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 750;
+}
+
 .variantScoreBars {
   display: grid;
   gap: 0.65rem;
@@ -1440,6 +1460,142 @@
     radial-gradient(circle at 10% 10%, rgba(6, 182, 212, 0.08), transparent 32%),
     rgba(255, 255, 255, 0.88);
   box-shadow: 0 10px 32px rgba(15, 23, 42, 0.055);
+}
+
+.checkoutSignalSummary,
+.checkoutJourneyGrid,
+.checkoutOpsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.checkoutSignalSummary > div,
+.checkoutJourneyStep,
+.checkoutOpsCard {
+  padding: 1rem;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(6, 182, 212, 0.12), transparent 36%),
+    rgba(255, 255, 255, 0.82);
+}
+
+[data-theme="dark"] .checkoutSignalSummary > div,
+[data-theme="dark"] .checkoutJourneyStep,
+[data-theme="dark"] .checkoutOpsCard {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(6, 182, 212, 0.14), transparent 36%),
+    rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.checkoutSignalSummary span,
+.checkoutSectionMatrixRow span,
+.checkoutOpsRow span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.checkoutSignalSummary strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-primary);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.checkoutJourneyStep {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.checkoutJourneyTrack {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.checkoutJourneyTrack span {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+}
+
+.checkoutSectionMatrix {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.checkoutSectionMatrixRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(90px, 0.7fr));
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.checkoutSectionMatrixRowProducts {
+  grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(90px, 0.7fr)) minmax(160px, 1fr);
+}
+
+.checkoutMatrixInsight strong {
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+[data-theme="dark"] .checkoutSectionMatrixRow {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.checkoutSectionMatrixRow strong,
+.checkoutOpsRow strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.checkoutOpsRow em {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.checkoutOpsGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkoutOpsCard {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.checkoutOpsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.checkoutOpsRow:first-of-type {
+  border-top: 0;
 }
 
 [data-theme="dark"] .phaseThreeCard {
@@ -2215,6 +2371,12 @@
     grid-template-columns: 1fr;
   }
 
+  .checkoutSignalSummary,
+  .checkoutJourneyGrid,
+  .checkoutOpsGrid {
+    grid-template-columns: 1fr;
+  }
+
   .visualSectionHeader,
   .chartHeaderWithControl {
     flex-direction: column;
@@ -2356,6 +2518,7 @@
 
   .trafficSplitBars > div,
   .trafficAllocationRow,
+  .checkoutSectionMatrixRow,
   .segmentComparisonRow,
   .cohortRow {
     grid-template-columns: 1fr;

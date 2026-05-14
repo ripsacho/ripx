@@ -1371,6 +1371,93 @@
   line-height: 1.5;
 }
 
+.reviewCheckoutPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-secondary);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.reviewCheckoutPreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.reviewCheckoutSectionList {
+  display: grid;
+  gap: 8px;
+}
+
+.reviewCheckoutSectionItem {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-secondary);
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+}
+
+.reviewCheckoutSectionItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reviewCheckoutSectionItemHead span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.reviewCheckoutSectionItem p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.reviewCheckoutSectionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reviewCheckoutSectionMeta span,
+.reviewCheckoutRuntimeNotes span {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-secondary);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.reviewCheckoutRuntimeNotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reviewCheckoutRuntimeNotes span {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+}
+
 .reviewSchedulingSection {
   padding: 16px 20px;
   background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);

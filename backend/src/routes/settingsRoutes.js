@@ -1804,4 +1804,38 @@ router.put(
   })
 );
 
+/**
+ * GET /api/settings/price-surfaces
+ * Shop-level selector registry for storefront price painting.
+ */
+router.get(
+  '/price-surfaces',
+  asyncHandler(async (req, res) => {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+    const { getShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
+    const mappings = await getShopPriceSurfaceMappings(shopDomain);
+    return sendSuccess(res, { mappings });
+  })
+);
+
+/**
+ * PUT /api/settings/price-surfaces
+ * Replace shop-level price surface mappings.
+ */
+router.put(
+  '/price-surfaces',
+  asyncHandler(async (req, res) => {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+    const { saveShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
+    const mappings = await saveShopPriceSurfaceMappings(shopDomain, req.body?.mappings);
+    return sendSuccess(res, { mappings });
+  })
+);
+
 module.exports = router;

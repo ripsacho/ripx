@@ -28,6 +28,10 @@ const {
   validateCheckoutExperienceConfig,
 } = require('./checkoutExperienceConfigService');
 const { evaluateFlags } = require('./featureFlagService');
+const {
+  AUDIENCE_TRAFFIC_SOURCE_VALUES,
+  AUDIENCE_OPERATING_SYSTEM_VALUES,
+} = require('../utils/segments');
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
@@ -1004,11 +1008,34 @@ class ABTestEngine {
       }
     }
 
+    const operatingSystem = String(segments.operating_system || 'all').toLowerCase();
+    if (operatingSystem !== 'all' && context.operating_system) {
+      const ctxOperatingSystem = String(context.operating_system).toLowerCase();
+      if (ctxOperatingSystem !== operatingSystem) {
+        return false;
+      }
+    }
+
     // Advanced targeting: traffic source
     const trafficSource = (segments.traffic_source || 'all').toLowerCase();
     if (trafficSource !== 'all' && context.traffic_source) {
       const ctxSource = String(context.traffic_source).toLowerCase();
-      if (ctxSource !== trafficSource) {
+      const trafficSourceGroups = {
+        organic: ['organic', 'direct', 'organic_search', 'organic_social', 'google'],
+        paid: ['paid', 'paid_search', 'paid_social', 'paid_shopping'],
+        social: [
+          'social',
+          'organic_social',
+          'paid_social',
+          'facebook',
+          'instagram',
+          'tiktok',
+          'twitter',
+          'youtube',
+        ],
+      };
+      const allowedSources = trafficSourceGroups[trafficSource] || [trafficSource];
+      if (!allowedSources.includes(ctxSource)) {
         return false;
       }
     }
@@ -1022,43 +1049,113 @@ class ABTestEngine {
       }
     }
 
-    // Custom targeting rules (AND combined)
-    const customRules = segments.custom_rules;
-    if (Array.isArray(customRules) && customRules.length > 0) {
-      for (const rule of customRules) {
-        if (!rule || !rule.field || rule.value === null || rule.value === undefined) {
+    // Custom targeting rules (grouped when custom_rule_groups is set; legacy flat list is AND-combined)
+    const customRuleGroups = segments.custom_rule_groups;
+    if (Array.isArray(customRuleGroups) && customRuleGroups.length > 0) {
+      for (const group of customRuleGroups) {
+        if (!group || !Array.isArray(group.rules) || group.rules.length === 0) {
           continue;
         }
-        const field = String(rule.field).toLowerCase();
-        const op = (rule.operator || 'equals').toLowerCase();
-        const val = rule.value;
-        const ctxVal = context[field] ?? context[`utm_${field.replace('utm_', '')}`] ?? '';
+        const matchAny = String(group.match || 'all').toLowerCase() === 'any';
+        let groupMatches = !matchAny;
 
-        const matches = (() => {
-          const strCtx = String(ctxVal || '').toLowerCase();
-          const strVal = String(val || '').toLowerCase();
-          if (op === 'equals') {
-            return strCtx === strVal;
+        for (const rule of group.rules) {
+          if (!rule || !rule.field || rule.value === null || rule.value === undefined) {
+            continue;
           }
-          if (op === 'contains') {
-            return strCtx.includes(strVal);
-          }
-          if (op === 'regex') {
-            try {
-              return new RegExp(val).test(ctxVal);
-            } catch {
-              return false;
+          const field = String(rule.field).toLowerCase();
+          const op = (rule.operator || 'equals').toLowerCase();
+          const val = rule.value;
+          const ctxVal = context[field] ?? context[`utm_${field.replace('utm_', '')}`] ?? '';
+
+          const matches = (() => {
+            const strCtx = String(ctxVal || '').toLowerCase();
+            const strVal = String(val || '').toLowerCase();
+            if (op === 'equals') {
+              return strCtx === strVal;
             }
-          }
-          if (op === 'in' && Array.isArray(val)) {
-            const valSet = new Set(val.map(v => String(v).toLowerCase()));
-            return valSet.has(strCtx);
-          }
-          return false;
-        })();
+            if (op === 'contains') {
+              return strCtx.includes(strVal);
+            }
+            if (op === 'regex') {
+              try {
+                return new RegExp(val).test(ctxVal);
+              } catch {
+                return false;
+              }
+            }
+            if (op === 'in') {
+              const values = Array.isArray(val)
+                ? val
+                : String(val || '')
+                    .split(',')
+                    .map(item => item.trim())
+                    .filter(Boolean);
+              const valSet = new Set(values.map(v => String(v).toLowerCase()));
+              return valSet.has(strCtx);
+            }
+            return false;
+          })();
 
-        if (!matches) {
+          if (matchAny) {
+            if (matches) {
+              groupMatches = true;
+              break;
+            }
+          } else if (!matches) {
+            groupMatches = false;
+            break;
+          }
+        }
+
+        if (!groupMatches) {
           return false;
+        }
+      }
+    } else {
+      const customRules = segments.custom_rules;
+      if (Array.isArray(customRules) && customRules.length > 0) {
+        for (const rule of customRules) {
+          if (!rule || !rule.field || rule.value === null || rule.value === undefined) {
+            continue;
+          }
+          const field = String(rule.field).toLowerCase();
+          const op = (rule.operator || 'equals').toLowerCase();
+          const val = rule.value;
+          const ctxVal = context[field] ?? context[`utm_${field.replace('utm_', '')}`] ?? '';
+
+          const matches = (() => {
+            const strCtx = String(ctxVal || '').toLowerCase();
+            const strVal = String(val || '').toLowerCase();
+            if (op === 'equals') {
+              return strCtx === strVal;
+            }
+            if (op === 'contains') {
+              return strCtx.includes(strVal);
+            }
+            if (op === 'regex') {
+              try {
+                return new RegExp(val).test(ctxVal);
+              } catch {
+                return false;
+              }
+            }
+            if (op === 'in') {
+              const values = Array.isArray(val)
+                ? val
+                : String(val || '')
+                    .split(',')
+                    .map(item => item.trim())
+                    .filter(Boolean);
+              const valSet = new Set(values.map(v => String(v).toLowerCase()));
+              return valSet.has(strCtx);
+            }
+            return false;
+          })();
+
+          if (!matches) {
+            return false;
+          }
         }
       }
     }
@@ -1443,11 +1540,17 @@ class ABTestEngine {
     }
 
     if (testConfig.segments) {
-      const { device, customer, countries, traffic_source, url_pattern, min_sessions } =
-        testConfig.segments;
+      const {
+        device,
+        customer,
+        countries,
+        traffic_source,
+        operating_system,
+        url_pattern,
+        min_sessions,
+      } = testConfig.segments;
       const validDevices = ['all', 'desktop', 'mobile'];
       const validCustomers = ['all', 'new', 'returning'];
-      const validTrafficSources = ['all', 'organic', 'paid', 'social', 'email', 'referral'];
 
       if (device && !validDevices.includes(String(device).toLowerCase())) {
         errors.push('Segment device must be one of: all, desktop, mobile');
@@ -1463,9 +1566,23 @@ class ABTestEngine {
         }
       }
 
-      if (traffic_source && !validTrafficSources.includes(String(traffic_source).toLowerCase())) {
+      if (
+        traffic_source &&
+        !AUDIENCE_TRAFFIC_SOURCE_VALUES.has(String(traffic_source).toLowerCase())
+      ) {
         errors.push(
-          'Segment traffic_source must be one of: all, organic, paid, social, email, referral'
+          'Segment traffic_source must be a supported audience value (Standard/Advanced), e.g. all, direct, organic_search, paid_social, instagram, or legacy organic, paid, social, email, referral'
+        );
+      }
+
+      if (
+        operating_system !== undefined &&
+        operating_system !== null &&
+        operating_system !== '' &&
+        !AUDIENCE_OPERATING_SYSTEM_VALUES.has(String(operating_system).toLowerCase())
+      ) {
+        errors.push(
+          'Segment operating_system must be one of: all, windows, macos, ios, android, linux, other'
         );
       }
 

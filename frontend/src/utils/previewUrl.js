@@ -17,6 +17,7 @@ export const PREVIEW_PARAMS = {
   SESSION_ID: 'ab_preview_session',
   VISUAL_EDITOR: 'ab_visual_editor',
   VISUAL_PICKER: 'ab_visual_picker',
+  PRICE_SURFACE_PICK: 'ab_price_surface_pick',
 };
 
 const PREVIEW_VALUE = '1';
@@ -193,6 +194,7 @@ export function buildPreviewUrl({
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 to preview-document
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 to preview-document
+ * @param {boolean} [options.priceSurfacePick=false] - Add ab_price_surface_pick=1 to preview-document
  * @param {string} [options.storefrontPassword] - Optional Shopify storefront password for dev/password-protected stores
  * @param {string} [options.parentOrigin] - App origin that will embed the preview iframe
  * @returns {string|null}
@@ -202,6 +204,7 @@ export function buildPreviewDocumentUrl({
   previewUrl,
   visualEditor = false,
   visualPicker = false,
+  priceSurfacePick = false,
   storefrontPassword,
   parentOrigin,
 }) {
@@ -230,6 +233,9 @@ export function buildPreviewDocumentUrl({
     }
     if (visualPicker) {
       previewDoc.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
+    }
+    if (priceSurfacePick) {
+      previewDoc.searchParams.set(PREVIEW_PARAMS.PRICE_SURFACE_PICK, PREVIEW_VALUE);
     }
     if (storefrontPassword !== null && storefrontPassword !== undefined) {
       const password = String(storefrontPassword).trim();
@@ -268,6 +274,89 @@ export function buildPreviewDocumentUrl({
   } catch {
     return null;
   }
+}
+
+/**
+ * Build a storefront tab URL for click-to-select picker mode.
+ * Uses preview-document when possible so RipX can post selectors back to the wizard.
+ *
+ * @param {Object} options
+ * @param {string} options.baseUrl - Storefront page URL or domain
+ * @param {string} [options.testId] - Optional saved test id for preview assignment
+ * @param {string} [options.variantId]
+ * @param {string} [options.variantName]
+ * @param {string} [options.tenantDomain]
+ * @param {string} options.apiBaseUrl
+ * @param {string} [options.storefrontPassword]
+ * @param {string} [options.parentOrigin]
+ * @param {boolean} [options.priceSurfacePick=false]
+ * @returns {string|null}
+ */
+export function buildVisualPickerLaunchUrl({
+  baseUrl,
+  testId,
+  variantId,
+  variantName,
+  tenantDomain,
+  apiBaseUrl,
+  storefrontPassword,
+  parentOrigin,
+  priceSurfacePick = false,
+}) {
+  const normalized = normalizePreviewBaseUrl(baseUrl);
+  if (!normalized) {
+    return null;
+  }
+
+  let directPreviewUrl = '';
+  const tid = testId !== null && testId !== undefined && testId !== '' ? String(testId).trim() : '';
+  if (tid) {
+    directPreviewUrl =
+      buildPreviewUrl({
+        baseUrl: normalized,
+        testId: tid,
+        variantId,
+        variantName,
+        tenantDomain,
+        visualEditor: true,
+        visualPicker: true,
+      }) || '';
+  } else {
+    try {
+      const url = new URL(normalized);
+      url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
+      url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
+      directPreviewUrl = url.toString();
+    } catch {
+      directPreviewUrl = '';
+    }
+  }
+
+  if (!directPreviewUrl) {
+    return null;
+  }
+
+  if (priceSurfacePick) {
+    try {
+      const withMode = new URL(directPreviewUrl);
+      withMode.searchParams.set(PREVIEW_PARAMS.PRICE_SURFACE_PICK, PREVIEW_VALUE);
+      directPreviewUrl = withMode.toString();
+    } catch {
+      // keep direct preview URL
+    }
+  }
+
+  return (
+    buildPreviewDocumentUrl({
+      apiBaseUrl,
+      previewUrl: directPreviewUrl,
+      visualEditor: true,
+      visualPicker: true,
+      priceSurfacePick,
+      storefrontPassword,
+      parentOrigin,
+    }) || directPreviewUrl
+  );
 }
 
 /**

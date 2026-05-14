@@ -108,7 +108,7 @@
   }
   var _ripxNativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
   const ANTI_FLICKER_MAX_MS = 1400;
-  const ANTI_FLICKER_PRICE_MAX_MS = 900;
+  const ANTI_FLICKER_PRICE_MAX_MS = 1200;
   var antiFlickerState = {
     active: false,
     pending: 0,
@@ -229,7 +229,7 @@
     // strict: include all test types; balanced: only hide price surfaces that would visibly repaint.
     if (mode === 'strict') return true;
     if (testTypeIsPrice(test)) return isPriceAntiFlickerSurface(test);
-    return !testTypeIsPrice(test);
+    return false;
   }
   function hasAntiFlickerEligibleTests(tests) {
     return (tests || []).some(function (test) {
@@ -737,6 +737,36 @@
     !!(windowNamePreview && windowNamePreview.preview) ||
     !!(persistedPreview && persistedPreview.preview);
   const STRICT_PREVIEW_TEST_MODE = PREVIEW_MODE && !!PREVIEW_TEST_ID;
+
+  function getRuntimeActiveTestsForBootstrap() {
+    var tests = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests.slice() : [];
+    if (PREVIEW_MODE && PREVIEW_TEST_ID) {
+      var hasPreviewTest = tests.some(function (test) {
+        return String(test && test.id) === String(PREVIEW_TEST_ID);
+      });
+      if (!hasPreviewTest) {
+        tests.push({
+          id: PREVIEW_TEST_ID,
+          type: 'price',
+          targetType: 'all-products',
+        });
+      }
+    }
+    return tests;
+  }
+
+  function bootstrapAntiFlickerAndAssignment() {
+    if (!hasValidConfig) return;
+    var tests = getRuntimeActiveTestsForBootstrap();
+    if (!PREVIEW_MODE && tests.length === 0) return;
+    if (consentRequired && !hasConsent() && !PREVIEW_MODE && !FORCE_LIVE_MODE) return;
+    if (hasAntiFlickerEligibleTests(tests)) {
+      installAntiFlickerGuard(getAntiFlickerTimeoutForTests(tests));
+    }
+  }
+
+  bootstrapAntiFlickerAndAssignment();
+
   const RIPX_LIVE_DIAGNOSTICS_KEY = '__ripx_live_diagnostics_v1__';
   const RIPX_LIVE_DIAGNOSTICS_HISTORY_KEY = '__ripx_live_diagnostics_history_v1__';
   const RIPX_LIVE_DIAGNOSTICS_COOKIE = 'ripx_ab_state';
@@ -1134,6 +1164,7 @@
   seedPreviewCartAttributesEarly();
 
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
+  const PRICE_SURFACE_PICK_MODE = URL_PARAMS.get('ab_price_surface_pick') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
   const IN_IFRAME = typeof window.parent !== 'undefined' && window.self !== window.top;
@@ -1193,6 +1224,16 @@
     return window.innerWidth <= 768 ? 'mobile' : 'desktop';
   }
 
+  function getOperatingSystem() {
+    const ua = (navigator.userAgent || navigator.platform || '').toLowerCase();
+    if (/iphone|ipad|ipod/.test(ua)) return 'ios';
+    if (/android/.test(ua)) return 'android';
+    if (/macintosh|mac os x/.test(ua)) return 'macos';
+    if (/windows/.test(ua)) return 'windows';
+    if (/linux/.test(ua)) return 'linux';
+    return 'other';
+  }
+
   function getCustomerType() {
     if (consentRequired && !hasConsent()) return 'new';
     const key = 'ab_test_returning';
@@ -1222,13 +1263,33 @@
     const utmMedium = (params.get('utm_medium') || '').toLowerCase();
     const referrer = (document.referrer || '').toLowerCase();
 
+    if (utmMedium === 'sms') return 'sms';
     if (utmMedium === 'email') return 'email';
+    if (utmMedium === 'shopping') return 'paid_shopping';
+    if (utmMedium.indexOf('social') !== -1 && /(cpc|ppc|paid|cpv|cpm)/.test(utmMedium)) {
+      return 'paid_social';
+    }
+    if (utmMedium.indexOf('social') !== -1) return 'organic_social';
     if (
       ['cpc', 'ppc', 'paid', 'cpv', 'cpm'].some(function (m) {
         return utmMedium.indexOf(m) !== -1;
       })
     )
-      return 'paid';
+      return 'paid_search';
+    if (utmSource.indexOf('google') !== -1 || referrer.indexOf('google.') !== -1) return 'google';
+    if (utmSource.indexOf('facebook') !== -1 || referrer.indexOf('facebook.') !== -1)
+      return 'facebook';
+    if (utmSource.indexOf('instagram') !== -1 || referrer.indexOf('instagram.') !== -1)
+      return 'instagram';
+    if (utmSource.indexOf('tiktok') !== -1 || referrer.indexOf('tiktok.') !== -1) return 'tiktok';
+    if (
+      utmSource.indexOf('twitter') !== -1 ||
+      referrer.indexOf('twitter.') !== -1 ||
+      referrer.indexOf('x.com') !== -1
+    )
+      return 'twitter';
+    if (utmSource.indexOf('youtube') !== -1 || referrer.indexOf('youtube.') !== -1)
+      return 'youtube';
     if (
       [
         'facebook',
@@ -1243,9 +1304,9 @@
         return utmSource.indexOf(s) !== -1 || referrer.indexOf(s) !== -1;
       })
     )
-      return 'social';
+      return 'organic_social';
 
-    if (!referrer) return 'organic';
+    if (!referrer) return 'direct';
     try {
       const refHost = new URL(referrer).hostname.toLowerCase();
       const searchEngines = ['google', 'bing', 'yahoo', 'duckduckgo', 'baidu', 'yandex'];
@@ -1254,7 +1315,7 @@
           return refHost.indexOf(e) !== -1;
         })
       )
-        return 'organic';
+        return 'organic_search';
     } catch (e) {}
     return 'referral';
   }
@@ -1561,6 +1622,7 @@
       return Promise.resolve({});
     }
     const device = getDeviceType();
+    const operatingSystem = getOperatingSystem();
     const customer = getCustomerType();
     const country = getCountryCode();
     const trafficSource = getTrafficSource();
@@ -1583,6 +1645,7 @@
       user_id: userId,
       shop_domain: shopDomain,
       device: device,
+      operating_system: operatingSystem,
       customer: customer,
       country: country || '',
       traffic_source: trafficSource,
@@ -1852,6 +1915,7 @@
 
     try {
       const device = getDeviceType();
+      const operatingSystem = getOperatingSystem();
       const customer = getCustomerType();
       const country = getCountryCode();
       const trafficSource = getTrafficSource();
@@ -1868,6 +1932,7 @@
         user_id: userId,
         shop_domain: shopDomain,
         device: device,
+        operating_system: operatingSystem,
         customer: customer,
         country: country || '',
         traffic_source: trafficSource,
@@ -5568,6 +5633,9 @@
     }
 
     var specificSelectors = [];
+    var activeTest = getActiveTestById(testId);
+    appendConfiguredRegistrySelectors(specificSelectors, 'pdp', 'regular', activeTest);
+    appendConfiguredRegistrySelectors(specificSelectors, 'pdp', 'compare_at', activeTest);
     if (pid) {
       specificSelectors.push(
         '.product-price[data-product-id="' + pid + '"]',
@@ -5866,6 +5934,53 @@
       attrWrites += 1;
     }
     recordRipxPaintEvent(scope || 'listing', textWrites, attrWrites);
+  }
+
+  function getConfiguredShopPriceSurfaceMappings() {
+    var registry = CONFIG.priceSurfaceRegistry;
+    return registry && Array.isArray(registry.shopMappings) ? registry.shopMappings : [];
+  }
+
+  function getConfiguredTestPriceSurfaceMappings(test) {
+    return test && Array.isArray(test.priceSurfaceMappings) ? test.priceSurfaceMappings : [];
+  }
+
+  function appendConfiguredRegistrySelectors(targetList, surface, role, test) {
+    resolveConfiguredPriceSurfaceSelectors(surface, role, { test: test }).forEach(function (sel) {
+      if (targetList.indexOf(sel) === -1) {
+        targetList.push(sel);
+      }
+    });
+  }
+
+  function resolveConfiguredPriceSurfaceSelectors(surface, role, options) {
+    var surfaceKey = String(surface || 'global').toLowerCase();
+    var roleKey = String(role || 'regular').toLowerCase();
+    var testMaps =
+      options && options.test ? getConfiguredTestPriceSurfaceMappings(options.test) : [];
+    var shopMaps = getConfiguredShopPriceSurfaceMappings();
+    var surfacePasses = surfaceKey === 'global' ? ['global'] : [surfaceKey, 'global'];
+    var lists = [testMaps, shopMaps];
+    var out = [];
+    var seen = {};
+    lists.forEach(function (list) {
+      surfacePasses.forEach(function (passSurface) {
+        var sorted = (list || []).slice().sort(function (a, b) {
+          return (Number(b.priority) || 0) - (Number(a.priority) || 0);
+        });
+        sorted.forEach(function (entry) {
+          if (!entry || entry.enabled === false) return;
+          if (String(entry.surface || '').toLowerCase() !== passSurface) return;
+          if (String(entry.role || 'regular').toLowerCase() !== roleKey) return;
+          var sel = String(entry.selector || '').trim();
+          if (!sel) return;
+          if (seen[sel]) return;
+          seen[sel] = true;
+          out.push(sel);
+        });
+      });
+    });
+    return out;
   }
 
   /**
@@ -6172,6 +6287,17 @@
         var priceEls = card.querySelectorAll(
           '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
         );
+        var registrySelectors = [];
+        appendConfiguredRegistrySelectors(registrySelectors, 'plp', 'regular', activeTest);
+        appendConfiguredRegistrySelectors(registrySelectors, 'plp', 'compare_at', activeTest);
+        registrySelectors.forEach(function (sel) {
+          try {
+            card.querySelectorAll(sel).forEach(function (el) {
+              if (!el || inCartUi(el)) return;
+              paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards');
+            });
+          } catch (eRegistry) {}
+        });
         priceEls.forEach(function (el) {
           if (!el || inCartUi(el)) return;
           paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards');
@@ -6353,7 +6479,37 @@
     if (!containers.length) return;
     var cartPriceSelectors =
       '.price .money, .price, .line-item__price, [data-line-item-price], .cart-item__price .money, .cart-item__price, .line-item-price, [data-price], .money';
+    var registryCartSelectors = [];
+    appendConfiguredRegistrySelectors(registryCartSelectors, 'cart', 'cart_line', activeTest);
+    appendConfiguredRegistrySelectors(registryCartSelectors, 'cart', 'regular', activeTest);
     function paintCartRow(row, rowDisplay, skipIfPainted) {
+      registryCartSelectors.forEach(function (sel) {
+        try {
+          row.querySelectorAll(sel).forEach(function (el) {
+            var textWrites = 0;
+            var attrWrites = 0;
+            if (el.textContent !== rowDisplay) {
+              el.textContent = rowDisplay;
+              textWrites += 1;
+            }
+            var variantStr = String(variantIdForCart);
+            if (el.getAttribute('data-test-variant') !== variantStr) {
+              el.setAttribute('data-test-variant', variantStr);
+              attrWrites += 1;
+            }
+            var testStr = String(testId);
+            if (el.getAttribute('data-test-id') !== testStr) {
+              el.setAttribute('data-test-id', testStr);
+              attrWrites += 1;
+            }
+            if (el.getAttribute('data-ripx-price') !== '1') {
+              el.setAttribute('data-ripx-price', '1');
+              attrWrites += 1;
+            }
+            recordRipxPaintEvent('cart', textWrites, attrWrites);
+          });
+        } catch (_eRegistryCart) {}
+      });
       var priceEls = row.querySelectorAll(cartPriceSelectors);
       if (skipIfPainted && priceEls.length) {
         var first = priceEls[0];
@@ -7077,8 +7233,9 @@
     );
     var label = document.createElement('span');
     label.id = 'ripx-visual-picker-label';
-    label.textContent =
-      'Click an element to select it. Selector will be sent to the editor or copy below.';
+    label.textContent = PRICE_SURFACE_PICK_MODE
+      ? 'Click a price node to map it for RipX price surfaces. The selector will be sent back to the wizard.'
+      : 'Click an element to select it. Selector will be sent to the editor or copy below.';
     label.setAttribute('style', 'flex:1;min-width:120px;');
     var selectorInput = document.createElement('input');
     selectorInput.type = 'text';
@@ -7115,26 +7272,83 @@
       'style',
       'background:#059669;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;'
     );
+    function inferPickerPriceSurfaceFromHref(href) {
+      try {
+        var path = new URL(String(href || window.location.href || '')).pathname.toLowerCase();
+        if (path.indexOf('/products/') !== -1) return 'pdp';
+        if (path.indexOf('/collections/') !== -1) return 'plp';
+        if (path.indexOf('/cart') !== -1) return 'cart';
+        if (path.indexOf('/search') !== -1) return 'search';
+        if (path === '/' || path === '') return 'home';
+      } catch (_eHref) {}
+      return null;
+    }
+
+    function inferPickerPriceSurfaceRoleFromElement(el) {
+      if (!el) return null;
+      var current = el;
+      for (var hop = 0; hop < 4 && current; hop++) {
+        var classes =
+          current.className && typeof current.className === 'string'
+            ? current.className.toLowerCase()
+            : '';
+        if (
+          classes.indexOf('compare') !== -1 ||
+          classes.indexOf('was-price') !== -1 ||
+          classes.indexOf('price--compare') !== -1
+        ) {
+          return 'compare_at';
+        }
+        if (classes.indexOf('unit-price') !== -1 || classes.indexOf('unit_price') !== -1) {
+          return 'unit';
+        }
+        if (classes.indexOf('installment') !== -1) {
+          return 'installment';
+        }
+        if (classes.indexOf('savings') !== -1) {
+          return 'savings';
+        }
+        if (classes.indexOf('cart-item') !== -1 || classes.indexOf('line-item') !== -1) {
+          return 'cart_line';
+        }
+        current = current.parentElement;
+      }
+      return 'regular';
+    }
+
+    function postVisualSelector(selector, el) {
+      var payload = {
+        type: 'ripx-visual-selector',
+        selector: selector,
+        source: 'ripx-picker',
+        pageUrl: String(window.location.href || ''),
+        surfaceHint: inferPickerPriceSurfaceFromHref(window.location.href),
+        roleHint: inferPickerPriceSurfaceRoleFromElement(el),
+      };
+      try {
+        if (window.opener && !window.opener.closed) window.opener.postMessage(payload, '*');
+      } catch (_eOpenerPost) {}
+      try {
+        if (IN_IFRAME && window.parent && window.parent !== window)
+          window.parent.postMessage(payload, '*');
+      } catch (_eParentPost) {}
+    }
+
     sendBtn.onclick = function () {
       var val = selectorInput.value.trim();
       if (!val) return;
-      try {
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(
-            { type: 'ripx-visual-selector', selector: val, source: 'ripx-picker' },
-            '*'
-          );
-          sendBtn.textContent = 'Sent!';
-          setTimeout(function () {
-            sendBtn.textContent = 'Send to RipX';
-          }, 2000);
-        } else {
-          sendBtn.textContent = 'Open from editor tab';
-          setTimeout(function () {
-            sendBtn.textContent = 'Send to RipX';
-          }, 2500);
-        }
-      } catch (e) {}
+      postVisualSelector(val);
+      if (window.opener && !window.opener.closed) {
+        sendBtn.textContent = 'Sent!';
+        setTimeout(function () {
+          sendBtn.textContent = 'Send to RipX';
+        }, 2000);
+      } else {
+        sendBtn.textContent = 'Open from editor tab';
+        setTimeout(function () {
+          sendBtn.textContent = 'Send to RipX';
+        }, 2500);
+      }
     };
     var closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
@@ -7172,18 +7386,11 @@
       box.style.height = rect.height + 'px';
     }
 
-    function onSelectorChosen(selector) {
+    function onSelectorChosen(selector, el) {
       selectorInput.value = selector;
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(
-            {
-              type: 'ripx-visual-selector',
-              selector: selector,
-              source: 'ripx-picker',
-            },
-            '*'
-          );
+          postVisualSelector(selector, el);
           label.textContent = 'Selector sent to editor! You can close this tab or copy below.';
           label.setAttribute('style', 'flex:1;min-width:120px;color:#34d399;');
         } else {
@@ -7229,7 +7436,7 @@
         var el = document.elementFromPoint(e.clientX, e.clientY);
         if (!el || el === overlay || el === box || el === bar) return;
         var selector = getSelectorForElement(el);
-        if (selector) onSelectorChosen(selector);
+        if (selector) onSelectorChosen(selector, el);
       },
       true
     );
@@ -7355,7 +7562,12 @@
       if (selector && targetWindow && !targetWindow.closed) {
         try {
           targetWindow.postMessage(
-            { type: 'ripx-visual-selector', selector: selector, source: 'ripx-visual-editor' },
+            {
+              type: 'ripx-visual-selector',
+              selector: selector,
+              source: 'ripx-visual-editor',
+              pageUrl: String(window.location.href || ''),
+            },
             '*'
           );
         } catch (err) {}
@@ -9588,6 +9800,7 @@
         // Re-apply price tests for dynamic content. Paint functions are idempotent, so stable nodes
         // are skipped while AJAX sections, cart drawers, and predictive-search cards can still catch up.
         function reapplyPriceTestsOnly() {
+          if (antiFlickerState.active) return;
           if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
           CONFIG.activeTests.forEach(function (test) {
             if (!testTypeIsPrice(test)) return;
@@ -9663,6 +9876,7 @@
         }
         function schedulePriceReapply(delayMs, dynamicOnly) {
           setTimeout(function () {
+            if (antiFlickerState.active) return;
             if (dynamicOnly && !hasDynamicPriceSurface()) return;
             reapplyPriceTestsOnly();
           }, delayMs);
@@ -9903,6 +10117,7 @@
         lv.set('shop_domain', getShopDomain());
         lv.set('test_ids', liveTestIds.join(','));
         lv.set('device', getDeviceType());
+        lv.set('operating_system', getOperatingSystem());
         lv.set('customer', getCustomerType());
         lv.set('country', getCountryCode() || '');
         lv.set('traffic_source', getTrafficSource());

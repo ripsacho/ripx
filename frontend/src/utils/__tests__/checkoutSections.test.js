@@ -105,6 +105,41 @@ describe('checkoutSections utils', () => {
     });
   });
 
+  it('normalizes v2 product action metadata for checkout product offers', () => {
+    const normalized = getNormalizedCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          id: 'checkout-picks',
+          type: 'product_list',
+          strategy_key: 'manual_upsell',
+          props: {
+            product_action: 'add_to_cart',
+            selection_strategy: 'manual_upsell',
+            product_items: [
+              {
+                title: 'Gift wrap',
+                merchandise_id: 'gid://shopify/ProductVariant/1',
+                quantity: '2',
+                action_label: 'Add gift wrap',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(normalized.checkout_config_version).toBe(2);
+    expect(normalized.checkout_sections[0].props.product_items[0]).toMatchObject({
+      title: 'Gift wrap',
+      merchandise_id: 'gid://shopify/ProductVariant/1',
+      variant_gid: 'gid://shopify/ProductVariant/1',
+      quantity: 2,
+      action_label: 'Add gift wrap',
+      product_action: 'display_only',
+      selection_strategy: 'manual_upsell',
+    });
+  });
+
   it('does not treat blank product cards as actionable checkout content', () => {
     const actionable = getActionableCheckoutSections({
       checkout_sections: [

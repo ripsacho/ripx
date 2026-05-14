@@ -15,12 +15,14 @@ const {
   SCRIPT_VERSION,
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
+  buildEarlyStorefrontAntiFlickerBootstrap,
 } = require('../utils/storefrontScriptRuntime');
 const {
   getMaintenanceMode,
   isMaintenanceActiveForDomain,
   getBlockListMessage,
 } = require('../utils/maintenanceMode');
+const { getShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
 const { getTenantByDomain, normalizeDomain } = require('../models/tenant');
 const { ERROR_MESSAGES } = require('../constants');
 const { createPricePreviewBootstrapHandlers } = require('./pricePreviewBootstrap');
@@ -181,15 +183,17 @@ async function serveScript(req, res) {
     }
   }
 
-  const [tests, goalMetricDefinitions] = await Promise.all([
+  const [tests, goalMetricDefinitions, shopPriceSurfaceMappings] = await Promise.all([
     getActiveTestsForStorefront(normalizedShop),
     listGoalMetricDefinitions(normalizedShop).catch(() => []),
+    getShopPriceSurfaceMappings(normalizedShop).catch(() => []),
   ]);
   const runtimeConfig = buildStorefrontRuntimeConfig(
     normalizedShop,
     tests,
     req,
-    goalMetricDefinitions
+    goalMetricDefinitions,
+    { shopMappings: shopPriceSurfaceMappings }
   );
   const scriptPath = getStorefrontScriptPath();
 
@@ -212,7 +216,11 @@ async function serveScript(req, res) {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Script-Version', versionLabel);
   res.set('Cache-Control', getStorefrontScriptCacheControl());
-  res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
+  res.send(
+    `window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n` +
+      buildEarlyStorefrontAntiFlickerBootstrap(runtimeConfig.activeTests) +
+      scriptContents
+  );
 }
 
 router.get('/script.js', asyncHandler(serveScript));

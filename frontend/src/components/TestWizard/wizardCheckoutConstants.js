@@ -1,5 +1,7 @@
 import {
   normalizeCheckoutPhase,
+  hasRenderableCheckoutProductItem as hasRenderableCheckoutProductItemCanonical,
+  normalizeCheckoutProductItems as normalizeCheckoutProductItemsCanonical,
   normalizeCheckoutProductSourceCollections,
 } from '../../utils/checkoutSections';
 
@@ -58,6 +60,26 @@ export const CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS = [
   { label: 'Comparison table', value: 'comparison_table' },
 ];
 
+export const CHECKOUT_PRODUCT_ACTION_OPTIONS = [
+  { label: 'Display only', value: 'display_only' },
+  { label: 'Add product to checkout', value: 'add_to_cart' },
+];
+
+export const CHECKOUT_PRODUCT_STRATEGY_OPTIONS = [
+  { label: 'Manual upsell', value: 'manual_upsell' },
+  { label: 'Cart companion', value: 'cart_companion' },
+  { label: 'Collection order', value: 'collection_ordered' },
+  { label: 'Reassurance bundle', value: 'reassurance_bundle' },
+  { label: 'Display only', value: 'display_only' },
+];
+
+export const CHECKOUT_PRIMARY_OUTPUT_GOAL_OPTIONS = [
+  { label: 'Conversion lift', value: 'conversion_lift' },
+  { label: 'Average order value', value: 'average_order_value' },
+  { label: 'Product add rate', value: 'product_add_rate' },
+  { label: 'Checkout reassurance', value: 'checkout_reassurance' },
+];
+
 export const CHECKOUT_SECTION_TYPE_OPTIONS = [
   { label: 'Hero notice', value: 'hero_notice' },
   { label: 'Trust box', value: 'trust_box' },
@@ -65,6 +87,24 @@ export const CHECKOUT_SECTION_TYPE_OPTIONS = [
   { label: 'Shipping promise', value: 'shipping_promise' },
   { label: 'Offer code panel', value: 'offer_code_panel' },
   { label: 'Product list', value: 'product_list' },
+];
+
+export const CHECKOUT_SECTION_STARTER_GROUPS = [
+  {
+    label: 'Recommended patterns',
+    description: 'Fastest starting points for most checkout experience tests.',
+    starterTypes: ['hero_notice', 'trust_box', 'product_list'],
+  },
+  {
+    label: 'Confidence and policy',
+    description: 'Reduce checkout hesitation with trust, guarantees, and delivery clarity.',
+    starterTypes: ['guarantee_box', 'shipping_promise'],
+  },
+  {
+    label: 'Offer and incentive',
+    description: 'Surface checkout-specific promo framing and offer apply behavior.',
+    starterTypes: ['offer_code_panel'],
+  },
 ];
 
 export const CHECKOUT_PLACEMENT_OPTIONS = [
@@ -83,14 +123,16 @@ export const CHECKOUT_PHASE_DETAILS = Object.freeze({
     eyebrow: 'Shopify customization',
     title: 'Payment methods',
     description: 'Experiment with hiding, renaming, or reordering payment options during checkout.',
-    surface: 'Targets the payment step only',
+    surface:
+      'Customization targets payment methods; checkout block content still follows extension placement',
   },
   delivery_method: {
     eyebrow: 'Shopify customization',
     title: 'Delivery methods',
     description:
       'Experiment with hiding, renaming, or reordering delivery methods during checkout.',
-    surface: 'Targets the delivery step only',
+    surface:
+      'Customization targets delivery methods; checkout block content still follows extension placement',
   },
 });
 
@@ -213,6 +255,10 @@ export function buildCheckoutSectionSmartPreset(rawType) {
         layout: 'stacked',
         cta_kind: 'track',
         product_display_layout: 'stacked_cards',
+        product_action: 'display_only',
+        selection_strategy: 'manual_upsell',
+        exclude_cart_items: true,
+        fallback_mode: 'hide_section',
         feature_bullets: [
           'Manual checkout merchandising',
           'Cart-aware product highlights',
@@ -230,6 +276,10 @@ export function buildCheckoutSectionSmartPreset(rawType) {
             price: '$29',
             compare_at_price: '$39',
             badge_text: 'Best seller',
+            quantity: 1,
+            action_label: 'Add',
+            product_action: 'display_only',
+            selection_strategy: 'manual_upsell',
           },
           {
             id: 'product-2',
@@ -239,6 +289,10 @@ export function buildCheckoutSectionSmartPreset(rawType) {
             price: '$9',
             compare_at_price: '',
             badge_text: 'Popular',
+            quantity: 1,
+            action_label: 'Add',
+            product_action: 'display_only',
+            selection_strategy: 'manual_upsell',
           },
         ],
       };
@@ -259,50 +313,11 @@ export function buildCheckoutSectionSmartPreset(rawType) {
 }
 
 export function normalizeCheckoutProductItems(rawValue) {
-  const rows = Array.isArray(rawValue) ? rawValue : [];
-  return rows
-    .map((item, index) => {
-      const source = item && typeof item === 'object' ? item : {};
-      const imageUrl = String(
-        source.image_url || source.image || source.product_image_url || ''
-      ).trim();
-      const title = String(source.title || source.product_title || '').trim();
-      const subtitle = String(source.subtitle || source.product_subtitle || '').trim();
-      const price = String(source.price || source.product_price || '').trim();
-      const compareAtPrice = String(
-        source.compare_at_price || source.product_compare_at_price || ''
-      ).trim();
-      const badgeText = String(source.badge_text || source.product_badge_text || '').trim();
-      if (!source || typeof source !== 'object') {
-        return null;
-      }
-      return {
-        id:
-          String(source.id || '')
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9_-]+/g, '-')
-            .replace(/^-+|-+$/g, '') || `product-${index + 1}`,
-        image_url: imageUrl,
-        title,
-        subtitle,
-        price,
-        compare_at_price: compareAtPrice,
-        badge_text: badgeText,
-      };
-    })
-    .filter(Boolean);
+  return normalizeCheckoutProductItemsCanonical(rawValue);
 }
 
 export function hasRenderableCheckoutProductItem(item = {}) {
-  return Boolean(
-    item.image_url ||
-    item.title ||
-    item.subtitle ||
-    item.price ||
-    item.compare_at_price ||
-    item.badge_text
-  );
+  return hasRenderableCheckoutProductItemCanonical(item);
 }
 
 export function createEmptyCheckoutProductItem(index = 0) {
@@ -314,6 +329,18 @@ export function createEmptyCheckoutProductItem(index = 0) {
     price: '',
     compare_at_price: '',
     badge_text: '',
+    product_gid: '',
+    variant_gid: '',
+    merchandise_id: '',
+    handle: '',
+    quantity: 1,
+    rank: index + 1,
+    action_label: 'Add',
+    product_action: 'display_only',
+    selection_strategy: 'manual_upsell',
+    exclude_cart_items: true,
+    fallback_mode: 'hide_button',
+    analytics_key: `product_${index + 1}`,
   };
 }
 
@@ -329,6 +356,8 @@ export function buildCheckoutCartRelatedPreviewItems(limit = 3) {
     price: index === 0 ? 'Runtime price' : '',
     compare_at_price: '',
     badge_text: index === 0 ? 'Cart-related' : 'Auto',
+    product_action: 'display_only',
+    selection_strategy: 'cart_companion',
   }));
 }
 
@@ -350,6 +379,9 @@ export function buildCheckoutCollectionPreviewItems(collections = [], limit = 3)
       price: 'Runtime price',
       compare_at_price: '',
       badge_text: collectionLabel,
+      product_action: 'add_to_cart',
+      selection_strategy: 'collection_ordered',
+      action_label: 'Add',
     };
   });
 }

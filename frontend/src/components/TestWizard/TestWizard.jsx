@@ -78,6 +78,7 @@ import {
   buildPreviewLaunchUrl,
   buildShopifyPricePreviewBootstrapUrl,
   buildShopifyPreviewBootstrapUrl,
+  buildVisualPickerLaunchUrl,
   isShopifyPreviewUrl,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
@@ -91,12 +92,42 @@ import {
 } from '../../utils/priceSimulation';
 import { ROUTES } from '../../constants';
 import {
+  buildGoalMetricTooltip,
+  getGoalMetricLabel,
+  normalizeGoalPrimaryMetric,
+  normalizeGoalSecondaryMetric,
+} from '../../utils/goalMetricConfig';
+import {
   TEST_TEMPLATES,
   TEST_TYPE_CATEGORIES,
   buildWizardSteps,
   getStepIds,
 } from './testWizardConfig';
-import { getWizardStepErrors } from './wizardValidation';
+import {
+  getWizardStepErrors,
+  partitionTargetingStepErrors,
+  getTargetingCoachHints,
+} from './wizardValidation';
+import { buildTargetingSummary } from './targetingSummary';
+import TargetingStepLayout from './TargetingStepLayout';
+import AdvancedTargetingStudio from './AdvancedTargetingStudio';
+import CustomRuleBuilder from './CustomRuleBuilder';
+import { advancedSectionHasActivity } from './advancedTargeting';
+import {
+  hasCustomAudienceRules,
+  normalizeCustomRules,
+  resolveCustomRuleGroupsFromSegments,
+  syncSegmentsCustomAudience,
+} from './customAudienceRules';
+import PriceSurfaceMappingsPanel from './PriceSurfaceMappingsPanel';
+import {
+  normalizePriceSurfaceMappings,
+  normalizePriceSurfaceMappingsForEditor,
+  inferPriceSurfaceFromHref,
+  inferPriceSurfaceRoleFromPickerHints,
+  buildPriceSurfacePickerPath,
+  applyRecommendedPriceSurfaceDefaults,
+} from '../../utils/priceSurfaceRegistry';
 import { shouldHydrateInitialData } from './initialDataHydration';
 import {
   canShowShippingExecution,
@@ -108,16 +139,42 @@ import { useTestTypeControls } from './hooks/useTestTypeControls';
 import { useWizardSessionUiState } from './hooks/useWizardSessionUiState';
 import WizardStepIndicator from './WizardStepIndicator';
 import WizardTemplateStep from './steps/WizardTemplateStep';
+import CheckoutStudioModal from './checkout/CheckoutStudioModal';
+import CheckoutStudioModeRail from './checkout/CheckoutStudioModeRail';
+import CheckoutPreviewRail from './checkout/CheckoutPreviewRail';
+import CheckoutProductListStudio from './checkout/CheckoutProductListStudio';
+import CheckoutSurfaceMode from './checkout/CheckoutSurfaceMode';
+import CheckoutVariantTable from './checkout/CheckoutVariantTable';
+import CheckoutStudioCommandHeader from './checkout/CheckoutStudioCommandHeader';
+import CheckoutModalCommandStrip from './checkout/CheckoutModalCommandStrip';
+import AudienceCountryMultiSelect from './AudienceCountryMultiSelect';
+import { formatCountryCodesSummary } from '../../utils/iso3166CountryDisplay';
 import VariantThemeModule from './variantModules/VariantThemeModule';
 import VariantUrlModule from './variantModules/VariantUrlModule';
+import {
+  cloneCheckoutSectionsForVariant,
+  getCheckoutStudioReadiness,
+  getCheckoutRuntimePreviewNotes,
+  normalizeCheckoutStudioAnalyticsKey,
+} from './checkoutStudioGuidance';
+import {
+  getCheckoutStudioCommandAction,
+  getCheckoutStudioNextAction,
+  getCheckoutStudioStepForMode,
+  getCheckoutStudioStepIssueCounts,
+} from './checkout/checkoutStudioReadiness';
 import {
   CHECKOUT_CTA_KIND_OPTIONS,
   CHECKOUT_LAYOUT_OPTIONS,
   CHECKOUT_PHASE_OPTIONS,
   CHECKOUT_PLACEMENT_OPTIONS,
+  CHECKOUT_PRIMARY_OUTPUT_GOAL_OPTIONS,
+  CHECKOUT_PRODUCT_ACTION_OPTIONS,
   CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS,
   CHECKOUT_PRODUCT_SOURCE_OPTIONS,
   CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS,
+  CHECKOUT_PRODUCT_STRATEGY_OPTIONS,
+  CHECKOUT_SECTION_STARTER_GROUPS,
   CHECKOUT_SECTION_TYPE_OPTIONS,
   CHECKOUT_TONE_OPTIONS,
   HOMEPAGE_URL_PATTERN_SHOPIFY,
@@ -162,8 +219,67 @@ import {
   normalizeCheckoutProductSourceLimit,
   normalizeCheckoutProductSourceMode,
   normalizeCheckoutProductDisplayLayout,
+  normalizeCheckoutPrimaryOutputGoal,
   syncLegacyCheckoutExperienceFields,
 } from '../../utils/checkoutSections';
+
+function getCheckoutOptionLabel(options = [], value, fallback = '') {
+  const normalizedValue = String(value || '').trim();
+  return (
+    options.find(option => option.value === normalizedValue)?.label || fallback || normalizedValue
+  );
+}
+
+function getCheckoutSectionStarterTypes() {
+  const groupedTypes = new Set(
+    CHECKOUT_SECTION_STARTER_GROUPS.flatMap(group => group.starterTypes || [])
+  );
+  const ungroupedTypes = CHECKOUT_SECTION_TYPE_OPTIONS.map(option => option.value).filter(
+    value => !groupedTypes.has(value)
+  );
+  return [
+    ...CHECKOUT_SECTION_STARTER_GROUPS,
+    ...(ungroupedTypes.length
+      ? [
+          {
+            label: 'More starters',
+            description: 'Additional checkout block patterns for specialized tests.',
+            starterTypes: ungroupedTypes,
+          },
+        ]
+      : []),
+  ];
+}
+
+const AUDIENCE_SOURCE_OPTIONS = [
+  { label: 'All Sources', value: 'all' },
+  { label: 'Direct', value: 'direct' },
+  { label: 'Email', value: 'email' },
+  { label: 'Referral', value: 'referral' },
+  { label: 'Organic Social', value: 'organic_social' },
+  { label: 'Paid Social', value: 'paid_social' },
+  { label: 'Organic Search', value: 'organic_search' },
+  { label: 'Paid Search', value: 'paid_search' },
+  { label: 'Paid Shopping', value: 'paid_shopping' },
+  { label: 'SMS', value: 'sms' },
+  { label: 'Google', value: 'google' },
+  { label: 'Facebook', value: 'facebook' },
+  { label: 'Instagram', value: 'instagram' },
+  { label: 'TikTok', value: 'tiktok' },
+  { label: 'Twitter', value: 'twitter' },
+  { label: 'YouTube', value: 'youtube' },
+];
+
+const AUDIENCE_OS_OPTIONS = [
+  { label: 'All OS', value: 'all' },
+  { label: 'Windows', value: 'windows' },
+  { label: 'macOS', value: 'macos' },
+  { label: 'iOS', value: 'ios' },
+  { label: 'Android', value: 'android' },
+  { label: 'Linux', value: 'linux' },
+  { label: 'Other', value: 'other' },
+];
+
 function TestWizard({
   mode = 'create',
   showTemplateStep = true,
@@ -192,6 +308,7 @@ function TestWizard({
   const [variantCodesData, setVariantCodesData] = useState([]);
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
   const [checkoutStudioVariantIndex, setCheckoutStudioVariantIndex] = useState(0);
+  const [checkoutPhaseSwitchDraft, setCheckoutPhaseSwitchDraft] = useState(null);
   const [cssValidationErrors, setCssValidationErrors] = useState([]);
   const [jsValidationErrors, setJsValidationErrors] = useState([]);
   const validationTimeoutRef = useRef(null);
@@ -213,35 +330,44 @@ function TestWizard({
   const [codeEditorSubTab, setCodeEditorSubTab] = useState('css'); // 'css' | 'js' – IDE-style tab blend
   const [variantDropdownOpen, setVariantDropdownOpen] = useState(false);
   const variantDropdownRef = useRef(null);
-  const normalizeTargetIdValue = value => {
+  const normalizeTargetIdValue = useCallback(value => {
     if (value === null || value === undefined) return '';
     return String(value).trim();
-  };
-  const normalizeTargetIdList = value => {
-    if (!Array.isArray(value)) return null;
-    const normalized = value.map(item => normalizeTargetIdValue(item)).filter(Boolean);
-    return normalized.length > 0 ? normalized : [];
-  };
-  const normalizeTargetTypeValue = value => {
-    const raw = normalizeTargetIdValue(value);
-    if (!raw) return raw;
-    const normalized = raw.toLowerCase();
-    // Storefront targeting expects hyphenated values; saved/admin payloads can still contain legacy
-    // underscore variants. Price-test all-products previews depend on this normalization.
-    if (normalized === 'all_products') return 'all-products';
-    if (normalized === 'all_collections') return 'all-collections';
-    return raw;
-  };
-  const normalizePriceTargetTypeValue = (value, typeValue) => {
-    const target = normalizeTargetTypeValue(value);
-    const type = String(typeValue || '')
-      .trim()
-      .toLowerCase();
-    if ((type === 'price' || type === 'pricing') && (!target || target === 'all')) {
-      return 'all-products';
-    }
-    return target;
-  };
+  }, []);
+  const normalizeTargetIdList = useCallback(
+    value => {
+      if (!Array.isArray(value)) return null;
+      const normalized = value.map(item => normalizeTargetIdValue(item)).filter(Boolean);
+      return normalized.length > 0 ? normalized : [];
+    },
+    [normalizeTargetIdValue]
+  );
+  const normalizeTargetTypeValue = useCallback(
+    value => {
+      const raw = normalizeTargetIdValue(value);
+      if (!raw) return raw;
+      const normalized = raw.toLowerCase();
+      // Storefront targeting expects hyphenated values; saved/admin payloads can still contain legacy
+      // underscore variants. Price-test all-products previews depend on this normalization.
+      if (normalized === 'all_products') return 'all-products';
+      if (normalized === 'all_collections') return 'all-collections';
+      return raw;
+    },
+    [normalizeTargetIdValue]
+  );
+  const normalizePriceTargetTypeValue = useCallback(
+    (value, typeValue) => {
+      const target = normalizeTargetTypeValue(value);
+      const type = String(typeValue || '')
+        .trim()
+        .toLowerCase();
+      if ((type === 'price' || type === 'pricing') && (!target || target === 'all')) {
+        return 'all-products';
+      }
+      return target;
+    },
+    [normalizeTargetTypeValue]
+  );
   const normalizeTextValue = value => {
     if (value === null || value === undefined) return '';
     return String(value).trim();
@@ -310,6 +436,8 @@ function TestWizard({
   const [checkoutMethodDrafts, setCheckoutMethodDrafts] = useState({});
   const [checkoutExpandedSectionsByVariant, setCheckoutExpandedSectionsByVariant] = useState({});
   const [checkoutPendingScrollTarget, setCheckoutPendingScrollTarget] = useState(null);
+  const [checkoutEditorModalOpen, setCheckoutEditorModalOpen] = useState(false);
+  const [checkoutEditorMode, setCheckoutEditorMode] = useState('overview');
   const [shippingStorewideApplyConfirmed, setShippingStorewideApplyConfirmed] = useState(false);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
@@ -336,6 +464,12 @@ function TestWizard({
     setCheckoutStudioVariantIndex(prev => Math.min(prev, n - 1));
   }, [formData.variants?.length]);
   useEffect(() => {
+    const n = formData.variants?.length ?? 0;
+    if (n === 0) {
+      setCheckoutEditorModalOpen(false);
+    }
+  }, [formData.variants?.length]);
+  useEffect(() => {
     if (!checkoutPendingScrollTarget) {
       return undefined;
     }
@@ -346,23 +480,29 @@ function TestWizard({
       return undefined;
     }
     const targetId = `checkout-section-head-${checkoutPendingScrollTarget.variantIndex}-${checkoutPendingScrollTarget.sectionIndex}`;
-    const targetElement = document.getElementById(targetId);
-    if (!targetElement) {
-      return undefined;
-    }
     const frameId = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(targetId);
+      if (!targetElement) {
+        setCheckoutPendingScrollTarget(null);
+        return;
+      }
       targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setCheckoutPendingScrollTarget(null);
     });
     return () => window.cancelAnimationFrame(frameId);
   }, [checkoutPendingScrollTarget, checkoutStudioVariantIndex, formData.variants]);
   const [changingSelectorIndex, setChangingSelectorIndex] = useState(null); // when set, next click in preview replaces this slot
+  const [priceSurfacePickTarget, setPriceSurfacePickTarget] = useState(null);
+  const [priceSurfaceRegistryStatus, setPriceSurfaceRegistryStatus] = useState(null);
+  const [priceSurfacePanelExpandToken, setPriceSurfacePanelExpandToken] = useState(0);
   const visualSnippetPanelRef = useRef(null);
   const visualSnippetBackdropRef = useRef(null);
   const formDataRef = useRef(formData);
   const variantCodesDataRef = useRef(variantCodesData);
   const visualPreviewVariantIndexRef = useRef(visualPreviewVariantIndex);
   const changingSelectorIndexRef = useRef(changingSelectorIndex);
+  const priceSurfacePickTargetRef = useRef(priceSurfacePickTarget);
+  const priceSurfaceShopPickRef = useRef(null);
   const selectedVariantIndexRef = useRef(selectedVariantIndex);
   useEffect(() => {
     formDataRef.current = formData;
@@ -379,6 +519,9 @@ function TestWizard({
   useEffect(() => {
     changingSelectorIndexRef.current = changingSelectorIndex;
   }, [changingSelectorIndex]);
+  useEffect(() => {
+    priceSurfacePickTargetRef.current = priceSurfacePickTarget;
+  }, [priceSurfacePickTarget]);
   useEffect(() => {
     const n = formData.variants?.length || 0;
     setVisualRuleHistoryByVariant(prev => {
@@ -508,7 +651,49 @@ function TestWizard({
   );
   const [savePresetName, setSavePresetName] = useState('');
   const [loadedPresetId, setLoadedPresetId] = useState('');
-  const [placementSection, setPlacementSection] = useState('page'); // 'page' | 'device' | 'audience' | 'holdout' | 'advanced'
+  const [placementSection, setPlacementSection] = useState('page'); // 'page' | 'audience' | 'holdout' | 'advanced' (legacy 'device' → audience)
+  const [targetingSectionExpanded, setTargetingSectionExpanded] = useState({
+    page: true,
+    audience: false,
+    holdout: false,
+    advanced: false,
+  });
+  const openOnlyTargetingSection = useCallback(section => {
+    const s = section === 'device' ? 'audience' : section;
+    setPlacementSection(s);
+    if (!['page', 'audience', 'holdout', 'advanced'].includes(s)) {
+      return;
+    }
+    setTargetingSectionExpanded({
+      page: s === 'page',
+      audience: s === 'audience',
+      holdout: s === 'holdout',
+      advanced: s === 'advanced',
+    });
+  }, []);
+  /** Expand a section and focus it without collapsing other open accordion panels (keyboard nav). */
+  const expandTargetingSection = useCallback(section => {
+    const s = section === 'device' ? 'audience' : section;
+    setPlacementSection(s);
+    if (!['page', 'audience', 'holdout', 'advanced'].includes(s)) {
+      return;
+    }
+    setTargetingSectionExpanded(prev => ({ ...prev, [s]: true }));
+  }, []);
+  const toggleTargetingSectionExpanded = useCallback(section => {
+    const s = section === 'device' ? 'audience' : section;
+    if (!['page', 'audience', 'holdout', 'advanced'].includes(s)) {
+      return;
+    }
+    setTargetingSectionExpanded(prev => {
+      const nextOpen = !prev[s];
+      if (nextOpen) {
+        setPlacementSection(s);
+      }
+      return { ...prev, [s]: nextOpen };
+    });
+  }, []);
+  const [audienceTargetingMode, setAudienceTargetingMode] = useState('standard');
   const { domain: routeDomain } = useParams();
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
   const scopedShopDomain =
@@ -527,8 +712,6 @@ function TestWizard({
     testTypeCategories: TEST_TYPE_CATEGORIES,
   });
   const [customUrlModeActive, setCustomUrlModeActive] = useState(false);
-  const [deviceAdvancedOpen, setDeviceAdvancedOpen] = useState(false);
-  const [audienceAdvancedOpen, setAudienceAdvancedOpen] = useState(false);
   const [shippingScopeAdvancedOpen, setShippingScopeAdvancedOpen] = useState(false);
   const [_advancedTargetingOpen, _setAdvancedTargetingOpen] = useState(false);
   const [goalEventModalOpen, setGoalEventModalOpen] = useState(false);
@@ -549,15 +732,7 @@ function TestWizard({
     parameter_name: '',
     min_relative_lift: -10,
   });
-  const [advancedSectionsOpen, setAdvancedSectionsOpen] = useState({
-    safety: true,
-    presets: false,
-    traffic: false,
-    jsTargeting: false,
-    customRules: false,
-  });
-  const toggleAdvancedSection = key =>
-    setAdvancedSectionsOpen(prev => ({ ...prev, [key]: !prev[key] }));
+  const [advancedStudioSection, setAdvancedStudioSection] = useState('safety');
   const [storeResources, setStoreResources] = useState([]);
   const [storeResourcesLoading, setStoreResourcesLoading] = useState(false);
   const [storeResourcesLoadingMore, setStoreResourcesLoadingMore] = useState(false);
@@ -707,22 +882,6 @@ function TestWizard({
       }));
     }
   }, []);
-  const expandAllAdvanced = () =>
-    setAdvancedSectionsOpen({
-      safety: true,
-      presets: true,
-      traffic: true,
-      jsTargeting: true,
-      customRules: true,
-    });
-  const collapseAllAdvanced = () =>
-    setAdvancedSectionsOpen({
-      safety: false,
-      presets: false,
-      traffic: false,
-      jsTargeting: false,
-      customRules: false,
-    });
   const lastSavedSnapshotRef = useRef(null);
   const autosaveTimeoutRef = useRef(null);
   const hasVariantSelectionRef = useRef(false);
@@ -744,13 +903,6 @@ function TestWizard({
     const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
     const phaseDetails = getCheckoutPhaseDetails(checkoutPhase);
     return steps.map(step => {
-      if (step.id === stepIds.targeting) {
-        return {
-          ...step,
-          title: 'Checkout Exposure',
-          description: 'Fixed checkout scope and holdout',
-        };
-      }
       if (step.id === stepIds.code) {
         return {
           ...step,
@@ -760,14 +912,7 @@ function TestWizard({
       }
       return step;
     });
-  }, [
-    formData.goal?.checkout_phase,
-    formData.type,
-    selectedTemplate,
-    stepIds.code,
-    stepIds.targeting,
-    steps,
-  ]);
+  }, [formData.goal?.checkout_phase, formData.type, selectedTemplate, stepIds.code, steps]);
 
   useEffect(() => {
     let cancelled = false;
@@ -866,10 +1011,6 @@ function TestWizard({
     .toLowerCase();
   const cartTransformInstallStateUnknownFromStatus =
     cartTransformFunctionDetectedFromStatus && cartTransformInstallCheckStatus === 'scope_missing';
-  const cartTransformFunctionAvailable =
-    cartTransformFunctionDetectedFromStatus ||
-    directPriceOverrideSupportLevel === 'available' ||
-    checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
   const directPriceOverrideReadiness =
     checkoutDiagnosticsLoading && cartTransformStatusLoading
       ? 'checking'
@@ -1418,6 +1559,23 @@ function TestWizard({
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
+    const modalClass = 'ripx-checkout-variant-modal-open';
+    const root = document.documentElement;
+    if (checkoutEditorModalOpen) {
+      document.body.classList.add(modalClass);
+      root?.classList.add(modalClass);
+    } else {
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
+    }
+    return () => {
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
+    };
+  }, [checkoutEditorModalOpen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
     const overlayId = 'ripx-price-product-modal-overlay';
     if (!priceProductModalOpen) {
       const existing = document.getElementById(overlayId);
@@ -1557,6 +1715,7 @@ function TestWizard({
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
+    normalizePriceTargetTypeValue,
   ]);
 
   const fetchFirstPricePreviewProduct = useCallback(async () => {
@@ -2122,18 +2281,10 @@ function TestWizard({
   }, [formData.target_type, isShippingTargetingMode, selectedTemplate]);
   useEffect(() => {
     if (isStandalone && (placementSection === 'device' || placementSection === 'audience')) {
-      setPlacementSection('page');
+      openOnlyTargetingSection('page');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when isStandalone changes
   }, [isStandalone]);
-  useEffect(() => {
-    if (
-      isShippingTargetingMode &&
-      (placementSection === 'device' || placementSection === 'audience')
-    ) {
-      setPlacementSection('page');
-    }
-  }, [isShippingTargetingMode, placementSection]);
   useEffect(() => {
     if (isStandalone || !isCheckoutTestType) {
       return;
@@ -2173,55 +2324,56 @@ function TestWizard({
       if (currentStep !== stepIds.targeting) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === '1') {
-        setPlacementSection('page');
+        expandTargetingSection('page');
         e.preventDefault();
-      } else if (e.key === '2' && !isStandalone && !isShippingTargetingMode) {
-        setPlacementSection('device');
+      } else if (e.key === '2') {
+        expandTargetingSection(isStandalone ? 'holdout' : 'audience');
         e.preventDefault();
-      } else if (e.key === '3' && !isStandalone && !isShippingTargetingMode) {
-        setPlacementSection('audience');
+      } else if (e.key === '3') {
+        expandTargetingSection(isStandalone ? 'advanced' : 'holdout');
         e.preventDefault();
-      } else if (e.key === (isStandalone || isShippingTargetingMode ? '2' : '4')) {
-        setPlacementSection('holdout');
-        e.preventDefault();
-      } else if (e.key === (isStandalone || isShippingTargetingMode ? '3' : '5')) {
-        setPlacementSection('advanced');
+      } else if (!isStandalone && e.key === '4') {
+        expandTargetingSection('advanced');
         e.preventDefault();
       } else if (e.key === 'ArrowLeft') {
-        setPlacementSection(s =>
-          s === 'advanced'
+        const next =
+          placementSection === 'advanced'
             ? 'holdout'
-            : s === 'holdout'
-              ? isStandalone || isShippingTargetingMode
+            : placementSection === 'holdout'
+              ? isStandalone
                 ? 'page'
                 : 'audience'
-              : s === 'audience'
-                ? 'device'
-                : s === 'device'
+              : placementSection === 'audience'
+                ? 'page'
+                : placementSection === 'device'
                   ? 'page'
-                  : s
-        );
+                  : placementSection;
+        if (next !== placementSection) {
+          expandTargetingSection(next);
+        }
         e.preventDefault();
       } else if (e.key === 'ArrowRight') {
-        setPlacementSection(s =>
-          s === 'page'
-            ? isStandalone || isShippingTargetingMode
+        const next =
+          placementSection === 'page'
+            ? isStandalone
               ? 'holdout'
-              : 'device'
-            : s === 'device'
-              ? 'audience'
-              : s === 'audience'
-                ? 'holdout'
-                : s === 'holdout'
+              : 'audience'
+            : placementSection === 'audience'
+              ? 'holdout'
+              : placementSection === 'device'
+                ? 'audience'
+                : placementSection === 'holdout'
                   ? 'advanced'
-                  : s
-        );
+                  : placementSection;
+        if (next !== placementSection) {
+          expandTargetingSection(next);
+        }
         e.preventDefault();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [currentStep, isShippingTargetingMode, stepIds.targeting, isStandalone]);
+  }, [currentStep, stepIds.targeting, isStandalone, placementSection, expandTargetingSection]);
 
   useEffect(() => {
     if (
@@ -2584,6 +2736,7 @@ function TestWizard({
       countries: Array.isArray(data.segments?.countries)
         ? data.segments.countries.filter(Boolean)
         : [],
+      operating_system: data.segments?.operating_system || 'all',
       traffic_source: data.segments?.traffic_source || 'all',
       anti_flicker_mode: data.segments?.anti_flicker_mode === 'strict' ? 'strict' : 'balanced',
       url_pattern: data.segments?.url_pattern ?? '',
@@ -2595,8 +2748,21 @@ function TestWizard({
     ) {
       normalizedSegments.excluded_product_ids = data.segments.excluded_product_ids.filter(Boolean);
     }
-    if (Array.isArray(data.segments?.custom_rules) && data.segments.custom_rules.length > 0) {
-      normalizedSegments.custom_rules = data.segments.custom_rules;
+    const resolvedCustomRuleGroups = resolveCustomRuleGroupsFromSegments(data.segments);
+    if (resolvedCustomRuleGroups.length > 0) {
+      normalizedSegments.custom_rule_groups = resolvedCustomRuleGroups;
+      const legacyCustomRules = normalizeCustomRules(data.segments?.custom_rules);
+      if (legacyCustomRules.length > 0) {
+        normalizedSegments.custom_rules = legacyCustomRules;
+      }
+    } else if (
+      Array.isArray(data.segments?.custom_rules) &&
+      data.segments.custom_rules.length > 0
+    ) {
+      const normalizedCustomRules = normalizeCustomRules(data.segments.custom_rules);
+      if (normalizedCustomRules.length > 0) {
+        normalizedSegments.custom_rules = normalizedCustomRules;
+      }
     }
     if (Array.isArray(data.segments?.page_rules) && data.segments.page_rules.length > 0) {
       const validPageRules = data.segments.page_rules
@@ -2649,6 +2815,12 @@ function TestWizard({
         .map(r => (r && typeof r === 'object' ? normalizeVisualEditorRule(r) : null))
         .filter(Boolean);
     }
+    const normalizedPriceSurfaceMappings = normalizePriceSurfaceMappings(
+      data.segments?.price_surface_mappings
+    ).slice(0, 25);
+    if (normalizedPriceSurfaceMappings.length > 0) {
+      normalizedSegments.price_surface_mappings = normalizedPriceSurfaceMappings;
+    }
 
     const normalizedDataType = String(data.type || '').toLowerCase();
     const priceTemplateFromType =
@@ -2676,6 +2848,16 @@ function TestWizard({
       template_key: templateKey || undefined,
       secondary: Array.isArray(data.goal?.secondary) ? data.goal.secondary : [],
     };
+    const normalizedSecondaryMetric = normalizeGoalSecondaryMetric(
+      goal.metric,
+      goal.secondary_metric ?? goal.secondaryMetric
+    );
+    if (normalizedSecondaryMetric) {
+      goal.secondary_metric = normalizedSecondaryMetric;
+    } else {
+      delete goal.secondary_metric;
+      delete goal.secondaryMetric;
+    }
 
     const normalizedVariants = normalizeVariantAllocations(variantsWithCode).map(v => {
       const nextVariant = {
@@ -2815,8 +2997,126 @@ function TestWizard({
       initialData?.type,
       selectedTemplate,
       getPreviewPathForTarget,
+      normalizePriceTargetTypeValue,
     ]
   );
+
+  const getCollectionPreviewPath = useCallback(() => {
+    const targetType = normalizePriceTargetTypeValue(
+      formData.target_type || initialData?.target_type,
+      formData.type || initialData?.type || selectedTemplate
+    );
+    const normalizedTargetType = String(targetType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+    if (normalizedTargetType === 'collection') {
+      return getFirstTargetPreviewPath();
+    }
+    const collection = (storeResources || []).find(resource => {
+      const type = String(resource?.type || resource?.resourceType || '')
+        .trim()
+        .toLowerCase();
+      return resource?.handle && type === 'collection';
+    });
+    if (collection?.handle) {
+      return `/collections/${encodeURIComponent(collection.handle)}`;
+    }
+    return '/collections/all';
+  }, [
+    formData.target_type,
+    formData.type,
+    getFirstTargetPreviewPath,
+    initialData?.target_type,
+    initialData?.type,
+    normalizePriceTargetTypeValue,
+    selectedTemplate,
+    storeResources,
+  ]);
+
+  const getPriceSurfacePickerLaunchUrl = useCallback(
+    (surface = 'pdp') => {
+      const domainForPreview =
+        routeDomain ||
+        getPreviewDomain() ||
+        getShopDomain() ||
+        (initialData?.shop_domain && String(initialData.shop_domain).trim());
+      const baseUrl = resolvePreviewBaseUrl({
+        variantUrl: null,
+        overrideUrl: normalizeTextValue(formData.segments?.visual_editor_preview_url) || null,
+        domain: domainForPreview || undefined,
+        path: buildPriceSurfacePickerPath(surface, {
+          productPath: getFirstTargetPreviewPath(),
+          collectionPath: getCollectionPreviewPath(),
+        }),
+      });
+      if (!baseUrl) {
+        return '';
+      }
+      const variants = formData.variants ?? [];
+      const previewVariant = variants[0];
+      return (
+        buildVisualPickerLaunchUrl({
+          baseUrl,
+          testId: initialData?.id,
+          variantId:
+            previewVariant?.id || previewVariant?.name || (previewVariant ? 'variant-1' : ''),
+          variantName: previewVariant?.name || (previewVariant ? 'Variant 1' : ''),
+          tenantDomain: normalizeTextValue(initialData?.shop_domain) || null,
+          apiBaseUrl: getApiBaseUrl(),
+          storefrontPassword: visualEditorStorefrontPassword,
+          parentOrigin:
+            typeof window !== 'undefined' && window.location?.origin
+              ? window.location.origin
+              : undefined,
+          priceSurfacePick: true,
+        }) || ''
+      );
+    },
+    [
+      routeDomain,
+      formData.segments?.visual_editor_preview_url,
+      formData.variants,
+      getCollectionPreviewPath,
+      getFirstTargetPreviewPath,
+      initialData?.id,
+      initialData?.shop_domain,
+      visualEditorStorefrontPassword,
+    ]
+  );
+
+  const priceSurfaceSettingsHref = useMemo(() => {
+    const domain = String(routeDomain || '').trim();
+    return domain ? `${ROUTES.appSettings(domain)}?tab=general` : '';
+  }, [routeDomain]);
+
+  const handlePriceSurfaceRegistryStatusChange = useCallback(status => {
+    setPriceSurfaceRegistryStatus(status);
+  }, []);
+
+  const openPriceSurfaceMappingPanel = useCallback(() => {
+    setPriceSurfacePanelExpandToken(token => token + 1);
+    if (typeof document !== 'undefined') {
+      document.getElementById('price-surface-mapping')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!priceSurfacePickTarget) {
+      return undefined;
+    }
+    const timeout = setTimeout(
+      () => {
+        setPriceSurfacePickTarget(null);
+        priceSurfacePickTargetRef.current = null;
+      },
+      15 * 60 * 1000
+    );
+    return () => clearTimeout(timeout);
+  }, [priceSurfacePickTarget]);
 
   // Set visual preview loading when opening visual editor or when preview URL changes
   useEffect(() => {
@@ -2933,6 +3233,60 @@ function TestWizard({
         }
         const sel = event.data.selector.trim();
         if (!sel || sel.length > 2048) return;
+
+        const pricePick = priceSurfacePickTargetRef.current;
+        if (
+          pricePick &&
+          typeof pricePick.scope === 'string' &&
+          Number.isInteger(pricePick.index) &&
+          pricePick.index >= 0
+        ) {
+          const surfaceHint =
+            event.data?.surfaceHint || inferPriceSurfaceFromHref(event.data?.pageUrl);
+          const roleHint = inferPriceSurfaceRoleFromPickerHints({
+            selector: sel,
+            roleHint: event.data?.roleHint,
+          });
+          const patch = {
+            selector: sel,
+            source: 'visual',
+          };
+          if (surfaceHint) {
+            patch.surface = surfaceHint;
+          }
+          if (roleHint) {
+            patch.role = roleHint;
+          }
+          if (pricePick.scope === 'test') {
+            setFormData(prev => {
+              const rows = normalizePriceSurfaceMappingsForEditor(
+                prev.segments?.price_surface_mappings
+              );
+              const nextRows = rows.map((row, idx) =>
+                idx === pricePick.index
+                  ? applyRecommendedPriceSurfaceDefaults({ ...row, ...patch })
+                  : row
+              );
+              return {
+                ...prev,
+                segments: {
+                  ...prev.segments,
+                  price_surface_mappings: nextRows,
+                },
+              };
+            });
+          } else if (pricePick.scope === 'shop' && priceSurfaceShopPickRef.current) {
+            priceSurfaceShopPickRef.current(pricePick.index, patch);
+          }
+          setPriceSurfacePickTarget(null);
+          priceSurfacePickTargetRef.current = null;
+          setVisualPreviewToast({
+            message: 'Price surface selector captured',
+            type: 'success',
+          });
+          setTimeout(() => setVisualPreviewToast(null), 2500);
+          return;
+        }
 
         const form = formDataRef.current;
         const variantIndex = Math.min(
@@ -3688,7 +4042,13 @@ function TestWizard({
   };
 
   const selectedGoalNames = new Set(selectedSecondaryGoals.map(goal => getSecondaryGoalName(goal)));
-  const goalGlanceText = `1 primary + ${selectedSecondaryGoals.length} supporting`;
+  const selectedSecondaryBusinessMetric = normalizeGoalSecondaryMetric(
+    formData.goal?.metric,
+    formData.goal?.secondary_metric ?? formData.goal?.secondaryMetric
+  );
+  const goalGlanceText = selectedSecondaryBusinessMetric
+    ? `1 primary + 1 secondary + ${selectedSecondaryGoals.length} supporting`
+    : `1 primary + ${selectedSecondaryGoals.length} supporting`;
   const activeAnalysisLabel =
     (formData.goal?.analysis_method || 'frequentist') === 'bayesian' ? 'Bayesian' : 'Frequentist';
   const guardrailGoalCount = selectedSecondaryGoals.filter(
@@ -3851,6 +4211,56 @@ function TestWizard({
   const selectedPrimaryMetric =
     primaryMetricOptions.find(option => option.value === (formData.goal?.metric || 'revenue')) ||
     primaryMetricOptions[0];
+  const selectedSecondaryBusinessMetricOption = selectedSecondaryBusinessMetric
+    ? primaryMetricOptions.find(option => option.value === selectedSecondaryBusinessMetric) || null
+    : null;
+  const secondaryBusinessMetricOptions = primaryMetricOptions.filter(
+    option => option.value !== (formData.goal?.metric || 'revenue')
+  );
+  const setPrimaryGoalMetric = value => {
+    setFormData(prev => {
+      const nextPrimary = normalizeGoalPrimaryMetric(value, 'revenue');
+      const currentSecondary = normalizeGoalSecondaryMetric(
+        prev.goal?.metric,
+        prev.goal?.secondary_metric ?? prev.goal?.secondaryMetric
+      );
+      const nextSecondary =
+        currentSecondary && currentSecondary !== nextPrimary ? currentSecondary : null;
+      return {
+        ...prev,
+        goal: {
+          ...(prev.goal || {}),
+          metric: nextPrimary,
+          ...(nextSecondary ? { secondary_metric: nextSecondary } : { secondary_metric: null }),
+        },
+      };
+    });
+  };
+  const setSecondaryGoalMetric = value => {
+    setFormData(prev => {
+      const nextSecondary = value ? normalizeGoalSecondaryMetric(prev.goal?.metric, value) : null;
+      return {
+        ...prev,
+        goal: {
+          ...(prev.goal || {}),
+          ...(nextSecondary ? { secondary_metric: nextSecondary } : { secondary_metric: null }),
+        },
+      };
+    });
+  };
+  const decisionRulesTooltip = useMemo(() => {
+    if (formData.goal?.metric === 'conversion_rate') {
+      return selectedSecondaryBusinessMetricOption
+        ? `Inference aligns with conversion as primary. ${selectedSecondaryBusinessMetricOption.label} is tracked as a secondary readout.`
+        : 'Inference is aligned with the selected conversion primary metric.';
+    }
+    return selectedSecondaryBusinessMetricOption
+      ? `${selectedPrimaryMetric.label} remains the business winner metric. ${selectedSecondaryBusinessMetricOption.label} is tracked as a secondary readout. Conversion-based inference is kept as evidence quality context.`
+      : `${selectedPrimaryMetric.label} remains the business winner metric. Conversion-based inference is kept as evidence quality context.`;
+  }, [formData.goal?.metric, selectedPrimaryMetric.label, selectedSecondaryBusinessMetricOption]);
+  const primaryGoalMetricHint = isPriceLikeTestType(formData.type)
+    ? 'For price tests, Revenue (or Profit with COGS) is usually the best primary metric; conversion-only can bias toward lower prices.'
+    : 'Pick the outcome that decides the winner. Add one optional secondary metric and event goals when you need extra readouts.';
   const cogsSummary = formData.goal?.cogs?.enabled
     ? `${formData.goal?.cogs?.value ?? 30}${formData.goal?.cogs?.type === 'fixed_per_order' ? ' per order' : '%'} COGS`
     : 'Not enabled';
@@ -4445,7 +4855,7 @@ function TestWizard({
   const jumpToShippingTargeting = useCallback(
     targetId => {
       setCurrentStep(stepIds.targeting);
-      setPlacementSection('page');
+      openOnlyTargetingSection('page');
       if (targetId === 'shipping-exclusions-card') {
         setShippingScopeAdvancedOpen(true);
       }
@@ -4458,7 +4868,7 @@ function TestWizard({
         });
       });
     },
-    [stepIds.targeting]
+    [stepIds.targeting, openOnlyTargetingSection]
   );
 
   const canNavigateSteps =
@@ -4656,9 +5066,7 @@ function TestWizard({
 
   const renderTargetingStep = () => {
     const targetingScopeFixedForCommerce = isCommerceProductScopeTest;
-    const showDeviceAudienceTabs = !isStandalone && !isShippingTestType;
-    const holdoutStepNumber = isStandalone || isShippingTestType ? 2 : 4;
-    const advancedStepNumber = isStandalone || isShippingTestType ? 3 : 5;
+    const showAudienceTab = !isStandalone;
     const shippingTargetType = String(formData.target_type || '')
       .trim()
       .toLowerCase();
@@ -4687,12 +5095,69 @@ function TestWizard({
           },
         ]
       : [];
-    const countriesValue = formData.segments?.countries?.join(', ') || '';
+    const countriesSummary = formatCountryCodesSummary(formData.segments?.countries || [], 3) || '';
     const holdoutValue =
       formData.holdout_percent === null || formData.holdout_percent === undefined
         ? ''
         : String(formData.holdout_percent);
-    if (isCheckoutTestType) {
+    const targetingStepErrors = getStepErrors(stepIds.targeting);
+    const targetingIssuesBySection = partitionTargetingStepErrors(targetingStepErrors);
+    let targetingCoachHints = getTargetingCoachHints({
+      formData,
+      isStandalone,
+      isCheckoutTestType,
+      isShippingTestType,
+      targetingScopeFixedForCommerce,
+      selectedScopeProductCount: selectedScopeProductIds.length,
+      maxHints: targetingStepErrors.length > 0 ? 1 : 3,
+    });
+    targetingCoachHints = targetingCoachHints.filter(
+      h => (targetingIssuesBySection[h.section] || []).length === 0
+    );
+    const coachHintBySection = targetingCoachHints.reduce((acc, h) => {
+      acc[h.section] = h;
+      return acc;
+    }, {});
+    const targetingSummary = buildTargetingSummary({
+      formData,
+      isStandalone,
+      isCheckoutTestType,
+      isShippingTestType,
+      targetingScopeFixedForCommerce,
+      isShippingStorewideAdvanced,
+      selectedScopeProductCount: selectedScopeProductIds.length,
+      excludedScopeProductCount: excludedScopeProductIds.length,
+      countriesSummary,
+      customUrlModeActive,
+    });
+    const sectionTriggerClass = (section, expanded, extra = '') =>
+      [
+        styles.targetingAccordionTrigger,
+        expanded ? styles.targetingAccordionTriggerActive : '',
+        (targetingIssuesBySection[section] || []).length > 0
+          ? styles.targetingAccordionTriggerHasError
+          : '',
+        coachHintBySection[section] && (targetingIssuesBySection[section] || []).length === 0
+          ? styles.targetingAccordionTriggerHasCoach
+          : '',
+        extra,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    const renderTargetingIssueBadge = section => {
+      const n = (targetingIssuesBySection[section] || []).length;
+      if (n === 0) return null;
+      return (
+        <span
+          className={styles.targetingAccordionIssueBadge}
+          aria-label={`${n} blocking issue${n === 1 ? '' : 's'} in ${section}`}
+        >
+          {n}
+        </span>
+      );
+    };
+    const useCheckoutFocusedTargetingLayout = false;
+    if (isCheckoutTestType && useCheckoutFocusedTargetingLayout) {
       const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
       const phaseDetails = getCheckoutPhaseDetails(checkoutPhase);
       const holdoutPercent = Math.min(50, Math.max(0, Number(holdoutValue) || 0));
@@ -4766,8 +5231,7 @@ function TestWizard({
                     Checkout holdout
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    Keep a clean control group for checkout performance comparisons without exposing
-                    every buyer to a treatment.
+                    Reserve buyers who never see a treatment. 10% is a common baseline.
                   </Text>
                 </div>
                 <Badge tone={holdoutPercent >= 10 ? 'success' : 'attention'}>
@@ -4788,22 +5252,23 @@ function TestWizard({
                 ))}
               </div>
 
-              <InlineStack gap="300" wrap>
-                <div style={{ minWidth: 180, flex: '0 0 180px' }}>
-                  <TextField
-                    label="Holdout percentage"
+              <div className={styles.checkoutHoldoutControlRow}>
+                <div className={styles.holdoutValueInput}>
+                  <input
                     type="number"
+                    className={styles.holdoutNumberInput}
                     min={0}
                     max={50}
                     value={holdoutValue ?? ''}
-                    onChange={value =>
+                    onChange={e =>
                       setFormData(prev => ({
                         ...prev,
-                        holdout_percent: value,
+                        holdout_percent: e.target.value,
                       }))
                     }
-                    autoComplete="off"
+                    aria-label="Holdout percentage"
                   />
+                  <span className={styles.holdoutPercentSuffix}>%</span>
                 </div>
                 <div className={styles.checkoutHoldoutRangeShell}>
                   <input
@@ -4826,15 +5291,7 @@ function TestWizard({
                     <span>50%</span>
                   </div>
                 </div>
-              </InlineStack>
-
-              <Banner tone="info" title="What changed">
-                <Text as="p" variant="bodySm">
-                  Page scope, device filters, audience filters, and custom checkout URL rules are no
-                  longer authored here for checkout tests. This step stays focused on checkout-only
-                  exposure and clean experiment measurement.
-                </Text>
-              </Banner>
+              </div>
             </div>
           </Card>
         </BlockStack>
@@ -4856,6 +5313,10 @@ function TestWizard({
       antiFlickerRecommendedMode === 'strict'
         ? 'Visual/content changes benefit from stronger pre-hiding to avoid control flash.'
         : 'Price-focused tests usually perform better with less pre-hide time.';
+    const jumpToAudienceCustom = () => {
+      setAudienceTargetingMode('custom');
+      openOnlyTargetingSection('audience');
+    };
 
     return (
       <BlockStack gap="400">
@@ -4869,11 +5330,13 @@ function TestWizard({
               <div>
                 <h2 className={styles.stepHeaderTitle}>Targeting & Segmentation</h2>
                 <p className={styles.stepHeaderSubtitle}>
-                  {isShippingTestType
-                    ? 'Define cart qualification, holdout, and optional safety rules.'
-                    : isStandalone
-                      ? 'Define where your test runs (URL) and holdout.'
-                      : 'Define where your test runs and who sees it.'}
+                  {isCheckoutTestType
+                    ? 'Checkout runs only on the checkout surface. Audience, holdout, and advanced rules still apply.'
+                    : isShippingTestType
+                      ? 'Define cart qualification, holdout, and optional safety rules.'
+                      : isStandalone
+                        ? 'Define where your test runs (URL) and holdout.'
+                        : 'Define where your test runs and who sees it.'}
                 </p>
               </div>
             </div>
@@ -4882,3412 +5345,2490 @@ function TestWizard({
               <div id="targeting-audience" className={styles.targetingTabPanel} role="tabpanel">
                 <div className={styles.tabPanelInner}>
                   <div className={styles.placementBar}>
-                    <div className={styles.placementBarHeader}>
-                      <span className={styles.placementBarLabel}>
-                        {isShippingTestType ? 'Shipping qualification' : 'Page integration'}
-                      </span>
-                      <span className={styles.placementBarSubtext}>
-                        {isShippingTestType
-                          ? 'Cart qualification and test guardrails'
-                          : 'Where and who sees your test'}
-                      </span>
-                    </div>
-                    <div className={styles.placementBarRow}>
+                    <TargetingStepLayout
+                      styles={styles}
+                      summary={targetingSummary}
+                      activeSection={placementSection}
+                      issuesBySection={targetingIssuesBySection}
+                      coachBySection={coachHintBySection}
+                      onSelectSection={openOnlyTargetingSection}
+                    >
                       <div
-                        className={styles.placementBarTabs}
-                        role="tablist"
-                        aria-label="Placement sections"
+                        className={`${styles.targetingAccordionStack} ${styles.targetingAccordionStackWithRail}`}
+                        role="group"
+                        aria-label="Targeting sections"
                       >
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={placementSection === 'page'}
-                          className={`${styles.placementTab} ${placementSection === 'page' ? styles.placementTabActive : ''}`}
-                          onClick={() => setPlacementSection('page')}
-                          title={isShippingTestType ? 'Qualification (1)' : 'Page (1)'}
-                        >
-                          <span className={styles.placementTabStep}>1</span>
-                          <Icon source={PageIcon} />
-                          <span>{isShippingTestType ? 'Qualification' : 'Page'}</span>
-                          {((formData.segments?.page_rules || []).length > 0 ||
-                            (customUrlModeActive &&
-                              (formData.segments?.url_pattern ?? '') !== '')) && (
-                            <span className={styles.placementTabDot} />
-                          )}
-                        </button>
-                        {showDeviceAudienceTabs && (
-                          <>
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={placementSection === 'device'}
-                              className={`${styles.placementTab} ${placementSection === 'device' ? styles.placementTabActive : ''}`}
-                              onClick={() => setPlacementSection('device')}
-                              title="Device (2)"
-                            >
-                              <span className={styles.placementTabStep}>2</span>
-                              <Icon source={UnknownDeviceIcon} />
-                              <span>Device</span>
-                              {(formData.segments?.device_rules || []).length > 0 && (
-                                <span className={styles.placementTabDot} />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={placementSection === 'audience'}
-                              className={`${styles.placementTab} ${placementSection === 'audience' ? styles.placementTabActive : ''}`}
-                              onClick={() => setPlacementSection('audience')}
-                              title="Audience (3)"
-                            >
-                              <span className={styles.placementTabStep}>3</span>
-                              <Icon source={PersonIcon} />
-                              <span>Audience</span>
-                              {(formData.segments?.audience_rules || []).length > 0 && (
-                                <span className={styles.placementTabDot} />
-                              )}
-                            </button>
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={placementSection === 'holdout'}
-                          className={`${styles.placementTab} ${styles.placementTabHoldout} ${placementSection === 'holdout' ? styles.placementTabActive : ''} ${Number(holdoutValue) > 0 ? styles.placementTabHighlight : ''}`}
-                          onClick={() => setPlacementSection('holdout')}
-                          title={`Holdout (${holdoutStepNumber})`}
-                        >
-                          <span className={styles.placementTabStep}>{holdoutStepNumber}</span>
-                          <Icon source={LockIcon} />
-                          <span>Holdout</span>
-                          {Number(holdoutValue) > 0 && <span className={styles.placementTabDot} />}
-                        </button>
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={placementSection === 'advanced'}
-                          className={`${styles.placementTab} ${styles.placementTabAdvanced} ${placementSection === 'advanced' ? styles.placementTabActive : ''}`}
-                          onClick={() => setPlacementSection('advanced')}
-                          title={`Advanced (${advancedStepNumber})`}
-                        >
-                          <span className={styles.placementTabStep}>{advancedStepNumber}</span>
-                          <Icon source={CodeIcon} />
-                          <span>Advanced</span>
-                          {(() => {
-                            const cr = (formData.segments?.custom_rules || []).length;
-                            const extra =
-                              (formData.guardrail_config?.enabled ? 1 : 0) +
-                              (formData.segments?.js_targeting?.enabled ? 1 : 0);
-                            const hasTraffic =
-                              (formData.segments?.traffic_source || 'all') !== 'all' ||
-                              (formData.segments?.url_pattern &&
-                                formData.segments.url_pattern !== ' ' &&
-                                String(formData.segments.url_pattern).trim() !== '') ||
-                              Number(formData.segments?.min_sessions) > 0;
-                            const advancedCount = cr + extra + (hasTraffic ? 1 : 0);
-                            return advancedCount > 0 ? (
-                              <span className={styles.placementTabDot} />
-                            ) : null;
-                          })()}
-                        </button>
-                      </div>
-                      <div className={styles.placementBarSummary}>
-                        <span className={styles.placementConfigPill}>
-                          {(() => {
-                            if (isShippingTestType) {
-                              const scopeLabel = isShippingStorewideAdvanced
-                                ? 'Storewide carts'
-                                : `${selectedScopeProductIds.length || 0} included product${selectedScopeProductIds.length === 1 ? '' : 's'}`;
-                              const excludedLabel =
-                                excludedScopeProductIds.length > 0
-                                  ? ` · ${excludedScopeProductIds.length} excluded`
-                                  : '';
-                              return `${scopeLabel}${excludedLabel} · ${holdoutValue || 0}% holdout`;
+                        <div className={styles.targetingAccordionItem}>
+                          <button
+                            type="button"
+                            aria-expanded={targetingSectionExpanded.page}
+                            className={sectionTriggerClass('page', targetingSectionExpanded.page)}
+                            onClick={() => toggleTargetingSectionExpanded('page')}
+                            title={
+                              isShippingTestType
+                                ? 'Qualification (1)'
+                                : targetingScopeFixedForCommerce
+                                  ? 'Product scope (1)'
+                                  : 'Page (1)'
                             }
-                            const pr = formData.segments?.page_rules || [];
-                            const p = formData.segments?.url_pattern ?? '';
-                            const pageLabel =
-                              pr.length > 0
-                                ? `${pr.length} rule${pr.length > 1 ? 's' : ''}`
-                                : !p || p === ' '
-                                  ? 'All pages'
-                                  : p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
-                                      p === HOMEPAGE_URL_PATTERN_STANDALONE
-                                    ? 'Homepage'
-                                    : p === '/products/'
-                                      ? 'Products'
-                                      : p === '/collections/'
-                                        ? 'Collections'
-                                        : p === '/cart'
-                                          ? 'Cart'
-                                          : 'Custom';
-                            const dev = formData.segments?.device || 'all';
-                            const cust = formData.segments?.customer || 'all';
-                            const countries = formData.segments?.countries || [];
-                            const whoLabel =
-                              dev === 'all' && cust === 'all' && countries.length === 0
-                                ? 'All'
-                                : [
-                                    dev !== 'all'
-                                      ? dev === 'desktop'
-                                        ? 'Desktop'
-                                        : 'Mobile'
-                                      : null,
-                                    cust !== 'all' ? (cust === 'new' ? 'New' : 'Returning') : null,
-                                    countries.length > 0
-                                      ? countries.length > 3
-                                        ? `${countries.length} countries`
-                                        : countriesValue
-                                      : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(' · ');
-                            return `${pageLabel} · ${whoLabel} · ${holdoutValue || 0}% holdout`;
-                          })()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={styles.placementContent}>
-                    {placementSection === 'page'
-                      ? [
-                          <div
-                            key="page-placement"
-                            className={styles.placementPanel}
-                            id="targeting-scope"
                           >
-                            {targetingScopeFixedForCommerce ? (
-                              <BlockStack gap="300">
-                                <Banner
-                                  tone={isShippingStorewideAdvanced ? 'warning' : 'info'}
-                                  title={
-                                    isShippingTestType
-                                      ? isShippingStorewideAdvanced
-                                        ? 'Shipping test uses advanced storewide qualification'
-                                        : 'Shipping tests default to selected-product cart qualification'
-                                      : isOfferTestType
-                                        ? 'Offer tests use product-only scope'
-                                        : 'Price tests use product-only scope'
-                                  }
-                                >
-                                  <Text as="p" variant="bodySm">
-                                    {isShippingTestType ? (
-                                      isShippingStorewideAdvanced ? (
-                                        <>
-                                          <strong>Storewide shipping</strong> qualifies nearly every
-                                          cart across your catalog. Use{' '}
-                                          <strong>excluded products</strong> to carve out
-                                          exceptions, then validate with diagnostics and holdout
-                                          before you apply it live.
-                                        </>
-                                      ) : (
-                                        <>
-                                          Choose the{' '}
-                                          <strong>products that must appear in the cart</strong>{' '}
-                                          before this shipping test can apply. You can also add
-                                          optional <strong>excluded products</strong> to block
-                                          shipping assignment and checkout application for carts
-                                          that contain those SKUs. If you need broader coverage,
-                                          unlock <strong>advanced storewide scope</strong> below.
-                                        </>
-                                      )
-                                    ) : (
-                                      <>
-                                        Choose between <strong>all products</strong> and{' '}
-                                        <strong>selected products</strong> here. You can also add
-                                        optional <strong>excluded products</strong> to prevent
-                                        assignment and storefront application for specific SKUs.
-                                      </>
-                                    )}
-                                  </Text>
-                                </Banner>
-                                <div className={styles.panelSection}>
-                                  <span className={styles.panelSectionTitle}>
-                                    {isShippingTestType ? 'Cart qualification' : 'Product scope'}
-                                  </span>
-                                  <div className={styles.scopeSelectGrid}>
-                                    {isShippingTestType ? (
-                                      <>
-                                        <div
-                                          className={`${styles.scopeCard} ${!isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
-                                          role="button"
-                                          tabIndex={0}
-                                          onClick={() =>
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'product',
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }))
-                                          }
-                                          onKeyDown={event => {
-                                            if (event.key !== 'Enter' && event.key !== ' ') {
-                                              return;
-                                            }
-                                            event.preventDefault();
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'product',
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }));
-                                          }}
-                                          aria-pressed={!isShippingStorewideAdvanced}
-                                          aria-label="Carts with selected products"
-                                        >
-                                          <span className={styles.scopeCardIcon}>
-                                            <Icon source={TargetIcon} />
-                                          </span>
-                                          <span className={styles.scopeCardLabel}>
-                                            Carts with selected products
-                                          </span>
-                                          <span className={styles.scopeCardDesc}>
-                                            Qualify only carts that contain one of the products you
-                                            choose below
-                                          </span>
-                                        </div>
-                                        {(shippingScopeAdvancedOpen ||
-                                          isShippingStorewideAdvanced) && (
-                                          <div
-                                            className={`${styles.scopeCard} ${isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={() =>
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                target_type: 'all-products',
-                                                target_id: '',
-                                                target_ids: null,
-                                                segments: {
-                                                  ...prev.segments,
-                                                  url_pattern: '',
-                                                  page_rules: prev.segments?.page_rules || [],
-                                                },
-                                              }))
-                                            }
-                                            onKeyDown={event => {
-                                              if (event.key !== 'Enter' && event.key !== ' ') {
-                                                return;
-                                              }
-                                              event.preventDefault();
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                target_type: 'all-products',
-                                                target_id: '',
-                                                target_ids: null,
-                                                segments: {
-                                                  ...prev.segments,
-                                                  url_pattern: '',
-                                                  page_rules: prev.segments?.page_rules || [],
-                                                },
-                                              }));
-                                            }}
-                                            aria-pressed={isShippingStorewideAdvanced}
-                                            aria-label="Storewide shipping qualification"
-                                          >
-                                            <span className={styles.scopeCardIcon}>
-                                              <Icon source={ProductIcon} />
-                                            </span>
-                                            <span className={styles.scopeCardLabel}>
-                                              Storewide shipping
-                                            </span>
-                                            <span className={styles.scopeCardDesc}>
-                                              Qualify carts across your full catalog. Excluded
-                                              products still block assignment and checkout
-                                              application.
-                                            </span>
-                                          </div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <div
-                                          className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
-                                          role="button"
-                                          tabIndex={0}
-                                          onClick={() =>
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'all-products',
-                                              target_id: '',
-                                              target_ids: null,
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '/products/',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }))
-                                          }
-                                          onKeyDown={event => {
-                                            if (event.key !== 'Enter' && event.key !== ' ') {
-                                              return;
-                                            }
-                                            event.preventDefault();
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'all-products',
-                                              target_id: '',
-                                              target_ids: null,
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '/products/',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }));
-                                          }}
-                                          aria-pressed={
-                                            (formData.target_type || 'all-products') !== 'product'
-                                          }
-                                          aria-label="All products"
-                                        >
-                                          <span className={styles.scopeCardIcon}>
-                                            <Icon source={ProductIcon} />
-                                          </span>
-                                          <span className={styles.scopeCardLabel}>
-                                            All products
-                                          </span>
-                                          <span className={styles.scopeCardDesc}>
-                                            Assign this test across your full product catalog
-                                          </span>
-                                        </div>
-                                        <div
-                                          className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
-                                          role="button"
-                                          tabIndex={0}
-                                          onClick={() =>
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'product',
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '/products/',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }))
-                                          }
-                                          onKeyDown={event => {
-                                            if (event.key !== 'Enter' && event.key !== ' ') {
-                                              return;
-                                            }
-                                            event.preventDefault();
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'product',
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '/products/',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }));
-                                          }}
-                                          aria-pressed={formData.target_type === 'product'}
-                                          aria-label="Selected products only"
-                                        >
-                                          <span className={styles.scopeCardIcon}>
-                                            <Icon source={TargetIcon} />
-                                          </span>
-                                          <span className={styles.scopeCardLabel}>
-                                            Selected products
-                                          </span>
-                                          <span className={styles.scopeCardDesc}>
-                                            Assign only for specific products you choose
-                                          </span>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                  {isShippingTestType && (
-                                    <div className={styles.inlineAdvancedToggle}>
-                                      <button
-                                        type="button"
-                                        className={styles.inlineAdvancedToggleBtn}
-                                        onClick={() => {
-                                          const nextOpen = !shippingScopeAdvancedOpen;
-                                          setShippingScopeAdvancedOpen(nextOpen);
-                                          if (!nextOpen && isShippingStorewideAdvanced) {
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: 'product',
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: '',
-                                                page_rules: prev.segments?.page_rules || [],
-                                              },
-                                            }));
-                                          }
-                                        }}
-                                        aria-expanded={shippingScopeAdvancedOpen}
-                                      >
-                                        <span
-                                          className={`${styles.inlineAdvancedChevron} ${shippingScopeAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
-                                        >
-                                          <Icon source={ChevronDownIcon} />
-                                        </span>
-                                        Advanced: enable storewide shipping scope
-                                        {isShippingStorewideAdvanced && (
-                                          <span className={styles.inlineAdvancedCount}>On</span>
-                                        )}
-                                      </button>
-                                      {shippingScopeAdvancedOpen && (
-                                        <div className={styles.inlineAdvancedBody}>
-                                          <p className={styles.inlineAdvancedHint}>
-                                            Use storewide qualification only when you intentionally
-                                            want this shipping test to reach nearly every eligible
-                                            cart. RipX will still respect excluded products,
-                                            holdout, and shipping diagnostics.
-                                          </p>
-                                          <Banner
-                                            tone="warning"
-                                            title="Broader impact, stronger guardrails"
-                                          >
-                                            <BlockStack gap="200">
-                                              <Text as="p" variant="bodySm">
-                                                Storewide shipping tests are powerful but easier to
-                                                misconfigure. Add a holdout, use excluded products
-                                                to carve out sensitive SKUs, and run diagnostics
-                                                before you apply live.
-                                              </Text>
-                                              <div className={styles.bannerChecklist}>
-                                                {shippingTargetingChecklist.map(item => (
-                                                  <div
-                                                    key={item.label}
-                                                    className={styles.bannerChecklistItem}
-                                                  >
-                                                    <span className={styles.bannerChecklistIcon}>
-                                                      <Icon
-                                                        source={
-                                                          item.passed
-                                                            ? CheckCircleIcon
-                                                            : AlertTriangleIcon
-                                                        }
-                                                        tone={item.passed ? 'success' : 'warning'}
-                                                      />
-                                                    </span>
-                                                    <Text
-                                                      as="span"
-                                                      variant="bodySm"
-                                                      className={styles.bannerChecklistLabel}
-                                                    >
-                                                      {item.label}
-                                                    </Text>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </BlockStack>
-                                          </Banner>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className={styles.productScopePickerGrid}>
-                                  {((isShippingTestType && !isShippingStorewideAdvanced) ||
-                                    (!isShippingTestType &&
-                                      formData.target_type === 'product')) && (
-                                    <div
-                                      className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
-                                    >
-                                      <BlockStack gap="200">
-                                        <InlineStack align="space-between" blockAlign="center" wrap>
-                                          <InlineStack gap="200" blockAlign="center">
-                                            <span className={styles.productScopePickerIcon}>
-                                              <Icon source={ProductIcon} />
-                                            </span>
-                                            <Text as="h4" variant="headingSm">
-                                              {isShippingTestType
-                                                ? 'Included products'
-                                                : 'Included products'}
-                                            </Text>
-                                          </InlineStack>
-                                          <Badge tone="info">
-                                            {`${selectedScopeProductIds.length} selected`}
-                                          </Badge>
-                                        </InlineStack>
-                                        <Text as="p" variant="bodySm" tone="subdued">
-                                          {isShippingTestType
-                                            ? 'Choose products that must appear in a delivery group before this shipping test can apply.'
-                                            : 'Choose products from your store catalog for this test scope.'}
-                                        </Text>
-                                        <InlineStack>
-                                          <Button
-                                            size="slim"
-                                            variant="primary"
-                                            icon={ProductIcon}
-                                            onClick={() => openPriceProductModal('include')}
-                                            disabled={!canUseStoreProductPicker}
-                                          >
-                                            {isShippingTestType
-                                              ? 'Choose included products'
-                                              : 'Choose products'}
-                                          </Button>
-                                        </InlineStack>
-                                        <div className={styles.productScopePickerSelectionList}>
-                                          {selectedScopeProductsPreview.length === 0 ? (
-                                            <div
-                                              className={styles.productScopePickerSelectionEmpty}
-                                            >
-                                              <Icon source={ProductIcon} />
-                                              <span>
-                                                {isShippingTestType
-                                                  ? 'No included products selected yet.'
-                                                  : 'No products selected yet.'}
-                                              </span>
-                                            </div>
-                                          ) : (
-                                            selectedScopeProductsPreview
-                                              .slice(0, 4)
-                                              .map(product => (
-                                                <div
-                                                  key={product.id}
-                                                  className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
-                                                >
-                                                  <span
-                                                    className={styles.priceProductPickerThumb}
-                                                    aria-hidden
-                                                  >
-                                                    {product.imageUrl ? (
-                                                      <img
-                                                        src={product.imageUrl}
-                                                        alt=""
-                                                        loading="lazy"
-                                                      />
-                                                    ) : (
-                                                      <Icon source={ProductIcon} />
-                                                    )}
-                                                  </span>
-                                                  <span
-                                                    className={styles.priceProductPickerRowText}
-                                                  >
-                                                    <span
-                                                      className={styles.priceProductPickerRowTitle}
-                                                    >
-                                                      {product.title}
-                                                    </span>
-                                                    {product.handle ? (
-                                                      <span
-                                                        className={
-                                                          styles.priceProductPickerRowHandle
-                                                        }
-                                                      >
-                                                        {product.handle}
-                                                      </span>
-                                                    ) : null}
-                                                  </span>
-                                                </div>
-                                              ))
-                                          )}
-                                          {selectedScopeProductsPreview.length > 4 && (
-                                            <span className={styles.productScopePickerMoreBadge}>
-                                              +{selectedScopeProductsPreview.length - 4} more
-                                            </span>
-                                          )}
-                                        </div>
-                                      </BlockStack>
-                                    </div>
-                                  )}
-                                  <div
-                                    className={styles.productScopePickerCard}
-                                    id={isShippingTestType ? 'shipping-exclusions-card' : undefined}
-                                  >
-                                    <BlockStack gap="200">
-                                      <InlineStack align="space-between" blockAlign="center" wrap>
-                                        <InlineStack gap="200" blockAlign="center">
-                                          <span className={styles.productScopePickerIconMuted}>
-                                            <Icon source={FilterIcon} />
-                                          </span>
-                                          <Text as="h4" variant="headingSm">
-                                            Excluded products
-                                          </Text>
-                                        </InlineStack>
-                                        <Badge tone="attention">
-                                          {`${excludedScopeProductIds.length} excluded`}
-                                        </Badge>
-                                      </InlineStack>
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        {isShippingTestType
+                            <span
+                              className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.page ? styles.targetingAccordionChevronOpen : ''}`}
+                              aria-hidden
+                            >
+                              <Icon source={ChevronDownIcon} />
+                            </span>
+                            <span className={styles.placementTabStep}>1</span>
+                            <Icon source={PageIcon} />
+                            <span className={styles.targetingAccordionTriggerLabel}>
+                              {isShippingTestType
+                                ? 'Qualification'
+                                : targetingScopeFixedForCommerce
+                                  ? 'Product scope'
+                                  : 'Page'}
+                            </span>
+                            {((formData.segments?.page_rules || []).length > 0 ||
+                              (customUrlModeActive &&
+                                (formData.segments?.url_pattern ?? '') !== '')) && (
+                              <span className={styles.placementTabDot} />
+                            )}
+                            {renderTargetingIssueBadge('page')}
+                          </button>
+                          {targetingSectionExpanded.page && (
+                            <div key="page-placement" className={styles.targetingAccordionPanel}>
+                              <div className={styles.placementPanel} id="targeting-scope">
+                                {targetingScopeFixedForCommerce ? (
+                                  <BlockStack gap="300">
+                                    <Banner
+                                      tone={isShippingStorewideAdvanced ? 'warning' : 'info'}
+                                      title={
+                                        isShippingTestType
                                           ? isShippingStorewideAdvanced
-                                            ? 'Excluded products carve out exceptions from storewide qualification and block checkout application for matching delivery groups.'
-                                            : 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
-                                          : 'Optional exclusions are always skipped from bucketing and storefront application.'}
-                                      </Text>
-                                      <InlineStack>
-                                        <Button
-                                          size="slim"
-                                          icon={FilterIcon}
-                                          onClick={() => openPriceProductModal('exclude')}
-                                          disabled={!canUseStoreProductPicker}
-                                        >
-                                          {isShippingTestType
-                                            ? 'Choose excluded products'
-                                            : 'Choose excluded'}
-                                        </Button>
-                                      </InlineStack>
-                                      <div className={styles.productScopePickerSelectionList}>
-                                        {excludedScopeProductsPreview.length === 0 ? (
-                                          <div className={styles.productScopePickerSelectionEmpty}>
-                                            <Icon source={FilterIcon} />
-                                            <span>
-                                              {isShippingTestType
-                                                ? 'No excluded products selected.'
-                                                : 'No exclusions selected.'}
-                                            </span>
-                                          </div>
+                                            ? 'Shipping test uses advanced storewide qualification'
+                                            : 'Shipping tests default to selected-product cart qualification'
+                                          : isOfferTestType
+                                            ? 'Offer tests use product-only scope'
+                                            : 'Price tests use product-only scope'
+                                      }
+                                    >
+                                      <Text as="p" variant="bodySm">
+                                        {isShippingTestType ? (
+                                          isShippingStorewideAdvanced ? (
+                                            <>
+                                              <strong>Storewide shipping</strong> qualifies nearly
+                                              every cart across your catalog. Use{' '}
+                                              <strong>excluded products</strong> to carve out
+                                              exceptions, then validate with diagnostics and holdout
+                                              before you apply it live.
+                                            </>
+                                          ) : (
+                                            <>
+                                              Choose the{' '}
+                                              <strong>products that must appear in the cart</strong>{' '}
+                                              before this shipping test can apply. You can also add
+                                              optional <strong>excluded products</strong> to block
+                                              shipping assignment and checkout application for carts
+                                              that contain those SKUs. If you need broader coverage,
+                                              unlock <strong>advanced storewide scope</strong>{' '}
+                                              below.
+                                            </>
+                                          )
                                         ) : (
-                                          excludedScopeProductsPreview.slice(0, 4).map(product => (
-                                            <div
-                                              key={product.id}
-                                              className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
-                                            >
-                                              <span
-                                                className={styles.priceProductPickerThumb}
-                                                aria-hidden
-                                              >
-                                                {product.imageUrl ? (
-                                                  <img
-                                                    src={product.imageUrl}
-                                                    alt=""
-                                                    loading="lazy"
-                                                  />
-                                                ) : (
-                                                  <Icon source={ProductIcon} />
-                                                )}
-                                              </span>
-                                              <span className={styles.priceProductPickerRowText}>
-                                                <span className={styles.priceProductPickerRowTitle}>
-                                                  {product.title}
-                                                </span>
-                                                {product.handle ? (
-                                                  <span
-                                                    className={styles.priceProductPickerRowHandle}
-                                                  >
-                                                    {product.handle}
-                                                  </span>
-                                                ) : null}
-                                              </span>
-                                            </div>
-                                          ))
+                                          <>
+                                            Choose between <strong>all products</strong> and{' '}
+                                            <strong>selected products</strong> here. You can also
+                                            add optional <strong>excluded products</strong> to
+                                            prevent assignment and storefront application for
+                                            specific SKUs.
+                                          </>
                                         )}
-                                        {excludedScopeProductsPreview.length > 4 && (
-                                          <span className={styles.productScopePickerMoreBadge}>
-                                            +{excludedScopeProductsPreview.length - 4} more
-                                          </span>
-                                        )}
-                                      </div>
-                                    </BlockStack>
-                                  </div>
-                                </div>
-                                {!canUseStoreProductPicker && (
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    Product picker is available when connected to a Shopify store.
-                                  </Text>
-                                )}
-                              </BlockStack>
-                            ) : (
-                              <>
-                                {!isStandalone && (
-                                  <div className={styles.placementQuickPresetsStrip}>
-                                    <div className={styles.placementQuickPresetsStripHead}>
-                                      <span className={styles.placementQuickPresetsStripLabel}>
-                                        <Icon source={FilterIcon} />
-                                        <span className={styles.placementQuickPresetsStripTitle}>
-                                          Combos
-                                        </span>
+                                      </Text>
+                                    </Banner>
+                                    <div className={styles.panelSection}>
+                                      <span className={styles.panelSectionTitle}>
+                                        {isShippingTestType
+                                          ? 'Cart qualification'
+                                          : 'Product scope'}
                                       </span>
-                                    </div>
-                                    <div className={styles.placementQuickPresetsStripChips}>
-                                      {[
-                                        {
-                                          label: 'Product + Mobile',
-                                          url: '/products/',
-                                          device: 'mobile',
-                                          customer: 'all',
-                                          tooltip: 'Products + Mobile',
-                                        },
-                                        {
-                                          label: 'Cart + New',
-                                          url: '/cart',
-                                          device: 'all',
-                                          customer: 'new',
-                                          tooltip: 'Cart + New visitors',
-                                        },
-                                        {
-                                          label: 'Homepage + All',
-                                          url: '^/$|^/index',
-                                          device: 'all',
-                                          customer: 'all',
-                                          tooltip: 'Homepage + All',
-                                        },
-                                        {
-                                          label: 'Reset',
-                                          url: '',
-                                          device: 'all',
-                                          customer: 'all',
-                                          tooltip: 'Reset to defaults',
-                                        },
-                                      ].map(({ label, url, device, customer, tooltip }) => {
-                                        const s = formData.segments || {};
-                                        const p = s.url_pattern ?? '';
-                                        const pr = s.page_rules || [];
-                                        const isAllPages =
-                                          pr.length === 0 && (!p || p === '' || p === ' ');
-                                        const urlMatches =
-                                          url === '' ? isAllPages : p === url && pr.length === 0;
-                                        const noAdvancedRules =
-                                          (s.device_rules || []).length +
-                                            (s.audience_rules || []).length ===
-                                          0;
-                                        const matches =
-                                          urlMatches &&
-                                          (s.device ?? 'all') === device &&
-                                          (s.customer ?? 'all') === customer &&
-                                          noAdvancedRules;
-                                        return (
-                                          <TooltipWrapper
-                                            key={label}
-                                            content={tooltip}
-                                            accessibilityLabel={label}
-                                          >
-                                            <button
-                                              type="button"
-                                              className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
-                                              onClick={() => {
-                                                setCustomUrlModeActive(false);
-                                                const targetFromUrl =
-                                                  url === '/products/'
-                                                    ? 'all-products'
-                                                    : url === '/collections/'
-                                                      ? 'all-collections'
-                                                      : url === '/cart'
-                                                        ? 'cart'
-                                                        : url === '/checkout'
-                                                          ? 'checkout'
-                                                          : url === '^/$|^/index'
-                                                            ? 'homepage'
-                                                            : null;
+                                      <div className={styles.scopeSelectGrid}>
+                                        {isShippingTestType ? (
+                                          <>
+                                            <div
+                                              className={`${styles.scopeCard} ${!isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                              role="button"
+                                              tabIndex={0}
+                                              onClick={() =>
                                                 setFormData(prev => ({
                                                   ...prev,
-                                                  ...(targetFromUrl !== null &&
-                                                    targetFromUrl !== undefined && {
-                                                      target_type: targetFromUrl,
-                                                    }),
+                                                  target_type: 'product',
                                                   segments: {
                                                     ...prev.segments,
-                                                    url_pattern: url === '' ? '' : url,
-                                                    page_rules: [],
-                                                    device,
-                                                    customer,
-                                                    device_rules: [],
-                                                    audience_rules: [],
+                                                    url_pattern: '',
+                                                    page_rules: prev.segments?.page_rules || [],
+                                                  },
+                                                }))
+                                              }
+                                              onKeyDown={event => {
+                                                if (event.key !== 'Enter' && event.key !== ' ') {
+                                                  return;
+                                                }
+                                                event.preventDefault();
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  target_type: 'product',
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: '',
+                                                    page_rules: prev.segments?.page_rules || [],
                                                   },
                                                 }));
                                               }}
-                                            >
-                                              {label}
-                                            </button>
-                                          </TooltipWrapper>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                                <div
-                                  className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
-                                >
-                                  <span className={styles.panelSectionTitle}>
-                                    Where should this test run?
-                                    <TooltipWrapper
-                                      content="By default the test runs on all pages. Optionally select a scope to limit where it appears (e.g. product pages only)."
-                                      accessibilityLabel="Scope help"
-                                    >
-                                      <span
-                                        className={styles.panelSectionInfoIcon}
-                                        aria-hidden="true"
-                                      >
-                                        <Icon source={InfoIcon} />
-                                      </span>
-                                    </TooltipWrapper>
-                                  </span>
-                                  <p className={styles.panelSectionHint}>
-                                    {!formData.target_type || formData.target_type === ''
-                                      ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
-                                      : 'Scope selected. Click another option to change.'}
-                                  </p>
-                                  {(!formData.target_type || formData.target_type === '') && (
-                                    <div className={styles.scopeSelectPrompt}>
-                                      <span className={styles.scopeSelectPromptIcon}>
-                                        <Icon source={TargetIcon} />
-                                      </span>
-                                      <span className={styles.scopeSelectPromptText}>
-                                        Choose where to run this test
-                                      </span>
-                                    </div>
-                                  )}
-                                  <div className={styles.scopeSelectGrid}>
-                                    {[
-                                      {
-                                        label: 'Homepage',
-                                        desc: isStandalone
-                                          ? 'Root path (/, /index, /index.html, etc.)'
-                                          : 'Landing page only',
-                                        scope: 'homepage',
-                                        target_type: 'homepage',
-                                        url_pattern: isStandalone
-                                          ? HOMEPAGE_URL_PATTERN_STANDALONE
-                                          : HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                        needsId: false,
-                                        icon: HomeIcon,
-                                        tooltip: isStandalone
-                                          ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
-                                          : 'Homepage',
-                                        standalone: true,
-                                      },
-                                      {
-                                        label: 'Cart',
-                                        desc: 'Cart page',
-                                        scope: 'cart',
-                                        target_type: 'cart',
-                                        url_pattern: '/cart',
-                                        needsId: false,
-                                        icon: CartIcon,
-                                        tooltip: 'Cart page',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'Checkout',
-                                        desc: 'Checkout flow',
-                                        scope: 'checkout',
-                                        target_type: 'checkout',
-                                        url_pattern: '/checkout',
-                                        needsId: false,
-                                        icon: CreditCardIcon,
-                                        tooltip: 'Checkout',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'All products',
-                                        desc: 'Every product page',
-                                        scope: 'all-products',
-                                        target_type: 'all-products',
-                                        url_pattern: '',
-                                        needsId: false,
-                                        icon: ProductIcon,
-                                        tooltip: 'All product pages',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'All collections',
-                                        desc: 'Every collection page',
-                                        scope: 'all-collections',
-                                        target_type: 'all-collections',
-                                        url_pattern: '/collections/',
-                                        needsId: false,
-                                        icon: CollectionIcon,
-                                        tooltip: 'All collection pages',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'Product(s)',
-                                        desc: 'Choose from store',
-                                        scope: 'product-id',
-                                        target_type: 'product',
-                                        url_pattern: '',
-                                        needsId: true,
-                                        icon: ProductIcon,
-                                        tooltip: 'Select product(s) from your store',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'Collection(s)',
-                                        desc: 'Choose from store',
-                                        scope: 'collection-id',
-                                        target_type: 'collection',
-                                        url_pattern: '/collections/',
-                                        needsId: true,
-                                        icon: CollectionIcon,
-                                        tooltip: 'Select collection(s) from your store',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'Page(s)',
-                                        desc: 'Choose from store',
-                                        scope: 'page-id',
-                                        target_type: 'page',
-                                        url_pattern: '',
-                                        needsId: true,
-                                        icon: PageIcon,
-                                        tooltip: 'Select page(s) from your store',
-                                        standalone: false,
-                                      },
-                                      {
-                                        label: 'Custom URL',
-                                        desc: 'Regex or path rules',
-                                        scope: '__custom__',
-                                        target_type: null,
-                                        url_pattern: null,
-                                        needsId: false,
-                                        icon: CodeIcon,
-                                        tooltip: 'Custom URL or regex',
-                                        standalone: true,
-                                      },
-                                    ]
-                                      .filter(opt => !isStandalone || opt.standalone)
-                                      .map(
-                                        ({
-                                          label,
-                                          desc,
-                                          scope,
-                                          target_type: tt,
-                                          url_pattern: up,
-                                          needsId,
-                                          icon: ChipIcon,
-                                          tooltip,
-                                        }) => {
-                                          const p = formData.segments?.url_pattern ?? '';
-                                          const pr = formData.segments?.page_rules || [];
-                                          const t = formData.target_type;
-                                          const isCustom =
-                                            scope === '__custom__' &&
-                                            (customUrlModeActive || pr.length > 0);
-                                          const isHomepagePattern =
-                                            p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
-                                            p === HOMEPAGE_URL_PATTERN_STANDALONE;
-                                          const active =
-                                            scope === '__custom__'
-                                              ? isCustom
-                                              : t === tt &&
-                                                (needsId
-                                                  ? true
-                                                  : tt === 'homepage'
-                                                    ? isHomepagePattern
-                                                    : up !== null && up !== undefined && up !== ''
-                                                      ? p === up
-                                                      : !p && pr.length === 0);
-                                          return (
-                                            <button
-                                              key={scope || 'all'}
-                                              type="button"
-                                              title={tooltip}
-                                              className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
-                                              onClick={e => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                handleScopeSelect(scope, tt, up, needsId);
-                                              }}
-                                              onPointerDown={e => e.stopPropagation()}
-                                              aria-pressed={active}
-                                              aria-label={label}
+                                              aria-pressed={!isShippingStorewideAdvanced}
+                                              aria-label="Carts with selected products"
                                             >
                                               <span className={styles.scopeCardIcon}>
-                                                <Icon source={ChipIcon} />
+                                                <Icon source={TargetIcon} />
                                               </span>
-                                              <span className={styles.scopeCardLabel}>{label}</span>
-                                              {desc && (
-                                                <span className={styles.scopeCardDesc}>{desc}</span>
-                                              )}
-                                            </button>
-                                          );
-                                        }
-                                      )}
-                                  </div>
-                                  {['product', 'collection', 'page'].includes(
-                                    formData.target_type
-                                  ) && (
-                                    <div
-                                      className={styles.panelSection}
-                                      style={{ marginTop: '1rem' }}
-                                    >
-                                      {isStandalone ? (
-                                        <TextField
-                                          label="Target ID(s)"
-                                          value={
-                                            Array.isArray(formData.target_ids) &&
-                                            formData.target_ids.length > 0
-                                              ? formData.target_ids.join('\n')
-                                              : formData.target_id || ''
-                                          }
-                                          onChange={value => {
-                                            const raw = value
-                                              .split(/[\n,]+/)
-                                              .map(s => s.trim())
-                                              .filter(Boolean);
-                                            const normalize = id => {
-                                              if (!id) return '';
-                                              if (id.startsWith('gid://')) return id;
-                                              const num = id.replace(/\D/g, '');
-                                              if (!num) return id;
-                                              if (formData.target_type === 'product')
-                                                return `gid://shopify/Product/${num}`;
-                                              if (formData.target_type === 'collection')
-                                                return `gid://shopify/Collection/${num}`;
-                                              if (formData.target_type === 'page')
-                                                return `gid://shopify/OnlineStorePage/${num}`;
-                                              return id;
-                                            };
-                                            const ids = raw.map(normalize);
-                                            if (ids.length > 1) {
-                                              setFormData({
-                                                ...formData,
-                                                target_ids: ids,
-                                                target_id: ids[0] || '',
-                                              });
-                                            } else if (ids.length === 1) {
-                                              setFormData({
-                                                ...formData,
-                                                target_id: ids[0],
-                                                target_ids: null,
-                                              });
-                                            } else {
-                                              setFormData({
-                                                ...formData,
-                                                target_id: '',
-                                                target_ids: null,
-                                              });
-                                            }
-                                          }}
-                                          multiline={3}
-                                          helpText="Enter ID(s). One per line. Standalone mode: no store list available."
-                                          autoComplete="off"
-                                        />
-                                      ) : (
-                                        <BlockStack gap="400">
-                                          <div className={styles.storeResourceList}>
-                                            <div className={styles.storeResourceListHeader}>
-                                              <div className={styles.storeResourceListSearch}>
-                                                <TextField
-                                                  label={`Select ${formData.target_type === 'product' ? 'product(s)' : formData.target_type === 'collection' ? 'collection(s)' : 'page(s)'} from your store`}
-                                                  labelHidden
-                                                  value={storeResourceSearch}
-                                                  onChange={setStoreResourceSearch}
-                                                  placeholder={`Search ${formData.target_type === 'product' ? 'products' : formData.target_type === 'collection' ? 'collections' : 'pages'}…`}
-                                                  autoComplete="off"
-                                                  clearButton
-                                                  onClearButtonClick={() =>
-                                                    setStoreResourceSearch('')
-                                                  }
-                                                />
-                                              </div>
-                                              {(() => {
-                                                const selectedIds =
-                                                  Array.isArray(formData.target_ids) &&
-                                                  formData.target_ids.length > 0
-                                                    ? formData.target_ids
-                                                    : formData.target_id
-                                                      ? [formData.target_id]
-                                                      : [];
-                                                if (selectedIds.length === 0) return null;
-                                                return (
-                                                  <span
-                                                    className={styles.storeResourceSelectedBadge}
-                                                  >
-                                                    {selectedIds.length} selected
-                                                  </span>
-                                                );
-                                              })()}
+                                              <span className={styles.scopeCardLabel}>
+                                                Carts with selected products
+                                              </span>
+                                              <span className={styles.scopeCardDesc}>
+                                                Qualify only carts that contain one of the products
+                                                you choose below
+                                              </span>
                                             </div>
-                                            {storeResourcesLoading ? (
-                                              <div className={styles.storeResourceListLoading}>
-                                                <div
-                                                  className={styles.storeResourceListLoadingIcon}
-                                                >
-                                                  <Spinner size="small" />
-                                                </div>
-                                                <Text as="span" variant="bodySm" tone="subdued">
-                                                  Loading from your store…
-                                                </Text>
+                                            {(shippingScopeAdvancedOpen ||
+                                              isShippingStorewideAdvanced) && (
+                                              <div
+                                                className={`${styles.scopeCard} ${isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() =>
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'all-products',
+                                                    target_id: '',
+                                                    target_ids: null,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }))
+                                                }
+                                                onKeyDown={event => {
+                                                  if (event.key !== 'Enter' && event.key !== ' ') {
+                                                    return;
+                                                  }
+                                                  event.preventDefault();
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'all-products',
+                                                    target_id: '',
+                                                    target_ids: null,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }));
+                                                }}
+                                                aria-pressed={isShippingStorewideAdvanced}
+                                                aria-label="Storewide shipping qualification"
+                                              >
+                                                <span className={styles.scopeCardIcon}>
+                                                  <Icon source={ProductIcon} />
+                                                </span>
+                                                <span className={styles.scopeCardLabel}>
+                                                  Storewide shipping
+                                                </span>
+                                                <span className={styles.scopeCardDesc}>
+                                                  Qualify carts across your full catalog. Excluded
+                                                  products still block assignment and checkout
+                                                  application.
+                                                </span>
                                               </div>
-                                            ) : storeResources.length === 0 ? (
-                                              <div className={styles.storeResourceListEmpty}>
-                                                <div className={styles.storeResourceListEmptyIcon}>
-                                                  <Icon
-                                                    source={
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div
+                                              className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
+                                              role="button"
+                                              tabIndex={0}
+                                              onClick={() =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  target_type: 'all-products',
+                                                  target_id: '',
+                                                  target_ids: null,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: '/products/',
+                                                    page_rules: prev.segments?.page_rules || [],
+                                                  },
+                                                }))
+                                              }
+                                              onKeyDown={event => {
+                                                if (event.key !== 'Enter' && event.key !== ' ') {
+                                                  return;
+                                                }
+                                                event.preventDefault();
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  target_type: 'all-products',
+                                                  target_id: '',
+                                                  target_ids: null,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: '/products/',
+                                                    page_rules: prev.segments?.page_rules || [],
+                                                  },
+                                                }));
+                                              }}
+                                              aria-pressed={
+                                                (formData.target_type || 'all-products') !==
+                                                'product'
+                                              }
+                                              aria-label="All products"
+                                            >
+                                              <span className={styles.scopeCardIcon}>
+                                                <Icon source={ProductIcon} />
+                                              </span>
+                                              <span className={styles.scopeCardLabel}>
+                                                All products
+                                              </span>
+                                              <span className={styles.scopeCardDesc}>
+                                                Assign this test across your full product catalog
+                                              </span>
+                                            </div>
+                                            <div
+                                              className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
+                                              role="button"
+                                              tabIndex={0}
+                                              onClick={() =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  target_type: 'product',
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: '/products/',
+                                                    page_rules: prev.segments?.page_rules || [],
+                                                  },
+                                                }))
+                                              }
+                                              onKeyDown={event => {
+                                                if (event.key !== 'Enter' && event.key !== ' ') {
+                                                  return;
+                                                }
+                                                event.preventDefault();
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  target_type: 'product',
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: '/products/',
+                                                    page_rules: prev.segments?.page_rules || [],
+                                                  },
+                                                }));
+                                              }}
+                                              aria-pressed={formData.target_type === 'product'}
+                                              aria-label="Selected products only"
+                                            >
+                                              <span className={styles.scopeCardIcon}>
+                                                <Icon source={TargetIcon} />
+                                              </span>
+                                              <span className={styles.scopeCardLabel}>
+                                                Selected products
+                                              </span>
+                                              <span className={styles.scopeCardDesc}>
+                                                Assign only for specific products you choose
+                                              </span>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                      {isShippingTestType && (
+                                        <div className={styles.inlineAdvancedToggle}>
+                                          <button
+                                            type="button"
+                                            className={styles.inlineAdvancedToggleBtn}
+                                            onClick={() => {
+                                              const nextOpen = !shippingScopeAdvancedOpen;
+                                              setShippingScopeAdvancedOpen(nextOpen);
+                                              if (!nextOpen && isShippingStorewideAdvanced) {
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  target_type: 'product',
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: '',
+                                                    page_rules: prev.segments?.page_rules || [],
+                                                  },
+                                                }));
+                                              }
+                                            }}
+                                            aria-expanded={shippingScopeAdvancedOpen}
+                                          >
+                                            <span
+                                              className={`${styles.inlineAdvancedChevron} ${shippingScopeAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
+                                            >
+                                              <Icon source={ChevronDownIcon} />
+                                            </span>
+                                            Advanced: enable storewide shipping scope
+                                            {isShippingStorewideAdvanced && (
+                                              <span className={styles.inlineAdvancedCount}>On</span>
+                                            )}
+                                          </button>
+                                          {shippingScopeAdvancedOpen && (
+                                            <div className={styles.inlineAdvancedBody}>
+                                              <p className={styles.inlineAdvancedHint}>
+                                                Use storewide qualification only when you
+                                                intentionally want this shipping test to reach
+                                                nearly every eligible cart. RipX will still respect
+                                                excluded products, holdout, and shipping
+                                                diagnostics.
+                                              </p>
+                                              <Banner
+                                                tone="warning"
+                                                title="Broader impact, stronger guardrails"
+                                              >
+                                                <BlockStack gap="200">
+                                                  <Text as="p" variant="bodySm">
+                                                    Storewide shipping tests are powerful but easier
+                                                    to misconfigure. Add a holdout, use excluded
+                                                    products to carve out sensitive SKUs, and run
+                                                    diagnostics before you apply live.
+                                                  </Text>
+                                                  <div className={styles.bannerChecklist}>
+                                                    {shippingTargetingChecklist.map(item => (
+                                                      <div
+                                                        key={item.label}
+                                                        className={styles.bannerChecklistItem}
+                                                      >
+                                                        <span
+                                                          className={styles.bannerChecklistIcon}
+                                                        >
+                                                          <Icon
+                                                            source={
+                                                              item.passed
+                                                                ? CheckCircleIcon
+                                                                : AlertTriangleIcon
+                                                            }
+                                                            tone={
+                                                              item.passed ? 'success' : 'warning'
+                                                            }
+                                                          />
+                                                        </span>
+                                                        <Text
+                                                          as="span"
+                                                          variant="bodySm"
+                                                          className={styles.bannerChecklistLabel}
+                                                        >
+                                                          {item.label}
+                                                        </Text>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </BlockStack>
+                                              </Banner>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className={styles.productScopePickerGrid}>
+                                      {((isShippingTestType && !isShippingStorewideAdvanced) ||
+                                        (!isShippingTestType &&
+                                          formData.target_type === 'product')) && (
+                                        <div
+                                          className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
+                                        >
+                                          <BlockStack gap="200">
+                                            <InlineStack
+                                              align="space-between"
+                                              blockAlign="center"
+                                              wrap
+                                            >
+                                              <InlineStack gap="200" blockAlign="center">
+                                                <span className={styles.productScopePickerIcon}>
+                                                  <Icon source={ProductIcon} />
+                                                </span>
+                                                <Text as="h4" variant="headingSm">
+                                                  {isShippingTestType
+                                                    ? 'Included products'
+                                                    : 'Included products'}
+                                                </Text>
+                                              </InlineStack>
+                                              <Badge tone="info">
+                                                {`${selectedScopeProductIds.length} selected`}
+                                              </Badge>
+                                            </InlineStack>
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              {isShippingTestType
+                                                ? 'Choose products that must appear in a delivery group before this shipping test can apply.'
+                                                : 'Choose products from your store catalog for this test scope.'}
+                                            </Text>
+                                            <InlineStack>
+                                              <Button
+                                                size="slim"
+                                                variant="primary"
+                                                icon={ProductIcon}
+                                                onClick={() => openPriceProductModal('include')}
+                                                disabled={!canUseStoreProductPicker}
+                                              >
+                                                {isShippingTestType
+                                                  ? 'Choose included products'
+                                                  : 'Choose products'}
+                                              </Button>
+                                            </InlineStack>
+                                            <div className={styles.productScopePickerSelectionList}>
+                                              {selectedScopeProductsPreview.length === 0 ? (
+                                                <div
+                                                  className={
+                                                    styles.productScopePickerSelectionEmpty
+                                                  }
+                                                >
+                                                  <Icon source={ProductIcon} />
+                                                  <span>
+                                                    {isShippingTestType
+                                                      ? 'No included products selected yet.'
+                                                      : 'No products selected yet.'}
+                                                  </span>
+                                                </div>
+                                              ) : (
+                                                selectedScopeProductsPreview
+                                                  .slice(0, 4)
+                                                  .map(product => (
+                                                    <div
+                                                      key={product.id}
+                                                      className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                                                    >
+                                                      <span
+                                                        className={styles.priceProductPickerThumb}
+                                                        aria-hidden
+                                                      >
+                                                        {product.imageUrl ? (
+                                                          <img
+                                                            src={product.imageUrl}
+                                                            alt=""
+                                                            loading="lazy"
+                                                          />
+                                                        ) : (
+                                                          <Icon source={ProductIcon} />
+                                                        )}
+                                                      </span>
+                                                      <span
+                                                        className={styles.priceProductPickerRowText}
+                                                      >
+                                                        <span
+                                                          className={
+                                                            styles.priceProductPickerRowTitle
+                                                          }
+                                                        >
+                                                          {product.title}
+                                                        </span>
+                                                        {product.handle ? (
+                                                          <span
+                                                            className={
+                                                              styles.priceProductPickerRowHandle
+                                                            }
+                                                          >
+                                                            {product.handle}
+                                                          </span>
+                                                        ) : null}
+                                                      </span>
+                                                    </div>
+                                                  ))
+                                              )}
+                                              {selectedScopeProductsPreview.length > 4 && (
+                                                <span
+                                                  className={styles.productScopePickerMoreBadge}
+                                                >
+                                                  +{selectedScopeProductsPreview.length - 4} more
+                                                </span>
+                                              )}
+                                            </div>
+                                          </BlockStack>
+                                        </div>
+                                      )}
+                                      <div
+                                        className={styles.productScopePickerCard}
+                                        id={
+                                          isShippingTestType
+                                            ? 'shipping-exclusions-card'
+                                            : undefined
+                                        }
+                                      >
+                                        <BlockStack gap="200">
+                                          <InlineStack
+                                            align="space-between"
+                                            blockAlign="center"
+                                            wrap
+                                          >
+                                            <InlineStack gap="200" blockAlign="center">
+                                              <span className={styles.productScopePickerIconMuted}>
+                                                <Icon source={FilterIcon} />
+                                              </span>
+                                              <Text as="h4" variant="headingSm">
+                                                Excluded products
+                                              </Text>
+                                            </InlineStack>
+                                            <Badge tone="attention">
+                                              {`${excludedScopeProductIds.length} excluded`}
+                                            </Badge>
+                                          </InlineStack>
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            {isShippingTestType
+                                              ? isShippingStorewideAdvanced
+                                                ? 'Excluded products carve out exceptions from storewide qualification and block checkout application for matching delivery groups.'
+                                                : 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
+                                              : 'Optional exclusions are always skipped from bucketing and storefront application.'}
+                                          </Text>
+                                          <InlineStack>
+                                            <Button
+                                              size="slim"
+                                              icon={FilterIcon}
+                                              onClick={() => openPriceProductModal('exclude')}
+                                              disabled={!canUseStoreProductPicker}
+                                            >
+                                              {isShippingTestType
+                                                ? 'Choose excluded products'
+                                                : 'Choose excluded'}
+                                            </Button>
+                                          </InlineStack>
+                                          <div className={styles.productScopePickerSelectionList}>
+                                            {excludedScopeProductsPreview.length === 0 ? (
+                                              <div
+                                                className={styles.productScopePickerSelectionEmpty}
+                                              >
+                                                <Icon source={FilterIcon} />
+                                                <span>
+                                                  {isShippingTestType
+                                                    ? 'No excluded products selected.'
+                                                    : 'No exclusions selected.'}
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              excludedScopeProductsPreview
+                                                .slice(0, 4)
+                                                .map(product => (
+                                                  <div
+                                                    key={product.id}
+                                                    className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                                                  >
+                                                    <span
+                                                      className={styles.priceProductPickerThumb}
+                                                      aria-hidden
+                                                    >
+                                                      {product.imageUrl ? (
+                                                        <img
+                                                          src={product.imageUrl}
+                                                          alt=""
+                                                          loading="lazy"
+                                                        />
+                                                      ) : (
+                                                        <Icon source={ProductIcon} />
+                                                      )}
+                                                    </span>
+                                                    <span
+                                                      className={styles.priceProductPickerRowText}
+                                                    >
+                                                      <span
+                                                        className={
+                                                          styles.priceProductPickerRowTitle
+                                                        }
+                                                      >
+                                                        {product.title}
+                                                      </span>
+                                                      {product.handle ? (
+                                                        <span
+                                                          className={
+                                                            styles.priceProductPickerRowHandle
+                                                          }
+                                                        >
+                                                          {product.handle}
+                                                        </span>
+                                                      ) : null}
+                                                    </span>
+                                                  </div>
+                                                ))
+                                            )}
+                                            {excludedScopeProductsPreview.length > 4 && (
+                                              <span className={styles.productScopePickerMoreBadge}>
+                                                +{excludedScopeProductsPreview.length - 4} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        </BlockStack>
+                                      </div>
+                                    </div>
+                                    {!canUseStoreProductPicker && (
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Product picker is available when connected to a Shopify
+                                        store.
+                                      </Text>
+                                    )}
+                                  </BlockStack>
+                                ) : isCheckoutTestType ? (
+                                  <BlockStack gap="300">
+                                    <Banner tone="info" title="Checkout tests run only on checkout">
+                                      <Text as="p" variant="bodySm">
+                                        RipX pins this experiment to the live checkout surface. Page
+                                        URL rules, storefront scopes, and combo presets do not
+                                        apply—only checkout extensions and checkout-side eligibility
+                                        do.
+                                      </Text>
+                                    </Banner>
+                                    <div className={styles.checkoutPageScopeLocked}>
+                                      <InlineStack gap="300" blockAlign="center" wrap>
+                                        <Icon source={CreditCardIcon} />
+                                        <div>
+                                          <Text as="p" variant="bodyMd" fontWeight="semibold">
+                                            Fixed scope:{' '}
+                                            <code className={styles.inlineCode}>/checkout</code>
+                                            <TooltipWrapper
+                                              content="RipX pins this experiment to the live checkout surface. Audience, holdout, and advanced settings still apply. Use the variant step to edit checkout UI."
+                                              accessibilityLabel="Checkout scope help"
+                                            >
+                                              <span
+                                                className={styles.panelSectionInfoIcon}
+                                                aria-hidden="true"
+                                              >
+                                                <Icon source={InfoIcon} />
+                                              </span>
+                                            </TooltipWrapper>
+                                          </Text>
+                                        </div>
+                                      </InlineStack>
+                                    </div>
+                                  </BlockStack>
+                                ) : (
+                                  <>
+                                    {!isStandalone && (
+                                      <div className={styles.placementQuickPresetsStrip}>
+                                        <div className={styles.placementQuickPresetsStripHead}>
+                                          <span className={styles.placementQuickPresetsStripLabel}>
+                                            <Icon source={FilterIcon} />
+                                            <span
+                                              className={styles.placementQuickPresetsStripTitle}
+                                            >
+                                              Combos
+                                            </span>
+                                          </span>
+                                        </div>
+                                        <div className={styles.placementQuickPresetsStripChips}>
+                                          {[
+                                            {
+                                              label: 'Product + Mobile',
+                                              url: '/products/',
+                                              device: 'mobile',
+                                              customer: 'all',
+                                              tooltip: 'Products + Mobile',
+                                            },
+                                            {
+                                              label: 'Cart + New',
+                                              url: '/cart',
+                                              device: 'all',
+                                              customer: 'new',
+                                              tooltip: 'Cart + New visitors',
+                                            },
+                                            {
+                                              label: 'Homepage + All',
+                                              url: '^/$|^/index',
+                                              device: 'all',
+                                              customer: 'all',
+                                              tooltip: 'Homepage + All',
+                                            },
+                                            {
+                                              label: 'Reset',
+                                              url: '',
+                                              device: 'all',
+                                              customer: 'all',
+                                              tooltip: 'Reset to defaults',
+                                            },
+                                          ].map(({ label, url, device, customer, tooltip }) => {
+                                            const s = formData.segments || {};
+                                            const p = s.url_pattern ?? '';
+                                            const pr = s.page_rules || [];
+                                            const isAllPages =
+                                              pr.length === 0 && (!p || p === '' || p === ' ');
+                                            const urlMatches =
+                                              url === ''
+                                                ? isAllPages
+                                                : p === url && pr.length === 0;
+                                            const noAdvancedRules =
+                                              (s.device_rules || []).length +
+                                                (s.audience_rules || []).length ===
+                                              0;
+                                            const matches =
+                                              urlMatches &&
+                                              (s.device ?? 'all') === device &&
+                                              (s.customer ?? 'all') === customer &&
+                                              noAdvancedRules;
+                                            return (
+                                              <TooltipWrapper
+                                                key={label}
+                                                content={tooltip}
+                                                accessibilityLabel={label}
+                                              >
+                                                <button
+                                                  type="button"
+                                                  className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
+                                                  onClick={() => {
+                                                    setCustomUrlModeActive(false);
+                                                    const targetFromUrl =
+                                                      url === '/products/'
+                                                        ? 'all-products'
+                                                        : url === '/collections/'
+                                                          ? 'all-collections'
+                                                          : url === '/cart'
+                                                            ? 'cart'
+                                                            : url === '/checkout'
+                                                              ? 'checkout'
+                                                              : url === '^/$|^/index'
+                                                                ? 'homepage'
+                                                                : null;
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      ...(targetFromUrl !== null &&
+                                                        targetFromUrl !== undefined && {
+                                                          target_type: targetFromUrl,
+                                                        }),
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        url_pattern: url === '' ? '' : url,
+                                                        page_rules: [],
+                                                        device,
+                                                        customer,
+                                                        device_rules: [],
+                                                        audience_rules: [],
+                                                      },
+                                                    }));
+                                                  }}
+                                                >
+                                                  {label}
+                                                </button>
+                                              </TooltipWrapper>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div
+                                      className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
+                                    >
+                                      <span className={styles.panelSectionTitle}>
+                                        Where should this test run?
+                                        <TooltipWrapper
+                                          content={
+                                            !formData.target_type || formData.target_type === ''
+                                              ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
+                                              : 'Scope selected. Click another option to change. By default the test runs on all pages when no scope is chosen.'
+                                          }
+                                          accessibilityLabel="Scope help"
+                                        >
+                                          <span
+                                            className={styles.panelSectionInfoIcon}
+                                            aria-hidden="true"
+                                          >
+                                            <Icon source={InfoIcon} />
+                                          </span>
+                                        </TooltipWrapper>
+                                      </span>
+                                      {(!formData.target_type || formData.target_type === '') && (
+                                        <div className={styles.scopeSelectPrompt}>
+                                          <span className={styles.scopeSelectPromptIcon}>
+                                            <Icon source={TargetIcon} />
+                                          </span>
+                                          <span className={styles.scopeSelectPromptText}>
+                                            Choose where to run this test
+                                          </span>
+                                        </div>
+                                      )}
+                                      <div className={styles.scopeSelectGrid}>
+                                        {[
+                                          {
+                                            label: 'Homepage',
+                                            desc: isStandalone
+                                              ? 'Root path (/, /index, /index.html, etc.)'
+                                              : 'Landing page only',
+                                            scope: 'homepage',
+                                            target_type: 'homepage',
+                                            url_pattern: isStandalone
+                                              ? HOMEPAGE_URL_PATTERN_STANDALONE
+                                              : HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                            needsId: false,
+                                            icon: HomeIcon,
+                                            tooltip: isStandalone
+                                              ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
+                                              : 'Homepage',
+                                            standalone: true,
+                                          },
+                                          {
+                                            label: 'Cart',
+                                            desc: 'Cart page',
+                                            scope: 'cart',
+                                            target_type: 'cart',
+                                            url_pattern: '/cart',
+                                            needsId: false,
+                                            icon: CartIcon,
+                                            tooltip: 'Cart page',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'Checkout',
+                                            desc: 'Checkout flow',
+                                            scope: 'checkout',
+                                            target_type: 'checkout',
+                                            url_pattern: '/checkout',
+                                            needsId: false,
+                                            icon: CreditCardIcon,
+                                            tooltip: 'Checkout',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'All products',
+                                            desc: 'Every product page',
+                                            scope: 'all-products',
+                                            target_type: 'all-products',
+                                            url_pattern: '',
+                                            needsId: false,
+                                            icon: ProductIcon,
+                                            tooltip: 'All product pages',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'All collections',
+                                            desc: 'Every collection page',
+                                            scope: 'all-collections',
+                                            target_type: 'all-collections',
+                                            url_pattern: '/collections/',
+                                            needsId: false,
+                                            icon: CollectionIcon,
+                                            tooltip: 'All collection pages',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'Product(s)',
+                                            desc: 'Choose from store',
+                                            scope: 'product-id',
+                                            target_type: 'product',
+                                            url_pattern: '',
+                                            needsId: true,
+                                            icon: ProductIcon,
+                                            tooltip: 'Select product(s) from your store',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'Collection(s)',
+                                            desc: 'Choose from store',
+                                            scope: 'collection-id',
+                                            target_type: 'collection',
+                                            url_pattern: '/collections/',
+                                            needsId: true,
+                                            icon: CollectionIcon,
+                                            tooltip: 'Select collection(s) from your store',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'Page(s)',
+                                            desc: 'Choose from store',
+                                            scope: 'page-id',
+                                            target_type: 'page',
+                                            url_pattern: '',
+                                            needsId: true,
+                                            icon: PageIcon,
+                                            tooltip: 'Select page(s) from your store',
+                                            standalone: false,
+                                          },
+                                          {
+                                            label: 'Custom URL',
+                                            desc: 'Regex or path rules',
+                                            scope: '__custom__',
+                                            target_type: null,
+                                            url_pattern: null,
+                                            needsId: false,
+                                            icon: CodeIcon,
+                                            tooltip: 'Custom URL or regex',
+                                            standalone: true,
+                                          },
+                                        ]
+                                          .filter(opt => !isStandalone || opt.standalone)
+                                          .map(
+                                            ({
+                                              label,
+                                              desc,
+                                              scope,
+                                              target_type: tt,
+                                              url_pattern: up,
+                                              needsId,
+                                              icon: ChipIcon,
+                                              tooltip,
+                                            }) => {
+                                              const p = formData.segments?.url_pattern ?? '';
+                                              const pr = formData.segments?.page_rules || [];
+                                              const t = formData.target_type;
+                                              const isCustom =
+                                                scope === '__custom__' &&
+                                                (customUrlModeActive || pr.length > 0);
+                                              const isHomepagePattern =
+                                                p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
+                                                p === HOMEPAGE_URL_PATTERN_STANDALONE;
+                                              const active =
+                                                scope === '__custom__'
+                                                  ? isCustom
+                                                  : t === tt &&
+                                                    (needsId
+                                                      ? true
+                                                      : tt === 'homepage'
+                                                        ? isHomepagePattern
+                                                        : up !== null &&
+                                                            up !== undefined &&
+                                                            up !== ''
+                                                          ? p === up
+                                                          : !p && pr.length === 0);
+                                              return (
+                                                <button
+                                                  key={scope || 'all'}
+                                                  type="button"
+                                                  title={tooltip}
+                                                  className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
+                                                  onClick={e => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleScopeSelect(scope, tt, up, needsId);
+                                                  }}
+                                                  onPointerDown={e => e.stopPropagation()}
+                                                  aria-pressed={active}
+                                                  aria-label={label}
+                                                >
+                                                  <span className={styles.scopeCardIcon}>
+                                                    <Icon source={ChipIcon} />
+                                                  </span>
+                                                  <span className={styles.scopeCardLabel}>
+                                                    {label}
+                                                  </span>
+                                                  {desc && (
+                                                    <span className={styles.scopeCardDesc}>
+                                                      {desc}
+                                                    </span>
+                                                  )}
+                                                </button>
+                                              );
+                                            }
+                                          )}
+                                      </div>
+                                      {['product', 'collection', 'page'].includes(
+                                        formData.target_type
+                                      ) && (
+                                        <div
+                                          className={styles.panelSection}
+                                          style={{ marginTop: '1rem' }}
+                                        >
+                                          {isStandalone ? (
+                                            <TextField
+                                              label="Target ID(s)"
+                                              value={
+                                                Array.isArray(formData.target_ids) &&
+                                                formData.target_ids.length > 0
+                                                  ? formData.target_ids.join('\n')
+                                                  : formData.target_id || ''
+                                              }
+                                              onChange={value => {
+                                                const raw = value
+                                                  .split(/[\n,]+/)
+                                                  .map(s => s.trim())
+                                                  .filter(Boolean);
+                                                const normalize = id => {
+                                                  if (!id) return '';
+                                                  if (id.startsWith('gid://')) return id;
+                                                  const num = id.replace(/\D/g, '');
+                                                  if (!num) return id;
+                                                  if (formData.target_type === 'product')
+                                                    return `gid://shopify/Product/${num}`;
+                                                  if (formData.target_type === 'collection')
+                                                    return `gid://shopify/Collection/${num}`;
+                                                  if (formData.target_type === 'page')
+                                                    return `gid://shopify/OnlineStorePage/${num}`;
+                                                  return id;
+                                                };
+                                                const ids = raw.map(normalize);
+                                                if (ids.length > 1) {
+                                                  setFormData({
+                                                    ...formData,
+                                                    target_ids: ids,
+                                                    target_id: ids[0] || '',
+                                                  });
+                                                } else if (ids.length === 1) {
+                                                  setFormData({
+                                                    ...formData,
+                                                    target_id: ids[0],
+                                                    target_ids: null,
+                                                  });
+                                                } else {
+                                                  setFormData({
+                                                    ...formData,
+                                                    target_id: '',
+                                                    target_ids: null,
+                                                  });
+                                                }
+                                              }}
+                                              multiline={3}
+                                              helpText="Enter ID(s). One per line. Standalone mode: no store list available."
+                                              autoComplete="off"
+                                            />
+                                          ) : (
+                                            <BlockStack gap="400">
+                                              <div className={styles.storeResourceList}>
+                                                <div className={styles.storeResourceListHeader}>
+                                                  <div className={styles.storeResourceListSearch}>
+                                                    <TextField
+                                                      label={`Select ${formData.target_type === 'product' ? 'product(s)' : formData.target_type === 'collection' ? 'collection(s)' : 'page(s)'} from your store`}
+                                                      labelHidden
+                                                      value={storeResourceSearch}
+                                                      onChange={setStoreResourceSearch}
+                                                      placeholder={`Search ${formData.target_type === 'product' ? 'products' : formData.target_type === 'collection' ? 'collections' : 'pages'}…`}
+                                                      autoComplete="off"
+                                                      clearButton
+                                                      onClearButtonClick={() =>
+                                                        setStoreResourceSearch('')
+                                                      }
+                                                    />
+                                                  </div>
+                                                  {(() => {
+                                                    const selectedIds =
+                                                      Array.isArray(formData.target_ids) &&
+                                                      formData.target_ids.length > 0
+                                                        ? formData.target_ids
+                                                        : formData.target_id
+                                                          ? [formData.target_id]
+                                                          : [];
+                                                    if (selectedIds.length === 0) return null;
+                                                    return (
+                                                      <span
+                                                        className={
+                                                          styles.storeResourceSelectedBadge
+                                                        }
+                                                      >
+                                                        {selectedIds.length} selected
+                                                      </span>
+                                                    );
+                                                  })()}
+                                                </div>
+                                                {storeResourcesLoading ? (
+                                                  <div className={styles.storeResourceListLoading}>
+                                                    <div
+                                                      className={
+                                                        styles.storeResourceListLoadingIcon
+                                                      }
+                                                    >
+                                                      <Spinner size="small" />
+                                                    </div>
+                                                    <Text as="span" variant="bodySm" tone="subdued">
+                                                      Loading from your store…
+                                                    </Text>
+                                                  </div>
+                                                ) : storeResources.length === 0 ? (
+                                                  <div className={styles.storeResourceListEmpty}>
+                                                    <div
+                                                      className={styles.storeResourceListEmptyIcon}
+                                                    >
+                                                      <Icon
+                                                        source={
+                                                          formData.target_type === 'product'
+                                                            ? ProductIcon
+                                                            : formData.target_type === 'collection'
+                                                              ? CollectionIcon
+                                                              : PageIcon
+                                                        }
+                                                      />
+                                                    </div>
+                                                    <Text as="p" variant="bodySm" tone="subdued">
+                                                      {storeResourcesError
+                                                        ? storeResourcesError
+                                                        : storeResourceSearch
+                                                          ? 'No matches. Try a different search.'
+                                                          : formData.target_type === 'page'
+                                                            ? 'No pages found.'
+                                                            : formData.target_type === 'product' ||
+                                                                formData.target_type ===
+                                                                  'collection'
+                                                              ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
+                                                              : 'No items in your store yet, or the list is still loading.'}
+                                                    </Text>
+                                                  </div>
+                                                ) : (
+                                                  (() => {
+                                                    const selectedIds =
+                                                      Array.isArray(formData.target_ids) &&
+                                                      formData.target_ids.length > 0
+                                                        ? formData.target_ids
+                                                        : formData.target_id
+                                                          ? [formData.target_id]
+                                                          : [];
+                                                    const resourcesProgressiveWindow =
+                                                      buildProgressiveListWindow(
+                                                        storeResources,
+                                                        storeResourcesVisibleCount,
+                                                        { pinnedIds: selectedIds }
+                                                      );
+                                                    const visibleStoreResources =
+                                                      resourcesProgressiveWindow.visibleItems;
+                                                    const shownStoreResourcesCount =
+                                                      resourcesProgressiveWindow.shownCount;
+                                                    const storeResourcesHasHiddenLoaded =
+                                                      resourcesProgressiveWindow.hasHiddenLoaded;
+                                                    const storeResourcesCanFetchMore = Boolean(
+                                                      storeResourcesPageInfo?.hasNextPage
+                                                    );
+                                                    const storeResourcesCanShowMore =
+                                                      storeResourcesHasHiddenLoaded ||
+                                                      storeResourcesCanFetchMore;
+                                                    const storeResourcesCanCollapse =
+                                                      resourcesProgressiveWindow.canCollapse;
+                                                    const resourceIds = new Set(
+                                                      storeResources.map(r => r.id)
+                                                    );
+                                                    const missingIds = selectedIds.filter(
+                                                      id => !resourceIds.has(id)
+                                                    );
+                                                    const ResourceIcon =
                                                       formData.target_type === 'product'
                                                         ? ProductIcon
                                                         : formData.target_type === 'collection'
                                                           ? CollectionIcon
-                                                          : PageIcon
-                                                    }
-                                                  />
-                                                </div>
-                                                <Text as="p" variant="bodySm" tone="subdued">
-                                                  {storeResourcesError
-                                                    ? storeResourcesError
-                                                    : storeResourceSearch
-                                                      ? 'No matches. Try a different search.'
-                                                      : formData.target_type === 'page'
-                                                        ? 'No pages found.'
-                                                        : formData.target_type === 'product' ||
-                                                            formData.target_type === 'collection'
-                                                          ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
-                                                          : 'No items in your store yet, or the list is still loading.'}
-                                                </Text>
-                                              </div>
-                                            ) : (
-                                              (() => {
-                                                const selectedIds =
-                                                  Array.isArray(formData.target_ids) &&
-                                                  formData.target_ids.length > 0
-                                                    ? formData.target_ids
-                                                    : formData.target_id
-                                                      ? [formData.target_id]
-                                                      : [];
-                                                const resourcesProgressiveWindow =
-                                                  buildProgressiveListWindow(
-                                                    storeResources,
-                                                    storeResourcesVisibleCount,
-                                                    { pinnedIds: selectedIds }
-                                                  );
-                                                const visibleStoreResources =
-                                                  resourcesProgressiveWindow.visibleItems;
-                                                const shownStoreResourcesCount =
-                                                  resourcesProgressiveWindow.shownCount;
-                                                const storeResourcesHasHiddenLoaded =
-                                                  resourcesProgressiveWindow.hasHiddenLoaded;
-                                                const storeResourcesCanFetchMore = Boolean(
-                                                  storeResourcesPageInfo?.hasNextPage
-                                                );
-                                                const storeResourcesCanShowMore =
-                                                  storeResourcesHasHiddenLoaded ||
-                                                  storeResourcesCanFetchMore;
-                                                const storeResourcesCanCollapse =
-                                                  resourcesProgressiveWindow.canCollapse;
-                                                const resourceIds = new Set(
-                                                  storeResources.map(r => r.id)
-                                                );
-                                                const missingIds = selectedIds.filter(
-                                                  id => !resourceIds.has(id)
-                                                );
-                                                const ResourceIcon =
-                                                  formData.target_type === 'product'
-                                                    ? ProductIcon
-                                                    : formData.target_type === 'collection'
-                                                      ? CollectionIcon
-                                                      : PageIcon;
-                                                const toggleSelection = id => {
-                                                  setIsDirty(true);
-                                                  const next = selectedIds.includes(id)
-                                                    ? selectedIds.filter(x => x !== id)
-                                                    : [...selectedIds, id];
-                                                  if (next.length > 1) {
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      target_ids: next,
-                                                      target_id: next[0] || '',
-                                                    }));
-                                                  } else if (next.length === 1) {
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      target_id: next[0],
-                                                      target_ids: null,
-                                                    }));
-                                                  } else {
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      target_id: '',
-                                                      target_ids: null,
-                                                    }));
-                                                  }
-                                                };
-                                                return (
-                                                  <>
-                                                    <div className={styles.storeResourceListMeta}>
-                                                      <Text
-                                                        as="span"
-                                                        variant="bodySm"
-                                                        tone="subdued"
-                                                      >
-                                                        Showing {shownStoreResourcesCount} of{' '}
-                                                        {storeResources.length} loaded
-                                                      </Text>
-                                                      <InlineStack
-                                                        gap="200"
-                                                        wrap
-                                                        blockAlign="center"
-                                                      >
-                                                        {storeResourcesCanFetchMore && (
-                                                          <Badge tone="info" size="small">
-                                                            More available
-                                                          </Badge>
-                                                        )}
-                                                        {storeResourcesCanCollapse && (
-                                                          <Button
-                                                            size="slim"
-                                                            variant="plain"
-                                                            onClick={() =>
-                                                              setStoreResourcesVisibleCount(
-                                                                PRICE_PRODUCT_MODAL_REVEAL_BATCH
-                                                              )
-                                                            }
-                                                          >
-                                                            Collapse
-                                                          </Button>
-                                                        )}
-                                                      </InlineStack>
-                                                    </div>
-                                                    <div className={styles.storeResourceListScroll}>
-                                                      {visibleStoreResources.map(r => (
-                                                        <button
-                                                          key={r.id}
-                                                          type="button"
-                                                          className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
-                                                          onClick={() => toggleSelection(r.id)}
+                                                          : PageIcon;
+                                                    const toggleSelection = id => {
+                                                      setIsDirty(true);
+                                                      const next = selectedIds.includes(id)
+                                                        ? selectedIds.filter(x => x !== id)
+                                                        : [...selectedIds, id];
+                                                      if (next.length > 1) {
+                                                        setFormData(prev => ({
+                                                          ...prev,
+                                                          target_ids: next,
+                                                          target_id: next[0] || '',
+                                                        }));
+                                                      } else if (next.length === 1) {
+                                                        setFormData(prev => ({
+                                                          ...prev,
+                                                          target_id: next[0],
+                                                          target_ids: null,
+                                                        }));
+                                                      } else {
+                                                        setFormData(prev => ({
+                                                          ...prev,
+                                                          target_id: '',
+                                                          target_ids: null,
+                                                        }));
+                                                      }
+                                                    };
+                                                    return (
+                                                      <>
+                                                        <div
+                                                          className={styles.storeResourceListMeta}
                                                         >
-                                                          <span
-                                                            className={styles.storeResourceItemIcon}
-                                                            aria-hidden
+                                                          <Text
+                                                            as="span"
+                                                            variant="bodySm"
+                                                            tone="subdued"
                                                           >
-                                                            <Icon source={ResourceIcon} />
-                                                          </span>
-                                                          <span
-                                                            className={
-                                                              styles.storeResourceItemContent
-                                                            }
+                                                            Showing {shownStoreResourcesCount} of{' '}
+                                                            {storeResources.length} loaded
+                                                          </Text>
+                                                          <InlineStack
+                                                            gap="200"
+                                                            wrap
+                                                            blockAlign="center"
                                                           >
-                                                            <span
-                                                              className={
-                                                                styles.storeResourceItemTitle
-                                                              }
-                                                            >
-                                                              {r.title}
-                                                            </span>
-                                                            {r.handle && (
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemHandle
+                                                            {storeResourcesCanFetchMore && (
+                                                              <Badge tone="info" size="small">
+                                                                More available
+                                                              </Badge>
+                                                            )}
+                                                            {storeResourcesCanCollapse && (
+                                                              <Button
+                                                                size="slim"
+                                                                variant="plain"
+                                                                onClick={() =>
+                                                                  setStoreResourcesVisibleCount(
+                                                                    PRICE_PRODUCT_MODAL_REVEAL_BATCH
+                                                                  )
                                                                 }
                                                               >
-                                                                /{r.handle}
-                                                              </span>
+                                                                Collapse
+                                                              </Button>
                                                             )}
-                                                          </span>
-                                                          <span
-                                                            className={
-                                                              styles.storeResourceItemCheck
-                                                            }
-                                                            onClick={e => e.stopPropagation()}
-                                                          >
-                                                            <Checkbox
-                                                              label=""
-                                                              labelHidden
-                                                              checked={selectedIds.includes(r.id)}
-                                                              onChange={() => toggleSelection(r.id)}
-                                                              id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                            />
-                                                          </span>
-                                                        </button>
-                                                      ))}
-                                                      {missingIds.map(id => (
-                                                        <button
-                                                          key={id}
-                                                          type="button"
-                                                          className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
-                                                          onClick={() => toggleSelection(id)}
+                                                          </InlineStack>
+                                                        </div>
+                                                        <div
+                                                          className={styles.storeResourceListScroll}
                                                         >
-                                                          <span
-                                                            className={styles.storeResourceItemIcon}
-                                                            aria-hidden
-                                                          >
-                                                            <Icon source={ResourceIcon} />
-                                                          </span>
-                                                          <span
+                                                          {visibleStoreResources.map(r => (
+                                                            <button
+                                                              key={r.id}
+                                                              type="button"
+                                                              className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
+                                                              onClick={() => toggleSelection(r.id)}
+                                                            >
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemIcon
+                                                                }
+                                                                aria-hidden
+                                                              >
+                                                                <Icon source={ResourceIcon} />
+                                                              </span>
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemContent
+                                                                }
+                                                              >
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemTitle
+                                                                  }
+                                                                >
+                                                                  {r.title}
+                                                                </span>
+                                                                {r.handle && (
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemHandle
+                                                                    }
+                                                                  >
+                                                                    /{r.handle}
+                                                                  </span>
+                                                                )}
+                                                              </span>
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemCheck
+                                                                }
+                                                                onClick={e => e.stopPropagation()}
+                                                              >
+                                                                <Checkbox
+                                                                  label=""
+                                                                  labelHidden
+                                                                  checked={selectedIds.includes(
+                                                                    r.id
+                                                                  )}
+                                                                  onChange={() =>
+                                                                    toggleSelection(r.id)
+                                                                  }
+                                                                  id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                                />
+                                                              </span>
+                                                            </button>
+                                                          ))}
+                                                          {missingIds.map(id => (
+                                                            <button
+                                                              key={id}
+                                                              type="button"
+                                                              className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
+                                                              onClick={() => toggleSelection(id)}
+                                                            >
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemIcon
+                                                                }
+                                                                aria-hidden
+                                                              >
+                                                                <Icon source={ResourceIcon} />
+                                                              </span>
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemContent
+                                                                }
+                                                              >
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemTitle
+                                                                  }
+                                                                >
+                                                                  {id.replace(/.*\//, '')} (saved)
+                                                                </span>
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemHandle
+                                                                  }
+                                                                >
+                                                                  Previously selected
+                                                                </span>
+                                                              </span>
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemCheck
+                                                                }
+                                                                onClick={e => e.stopPropagation()}
+                                                              >
+                                                                <Checkbox
+                                                                  label=""
+                                                                  labelHidden
+                                                                  checked
+                                                                  onChange={() =>
+                                                                    toggleSelection(id)
+                                                                  }
+                                                                  id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                                />
+                                                              </span>
+                                                            </button>
+                                                          ))}
+                                                        </div>
+                                                        {storeResourcesCanShowMore && (
+                                                          <div
                                                             className={
-                                                              styles.storeResourceItemContent
+                                                              styles.storeResourceListFooter
                                                             }
                                                           >
-                                                            <span
-                                                              className={
-                                                                styles.storeResourceItemTitle
-                                                              }
+                                                            <Button
+                                                              size="slim"
+                                                              onClick={handleLoadMoreStoreResources}
+                                                              loading={storeResourcesLoadingMore}
+                                                              disabled={storeResourcesLoadingMore}
                                                             >
-                                                              {id.replace(/.*\//, '')} (saved)
-                                                            </span>
-                                                            <span
-                                                              className={
-                                                                styles.storeResourceItemHandle
-                                                              }
-                                                            >
-                                                              Previously selected
-                                                            </span>
-                                                          </span>
-                                                          <span
-                                                            className={
-                                                              styles.storeResourceItemCheck
-                                                            }
-                                                            onClick={e => e.stopPropagation()}
-                                                          >
-                                                            <Checkbox
-                                                              label=""
-                                                              labelHidden
-                                                              checked
-                                                              onChange={() => toggleSelection(id)}
-                                                              id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                            />
-                                                          </span>
-                                                        </button>
-                                                      ))}
-                                                    </div>
-                                                    {storeResourcesCanShowMore && (
-                                                      <div
-                                                        className={styles.storeResourceListFooter}
-                                                      >
-                                                        <Button
-                                                          size="slim"
-                                                          onClick={handleLoadMoreStoreResources}
-                                                          loading={storeResourcesLoadingMore}
-                                                          disabled={storeResourcesLoadingMore}
-                                                        >
-                                                          {storeResourcesHasHiddenLoaded
-                                                            ? `Show ${Math.min(
-                                                                resourcesProgressiveWindow.nextRevealCount ||
-                                                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
-                                                                storeResources.length -
-                                                                  shownStoreResourcesCount
-                                                              )} more`
-                                                            : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
-                                                        </Button>
-                                                      </div>
-                                                    )}
-                                                  </>
-                                                );
-                                              })()
-                                            )}
-                                          </div>
-                                          {!normalizeTargetIdValue(formData.target_id) &&
-                                            (!formData.target_ids ||
-                                              formData.target_ids.length === 0) &&
-                                            !normalizeTargetIdValue(initialData?.target_id) &&
-                                            (!Array.isArray(initialData?.target_ids) ||
-                                              initialData.target_ids.length === 0) && (
-                                              <Text as="p" variant="bodySm" tone="critical">
-                                                Select at least one{' '}
-                                                {formData.target_type === 'product'
-                                                  ? 'product'
-                                                  : formData.target_type === 'collection'
-                                                    ? 'collection'
-                                                    : 'page'}{' '}
-                                                to target.
-                                              </Text>
-                                            )}
-                                        </BlockStack>
+                                                              {storeResourcesHasHiddenLoaded
+                                                                ? `Show ${Math.min(
+                                                                    resourcesProgressiveWindow.nextRevealCount ||
+                                                                      PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                                                    storeResources.length -
+                                                                      shownStoreResourcesCount
+                                                                  )} more`
+                                                                : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
+                                                            </Button>
+                                                          </div>
+                                                        )}
+                                                      </>
+                                                    );
+                                                  })()
+                                                )}
+                                              </div>
+                                              {!normalizeTargetIdValue(formData.target_id) &&
+                                                (!formData.target_ids ||
+                                                  formData.target_ids.length === 0) &&
+                                                !normalizeTargetIdValue(initialData?.target_id) &&
+                                                (!Array.isArray(initialData?.target_ids) ||
+                                                  initialData.target_ids.length === 0) && (
+                                                  <Text as="p" variant="bodySm" tone="critical">
+                                                    Select at least one{' '}
+                                                    {formData.target_type === 'product'
+                                                      ? 'product'
+                                                      : formData.target_type === 'collection'
+                                                        ? 'collection'
+                                                        : 'page'}{' '}
+                                                    to target.
+                                                  </Text>
+                                                )}
+                                            </BlockStack>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
-                                  )}
-                                </div>
-                                {customUrlModeActive &&
-                                  (() => {
-                                    return (
-                                      <div
-                                        className={`${styles.panelSection} ${styles.panelSectionFull} ${styles.panelSectionCustomUrl}`}
-                                      >
-                                        <div className={styles.customUrlHeader}>
-                                          <span className={styles.customUrlHeaderIcon}>
-                                            <Icon source={CodeIcon} />
-                                          </span>
-                                          <div>
-                                            <span className={styles.panelSectionTitle}>
-                                              Custom URL rules
-                                              <TooltipWrapper
-                                                content={
-                                                  isStandalone
-                                                    ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
-                                                    : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
-                                                }
-                                                accessibilityLabel="Custom URL help"
-                                              >
-                                                <span
-                                                  className={styles.panelSectionInfoIcon}
-                                                  aria-hidden="true"
-                                                >
-                                                  <Icon source={InfoIcon} />
-                                                </span>
-                                              </TooltipWrapper>
-                                            </span>
-                                            <p className={styles.panelSectionHint}>
-                                              {isStandalone
-                                                ? 'Define where your test runs using page paths (e.g. /blog, /pricing). Rules match the path only, not query or hash.'
-                                                : 'Define where your test runs using URL patterns. Include rules target pages; exclude rules hide them.'}
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className={styles.customUrlLogicCallout}>
-                                          <span className={styles.customUrlLogicLabel}>
-                                            How it works
-                                          </span>
-                                          <span className={styles.customUrlLogicText}>
-                                            {isStandalone
-                                              ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
-                                              : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
-                                          </span>
-                                        </div>
-                                        {(formData.segments?.page_rules || []).length === 0 ? (
-                                          <div className={styles.customUrlEmptyState}>
-                                            <p className={styles.customUrlEmptyTitle}>
-                                              No URL rules yet
-                                            </p>
-                                            <p className={styles.customUrlEmptyDesc}>
-                                              {isStandalone
-                                                ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
-                                                : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
-                                            </p>
-                                            <div className={styles.customUrlQuickAdd}>
-                                              {!isStandalone &&
-                                                [
-                                                  {
-                                                    label: 'Product pages',
-                                                    pattern: '/products/',
-                                                    match_type: 'starts_with',
-                                                    type: 'include',
-                                                  },
-                                                  {
-                                                    label: 'Sale collection',
-                                                    pattern: '/collections/sale',
-                                                    match_type: 'contains',
-                                                    type: 'include',
-                                                  },
-                                                  {
-                                                    label: 'Exclude checkout',
-                                                    pattern: '/checkout',
-                                                    match_type: 'starts_with',
-                                                    type: 'exclude',
-                                                  },
-                                                ].map(q => (
-                                                  <button
-                                                    key={q.label}
-                                                    type="button"
-                                                    className={styles.customUrlQuickAddChip}
-                                                    onClick={() => {
-                                                      setIsDirty(true);
-                                                      setFormData(prev => ({
-                                                        ...prev,
-                                                        segments: {
-                                                          ...prev.segments,
-                                                          page_rules: [
-                                                            ...(prev.segments?.page_rules || []),
-                                                            {
-                                                              type: q.type,
-                                                              pattern: q.pattern,
-                                                              match_type: q.match_type,
-                                                            },
-                                                          ],
-                                                        },
-                                                      }));
-                                                    }}
-                                                  >
-                                                    {q.label}
-                                                  </button>
-                                                ))}
-                                              {isStandalone && (
-                                                <p className={styles.customUrlEmptyDesc}>
-                                                  Use &quot;Add rule&quot; below to define path or
-                                                  regex rules. No fixed presets — enter any path
-                                                  (e.g. /blog, /pricing) or regex.
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-                                        ) : null}
-                                        {(formData.segments?.page_rules || []).length > 0 ? (
-                                          <div className={styles.customUrlRulesList}>
-                                            <span className={styles.customUrlRulesLabel}>
-                                              {(formData.segments?.page_rules || []).length} rule
-                                              {(formData.segments?.page_rules || []).length !== 1
-                                                ? 's'
-                                                : ''}
-                                            </span>
-                                          </div>
-                                        ) : null}
-                                        {(formData.segments?.page_rules || []).map((rule, idx) => {
-                                          const presets = !isStandalone
-                                            ? [
-                                                '/products/',
-                                                '/collections/',
-                                                '/cart',
-                                                HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                                HOMEPAGE_URL_PATTERN_STANDALONE,
-                                                '',
-                                              ]
-                                            : [];
-                                          const matchTypeOptions = isStandalone
-                                            ? [
-                                                { label: 'Path contains', value: 'contains' },
-                                                { label: 'Path starts with', value: 'starts_with' },
-                                                { label: 'Path ends with', value: 'ends_with' },
-                                                { label: 'Path equals', value: 'equals' },
-                                                { label: 'Regex', value: 'regex' },
-                                              ]
-                                            : [
-                                                { label: 'Contains', value: 'contains' },
-                                                { label: 'Starts with', value: 'starts_with' },
-                                                { label: 'Ends with', value: 'ends_with' },
-                                                { label: 'Equals', value: 'equals' },
-                                                { label: 'Regex', value: 'regex' },
-                                              ];
-                                          const presetMatchTypes = !isStandalone
-                                            ? {
-                                                '': 'regex',
-                                                '/products/': 'starts_with',
-                                                '/collections/': 'starts_with',
-                                                '/cart': 'equals',
-                                                [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
-                                                [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
-                                              }
-                                            : {};
-                                          return (
-                                            <div key={idx} className={styles.customRuleRow}>
-                                              <span className={styles.customRuleNumber} aria-hidden>
-                                                {idx + 1}
+                                    {customUrlModeActive &&
+                                      (() => {
+                                        return (
+                                          <div
+                                            className={`${styles.panelSection} ${styles.panelSectionFull} ${styles.panelSectionCustomUrl}`}
+                                          >
+                                            <div className={styles.customUrlHeader}>
+                                              <span className={styles.customUrlHeaderIcon}>
+                                                <Icon source={CodeIcon} />
                                               </span>
-                                              <div className={styles.ruleTypeToggle}>
-                                                <button
-                                                  type="button"
-                                                  className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
-                                                  onClick={() => {
-                                                    setIsDirty(true);
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      segments: {
-                                                        ...prev.segments,
-                                                        page_rules: [
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(0, idx),
-                                                          { ...rule, type: 'include' },
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(idx + 1),
-                                                        ],
-                                                      },
-                                                    }));
-                                                  }}
-                                                >
-                                                  Include
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
-                                                  onClick={() => {
-                                                    setIsDirty(true);
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      segments: {
-                                                        ...prev.segments,
-                                                        page_rules: [
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(0, idx),
-                                                          { ...rule, type: 'exclude' },
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(idx + 1),
-                                                        ],
-                                                      },
-                                                    }));
-                                                  }}
-                                                >
-                                                  Exclude
-                                                </button>
+                                              <div>
+                                                <span className={styles.panelSectionTitle}>
+                                                  Custom URL rules
+                                                  <TooltipWrapper
+                                                    content={
+                                                      isStandalone
+                                                        ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
+                                                        : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
+                                                    }
+                                                    accessibilityLabel="Custom URL help"
+                                                  >
+                                                    <span
+                                                      className={styles.panelSectionInfoIcon}
+                                                      aria-hidden="true"
+                                                    >
+                                                      <Icon source={InfoIcon} />
+                                                    </span>
+                                                  </TooltipWrapper>
+                                                </span>
                                               </div>
-                                              {!isStandalone && (
-                                                <Select
-                                                  label=""
-                                                  labelHidden
-                                                  options={[
-                                                    { label: 'All pages', value: '' },
-                                                    { label: 'Product pages', value: '/products/' },
-                                                    {
-                                                      label: 'Collection pages',
-                                                      value: '/collections/',
-                                                    },
-                                                    { label: 'Cart', value: '/cart' },
-                                                    {
-                                                      label: 'Homepage',
-                                                      value: HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                                    },
-                                                    { label: 'Custom URL…', value: '__custom__' },
-                                                  ]}
-                                                  value={
-                                                    presets.includes(rule.pattern || '')
-                                                      ? rule.pattern || ''
-                                                      : rule.pattern === ' ' || rule.pattern
-                                                        ? '__custom__'
-                                                        : ''
-                                                  }
-                                                  onChange={v => {
-                                                    setIsDirty(true);
-                                                    const newPattern =
-                                                      v === '__custom__'
-                                                        ? presets.includes(rule.pattern || '') ||
-                                                          rule.pattern === ' '
-                                                          ? ' '
-                                                          : rule.pattern || ' '
-                                                        : v;
-                                                    const newMatchType =
-                                                      v === '__custom__'
-                                                        ? rule.match_type || 'contains'
-                                                        : presetMatchTypes[v] || 'regex';
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      segments: {
-                                                        ...prev.segments,
-                                                        page_rules: [
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(0, idx),
-                                                          {
-                                                            ...rule,
-                                                            pattern: newPattern,
-                                                            match_type: newMatchType,
-                                                          },
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(idx + 1),
-                                                        ],
-                                                      },
-                                                    }));
-                                                  }}
-                                                />
-                                              )}
-                                              <div className={styles.matchTypeSelect}>
-                                                <Select
-                                                  label=""
-                                                  labelHidden
-                                                  options={matchTypeOptions}
-                                                  value={
-                                                    rule.match_type ||
-                                                    (isStandalone
-                                                      ? 'starts_with'
-                                                      : presets.includes(rule.pattern || '')
-                                                        ? presetMatchTypes[rule.pattern]
-                                                        : 'contains')
-                                                  }
-                                                  onChange={v => {
-                                                    setIsDirty(true);
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      segments: {
-                                                        ...prev.segments,
-                                                        page_rules: [
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(0, idx),
-                                                          { ...rule, match_type: v },
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(idx + 1),
-                                                        ],
-                                                      },
-                                                    }));
-                                                  }}
-                                                />
-                                              </div>
-                                              <div className={styles.customUrlInputWrap}>
-                                                <TextField
-                                                  label={
-                                                    isStandalone ? 'Path or regex' : 'URL pattern'
-                                                  }
-                                                  labelHidden
-                                                  value={
-                                                    rule.pattern === ' ' ? '' : rule.pattern || ''
-                                                  }
-                                                  onChange={v => {
-                                                    setIsDirty(true);
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      segments: {
-                                                        ...prev.segments,
-                                                        page_rules: [
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(0, idx),
-                                                          { ...rule, pattern: v === '' ? ' ' : v },
-                                                          ...(
-                                                            prev.segments?.page_rules || []
-                                                          ).slice(idx + 1),
-                                                        ],
-                                                      },
-                                                    }));
-                                                  }}
-                                                  placeholder={
-                                                    isStandalone
-                                                      ? (rule.match_type || 'starts_with') ===
-                                                        'regex'
-                                                        ? 'e.g. ^/blog, ^/en/.*'
-                                                        : 'e.g. /blog, /pricing, /docs'
-                                                      : (rule.match_type || 'contains') === 'regex'
-                                                        ? 'e.g. ^/products/.* or /collections/sale'
-                                                        : (rule.match_type || 'contains') ===
-                                                            'contains'
-                                                          ? 'e.g. /products/ or sale'
-                                                          : (rule.match_type || 'contains') ===
-                                                              'starts_with'
-                                                            ? 'e.g. /products/ or /collections/'
-                                                            : (rule.match_type || 'contains') ===
-                                                                'ends_with'
-                                                              ? 'e.g. .html or /checkout'
-                                                              : 'e.g. /cart or /pages/about'
-                                                  }
-                                                  autoComplete="off"
-                                                  helpText={
-                                                    (rule.match_type || 'starts_with') ===
-                                                      'regex' && isStandalone
-                                                      ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
-                                                      : (rule.match_type || 'contains') ===
-                                                            'regex' && !isStandalone
-                                                        ? 'JavaScript regex. Use ^ for start, $ for end.'
-                                                        : null
-                                                  }
-                                                />
-                                              </div>
-                                              <button
-                                                type="button"
-                                                className={styles.removeRuleBtn}
-                                                onClick={() => {
-                                                  setIsDirty(true);
-                                                  setFormData(prev => ({
-                                                    ...prev,
-                                                    segments: {
-                                                      ...prev.segments,
-                                                      page_rules: (
-                                                        prev.segments?.page_rules || []
-                                                      ).filter((_, i) => i !== idx),
-                                                    },
-                                                  }));
-                                                }}
-                                              >
-                                                Remove
-                                              </button>
                                             </div>
-                                          );
-                                        })}
-                                        <button
-                                          type="button"
-                                          className={styles.addRuleBtn}
-                                          onClick={() => {
-                                            setIsDirty(true);
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              segments: {
-                                                ...prev.segments,
-                                                page_rules: [
-                                                  ...(prev.segments?.page_rules || []),
-                                                  {
-                                                    type: 'include',
-                                                    pattern: ' ',
-                                                    match_type: isStandalone
-                                                      ? 'starts_with'
-                                                      : 'contains',
-                                                  },
-                                                ],
-                                              },
-                                            }));
-                                          }}
-                                        >
-                                          <Icon source={PlusIcon} />
-                                          Add rule
-                                        </button>
-                                      </div>
-                                    );
-                                  })()}
-                              </>
-                            )}
-                          </div>,
-                        ]
-                      : null}
-
-                    {placementSection === 'device' && !isStandalone && (
-                      <div className={styles.placementPanel}>
-                        <div className={`${styles.panelSection} ${styles.panelSectionDevice}`}>
-                          <span className={styles.panelSectionTitle}>
-                            Device
-                            <TooltipWrapper
-                              content="Desktop or mobile"
-                              accessibilityLabel="Device targeting help"
-                            >
-                              <span className={styles.panelSectionInfoIcon} aria-hidden="true">
-                                <Icon source={InfoIcon} />
-                              </span>
-                            </TooltipWrapper>
-                          </span>
-                          <p className={styles.panelSectionHint}>Target by device type.</p>
-                          <div className={styles.quickSelectChips}>
-                            {[
-                              {
-                                label: 'All devices',
-                                value: 'all',
-                                icon: UnknownDeviceIcon,
-                                tooltip: 'All devices',
-                              },
-                              {
-                                label: 'Desktop',
-                                value: 'desktop',
-                                icon: DesktopIcon,
-                                tooltip: 'Desktop only',
-                              },
-                              {
-                                label: 'Mobile',
-                                value: 'mobile',
-                                icon: MobileIcon,
-                                tooltip: 'Mobile only',
-                              },
-                            ].map(({ label, value, icon: DeviceIcon, tooltip }) => (
-                              <TooltipWrapper
-                                key={value}
-                                content={tooltip}
-                                accessibilityLabel={label}
-                              >
-                                <button
-                                  type="button"
-                                  className={`${styles.quickSelectChip} ${(formData.segments?.device || 'all') === value ? styles.quickSelectChipActive : ''}`}
-                                  onClick={() =>
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      segments: {
-                                        ...prev.segments,
-                                        device: value,
-                                        device_rules: [],
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <Icon source={DeviceIcon} />
-                                  {label}
-                                </button>
-                              </TooltipWrapper>
-                            ))}
-                          </div>
-                          <div className={styles.inlineAdvancedToggle}>
-                            <button
-                              type="button"
-                              className={styles.inlineAdvancedToggleBtn}
-                              onClick={() => setDeviceAdvancedOpen(prev => !prev)}
-                              aria-expanded={deviceAdvancedOpen}
-                            >
-                              <span
-                                className={`${styles.inlineAdvancedChevron} ${deviceAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
-                              >
-                                <Icon source={ChevronDownIcon} />
-                              </span>
-                              Advanced device rules
-                              {(formData.segments?.device_rules || []).length > 0 && (
-                                <span className={styles.inlineAdvancedCount}>
-                                  {(formData.segments?.device_rules || []).length}
-                                </span>
-                              )}
-                            </button>
-                            {deviceAdvancedOpen && (
-                              <div className={styles.inlineAdvancedBody}>
-                                <p className={styles.inlineAdvancedHint}>
-                                  Include or exclude desktop/mobile. Overrides simple Device above.
-                                </p>
-                                {(formData.segments?.device_rules || []).length === 0 && (
-                                  <div className={styles.advancedEmptyState}>
-                                    <p>No device rules. Add rules for include/exclude by device.</p>
-                                  </div>
-                                )}
-                                {(formData.segments?.device_rules || []).map((rule, idx) => (
-                                  <div key={idx} className={styles.customRuleRow}>
-                                    <div className={styles.ruleTypeToggle}>
-                                      <button
-                                        type="button"
-                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
-                                        onClick={() =>
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: {
-                                              ...prev.segments,
-                                              device_rules: [
-                                                ...(prev.segments?.device_rules || []).slice(
-                                                  0,
-                                                  idx
-                                                ),
-                                                { ...rule, type: 'include' },
-                                                ...(prev.segments?.device_rules || []).slice(
-                                                  idx + 1
-                                                ),
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                      >
-                                        Include
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
-                                        onClick={() =>
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: {
-                                              ...prev.segments,
-                                              device_rules: [
-                                                ...(prev.segments?.device_rules || []).slice(
-                                                  0,
-                                                  idx
-                                                ),
-                                                { ...rule, type: 'exclude' },
-                                                ...(prev.segments?.device_rules || []).slice(
-                                                  idx + 1
-                                                ),
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                      >
-                                        Exclude
-                                      </button>
-                                    </div>
-                                    <Select
-                                      label=""
-                                      labelHidden
-                                      options={[
-                                        { label: 'Desktop', value: 'desktop' },
-                                        { label: 'Mobile', value: 'mobile' },
-                                      ]}
-                                      value={rule.value || 'desktop'}
-                                      onChange={v =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          segments: {
-                                            ...prev.segments,
-                                            device_rules: [
-                                              ...(prev.segments?.device_rules || []).slice(0, idx),
-                                              { ...rule, value: v },
-                                              ...(prev.segments?.device_rules || []).slice(idx + 1),
-                                            ],
-                                          },
-                                        }))
-                                      }
-                                    />
-                                    <button
-                                      type="button"
-                                      className={styles.removeRuleBtn}
-                                      onClick={() =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          segments: {
-                                            ...prev.segments,
-                                            device_rules: (
-                                              prev.segments?.device_rules || []
-                                            ).filter((_, i) => i !== idx),
-                                          },
-                                        }))
-                                      }
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
-                                <button
-                                  type="button"
-                                  className={styles.addRuleBtn}
-                                  onClick={() =>
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      segments: {
-                                        ...prev.segments,
-                                        device_rules: [
-                                          ...(prev.segments?.device_rules || []),
-                                          { type: 'include', value: 'desktop' },
-                                        ],
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <Icon source={PlusIcon} /> Add device rule
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {placementSection === 'audience' && !isStandalone && (
-                      <div className={styles.placementPanel}>
-                        <div className={`${styles.panelSection} ${styles.panelSectionAudience}`}>
-                          <span className={styles.panelSectionTitle}>
-                            Customer type
-                            <TooltipWrapper
-                              content="New vs returning visitors"
-                              accessibilityLabel="Customer type help"
-                            >
-                              <span className={styles.panelSectionInfoIcon} aria-hidden="true">
-                                <Icon source={InfoIcon} />
-                              </span>
-                            </TooltipWrapper>
-                          </span>
-                          <p className={styles.panelSectionHint}>New vs returning visitors.</p>
-                          <div className={styles.quickSelectChips}>
-                            {[
-                              { label: 'All', value: 'all', icon: PersonIcon, tooltip: 'All' },
-                              {
-                                label: 'New',
-                                value: 'new',
-                                icon: PersonIcon,
-                                tooltip: 'First visit',
-                              },
-                              {
-                                label: 'Returning',
-                                value: 'returning',
-                                icon: PersonIcon,
-                                tooltip: 'Returning',
-                              },
-                            ].map(({ label, value, icon: CustIcon, tooltip }) => (
-                              <TooltipWrapper
-                                key={value}
-                                content={tooltip}
-                                accessibilityLabel={label}
-                              >
-                                <button
-                                  type="button"
-                                  className={`${styles.quickSelectChip} ${(formData.segments?.customer || 'all') === value ? styles.quickSelectChipActive : ''}`}
-                                  onClick={() =>
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      segments: {
-                                        ...prev.segments,
-                                        customer: value,
-                                        audience_rules: [],
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <Icon source={CustIcon} />
-                                  {label}
-                                </button>
-                              </TooltipWrapper>
-                            ))}
-                          </div>
-                        </div>
-                        <div className={`${styles.panelSection} ${styles.panelSectionFull}`}>
-                          <span className={styles.panelSectionTitle}>
-                            Countries (optional)
-                            <TooltipWrapper
-                              content="US, CA, GB. Empty = all"
-                              accessibilityLabel="Countries help"
-                            >
-                              <span className={styles.panelSectionInfoIcon} aria-hidden="true">
-                                <Icon source={InfoIcon} />
-                              </span>
-                            </TooltipWrapper>
-                          </span>
-                          <p className={styles.panelSectionHint}>
-                            Limit to specific countries. Leave empty for all.
-                          </p>
-                          <div className={styles.countriesBlock}>
-                            <TextField
-                              label=""
-                              labelHidden
-                              value={countriesValue}
-                              onChange={value =>
-                                setFormData(prev => ({
-                                  ...prev,
-                                  segments: {
-                                    ...prev.segments,
-                                    countries: value
-                                      .split(',')
-                                      .map(e => e.trim())
-                                      .filter(Boolean),
-                                  },
-                                }))
-                              }
-                              placeholder="US, CA, GB — leave empty for all"
-                              autoComplete="off"
-                            />
-                            {(formData.segments?.countries || []).length > 0 && (
-                              <span className={styles.countriesCount}>
-                                {(formData.segments?.countries || []).length} countr
-                                {(formData.segments?.countries || []).length === 1
-                                  ? 'y'
-                                  : 'ies'}{' '}
-                                selected
-                              </span>
-                            )}
-                          </div>
-                          <div className={styles.inlineAdvancedToggle}>
-                            <button
-                              type="button"
-                              className={styles.inlineAdvancedToggleBtn}
-                              onClick={() => setAudienceAdvancedOpen(prev => !prev)}
-                              aria-expanded={audienceAdvancedOpen}
-                            >
-                              <span
-                                className={`${styles.inlineAdvancedChevron} ${audienceAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
-                              >
-                                <Icon source={ChevronDownIcon} />
-                              </span>
-                              Advanced audience rules
-                              {(formData.segments?.audience_rules || []).length > 0 && (
-                                <span className={styles.inlineAdvancedCount}>
-                                  {(formData.segments?.audience_rules || []).length}
-                                </span>
-                              )}
-                            </button>
-                            {audienceAdvancedOpen && (
-                              <div className={styles.inlineAdvancedBody}>
-                                <p className={styles.inlineAdvancedHint}>
-                                  Include or exclude by customer type or country. Overrides simple
-                                  Customer/Countries above.
-                                </p>
-                                {(formData.segments?.audience_rules || []).length === 0 && (
-                                  <div className={styles.advancedEmptyState}>
-                                    <p>
-                                      No audience rules. Add rules for include/exclude by customer
-                                      or country.
-                                    </p>
-                                  </div>
-                                )}
-                                {(formData.segments?.audience_rules || []).map((rule, idx) => (
-                                  <div key={idx} className={styles.customRuleRow}>
-                                    <div className={styles.ruleTypeToggle}>
-                                      <button
-                                        type="button"
-                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
-                                        onClick={() =>
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: {
-                                              ...prev.segments,
-                                              audience_rules: [
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  0,
-                                                  idx
-                                                ),
-                                                { ...rule, type: 'include' },
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  idx + 1
-                                                ),
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                      >
-                                        Include
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
-                                        onClick={() =>
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: {
-                                              ...prev.segments,
-                                              audience_rules: [
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  0,
-                                                  idx
-                                                ),
-                                                { ...rule, type: 'exclude' },
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  idx + 1
-                                                ),
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                      >
-                                        Exclude
-                                      </button>
-                                    </div>
-                                    <Select
-                                      label=""
-                                      labelHidden
-                                      options={[
-                                        { label: 'Customer type', value: 'customer' },
-                                        { label: 'Country', value: 'country' },
-                                      ]}
-                                      value={rule.field || 'customer'}
-                                      onChange={v =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          segments: {
-                                            ...prev.segments,
-                                            audience_rules: [
-                                              ...(prev.segments?.audience_rules || []).slice(
-                                                0,
-                                                idx
-                                              ),
-                                              {
-                                                ...rule,
-                                                field: v,
-                                                value: v === 'customer' ? 'new' : ['US'],
-                                              },
-                                              ...(prev.segments?.audience_rules || []).slice(
-                                                idx + 1
-                                              ),
-                                            ],
-                                          },
-                                        }))
-                                      }
-                                    />
-                                    {rule.field === 'customer' ? (
-                                      <Select
-                                        label=""
-                                        labelHidden
-                                        options={[
-                                          { label: 'New', value: 'new' },
-                                          { label: 'Returning', value: 'returning' },
-                                        ]}
-                                        value={rule.value || 'new'}
-                                        onChange={v =>
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: {
-                                              ...prev.segments,
-                                              audience_rules: [
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  0,
-                                                  idx
-                                                ),
-                                                { ...rule, value: v },
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  idx + 1
-                                                ),
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                      />
-                                    ) : (
-                                      <TextField
-                                        label=""
-                                        labelHidden
-                                        value={
-                                          Array.isArray(rule.value)
-                                            ? rule.value.join(', ')
-                                            : rule.value || ''
-                                        }
-                                        onChange={v =>
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: {
-                                              ...prev.segments,
-                                              audience_rules: [
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  0,
-                                                  idx
-                                                ),
-                                                {
-                                                  ...rule,
-                                                  value: v
-                                                    .split(',')
-                                                    .map(s => s.trim())
-                                                    .filter(Boolean),
-                                                },
-                                                ...(prev.segments?.audience_rules || []).slice(
-                                                  idx + 1
-                                                ),
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                        placeholder="US, CA, GB"
-                                        autoComplete="off"
-                                      />
-                                    )}
-                                    <button
-                                      type="button"
-                                      className={styles.removeRuleBtn}
-                                      onClick={() =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          segments: {
-                                            ...prev.segments,
-                                            audience_rules: (
-                                              prev.segments?.audience_rules || []
-                                            ).filter((_, i) => i !== idx),
-                                          },
-                                        }))
-                                      }
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
-                                <button
-                                  type="button"
-                                  className={styles.addRuleBtn}
-                                  onClick={() =>
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      segments: {
-                                        ...prev.segments,
-                                        audience_rules: [
-                                          ...(prev.segments?.audience_rules || []),
-                                          { type: 'include', field: 'customer', value: 'new' },
-                                        ],
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <Icon source={PlusIcon} /> Add audience rule
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {placementSection === 'holdout' && (
-                      <div id="targeting-holdout">
-                        <div
-                          key="holdout"
-                          id="targeting-panel-holdout"
-                          className={`${styles.targetingPanel} ${styles.targetingPanelHoldout}`}
-                          role="tabpanel"
-                          aria-labelledby="targeting-tab-holdout"
-                        >
-                          <div className={styles.targetingPanelHeader}>
-                            <span className={styles.targetingPanelStep}>
-                              Step {holdoutStepNumber} of {advancedStepNumber}
-                            </span>
-                            <h4 className={styles.targetingPanelTitle}>Holdout (control group)</h4>
-                            <p className={styles.targetingPanelHint}>
-                              Reserve a percentage of visitors who never see any variant for a true
-                              control. Use <kbd className={styles.panelKbd}>1</kbd>–
-                              <kbd className={styles.panelKbd}>{advancedStepNumber}</kbd> or arrow
-                              keys to switch sections.
-                            </p>
-                            {(Number(holdoutValue) || 0) > 0 && (
-                              <span className={styles.holdoutBadge}>
-                                <Icon source={LockIcon} />
-                                Control group: {holdoutValue}% reserved
-                              </span>
-                            )}
-                          </div>
-                          <div className={styles.targetingPanelBody}>
-                            <div className={styles.holdoutInstruction}>
-                              <Icon source={LockIcon} />
-                              <span>
-                                Choose what percentage of traffic stays in the control group (no
-                                variant). 10% is recommended for most tests.
-                              </span>
-                            </div>
-                            <div className={styles.holdoutCard}>
-                              <div className={styles.holdoutCardHeader}>
-                                <label className={styles.holdoutSliderLabel}>
-                                  Control group size
-                                  <TooltipWrapper
-                                    content="Visitors in the control group never see any test variant. 10% gives a solid baseline."
-                                    accessibilityLabel="Holdout percentage help"
-                                  >
-                                    <span
-                                      className={styles.panelSectionInfoIcon}
-                                      aria-hidden="true"
-                                    >
-                                      <Icon source={InfoIcon} />
-                                    </span>
-                                  </TooltipWrapper>
-                                </label>
-                                <div className={styles.holdoutQuickPresets}>
-                                  {[
-                                    { pct: 0, label: '0%', tooltip: 'No holdout' },
-                                    {
-                                      pct: 10,
-                                      label: '10%',
-                                      recommended: true,
-                                      tooltip: 'Recommended',
-                                    },
-                                    { pct: 25, label: '25%', tooltip: 'Larger control' },
-                                    { pct: 50, label: '50%', tooltip: 'Max holdout' },
-                                  ].map(({ pct, label, recommended, tooltip }) => (
-                                    <TooltipWrapper
-                                      key={pct}
-                                      content={tooltip}
-                                      accessibilityLabel={`Holdout ${label}`}
-                                    >
-                                      <button
-                                        type="button"
-                                        className={`${styles.holdoutPresetBtn} ${Number(holdoutValue) === pct ? styles.holdoutPresetBtnActive : ''}`}
-                                        onClick={() =>
-                                          setFormData(prev => ({ ...prev, holdout_percent: pct }))
-                                        }
-                                      >
-                                        {label}
-                                        {recommended && (
-                                          <span className={styles.holdoutPresetRecommended}>
-                                            Best
-                                          </span>
-                                        )}
-                                      </button>
-                                    </TooltipWrapper>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className={styles.holdoutCardBody}>
-                                <div className={styles.holdoutValueInput}>
-                                  <input
-                                    type="number"
-                                    className={styles.holdoutNumberInput}
-                                    min={0}
-                                    max={50}
-                                    value={holdoutValue ?? ''}
-                                    onChange={e =>
-                                      setFormData(prev => ({
-                                        ...prev,
-                                        holdout_percent: e.target.value,
-                                      }))
-                                    }
-                                    aria-label="Holdout percentage"
-                                  />
-                                  <span className={styles.holdoutPercentSuffix}>%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  className={styles.holdoutSlider}
-                                  min={0}
-                                  max={50}
-                                  value={Math.min(50, Math.max(0, Number(holdoutValue) || 0))}
-                                  onChange={e =>
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      holdout_percent: e.target.value,
-                                    }))
-                                  }
-                                  aria-label="Holdout percentage slider"
-                                />
-                                <div className={styles.holdoutSliderLabels}>
-                                  <span>0%</span>
-                                  <span>25%</span>
-                                  <span>50%</span>
-                                </div>
-                              </div>
-                              <p className={styles.holdoutHelpText}>
-                                Visitors in the control group never see any variant. Leave at 0% to
-                                run without a control.
-                              </p>
-                            </div>
-                            {!isStandalone && (
-                              <div className={styles.holdoutRecommendedBanner}>
-                                <span className={styles.holdoutRecommendedText}>
-                                  {isShippingTestType
-                                    ? isShippingStorewideAdvanced
-                                      ? 'Quick apply: Storewide + 10% holdout'
-                                      : 'Quick apply: Selected products + 10% holdout'
-                                    : 'Quick apply: Product pages + 10% holdout'}
-                                </span>
-                                <button
-                                  type="button"
-                                  className={styles.holdoutRecommendedBtn}
-                                  onClick={() => {
-                                    setCustomUrlModeActive(false);
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      target_type: isShippingTestType
-                                        ? isShippingStorewideAdvanced
-                                          ? 'all-products'
-                                          : 'product'
-                                        : 'all-products',
-                                      target_id: '',
-                                      target_ids: null,
-                                      segments: {
-                                        ...prev.segments,
-                                        url_pattern: isShippingTestType ? '' : '/products/',
-                                        page_rules: [],
-                                        device: 'all',
-                                        customer: 'all',
-                                      },
-                                      holdout_percent: 10,
-                                    }));
-                                  }}
-                                >
-                                  Apply recommended
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {placementSection === 'advanced' && (
-                      <div id="targeting-advanced">
-                        <div
-                          id="targeting-panel-advanced"
-                          className={`${styles.targetingPanel} ${styles.targetingPanelAdvanced}`}
-                          role="tabpanel"
-                          aria-labelledby="targeting-tab-advanced"
-                        >
-                          <div className={styles.targetingPanelHeader}>
-                            <span className={styles.targetingPanelStep}>
-                              Step {advancedStepNumber} of {advancedStepNumber}
-                            </span>
-                            <h4 className={styles.targetingPanelTitle}>
-                              Advanced targeting & safety
-                            </h4>
-                            <p className={styles.targetingPanelHint}>
-                              Safety, traffic, presets, and custom rules. Use{' '}
-                              <kbd className={styles.panelKbd}>1</kbd>–
-                              <kbd className={styles.panelKbd}>{advancedStepNumber}</kbd> or arrow
-                              keys to switch sections.
-                            </p>
-                          </div>
-                          <div className={styles.targetingPanelBody}>
-                            <div className={styles.advancedInstruction}>
-                              <Icon source={CodeIcon} />
-                              <span>
-                                Optional: guardrails, data quality, traffic limits, saved presets,
-                                and JavaScript targeting. Expand a section below to configure.
-                              </span>
-                            </div>
-                            <div className={styles.advancedContent}>
-                              <div className={styles.advancedToolbar}>
-                                <span className={styles.advancedToolbarLabel}>Sections</span>
-                                <div className={styles.advancedToolbarActions}>
-                                  <button
-                                    type="button"
-                                    className={styles.advancedToolbarBtn}
-                                    onClick={expandAllAdvanced}
-                                  >
-                                    Expand all
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={styles.advancedToolbarBtn}
-                                    onClick={collapseAllAdvanced}
-                                  >
-                                    Collapse all
-                                  </button>
-                                </div>
-                              </div>
-                              <div className={styles.advancedGrid}>
-                                <div className={styles.advancedGridGroup}>
-                                  <span className={styles.advancedGridGroupLabel}>
-                                    Safety & quality
-                                  </span>
-                                </div>
-                                <div
-                                  className={`${styles.advancedSection} ${styles.advancedSectionSafety} ${advancedSectionsOpen.safety ? styles.advancedSectionExpanded : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.advancedSectionHeader}
-                                    onClick={() => toggleAdvancedSection('safety')}
-                                    aria-expanded={advancedSectionsOpen.safety}
-                                  >
-                                    <span
-                                      className={`${styles.advancedSectionIcon} ${styles.advancedSectionIconGuardrail}`}
-                                    >
-                                      <Icon source={AlertTriangleIcon} />
-                                    </span>
-                                    <div className={styles.advancedSectionTitleBlock}>
-                                      <span className={styles.advancedSectionTitle}>
-                                        Safety & quality
-                                        {formData.guardrail_config?.enabled ||
-                                        formData.segments?.exclude_internal_ips ||
-                                        formData.segments?.exclude_bots ||
-                                        (formData.segments?.traffic_ramp_percent ?? 0) > 0 ? (
-                                          <span className={styles.advancedSectionConfigured}>
-                                            Configured
-                                          </span>
-                                        ) : null}
-                                      </span>
-                                      <p>
-                                        Guardrail, bot exclusion, and traffic ramp in one place.
-                                      </p>
-                                    </div>
-                                    <span
-                                      className={`${styles.advancedSectionChevron} ${advancedSectionsOpen.safety ? styles.advancedSectionChevronOpen : ''}`}
-                                    >
-                                      <Icon source={ChevronDownIcon} />
-                                    </span>
-                                  </button>
-                                  {advancedSectionsOpen.safety && (
-                                    <div className={styles.advancedSectionBody}>
-                                      <div className={styles.safetyCombinedCard}>
-                                        <div className={styles.safetySubsection}>
-                                          <span className={styles.safetySubsectionTitle}>
-                                            Guardrail
-                                          </span>
-                                          <p className={styles.safetySubsectionHint}>
-                                            Auto-stop if any variant drops below control.
-                                          </p>
-                                          <div className={styles.guardrailCard}>
-                                            <Checkbox
-                                              label="Enable guardrail"
-                                              checked={formData.guardrail_config?.enabled || false}
-                                              onChange={value =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  guardrail_config: {
-                                                    ...prev.guardrail_config,
-                                                    enabled: value,
-                                                    minDropPercent:
-                                                      prev.guardrail_config?.minDropPercent ?? 10,
-                                                  },
-                                                }))
-                                              }
-                                              helpText="Stop test when any variant drops below threshold vs control"
-                                            />
-                                            {formData.guardrail_config?.enabled && (
-                                              <div style={{ marginTop: 12 }}>
-                                                <TextField
-                                                  label="Min. drop % to trigger"
-                                                  type="number"
-                                                  value={String(
-                                                    formData.guardrail_config?.minDropPercent ?? 10
-                                                  )}
-                                                  onChange={value =>
-                                                    setFormData(prev => ({
-                                                      ...prev,
-                                                      guardrail_config: {
-                                                        ...prev.guardrail_config,
-                                                        minDropPercent: parseInt(value, 10) || 10,
+                                            <div className={styles.customUrlLogicCallout}>
+                                              <span className={styles.customUrlLogicLabel}>
+                                                How it works
+                                              </span>
+                                              <span className={styles.customUrlLogicText}>
+                                                {isStandalone
+                                                  ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
+                                                  : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
+                                              </span>
+                                            </div>
+                                            {(formData.segments?.page_rules || []).length === 0 ? (
+                                              <div className={styles.customUrlEmptyState}>
+                                                <p className={styles.customUrlEmptyTitle}>
+                                                  No URL rules yet
+                                                </p>
+                                                <p className={styles.customUrlEmptyDesc}>
+                                                  {isStandalone
+                                                    ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
+                                                    : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
+                                                </p>
+                                                <div className={styles.customUrlQuickAdd}>
+                                                  {!isStandalone &&
+                                                    [
+                                                      {
+                                                        label: 'Product pages',
+                                                        pattern: '/products/',
+                                                        match_type: 'starts_with',
+                                                        type: 'include',
                                                       },
-                                                    }))
-                                                  }
-                                                  min={5}
-                                                  max={50}
-                                                  suffix="%"
-                                                  autoComplete="off"
-                                                />
+                                                      {
+                                                        label: 'Sale collection',
+                                                        pattern: '/collections/sale',
+                                                        match_type: 'contains',
+                                                        type: 'include',
+                                                      },
+                                                      {
+                                                        label: 'Exclude checkout',
+                                                        pattern: '/checkout',
+                                                        match_type: 'starts_with',
+                                                        type: 'exclude',
+                                                      },
+                                                    ].map(q => (
+                                                      <button
+                                                        key={q.label}
+                                                        type="button"
+                                                        className={styles.customUrlQuickAddChip}
+                                                        onClick={() => {
+                                                          setIsDirty(true);
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: [
+                                                                ...(prev.segments?.page_rules ||
+                                                                  []),
+                                                                {
+                                                                  type: q.type,
+                                                                  pattern: q.pattern,
+                                                                  match_type: q.match_type,
+                                                                },
+                                                              ],
+                                                            },
+                                                          }));
+                                                        }}
+                                                      >
+                                                        {q.label}
+                                                      </button>
+                                                    ))}
+                                                  {isStandalone && (
+                                                    <p className={styles.customUrlEmptyDesc}>
+                                                      Use &quot;Add rule&quot; below to define path
+                                                      or regex rules. No fixed presets — enter any
+                                                      path (e.g. /blog, /pricing) or regex.
+                                                    </p>
+                                                  )}
+                                                </div>
                                               </div>
+                                            ) : null}
+                                            {(formData.segments?.page_rules || []).length > 0 ? (
+                                              <div className={styles.customUrlRulesList}>
+                                                <span className={styles.customUrlRulesLabel}>
+                                                  {(formData.segments?.page_rules || []).length}{' '}
+                                                  rule
+                                                  {(formData.segments?.page_rules || []).length !==
+                                                  1
+                                                    ? 's'
+                                                    : ''}
+                                                </span>
+                                              </div>
+                                            ) : null}
+                                            {(formData.segments?.page_rules || []).map(
+                                              (rule, idx) => {
+                                                const presets = !isStandalone
+                                                  ? [
+                                                      '/products/',
+                                                      '/collections/',
+                                                      '/cart',
+                                                      HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                      HOMEPAGE_URL_PATTERN_STANDALONE,
+                                                      '',
+                                                    ]
+                                                  : [];
+                                                const matchTypeOptions = isStandalone
+                                                  ? [
+                                                      { label: 'Path contains', value: 'contains' },
+                                                      {
+                                                        label: 'Path starts with',
+                                                        value: 'starts_with',
+                                                      },
+                                                      {
+                                                        label: 'Path ends with',
+                                                        value: 'ends_with',
+                                                      },
+                                                      { label: 'Path equals', value: 'equals' },
+                                                      { label: 'Regex', value: 'regex' },
+                                                    ]
+                                                  : [
+                                                      { label: 'Contains', value: 'contains' },
+                                                      {
+                                                        label: 'Starts with',
+                                                        value: 'starts_with',
+                                                      },
+                                                      { label: 'Ends with', value: 'ends_with' },
+                                                      { label: 'Equals', value: 'equals' },
+                                                      { label: 'Regex', value: 'regex' },
+                                                    ];
+                                                const presetMatchTypes = !isStandalone
+                                                  ? {
+                                                      '': 'regex',
+                                                      '/products/': 'starts_with',
+                                                      '/collections/': 'starts_with',
+                                                      '/cart': 'equals',
+                                                      [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
+                                                      [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
+                                                    }
+                                                  : {};
+                                                return (
+                                                  <div key={idx} className={styles.customRuleRow}>
+                                                    <span
+                                                      className={styles.customRuleNumber}
+                                                      aria-hidden
+                                                    >
+                                                      {idx + 1}
+                                                    </span>
+                                                    <div className={styles.ruleTypeToggle}>
+                                                      <button
+                                                        type="button"
+                                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
+                                                        onClick={() => {
+                                                          setIsDirty(true);
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: [
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(0, idx),
+                                                                { ...rule, type: 'include' },
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(idx + 1),
+                                                              ],
+                                                            },
+                                                          }));
+                                                        }}
+                                                      >
+                                                        Include
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
+                                                        onClick={() => {
+                                                          setIsDirty(true);
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: [
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(0, idx),
+                                                                { ...rule, type: 'exclude' },
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(idx + 1),
+                                                              ],
+                                                            },
+                                                          }));
+                                                        }}
+                                                      >
+                                                        Exclude
+                                                      </button>
+                                                    </div>
+                                                    {!isStandalone && (
+                                                      <Select
+                                                        label=""
+                                                        labelHidden
+                                                        options={[
+                                                          { label: 'All pages', value: '' },
+                                                          {
+                                                            label: 'Product pages',
+                                                            value: '/products/',
+                                                          },
+                                                          {
+                                                            label: 'Collection pages',
+                                                            value: '/collections/',
+                                                          },
+                                                          { label: 'Cart', value: '/cart' },
+                                                          {
+                                                            label: 'Homepage',
+                                                            value: HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                          },
+                                                          {
+                                                            label: 'Custom URL…',
+                                                            value: '__custom__',
+                                                          },
+                                                        ]}
+                                                        value={
+                                                          presets.includes(rule.pattern || '')
+                                                            ? rule.pattern || ''
+                                                            : rule.pattern === ' ' || rule.pattern
+                                                              ? '__custom__'
+                                                              : ''
+                                                        }
+                                                        onChange={v => {
+                                                          setIsDirty(true);
+                                                          const newPattern =
+                                                            v === '__custom__'
+                                                              ? presets.includes(
+                                                                  rule.pattern || ''
+                                                                ) || rule.pattern === ' '
+                                                                ? ' '
+                                                                : rule.pattern || ' '
+                                                              : v;
+                                                          const newMatchType =
+                                                            v === '__custom__'
+                                                              ? rule.match_type || 'contains'
+                                                              : presetMatchTypes[v] || 'regex';
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: [
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(0, idx),
+                                                                {
+                                                                  ...rule,
+                                                                  pattern: newPattern,
+                                                                  match_type: newMatchType,
+                                                                },
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(idx + 1),
+                                                              ],
+                                                            },
+                                                          }));
+                                                        }}
+                                                      />
+                                                    )}
+                                                    <div className={styles.matchTypeSelect}>
+                                                      <Select
+                                                        label=""
+                                                        labelHidden
+                                                        options={matchTypeOptions}
+                                                        value={
+                                                          rule.match_type ||
+                                                          (isStandalone
+                                                            ? 'starts_with'
+                                                            : presets.includes(rule.pattern || '')
+                                                              ? presetMatchTypes[rule.pattern]
+                                                              : 'contains')
+                                                        }
+                                                        onChange={v => {
+                                                          setIsDirty(true);
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: [
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(0, idx),
+                                                                { ...rule, match_type: v },
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(idx + 1),
+                                                              ],
+                                                            },
+                                                          }));
+                                                        }}
+                                                      />
+                                                    </div>
+                                                    <div className={styles.customUrlInputWrap}>
+                                                      <TextField
+                                                        label={
+                                                          isStandalone
+                                                            ? 'Path or regex'
+                                                            : 'URL pattern'
+                                                        }
+                                                        labelHidden
+                                                        value={
+                                                          rule.pattern === ' '
+                                                            ? ''
+                                                            : rule.pattern || ''
+                                                        }
+                                                        onChange={v => {
+                                                          setIsDirty(true);
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: [
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(0, idx),
+                                                                {
+                                                                  ...rule,
+                                                                  pattern: v === '' ? ' ' : v,
+                                                                },
+                                                                ...(
+                                                                  prev.segments?.page_rules || []
+                                                                ).slice(idx + 1),
+                                                              ],
+                                                            },
+                                                          }));
+                                                        }}
+                                                        placeholder={
+                                                          isStandalone
+                                                            ? (rule.match_type || 'starts_with') ===
+                                                              'regex'
+                                                              ? 'e.g. ^/blog, ^/en/.*'
+                                                              : 'e.g. /blog, /pricing, /docs'
+                                                            : (rule.match_type || 'contains') ===
+                                                                'regex'
+                                                              ? 'e.g. ^/products/.* or /collections/sale'
+                                                              : (rule.match_type || 'contains') ===
+                                                                  'contains'
+                                                                ? 'e.g. /products/ or sale'
+                                                                : (rule.match_type ||
+                                                                      'contains') === 'starts_with'
+                                                                  ? 'e.g. /products/ or /collections/'
+                                                                  : (rule.match_type ||
+                                                                        'contains') === 'ends_with'
+                                                                    ? 'e.g. .html or /checkout'
+                                                                    : 'e.g. /cart or /pages/about'
+                                                        }
+                                                        autoComplete="off"
+                                                        helpText={
+                                                          (rule.match_type || 'starts_with') ===
+                                                            'regex' && isStandalone
+                                                            ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
+                                                            : (rule.match_type || 'contains') ===
+                                                                  'regex' && !isStandalone
+                                                              ? 'JavaScript regex. Use ^ for start, $ for end.'
+                                                              : null
+                                                        }
+                                                      />
+                                                    </div>
+                                                    <button
+                                                      type="button"
+                                                      className={styles.removeRuleBtn}
+                                                      onClick={() => {
+                                                        setIsDirty(true);
+                                                        setFormData(prev => ({
+                                                          ...prev,
+                                                          segments: {
+                                                            ...prev.segments,
+                                                            page_rules: (
+                                                              prev.segments?.page_rules || []
+                                                            ).filter((_, i) => i !== idx),
+                                                          },
+                                                        }));
+                                                      }}
+                                                    >
+                                                      Remove
+                                                    </button>
+                                                  </div>
+                                                );
+                                              }
                                             )}
-                                          </div>
-                                        </div>
-                                        <div className={styles.safetySubsection}>
-                                          <span className={styles.safetySubsectionTitle}>
-                                            Data quality
-                                          </span>
-                                          <p className={styles.safetySubsectionHint}>
-                                            Exclude bots, internal traffic, or ramp gradually.
-                                          </p>
-                                          <div className={styles.dataQualityPresets}>
                                             <button
                                               type="button"
-                                              className={`${styles.dataQualityPresetBtn} ${formData.segments?.exclude_bots && formData.segments?.exclude_internal_ips ? styles.dataQualityPresetBtnActive : ''}`}
+                                              className={styles.addRuleBtn}
+                                              onClick={() => {
+                                                setIsDirty(true);
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    page_rules: [
+                                                      ...(prev.segments?.page_rules || []),
+                                                      {
+                                                        type: 'include',
+                                                        pattern: ' ',
+                                                        match_type: isStandalone
+                                                          ? 'starts_with'
+                                                          : 'contains',
+                                                      },
+                                                    ],
+                                                  },
+                                                }));
+                                              }}
+                                            >
+                                              <Icon source={PlusIcon} />
+                                              Add rule
+                                            </button>
+                                          </div>
+                                        );
+                                      })()}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {showAudienceTab && (
+                          <div className={styles.targetingAccordionItem}>
+                            <button
+                              type="button"
+                              id="targeting-tab-audience"
+                              aria-expanded={targetingSectionExpanded.audience}
+                              className={sectionTriggerClass(
+                                'audience',
+                                targetingSectionExpanded.audience
+                              )}
+                              onClick={() => toggleTargetingSectionExpanded('audience')}
+                              title="Audience (2)"
+                            >
+                              <span
+                                className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.audience ? styles.targetingAccordionChevronOpen : ''}`}
+                                aria-hidden
+                              >
+                                <Icon source={ChevronDownIcon} />
+                              </span>
+                              <span className={styles.placementTabStep}>2</span>
+                              <Icon source={PersonIcon} />
+                              <span className={styles.targetingAccordionTriggerLabel}>
+                                Audience
+                              </span>
+                              {((formData.segments?.device || 'all') !== 'all' ||
+                                (formData.segments?.device_rules || []).length > 0 ||
+                                (formData.segments?.customer || 'all') !== 'all' ||
+                                (formData.segments?.countries || []).length > 0 ||
+                                (formData.segments?.traffic_source || 'all') !== 'all' ||
+                                (formData.segments?.operating_system || 'all') !== 'all' ||
+                                hasCustomAudienceRules(formData.segments)) && (
+                                <span className={styles.placementTabDot} />
+                              )}
+                              {renderTargetingIssueBadge('audience')}
+                            </button>
+                            {targetingSectionExpanded.audience && (
+                              <div className={styles.targetingAccordionPanel}>
+                                <div className={styles.placementPanel}>
+                                  <div className={styles.audienceHeader}>
+                                    <div>
+                                      <h4 className={styles.audienceTitle}>Audience</h4>
+                                      <p className={styles.audienceHint}>
+                                        Show test only to certain visitors. Standard filters are
+                                        combined with Custom conditions when both are configured.
+                                      </p>
+                                    </div>
+                                    <div
+                                      className={styles.audienceModeTabs}
+                                      role="tablist"
+                                      aria-label="Audience sections"
+                                    >
+                                      {[
+                                        { label: 'Standard', value: 'standard' },
+                                        { label: 'Custom', value: 'custom' },
+                                      ].map(tab => (
+                                        <button
+                                          key={tab.value}
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={audienceTargetingMode === tab.value}
+                                          className={`${styles.audienceModeTab} ${audienceTargetingMode === tab.value ? styles.audienceModeTabActive : ''}`}
+                                          onClick={() => setAudienceTargetingMode(tab.value)}
+                                        >
+                                          {tab.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  {audienceTargetingMode === 'standard' ? (
+                                    <>
+                                      <div
+                                        className={`${styles.panelSection} ${styles.panelSectionDevice}`}
+                                      >
+                                        <span className={styles.panelSectionTitle}>
+                                          Device Type
+                                        </span>
+                                        <div className={styles.quickSelectChips}>
+                                          {[
+                                            {
+                                              label: 'All Devices',
+                                              value: 'all',
+                                              icon: UnknownDeviceIcon,
+                                            },
+                                            {
+                                              label: 'Desktop',
+                                              value: 'desktop',
+                                              icon: DesktopIcon,
+                                            },
+                                            { label: 'Mobile', value: 'mobile', icon: MobileIcon },
+                                          ].map(({ label, value, icon: DeviceIcon }) => (
+                                            <button
+                                              key={value}
+                                              type="button"
+                                              className={`${styles.quickSelectChip} ${(formData.segments?.device || 'all') === value ? styles.quickSelectChipActive : ''}`}
                                               onClick={() =>
                                                 setFormData(prev => ({
                                                   ...prev,
                                                   segments: {
                                                     ...prev.segments,
-                                                    exclude_bots: true,
-                                                    exclude_internal_ips: true,
+                                                    device: value,
+                                                    device_rules: [],
                                                   },
                                                 }))
                                               }
                                             >
-                                              <span className={styles.dataQualityPresetLabel}>
-                                                Recommended
-                                              </span>
-                                              <span className={styles.dataQualityPresetDesc}>
-                                                Exclude bots + internal IPs
-                                              </span>
+                                              <Icon source={DeviceIcon} />
+                                              {label}
                                             </button>
-                                          </div>
-                                          <BlockStack gap="200">
-                                            <Checkbox
-                                              label="Exclude bot traffic"
-                                              checked={formData.segments?.exclude_bots || false}
-                                              onChange={value =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    exclude_bots: value,
-                                                  },
-                                                }))
-                                              }
-                                              helpText="Filter crawlers and bots by user-agent"
-                                            />
-                                            <Checkbox
-                                              label="Exclude internal IPs"
-                                              checked={
-                                                formData.segments?.exclude_internal_ips || false
-                                              }
-                                              onChange={value =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    exclude_internal_ips: value,
-                                                  },
-                                                }))
-                                              }
-                                              helpText="Filter office/VPN traffic"
-                                            />
-                                            <TextField
-                                              label="Traffic ramp %"
-                                              type="number"
-                                              value={formData.segments?.traffic_ramp_percent ?? ''}
-                                              onChange={value =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    traffic_ramp_percent: value,
-                                                  },
-                                                }))
-                                              }
-                                              placeholder="0"
-                                              min={0}
-                                              max={100}
-                                              suffix="%"
-                                              helpText="Start at this % and ramp to 100%. 0 = no ramp."
-                                              autoComplete="off"
-                                            />
-                                            <TextField
-                                              label="Ramp duration (days)"
-                                              type="number"
-                                              value={String(
-                                                formData.segments?.traffic_ramp_days ?? 7
-                                              )}
-                                              onChange={value =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    traffic_ramp_days: value,
-                                                  },
-                                                }))
-                                              }
-                                              min={1}
-                                              max={30}
-                                              suffix="days"
-                                              helpText="How long to move from ramp % to 100% traffic."
-                                              autoComplete="off"
-                                            />
-                                            <Select
-                                              label="Variation anti-flicker mode"
-                                              options={[
-                                                {
-                                                  label:
-                                                    'Balanced (recommended) - hide for content/offer tests only',
-                                                  value: 'balanced',
-                                                },
-                                                {
-                                                  label:
-                                                    'Strict - hide for all tests (strongest flicker protection)',
-                                                  value: 'strict',
-                                                },
-                                              ]}
-                                              value={
-                                                formData.segments?.anti_flicker_mode || 'balanced'
-                                              }
-                                              onChange={value =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    anti_flicker_mode:
-                                                      value === 'strict' ? 'strict' : 'balanced',
-                                                  },
-                                                }))
-                                              }
-                                              helpText="Strict reduces control flash further but can increase blank-screen time slightly."
-                                            />
-                                            <InlineStack
-                                              align="start"
-                                              gap="200"
-                                              blockAlign="center"
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div
+                                        className={`${styles.panelSection} ${styles.panelSectionAudience}`}
+                                      >
+                                        <span className={styles.panelSectionTitle}>
+                                          Visitor Type
+                                          <TooltipWrapper
+                                            content="New vs returning visitors"
+                                            accessibilityLabel="Customer type help"
+                                          >
+                                            <span
+                                              className={styles.panelSectionInfoIcon}
+                                              aria-hidden="true"
+                                            >
+                                              <Icon source={InfoIcon} />
+                                            </span>
+                                          </TooltipWrapper>
+                                        </span>
+                                        <div className={styles.quickSelectChips}>
+                                          {[
+                                            {
+                                              label: 'All Visitors',
+                                              value: 'all',
+                                              icon: PersonIcon,
+                                              tooltip: 'All',
+                                            },
+                                            {
+                                              label: 'New',
+                                              value: 'new',
+                                              icon: PersonIcon,
+                                              tooltip: 'First visit',
+                                            },
+                                            {
+                                              label: 'Returning',
+                                              value: 'returning',
+                                              icon: PersonIcon,
+                                              tooltip: 'Returning',
+                                            },
+                                          ].map(({ label, value, icon: CustIcon, tooltip }) => (
+                                            <TooltipWrapper
+                                              key={value}
+                                              content={tooltip}
+                                              accessibilityLabel={label}
                                             >
                                               <button
                                                 type="button"
-                                                onClick={() => {
+                                                className={`${styles.quickSelectChip} ${(formData.segments?.customer || 'all') === value ? styles.quickSelectChipActive : ''}`}
+                                                onClick={() =>
                                                   setFormData(prev => ({
                                                     ...prev,
                                                     segments: {
                                                       ...prev.segments,
-                                                      anti_flicker_mode: antiFlickerRecommendedMode,
+                                                      customer: value,
+                                                      audience_rules: [],
                                                     },
-                                                  }));
-                                                  setIsDirty(true);
-                                                  setAntiFlickerToast({
-                                                    type: 'success',
-                                                    message: `Applied recommended anti-flicker mode: ${antiFlickerRecommendedMode}.`,
-                                                  });
-                                                }}
-                                                style={{
-                                                  padding: 0,
-                                                  border: 'none',
-                                                  background: 'transparent',
-                                                  cursor: 'pointer',
-                                                }}
-                                                title={`Apply recommended mode: ${antiFlickerRecommendedMode}`}
+                                                  }))
+                                                }
                                               >
-                                                <Badge
-                                                  tone={
-                                                    antiFlickerRecommendedMode === 'strict'
-                                                      ? 'warning'
-                                                      : 'success'
-                                                  }
-                                                >
-                                                  Best for this test type:{' '}
-                                                  {antiFlickerRecommendedMode}
-                                                </Badge>
+                                                <Icon source={CustIcon} />
+                                                {label}
                                               </button>
-                                              <Text as="span" variant="bodySm" tone="subdued">
-                                                {antiFlickerRecommendationReason}
-                                              </Text>
-                                            </InlineStack>
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              Tip: Use <strong>Balanced</strong> for most price
-                                              tests to protect speed. Use <strong>Strict</strong>{' '}
-                                              for visual/content tests where even brief control
-                                              flashes are unacceptable.
-                                            </Text>
-                                          </BlockStack>
+                                            </TooltipWrapper>
+                                          ))}
                                         </div>
                                       </div>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className={styles.advancedGridGroup}>
-                                  <span className={styles.advancedGridGroupLabel}>
-                                    Saved & reuse
-                                  </span>
-                                </div>
-                                <div
-                                  className={`${styles.advancedSection} ${advancedSectionsOpen.presets ? styles.advancedSectionExpanded : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.advancedSectionHeader}
-                                    onClick={() => toggleAdvancedSection('presets')}
-                                    aria-expanded={advancedSectionsOpen.presets}
-                                  >
-                                    <span
-                                      className={`${styles.advancedSectionIcon} ${styles.advancedSectionIconPresets}`}
-                                    >
-                                      <Icon source={SaveIcon} />
-                                    </span>
-                                    <div className={styles.advancedSectionTitleBlock}>
-                                      <span className={styles.advancedSectionTitle}>
-                                        Saved presets
-                                      </span>
-                                      <p>Save and reuse targeting presets across tests.</p>
-                                    </div>
-                                    <span
-                                      className={`${styles.advancedSectionChevron} ${advancedSectionsOpen.presets ? styles.advancedSectionChevronOpen : ''}`}
-                                    >
-                                      <Icon source={ChevronDownIcon} />
-                                    </span>
-                                  </button>
-                                  {advancedSectionsOpen.presets && (
-                                    <div className={styles.advancedSectionBody}>
-                                      <div className={styles.presetRow}>
-                                        {targetingPresets.length > 0 && (
-                                          <div className={styles.presetSelectWrap}>
-                                            <Select
-                                              label="Load preset"
-                                              value={loadedPresetId}
-                                              options={[
-                                                { label: 'Select a preset...', value: '' },
-                                                ...targetingPresets.map(p => ({
-                                                  label: p.name,
-                                                  value: p.id,
-                                                })),
-                                              ]}
-                                              onChange={id => {
-                                                setLoadedPresetId(id || '');
-                                                if (!id) return;
-                                                const preset = targetingPresets.find(
-                                                  p => p.id === id
-                                                );
-                                                if (!preset) return;
-                                                setFormData(prev => {
-                                                  const next = { ...prev };
-                                                  if (preset.segments) {
-                                                    next.segments = {
-                                                      ...prev.segments,
-                                                      ...preset.segments,
-                                                      countries: preset.segments.countries
-                                                        ? [...(preset.segments.countries || [])]
-                                                        : prev.segments?.countries || [],
-                                                    };
-                                                  }
-                                                  if (
-                                                    preset.goal &&
-                                                    typeof preset.goal === 'object'
-                                                  ) {
-                                                    next.goal = { ...prev.goal, ...preset.goal };
-                                                  }
-                                                  if (
-                                                    preset.variants &&
-                                                    Array.isArray(preset.variants) &&
-                                                    preset.variants.length > 0
-                                                  ) {
-                                                    next.variants = preset.variants.map(v => ({
-                                                      ...v,
-                                                    }));
-                                                  }
-                                                  return next;
-                                                });
-                                              }}
-                                            />
-                                          </div>
-                                        )}
-                                        <Button
-                                          variant="secondary"
-                                          onClick={() => {
-                                            setSavePresetName('');
-                                            setSavePresetModalOpen(true);
-                                          }}
-                                          icon={SaveIcon}
-                                        >
-                                          Save as preset
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className={styles.advancedGridGroup}>
-                                  <span className={styles.advancedGridGroupLabel}>Power user</span>
-                                </div>
-                                <div
-                                  className={`${styles.advancedSection} ${advancedSectionsOpen.jsTargeting ? styles.advancedSectionExpanded : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.advancedSectionHeader}
-                                    onClick={() => toggleAdvancedSection('jsTargeting')}
-                                    aria-expanded={advancedSectionsOpen.jsTargeting}
-                                  >
-                                    <span
-                                      className={`${styles.advancedSectionIcon} ${styles.advancedSectionIconCode}`}
-                                    >
-                                      <Icon source={CodeIcon} />
-                                    </span>
-                                    <div className={styles.advancedSectionTitleBlock}>
-                                      <span className={styles.advancedSectionTitle}>
-                                        JavaScript targeting
-                                        {formData.segments?.js_targeting?.enabled && (
-                                          <span className={styles.advancedSectionConfigured}>
-                                            Active
-                                          </span>
-                                        )}
-                                      </span>
-                                      <p>
-                                        Custom JS for eligibility. Return true/false. Has: location,
-                                        document, navigator, getDeviceType(), getCountryCode(),
-                                        getTrafficSource().
-                                      </p>
-                                    </div>
-                                    <span
-                                      className={`${styles.advancedSectionChevron} ${advancedSectionsOpen.jsTargeting ? styles.advancedSectionChevronOpen : ''}`}
-                                    >
-                                      <Icon source={ChevronDownIcon} />
-                                    </span>
-                                  </button>
-                                  {advancedSectionsOpen.jsTargeting && (
-                                    <div className={styles.advancedSectionBody}>
-                                      <Checkbox
-                                        label="Enable JavaScript targeting"
-                                        checked={formData.segments?.js_targeting?.enabled || false}
-                                        onChange={v =>
-                                          setFormData({
-                                            ...formData,
-                                            segments: {
-                                              ...formData.segments,
-                                              js_targeting: {
-                                                ...formData.segments?.js_targeting,
-                                                enabled: v,
-                                                code:
-                                                  formData.segments?.js_targeting?.code ||
-                                                  'return window.innerWidth > 768;',
-                                              },
-                                            },
-                                          })
-                                        }
-                                      />
-                                      {formData.segments?.js_targeting?.enabled && (
-                                        <div style={{ marginTop: 8 }}>
-                                          <TextField
-                                            label="JavaScript code (must return boolean)"
-                                            value={formData.segments?.js_targeting?.code || ''}
-                                            onChange={v =>
-                                              setFormData({
-                                                ...formData,
-                                                segments: {
-                                                  ...formData.segments,
-                                                  js_targeting: {
-                                                    ...formData.segments?.js_targeting,
-                                                    code: v,
-                                                  },
-                                                },
-                                              })
-                                            }
-                                            placeholder="return window.innerWidth > 768; // desktop only"
-                                            multiline={6}
-                                            autoComplete="off"
-                                          />
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div
-                                  className={`${styles.advancedSection} ${advancedSectionsOpen.traffic ? styles.advancedSectionExpanded : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.advancedSectionHeader}
-                                    onClick={() => toggleAdvancedSection('traffic')}
-                                    aria-expanded={advancedSectionsOpen.traffic}
-                                  >
-                                    <span
-                                      className={`${styles.advancedSectionIcon} ${styles.advancedSectionIconTraffic}`}
-                                    >
-                                      <Icon source={FilterIcon} />
-                                    </span>
-                                    <div className={styles.advancedSectionTitleBlock}>
-                                      <span className={styles.advancedSectionTitle}>
-                                        Traffic & URL
-                                        {(formData.segments?.traffic_source || 'all') !== 'all' ||
-                                        (formData.segments?.url_pattern &&
-                                          formData.segments.url_pattern !== ' ' &&
-                                          String(formData.segments.url_pattern).trim() !== '') ||
-                                        Number(formData.segments?.min_sessions) > 0 ? (
-                                          <span className={styles.advancedSectionConfigured}>
-                                            Configured
-                                          </span>
-                                        ) : null}
-                                      </span>
-                                      <p>
-                                        Override: filter by traffic source, URL regex, or min
-                                        sessions. Overrides basic page targeting.
-                                      </p>
-                                    </div>
-                                    <span
-                                      className={`${styles.advancedSectionChevron} ${advancedSectionsOpen.traffic ? styles.advancedSectionChevronOpen : ''}`}
-                                    >
-                                      <Icon source={ChevronDownIcon} />
-                                    </span>
-                                  </button>
-                                  {advancedSectionsOpen.traffic && (
-                                    <div className={styles.advancedSectionBody}>
-                                      <BlockStack gap="200">
-                                        <Select
-                                          label="Traffic source"
-                                          options={[
-                                            { label: 'All traffic', value: 'all' },
-                                            { label: 'Organic (search, direct)', value: 'organic' },
-                                            { label: 'Paid (ads)', value: 'paid' },
-                                            { label: 'Social', value: 'social' },
-                                            { label: 'Email', value: 'email' },
-                                            { label: 'Referral', value: 'referral' },
-                                          ]}
-                                          value={formData.segments?.traffic_source || 'all'}
-                                          onChange={value =>
-                                            setFormData({
-                                              ...formData,
-                                              segments: {
-                                                ...formData.segments,
-                                                traffic_source: value,
-                                              },
-                                            })
-                                          }
-                                          helpText="Run test only for visitors from specific sources"
-                                        />
-                                        <TextField
-                                          label="URL pattern (regex)"
-                                          value={
-                                            formData.segments?.url_pattern === ' '
-                                              ? ''
-                                              : formData.segments?.url_pattern || ''
-                                          }
-                                          onChange={value =>
-                                            setFormData({
-                                              ...formData,
-                                              segments: {
-                                                ...formData.segments,
-                                                url_pattern: value,
-                                              },
-                                            })
-                                          }
-                                          placeholder="e.g. /products/.* or /collections/sale"
-                                          helpText="Override basic page targeting. Ignored when using page rules above."
-                                          autoComplete="off"
-                                        />
-                                        <TextField
-                                          label="Min. sessions per visitor"
-                                          type="number"
-                                          value={formData.segments?.min_sessions ?? ''}
-                                          onChange={value =>
-                                            setFormData({
-                                              ...formData,
-                                              segments: {
-                                                ...formData.segments,
-                                                min_sessions: value,
-                                              },
-                                            })
-                                          }
-                                          placeholder="0"
-                                          min={0}
-                                          helpText="Only include visitors with at least this many sessions. 0 = everyone."
-                                          autoComplete="off"
-                                        />
-                                      </BlockStack>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div
-                                  className={`${styles.advancedSection} ${advancedSectionsOpen.customRules ? styles.advancedSectionExpanded : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.advancedSectionHeader}
-                                    onClick={() => toggleAdvancedSection('customRules')}
-                                    aria-expanded={advancedSectionsOpen.customRules}
-                                  >
-                                    <span
-                                      className={`${styles.advancedSectionIcon} ${styles.advancedSectionIconCustom}`}
-                                    >
-                                      <Icon source={DataTableIcon} />
-                                    </span>
-                                    <div className={styles.advancedSectionTitleBlock}>
-                                      <span className={styles.advancedSectionTitle}>
-                                        Custom rules
-                                        {(formData.segments?.custom_rules || []).length > 0 && (
-                                          <span className={styles.advancedSectionCount}>
-                                            {(formData.segments?.custom_rules || []).length}
-                                          </span>
-                                        )}
-                                      </span>
-                                      <p>
-                                        Field-based conditions: URL, referrer, device, country, UTM.
-                                        All rules are AND-combined.
-                                      </p>
-                                    </div>
-                                    <span
-                                      className={`${styles.advancedSectionChevron} ${advancedSectionsOpen.customRules ? styles.advancedSectionChevronOpen : ''}`}
-                                    >
-                                      <Icon source={ChevronDownIcon} />
-                                    </span>
-                                  </button>
-                                  {advancedSectionsOpen.customRules && (
-                                    <div className={styles.advancedSectionBody}>
-                                      {(formData.segments?.custom_rules || []).length === 0 && (
-                                        <div className={styles.advancedEmptyState}>
-                                          <p>
-                                            No custom rules yet. Add rules to fine-tune targeting
-                                            with field, operator, and value.
-                                          </p>
-                                        </div>
-                                      )}
-                                      {(formData.segments?.custom_rules || []).map((rule, idx) => (
-                                        <div key={idx} className={styles.customRuleRow}>
-                                          <Select
-                                            label=""
-                                            labelHidden
-                                            options={[
-                                              { label: 'URL', value: 'current_url' },
-                                              { label: 'Referrer', value: 'referrer' },
-                                              { label: 'Device', value: 'device' },
-                                              { label: 'Country', value: 'country' },
-                                              { label: 'Traffic source', value: 'traffic_source' },
-                                              { label: 'UTM source', value: 'utm_source' },
-                                              { label: 'UTM medium', value: 'utm_medium' },
-                                            ]}
-                                            value={rule.field || 'current_url'}
-                                            onChange={v =>
-                                              setFormData({
-                                                ...formData,
-                                                segments: {
-                                                  ...formData.segments,
-                                                  custom_rules: [
-                                                    ...(
-                                                      formData.segments?.custom_rules || []
-                                                    ).slice(0, idx),
-                                                    { ...rule, field: v },
-                                                    ...(
-                                                      formData.segments?.custom_rules || []
-                                                    ).slice(idx + 1),
-                                                  ],
-                                                },
-                                              })
-                                            }
-                                          />
-                                          <Select
-                                            label=""
-                                            labelHidden
-                                            options={[
-                                              { label: 'equals', value: 'equals' },
-                                              { label: 'contains', value: 'contains' },
-                                              { label: 'regex', value: 'regex' },
-                                              { label: 'in', value: 'in' },
-                                            ]}
-                                            value={rule.operator || 'equals'}
-                                            onChange={v =>
-                                              setFormData({
-                                                ...formData,
-                                                segments: {
-                                                  ...formData.segments,
-                                                  custom_rules: [
-                                                    ...(
-                                                      formData.segments?.custom_rules || []
-                                                    ).slice(0, idx),
-                                                    { ...rule, operator: v },
-                                                    ...(
-                                                      formData.segments?.custom_rules || []
-                                                    ).slice(idx + 1),
-                                                  ],
-                                                },
-                                              })
-                                            }
-                                          />
-                                          <div style={{ flex: 1, minWidth: 120 }}>
-                                            <TextField
-                                              label=""
-                                              labelHidden
-                                              value={
-                                                Array.isArray(rule.value)
-                                                  ? rule.value.join(', ')
-                                                  : typeof rule.value === 'string'
-                                                    ? rule.value
-                                                    : String(rule.value || '')
-                                              }
-                                              onChange={v =>
-                                                setFormData({
-                                                  ...formData,
-                                                  segments: {
-                                                    ...formData.segments,
-                                                    custom_rules: [
-                                                      ...(
-                                                        formData.segments?.custom_rules || []
-                                                      ).slice(0, idx),
-                                                      {
-                                                        ...rule,
-                                                        value:
-                                                          rule.operator === 'in'
-                                                            ? v
-                                                                .split(',')
-                                                                .map(s => s.trim())
-                                                                .filter(Boolean)
-                                                            : v,
-                                                      },
-                                                      ...(
-                                                        formData.segments?.custom_rules || []
-                                                      ).slice(idx + 1),
-                                                    ],
-                                                  },
-                                                })
-                                              }
-                                              placeholder="Value"
-                                              autoComplete="off"
-                                            />
-                                          </div>
-                                          <button
-                                            type="button"
-                                            className={styles.removeRuleBtn}
-                                            onClick={() =>
-                                              setFormData({
-                                                ...formData,
-                                                segments: {
-                                                  ...formData.segments,
-                                                  custom_rules: (
-                                                    formData.segments?.custom_rules || []
-                                                  ).filter((_, i) => i !== idx),
-                                                },
-                                              })
-                                            }
-                                          >
-                                            Remove
-                                          </button>
-                                        </div>
-                                      ))}
-                                      <button
-                                        type="button"
-                                        className={styles.addRuleBtn}
-                                        onClick={() =>
-                                          setFormData({
-                                            ...formData,
-                                            segments: {
-                                              ...formData.segments,
-                                              custom_rules: [
-                                                ...(formData.segments?.custom_rules || []),
-                                                {
-                                                  field: 'current_url',
-                                                  operator: 'contains',
-                                                  value: '',
-                                                },
-                                              ],
-                                            },
-                                          })
-                                        }
+                                      <div
+                                        className={`${styles.panelSection} ${styles.panelSectionFull}`}
                                       >
-                                        <Icon source={PlusIcon} />
-                                        Add rule
-                                      </button>
+                                        <span className={styles.panelSectionTitle}>
+                                          Source Sites
+                                        </span>
+                                        <div className={styles.quickSelectChips}>
+                                          {AUDIENCE_SOURCE_OPTIONS.map(option => (
+                                            <button
+                                              key={option.value}
+                                              type="button"
+                                              className={`${styles.quickSelectChip} ${(formData.segments?.traffic_source || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
+                                              onClick={() =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    traffic_source: option.value,
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              {option.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div
+                                        className={`${styles.panelSection} ${styles.panelSectionFull}`}
+                                      >
+                                        <span className={styles.panelSectionTitle}>
+                                          Operating System
+                                        </span>
+                                        <div className={styles.quickSelectChips}>
+                                          {AUDIENCE_OS_OPTIONS.map(option => (
+                                            <button
+                                              key={option.value}
+                                              type="button"
+                                              className={`${styles.quickSelectChip} ${(formData.segments?.operating_system || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
+                                              onClick={() =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    operating_system: option.value,
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              {option.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div
+                                        className={`${styles.panelSection} ${styles.panelSectionFull}`}
+                                      >
+                                        <span className={styles.panelSectionTitle}>
+                                          Countries (optional)
+                                          <TooltipWrapper
+                                            content="ISO 3166-1 alpha-2 codes are stored (e.g. US, GB). Search by full name or code. Leave empty for all countries. Multi-select by name; RipX still matches visitors using the same short country codes as before."
+                                            accessibilityLabel="Countries help"
+                                          >
+                                            <span
+                                              className={styles.panelSectionInfoIcon}
+                                              aria-hidden="true"
+                                            >
+                                              <Icon source={InfoIcon} />
+                                            </span>
+                                          </TooltipWrapper>
+                                        </span>
+                                        <div className={styles.countriesBlock}>
+                                          <AudienceCountryMultiSelect
+                                            value={formData.segments?.countries || []}
+                                            onChange={codes =>
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                segments: {
+                                                  ...prev.segments,
+                                                  countries: codes,
+                                                },
+                                              }))
+                                            }
+                                          />
+                                        </div>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div
+                                      className={`${styles.panelSection} ${styles.panelSectionFull}`}
+                                    >
+                                      <span className={styles.panelSectionTitle}>
+                                        Visitors matching the following set of conditions
+                                        <TooltipWrapper
+                                          content="Add field-based rules for URL params, referrer, device, country, or UTM values. Groups are AND-combined; use OR inside a group when any condition should qualify."
+                                          accessibilityLabel="Custom audience conditions help"
+                                        >
+                                          <span
+                                            className={styles.panelSectionInfoIcon}
+                                            aria-hidden="true"
+                                          >
+                                            <Icon source={InfoIcon} />
+                                          </span>
+                                        </TooltipWrapper>
+                                      </span>
+                                      <CustomRuleBuilder
+                                        styles={styles}
+                                        groups={resolveCustomRuleGroupsFromSegments(
+                                          formData.segments
+                                        )}
+                                        rules={formData.segments?.custom_rules || []}
+                                        standardSegments={{
+                                          device: formData.segments?.device,
+                                          countries: formData.segments?.countries,
+                                          traffic_source: formData.segments?.traffic_source,
+                                          operating_system: formData.segments?.operating_system,
+                                        }}
+                                        onChangeGroups={groups => {
+                                          setIsDirty(true);
+                                          setFormData(prev => ({
+                                            ...prev,
+                                            segments: syncSegmentsCustomAudience(
+                                              prev.segments,
+                                              groups
+                                            ),
+                                          }));
+                                        }}
+                                      />
                                     </div>
                                   )}
                                 </div>
                               </div>
-                            </div>
+                            )}
                           </div>
+                        )}
+
+                        <div className={styles.targetingAccordionItem}>
+                          <button
+                            type="button"
+                            id="targeting-tab-holdout"
+                            aria-expanded={targetingSectionExpanded.holdout}
+                            className={sectionTriggerClass(
+                              'holdout',
+                              targetingSectionExpanded.holdout,
+                              styles.placementTabHoldout
+                            )}
+                            onClick={() => toggleTargetingSectionExpanded('holdout')}
+                            title={`Holdout (${isStandalone ? 2 : 3})`}
+                          >
+                            <span
+                              className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.holdout ? styles.targetingAccordionChevronOpen : ''}`}
+                              aria-hidden
+                            >
+                              <Icon source={ChevronDownIcon} />
+                            </span>
+                            <span className={styles.placementTabStep}>{isStandalone ? 2 : 3}</span>
+                            <Icon source={LockIcon} />
+                            <span className={styles.targetingAccordionTriggerLabel}>Holdout</span>
+                            {(Number(holdoutValue) || 0) > 0 && (
+                              <span className={styles.placementTabDot} />
+                            )}
+                            {renderTargetingIssueBadge('holdout')}
+                          </button>
+                          {targetingSectionExpanded.holdout && (
+                            <div className={styles.targetingAccordionPanel}>
+                              <div id="targeting-holdout">
+                                <div
+                                  key="holdout"
+                                  id="targeting-panel-holdout"
+                                  className={`${styles.targetingPanel} ${styles.targetingPanelHoldout}`}
+                                  role="tabpanel"
+                                  aria-labelledby="targeting-tab-holdout"
+                                >
+                                  <div className={styles.targetingPanelHeader}>
+                                    <div className={styles.holdoutHeaderCompact}>
+                                      <div className={styles.holdoutHeaderCopy}>
+                                        <h4 className={styles.targetingPanelTitle}>
+                                          Holdout
+                                          <TooltipWrapper
+                                            content="Visitors in the control group never see any test variant. Reserve visitors who never see a variant for a true control. 10% is a common baseline."
+                                            accessibilityLabel="Holdout percentage help"
+                                          >
+                                            <span
+                                              className={styles.panelSectionInfoIcon}
+                                              aria-hidden="true"
+                                            >
+                                              <Icon source={InfoIcon} />
+                                            </span>
+                                          </TooltipWrapper>
+                                        </h4>
+                                      </div>
+                                      <span
+                                        className={styles.holdoutSummaryPill}
+                                        aria-live="polite"
+                                      >
+                                        {holdoutValue || 0}% reserved
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className={styles.targetingPanelBody}>
+                                    <div className={styles.holdoutCard}>
+                                      <div className={styles.holdoutCompactToolbar}>
+                                        <div className={styles.holdoutQuickPresets}>
+                                          {[
+                                            { pct: 0, label: '0%', tooltip: 'No holdout' },
+                                            {
+                                              pct: 10,
+                                              label: '10%',
+                                              recommended: true,
+                                              tooltip: 'Recommended',
+                                            },
+                                            { pct: 25, label: '25%', tooltip: 'Larger control' },
+                                            { pct: 50, label: '50%', tooltip: 'Max holdout' },
+                                          ].map(({ pct, label, recommended, tooltip }) => (
+                                            <TooltipWrapper
+                                              key={pct}
+                                              content={tooltip}
+                                              accessibilityLabel={`Holdout ${label}`}
+                                            >
+                                              <button
+                                                type="button"
+                                                className={`${styles.holdoutPresetBtn} ${Number(holdoutValue) === pct ? styles.holdoutPresetBtnActive : ''}`}
+                                                onClick={() =>
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    holdout_percent: pct,
+                                                  }))
+                                                }
+                                              >
+                                                {label}
+                                                {recommended && (
+                                                  <span className={styles.holdoutPresetRecommended}>
+                                                    Best
+                                                  </span>
+                                                )}
+                                              </button>
+                                            </TooltipWrapper>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div className={styles.holdoutControlRow}>
+                                        <div className={styles.holdoutValueInput}>
+                                          <input
+                                            type="number"
+                                            className={styles.holdoutNumberInput}
+                                            min={0}
+                                            max={50}
+                                            value={holdoutValue ?? ''}
+                                            onChange={e =>
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                holdout_percent: e.target.value,
+                                              }))
+                                            }
+                                            aria-label="Holdout percentage"
+                                          />
+                                          <span className={styles.holdoutPercentSuffix}>%</span>
+                                        </div>
+                                        <div className={styles.holdoutSliderColumn}>
+                                          <input
+                                            type="range"
+                                            className={styles.holdoutSlider}
+                                            min={0}
+                                            max={50}
+                                            value={Math.min(
+                                              50,
+                                              Math.max(0, Number(holdoutValue) || 0)
+                                            )}
+                                            onChange={e =>
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                holdout_percent: e.target.value,
+                                              }))
+                                            }
+                                            aria-label="Holdout percentage slider"
+                                          />
+                                          <div className={styles.holdoutSliderLabels}>
+                                            <span>0%</span>
+                                            <span>25%</span>
+                                            <span>50%</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {!isStandalone && (
+                                      <div className={styles.holdoutRecommendedBanner}>
+                                        <span className={styles.holdoutRecommendedText}>
+                                          {isShippingTestType
+                                            ? isShippingStorewideAdvanced
+                                              ? 'Quick apply: Storewide + 10% holdout'
+                                              : 'Quick apply: Selected products + 10% holdout'
+                                            : 'Quick apply: Product pages + 10% holdout'}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className={styles.holdoutRecommendedBtn}
+                                          onClick={() => {
+                                            setCustomUrlModeActive(false);
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: isShippingTestType
+                                                ? isShippingStorewideAdvanced
+                                                  ? 'all-products'
+                                                  : 'product'
+                                                : 'all-products',
+                                              target_id: '',
+                                              target_ids: null,
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: isShippingTestType ? '' : '/products/',
+                                                page_rules: [],
+                                                device: 'all',
+                                                customer: 'all',
+                                              },
+                                              holdout_percent: 10,
+                                            }));
+                                          }}
+                                        >
+                                          Apply recommended
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className={styles.targetingAccordionItem}>
+                          <button
+                            type="button"
+                            id="targeting-tab-advanced"
+                            aria-expanded={targetingSectionExpanded.advanced}
+                            className={sectionTriggerClass(
+                              'advanced',
+                              targetingSectionExpanded.advanced,
+                              styles.placementTabAdvanced
+                            )}
+                            onClick={() => toggleTargetingSectionExpanded('advanced')}
+                            title={`Advanced (${isStandalone ? 3 : 4})`}
+                          >
+                            <span
+                              className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.advanced ? styles.targetingAccordionChevronOpen : ''}`}
+                              aria-hidden
+                            >
+                              <Icon source={ChevronDownIcon} />
+                            </span>
+                            <span className={styles.placementTabStep}>{isStandalone ? 3 : 4}</span>
+                            <Icon source={CodeIcon} />
+                            <span className={styles.targetingAccordionTriggerLabel}>
+                              Advanced targeting
+                            </span>
+                            {advancedSectionHasActivity(formData) && (
+                              <span className={styles.placementTabDot} />
+                            )}
+                            {renderTargetingIssueBadge('advanced')}
+                          </button>
+                          {targetingSectionExpanded.advanced && (
+                            <div className={styles.targetingAccordionPanel}>
+                              <div id="targeting-advanced">
+                                <div
+                                  id="targeting-panel-advanced"
+                                  className={`${styles.targetingPanel} ${styles.targetingPanelAdvanced}`}
+                                  role="tabpanel"
+                                  aria-labelledby="targeting-tab-advanced"
+                                >
+                                  <div className={styles.targetingPanelHeader}>
+                                    <h4 className={styles.targetingPanelTitle}>
+                                      Advanced targeting studio
+                                      <TooltipWrapper
+                                        content="Optional guardrails, rollout controls, URL/session overrides, JavaScript eligibility, and saved presets."
+                                        accessibilityLabel="Advanced targeting help"
+                                      >
+                                        <span
+                                          className={styles.panelSectionInfoIcon}
+                                          aria-hidden="true"
+                                        >
+                                          <Icon source={InfoIcon} />
+                                        </span>
+                                      </TooltipWrapper>
+                                    </h4>
+                                  </div>
+                                  <div className={styles.targetingPanelBody}>
+                                    <AdvancedTargetingStudio
+                                      styles={styles}
+                                      formData={formData}
+                                      setFormData={setFormData}
+                                      setIsDirty={setIsDirty}
+                                      activeSection={advancedStudioSection}
+                                      onSelectSection={setAdvancedStudioSection}
+                                      targetingPresets={targetingPresets}
+                                      loadedPresetId={loadedPresetId}
+                                      onLoadedPresetIdChange={setLoadedPresetId}
+                                      onOpenSavePreset={() => {
+                                        setSavePresetName('');
+                                        setSavePresetModalOpen(true);
+                                      }}
+                                      antiFlickerRecommendedMode={antiFlickerRecommendedMode}
+                                      antiFlickerRecommendationReason={
+                                        antiFlickerRecommendationReason
+                                      }
+                                      onAntiFlickerApplied={mode => {
+                                        setAntiFlickerToast({
+                                          type: 'success',
+                                          message: `Applied recommended anti-flicker mode: ${mode}.`,
+                                        });
+                                      }}
+                                      onJumpToAudienceCustom={jumpToAudienceCustom}
+                                      showAudienceCustomLink={!isStandalone}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
+                    </TargetingStepLayout>
                   </div>
-                </div>
-                <Modal
-                  open={savePresetModalOpen}
-                  onClose={() => {
-                    setSavePresetModalOpen(false);
-                    setSavePresetAsFullTemplate(false);
-                  }}
-                  title="Save targeting preset"
-                  primaryAction={{
-                    content: 'Save',
-                    disabled: !savePresetName.trim(),
-                    onAction: async () => {
-                      if (!savePresetName.trim()) return;
-                      try {
-                        await apiPost('/targeting-presets', {
-                          name: savePresetName.trim(),
-                          segments: formData.segments,
-                          ...(savePresetAsFullTemplate && {
-                            goal: formData.goal,
-                            variants: formData.variants,
-                          }),
-                        });
-                        const res = await apiGet('/targeting-presets');
-                        setTargetingPresets(res.data?.presets || []);
-                        setSavePresetModalOpen(false);
-                        setSavePresetName('');
-                        setSavePresetAsFullTemplate(false);
-                      } catch (err) {
-                        setError(err?.response?.data?.error || 'Failed to save preset');
-                      }
-                    },
-                  }}
-                  secondaryActions={[
-                    {
-                      content: 'Cancel',
-                      onAction: () => {
-                        setSavePresetModalOpen(false);
-                        setSavePresetAsFullTemplate(false);
+                  <Modal
+                    open={savePresetModalOpen}
+                    onClose={() => {
+                      setSavePresetModalOpen(false);
+                      setSavePresetAsFullTemplate(false);
+                    }}
+                    title="Save targeting preset"
+                    primaryAction={{
+                      content: 'Save',
+                      disabled: !savePresetName.trim(),
+                      onAction: async () => {
+                        if (!savePresetName.trim()) return;
+                        try {
+                          await apiPost('/targeting-presets', {
+                            name: savePresetName.trim(),
+                            segments: formData.segments,
+                            ...(savePresetAsFullTemplate && {
+                              goal: formData.goal,
+                              variants: formData.variants,
+                            }),
+                          });
+                          const res = await apiGet('/targeting-presets');
+                          setTargetingPresets(res.data?.presets || []);
+                          setSavePresetModalOpen(false);
+                          setSavePresetName('');
+                          setSavePresetAsFullTemplate(false);
+                        } catch (err) {
+                          setError(err?.response?.data?.error || 'Failed to save preset');
+                        }
                       },
-                    },
-                  ]}
-                >
-                  <Modal.Section>
-                    <BlockStack gap="300">
-                      <TextField
-                        label="Preset name"
-                        value={savePresetName}
-                        onChange={setSavePresetName}
-                        placeholder="e.g. Mobile US, Desktop returning"
-                        autoComplete="off"
-                      />
-                      <Checkbox
-                        label="Include goal and variants (full test template)"
-                        checked={savePresetAsFullTemplate}
-                        onChange={setSavePresetAsFullTemplate}
-                        helpText="When checked, saves metric, statistical design, and variant config for reuse"
-                      />
-                    </BlockStack>
-                  </Modal.Section>
-                </Modal>
+                    }}
+                    secondaryActions={[
+                      {
+                        content: 'Cancel',
+                        onAction: () => {
+                          setSavePresetModalOpen(false);
+                          setSavePresetAsFullTemplate(false);
+                        },
+                      },
+                    ]}
+                  >
+                    <Modal.Section>
+                      <BlockStack gap="300">
+                        <TextField
+                          label="Preset name"
+                          value={savePresetName}
+                          onChange={setSavePresetName}
+                          placeholder="e.g. Mobile US, Desktop returning"
+                          autoComplete="off"
+                        />
+                        <Checkbox
+                          label="Include goal and variants (full test template)"
+                          checked={savePresetAsFullTemplate}
+                          onChange={setSavePresetAsFullTemplate}
+                          helpText="When checked, saves metric, statistical design, and variant config for reuse"
+                        />
+                      </BlockStack>
+                    </Modal.Section>
+                  </Modal>
+                </div>
               </div>
             </div>
           </div>
@@ -8323,7 +7864,7 @@ function TestWizard({
                 <span className={styles.goalHeroSubtitle}>
                   Setup
                   <TooltipWrapper
-                    content="Choose the one metric that decides the winner, then add only the secondary and guardrail events that should change how you read the result."
+                    content="Choose the winner metric, optionally add one business secondary, then add event goals and decision rules."
                     accessibilityLabel="Decision setup help"
                     preferredPosition="above"
                   >
@@ -8365,7 +7906,12 @@ function TestWizard({
                   >
                     <span>1</span>
                     <strong>Winner metric</strong>
-                    <small>{selectedPrimaryMetric.label}</small>
+                    <small>
+                      {selectedPrimaryMetric.label}
+                      {selectedSecondaryBusinessMetricOption
+                        ? ` · ${selectedSecondaryBusinessMetricOption.label} secondary`
+                        : ''}
+                    </small>
                   </a>
                   <a
                     href="#goal-supporting-events"
@@ -8413,58 +7959,106 @@ function TestWizard({
                     <div>
                       <span className={styles.goalSectionGroupTitle}>Primary metric</span>
                       <h4>Choose the winner metric</h4>
-                      <p>Pick the one outcome that decides which variant wins.</p>
+                      <p>Choose winner and optional secondary readout.</p>
                     </div>
-                    <Badge tone="success">{selectedPrimaryMetric.label}</Badge>
+                    <InlineStack gap="100" blockAlign="center">
+                      <Badge tone="success">
+                        {selectedSecondaryBusinessMetricOption
+                          ? `${selectedPrimaryMetric.label} + ${selectedSecondaryBusinessMetricOption.label}`
+                          : selectedPrimaryMetric.label}
+                      </Badge>
+                      <TooltipWrapper content={primaryGoalMetricHint}>
+                        <span className={styles.goalHeaderInfoIcon} tabIndex={0}>
+                          <Icon source={InfoIcon} />
+                        </span>
+                      </TooltipWrapper>
+                    </InlineStack>
                   </div>
                   <div className={styles.formSection}>
                     <div className={styles.metricPresets}>
                       {primaryMetricOptions.map(
-                        ({ label, value, desc, recommended, icon: IconCmp }) => {
+                        ({ label, value, desc, recommended, icon: IconCmp, ...optionMeta }) => {
                           const isActive = (formData.goal?.metric || 'revenue') === value;
                           return (
-                            <button
+                            <TooltipWrapper
                               key={value}
-                              type="button"
-                              className={`${styles.metricPresetChip} ${isActive ? styles.metricPresetChipActive : ''}`}
-                              onClick={() =>
-                                setFormData({
-                                  ...formData,
-                                  goal: { ...(formData.goal || {}), metric: value },
-                                })
-                              }
-                              aria-pressed={isActive}
-                              aria-label={`${label}: ${desc}. ${isActive ? 'Selected' : 'Click to select'}`}
+                              content={buildGoalMetricTooltip({
+                                label,
+                                value,
+                                desc,
+                                recommended,
+                                ...optionMeta,
+                              })}
                             >
-                              {recommended && (
-                                <span className={styles.metricRecommendationPill}>Best fit</span>
-                              )}
-                              <span className={styles.metricPresetIcon}>
-                                <Icon source={IconCmp} />
-                              </span>
-                              <span className={styles.metricPresetLabel}>{label}</span>
-                              <span className={styles.metricPresetDesc}>{desc}</span>
-                            </button>
+                              <button
+                                type="button"
+                                className={`${styles.metricPresetChip} ${isActive ? styles.metricPresetChipActive : ''}`}
+                                onClick={() => setPrimaryGoalMetric(value)}
+                                aria-pressed={isActive}
+                                aria-label={`${label}: ${desc}. ${isActive ? 'Selected' : 'Click to select'}`}
+                              >
+                                {recommended && (
+                                  <span className={styles.metricRecommendationPill}>Best fit</span>
+                                )}
+                                <span className={styles.metricPresetIcon}>
+                                  <Icon source={IconCmp} />
+                                </span>
+                                <span className={styles.metricPresetLabel}>{label}</span>
+                              </button>
+                            </TooltipWrapper>
                           );
                         }
                       )}
                     </div>
-                    <div className={styles.metricActiveSummary}>
-                      <span>
-                        <Icon source={DataTableIcon} />
-                        Using <strong>{selectedPrimaryMetric.label}</strong>
-                      </span>
-                      <small>
-                        {selectedPrimaryMetric.interpretation} Data needed:{' '}
-                        {selectedPrimaryMetric.requiredData}.
-                      </small>
+                    <div className={styles.goalSecondaryMetricSection}>
+                      <div className={styles.goalSecondaryMetricHeader}>
+                        <InlineStack gap="100" blockAlign="center">
+                          <Text as="span" variant="bodySm" fontWeight="semibold">
+                            Secondary metric (optional)
+                          </Text>
+                          <TooltipWrapper content="Choose one complementary readout from the remaining winner metrics.">
+                            <span className={styles.goalHeaderInfoIcon} tabIndex={0}>
+                              <Icon source={InfoIcon} />
+                            </span>
+                          </TooltipWrapper>
+                        </InlineStack>
+                      </div>
+                      <div className={styles.metricSecondaryChoices}>
+                        <button
+                          type="button"
+                          className={`${styles.metricSecondaryChip} ${
+                            !selectedSecondaryBusinessMetric ? styles.metricSecondaryChipActive : ''
+                          }`}
+                          onClick={() => setSecondaryGoalMetric(null)}
+                          aria-pressed={!selectedSecondaryBusinessMetric}
+                        >
+                          None
+                        </button>
+                        {secondaryBusinessMetricOptions.map(option => {
+                          const isActive = selectedSecondaryBusinessMetric === option.value;
+                          return (
+                            <TooltipWrapper
+                              key={option.value}
+                              content={buildGoalMetricTooltip(option)}
+                            >
+                              <button
+                                type="button"
+                                className={`${styles.metricSecondaryChip} ${
+                                  isActive ? styles.metricSecondaryChipActive : ''
+                                }`}
+                                onClick={() => setSecondaryGoalMetric(option.value)}
+                                aria-pressed={isActive}
+                                aria-label={`${option.label}: ${option.desc}. ${
+                                  isActive ? 'Selected' : 'Click to select'
+                                }`}
+                              >
+                                <span>{option.label}</span>
+                              </button>
+                            </TooltipWrapper>
+                          );
+                        })}
+                      </div>
                     </div>
-                    {isPriceLikeTestType(formData.type) && (
-                      <p className={styles.goalPriceMetricHint}>
-                        For price tests, <strong>Revenue</strong> (or Profit with COGS) is usually
-                        the best primary metric; conversion-only can bias toward lower prices.
-                      </p>
-                    )}
                     {(formData.goal?.metric === 'revenue' ||
                       formData.goal?.metric === 'profit_per_visitor') && (
                       <div className={styles.cogsInlinePanel}>
@@ -8904,9 +8498,16 @@ function TestWizard({
                           </div>
                         </div>
                         <div className={styles.decisionRulesFootnote}>
-                          {formData.goal?.metric === 'conversion_rate'
-                            ? 'Inference is aligned with the selected conversion primary metric.'
-                            : `${selectedPrimaryMetric.label} remains the business winner metric. Conversion-based inference is kept as evidence quality context.`}
+                          <span>
+                            {formData.goal?.metric === 'conversion_rate'
+                              ? 'Winner calls use conversion as primary.'
+                              : `${selectedPrimaryMetric.label} decides the winner.`}
+                          </span>
+                          <TooltipWrapper content={decisionRulesTooltip}>
+                            <span className={styles.goalHeaderInfoIcon} tabIndex={0}>
+                              <Icon source={InfoIcon} />
+                            </span>
+                          </TooltipWrapper>
                         </div>
                       </div>
                     </Collapsible>
@@ -9175,7 +8776,6 @@ function TestWizard({
     const method = cfg
       ? normalizePriceApplicationMethod(cfg.priceApplicationMethod)
       : normalizePriceApplicationMethod(cfgOrMethod);
-    const impliesIncrease = priceConfigImpliesIncrease(cfg);
     if (method === 'discounted_checkout_price') {
       return {
         label: 'Legacy Discounted Checkout',
@@ -10684,10 +10284,54 @@ function TestWizard({
                   </span>
                 </TooltipWrapper>
               </div>
+              {priceSurfaceRegistryStatus?.showMetaChip ? (
+                <button
+                  type="button"
+                  className={styles.priceMetaCompactItemButton}
+                  onClick={openPriceSurfaceMappingPanel}
+                >
+                  <span className={styles.priceMetaCompactItemTitle}>Theme mapping</span>
+                  <Badge tone={priceSurfaceRegistryStatus.tone} size="small">
+                    {priceSurfaceRegistryStatus.label}
+                  </Badge>
+                  <span className={styles.priceMetaCompactItemHint}>
+                    {priceSurfaceRegistryStatus.hint}
+                  </span>
+                </button>
+              ) : null}
               <Button variant="plain" size="slim" onClick={() => setCurrentStep(stepIds.targeting)}>
                 Edit in Targeting
               </Button>
             </div>
+
+            <PriceSurfaceMappingsPanel
+              styles={styles}
+              testMappings={formData.segments?.price_surface_mappings || []}
+              visualEditorSelector={formData.segments?.visual_editor_selector || ''}
+              pickerLaunchUrl={getPriceSurfacePickerLaunchUrl('pdp')}
+              getPickerLaunchUrl={getPriceSurfacePickerLaunchUrl}
+              pickTarget={priceSurfacePickTarget}
+              onBeginVisualPick={target => {
+                setChangingSelectorIndex(null);
+                setPriceSurfacePickTarget(target);
+              }}
+              onCancelVisualPick={() => setPriceSurfacePickTarget(null)}
+              onRegisterShopPickHandler={handler => {
+                priceSurfaceShopPickRef.current = handler;
+              }}
+              onTestMappingsChange={mappings =>
+                setFormData(prev => ({
+                  ...prev,
+                  segments: {
+                    ...prev.segments,
+                    price_surface_mappings: mappings,
+                  },
+                }))
+              }
+              onStatusChange={handlePriceSurfaceRegistryStatusChange}
+              expandRequestToken={priceSurfacePanelExpandToken}
+              settingsHref={priceSurfaceSettingsHref}
+            />
 
             <Modal
               open={priceGuideSampleOpen}
@@ -11957,9 +11601,9 @@ function TestWizard({
     ];
     const phaseActionValue =
       checkoutPhase === 'payment_method'
-        ? String(formData.variants?.[1]?.config?.payment_action || 'hide')
+        ? String(checkoutVariants[activeCheckoutVariantIndex]?.config?.payment_action || 'hide')
         : checkoutPhase === 'delivery_method'
-          ? String(formData.variants?.[1]?.config?.delivery_action || 'hide')
+          ? String(checkoutVariants[activeCheckoutVariantIndex]?.config?.delivery_action || 'hide')
           : 'track';
     const selectedPhaseActionLabel =
       phaseActionOptions.find(option => option.value === phaseActionValue)?.label || 'Hide methods';
@@ -11968,7 +11612,8 @@ function TestWizard({
         ? [
             'Checkout UI extension deployed and synced',
             'RipX checkout block added in Shopify checkout editor',
-            'Checkout context can pass test ID and checkout token',
+            'Default test ID synced or _ripx_checkout_test passed into checkout',
+            'Checkout token available for checkout-scoped assignment',
             'Collection-fed product lists can resolve products when used',
           ]
         : [
@@ -11977,6 +11622,21 @@ function TestWizard({
             'Cart line assignment attributes available before checkout',
             'Analytics will use the server-owned checkout phase',
           ];
+    const getCheckoutSavedAssets = () =>
+      checkoutVariants.reduce(
+        (totals, item) => {
+          const itemCfg = item?.config || {};
+          return {
+            sections: totals.sections + getActionableCheckoutSections(itemCfg).length,
+            payment:
+              totals.payment + normalizeCheckoutListInput(itemCfg.payment_method_names).length,
+            delivery:
+              totals.delivery + normalizeCheckoutListInput(itemCfg.delivery_method_names).length,
+          };
+        },
+        { sections: 0, payment: 0, delivery: 0 }
+      );
+
     const updateCheckoutGoal = patch => {
       setIsDirty(true);
       setFormData(prev => ({
@@ -11986,6 +11646,29 @@ function TestWizard({
           ...patch,
         },
       }));
+    };
+
+    const applyCheckoutPhaseChange = value => {
+      setCheckoutPhaseSwitchDraft(null);
+      updateCheckoutGoal({ checkout_phase: value });
+    };
+
+    const requestCheckoutPhaseChange = value => {
+      if (!value || value === checkoutPhase) {
+        setCheckoutPhaseSwitchDraft(null);
+        return;
+      }
+      const savedAssets = getCheckoutSavedAssets();
+      const savedAssetCount = savedAssets.sections + savedAssets.payment + savedAssets.delivery;
+      if (savedAssetCount > 0) {
+        setCheckoutPhaseSwitchDraft({
+          value,
+          currentValue: checkoutPhase,
+          savedAssets,
+        });
+        return;
+      }
+      applyCheckoutPhaseChange(value);
     };
 
     const updateCheckoutVariantConfig = (index, patch) => {
@@ -12058,6 +11741,49 @@ function TestWizard({
           ? normalizeCheckoutListInput(updater(currentTargets))
           : normalizeCheckoutListInput(updater);
       updateCheckoutVariantConfig(index, { [configKey]: nextTargets });
+    };
+    const copyCheckoutConfigFromVariant = (targetIndex, sourceIndex) => {
+      if (targetIndex === sourceIndex || !checkoutVariants[sourceIndex]) {
+        return;
+      }
+      const sourceConfig =
+        checkoutVariants[sourceIndex]?.config &&
+        typeof checkoutVariants[sourceIndex].config === 'object'
+          ? checkoutVariants[sourceIndex].config
+          : {};
+      updateCheckoutExperienceVariantConfig(targetIndex, {
+        ...sourceConfig,
+        checkout_sections: cloneCheckoutSectionsForVariant(
+          getNormalizedCheckoutExperienceConfig(sourceConfig).checkout_sections,
+          targetIndex
+        ),
+      });
+      openCheckoutSection(targetIndex, 0);
+    };
+    const moveCheckoutSection = (variantIndex, sectionIndex, direction) => {
+      const nextIndex = sectionIndex + direction;
+      if (nextIndex < 0) {
+        return;
+      }
+      updateCheckoutExperienceVariantConfig(variantIndex, current => {
+        const currentSections = getNormalizedCheckoutExperienceConfig(current).checkout_sections;
+        if (nextIndex >= currentSections.length) {
+          return current;
+        }
+        const nextSections = [...currentSections];
+        [nextSections[sectionIndex], nextSections[nextIndex]] = [
+          nextSections[nextIndex],
+          nextSections[sectionIndex],
+        ];
+        return {
+          ...current,
+          checkout_sections: nextSections.map((item, itemIndex) => ({
+            ...item,
+            order: itemIndex,
+          })),
+        };
+      });
+      openCheckoutSection(variantIndex, nextIndex, { scrollIntoView: true });
     };
     const renderCheckoutMethodStudio = ({
       index,
@@ -12267,182 +11993,479 @@ function TestWizard({
       );
     };
 
+    const checkoutEditorTabs = [
+      { label: 'Overview', value: 'overview' },
+      { label: 'Change test type', value: 'surface' },
+      { label: 'Experience blocks', value: 'experience' },
+      { label: 'Product lists', value: 'products' },
+      { label: 'Payment methods', value: 'payment' },
+      { label: 'Delivery methods', value: 'delivery' },
+      { label: 'Final preview', value: 'preview' },
+    ];
+    const checkoutStudioStepTabs = [
+      { label: 'Plan', value: 'plan' },
+      { label: 'Build', value: 'build' },
+      { label: 'Verify', value: 'verify' },
+    ];
+    const checkoutStudioStepGroups = [
+      { label: 'Launch workflow', values: ['plan', 'build', 'verify'] },
+    ];
+    const checkoutStudioStepOrder = checkoutStudioStepTabs.map(tab => tab.value);
+    const getCheckoutModeLabel = value =>
+      checkoutEditorTabs.find(tab => tab.value === value)?.label || 'Studio';
+    const getCheckoutStepLabel = value =>
+      checkoutStudioStepTabs.find(tab => tab.value === value)?.label || 'Studio';
+    const getDefaultCheckoutBuildMode = () =>
+      checkoutPhase === 'payment_method'
+        ? 'payment'
+        : checkoutPhase === 'delivery_method'
+          ? 'delivery'
+          : 'experience';
+    const getDefaultCheckoutModeForStep = step => {
+      if (step === 'verify') return 'preview';
+      if (step === 'build') return getDefaultCheckoutBuildMode();
+      return 'overview';
+    };
+    const getCheckoutStepMeta = step => {
+      if (step === 'verify') {
+        return checkoutCommandBlockerCount > 0 || checkoutCommandWarningCount > 0
+          ? { state: 'utility', hint: 'Review confidence' }
+          : { state: 'active', hint: 'Ready to verify' };
+      }
+      if (step === 'build') {
+        return configuredCount > 0
+          ? { state: 'active', hint: 'Active build step' }
+          : { state: 'inactive', hint: 'Needs setup' };
+      }
+      return { state: 'global', hint: 'Intent and test type' };
+    };
+    const getCheckoutModeIntro = value => {
+      if (value === 'products') {
+        return {
+          title: 'Product list workflow',
+          steps: [
+            'Choose Manual, Cart-related, or Collection-fed source.',
+            'Configure only the fields that source needs.',
+            'Verify what is admin-previewed versus runtime-only.',
+          ],
+        };
+      }
+      if (value === 'payment') {
+        return {
+          title: 'Payment method workflow',
+          steps: [
+            'Choose hide, rename, or reorder behavior.',
+            'Add exact customer-facing payment method labels.',
+            'Verify the Shopify customization after save.',
+          ],
+        };
+      }
+      if (value === 'delivery') {
+        return {
+          title: 'Delivery method workflow',
+          steps: [
+            'Choose hide, rename, or reorder behavior.',
+            'Add exact shipping option labels from checkout.',
+            'Verify the delivery customization in Shopify checkout.',
+          ],
+        };
+      }
+      if (value === 'preview') {
+        return {
+          title: 'Verification workflow',
+          steps: [
+            'Review saved config and runtime dependencies.',
+            'Check Design, Deploy, and Live checkout confidence lanes.',
+            'Use Shopify checkout as the final proof.',
+          ],
+        };
+      }
+      if (value === 'surface') {
+        return {
+          title: 'Checkout test type workflow',
+          steps: [
+            'Confirm the one checkout test type for all variants.',
+            'Review saved assets that become inactive drafts.',
+            'Switch only when the launch goal changes.',
+          ],
+        };
+      }
+      return {
+        title: 'Planning workflow',
+        steps: [
+          'Confirm the hypothesis and primary output goal.',
+          'Keep analytics naming stable before launch.',
+          'Copy a proven variant config when useful.',
+        ],
+      };
+    };
+
+    const getCheckoutEditorTabMeta = value => {
+      if (value === 'experience' || value === 'products') {
+        return checkoutPhase === 'experience'
+          ? { state: 'active', hint: 'Active surface' }
+          : { state: 'inactive', hint: 'Saved as supporting draft' };
+      }
+      if (value === 'payment') {
+        return checkoutPhase === 'payment_method'
+          ? { state: 'active', hint: 'Active surface' }
+          : { state: 'inactive', hint: 'Inactive draft' };
+      }
+      if (value === 'delivery') {
+        return checkoutPhase === 'delivery_method'
+          ? { state: 'active', hint: 'Active surface' }
+          : { state: 'inactive', hint: 'Inactive draft' };
+      }
+      if (value === 'surface') {
+        return { state: 'global', hint: 'Applies to all variants' };
+      }
+      return { state: 'utility', hint: '' };
+    };
+
+    const openCheckoutVariantEditor = (variantIndex, mode = 'overview', action = {}) => {
+      setCheckoutStudioVariantIndex(variantIndex);
+      setCheckoutEditorMode(mode);
+      if (Number.isInteger(action.sectionIndex)) {
+        openCheckoutSection(variantIndex, action.sectionIndex, { scrollIntoView: true });
+      }
+      setCheckoutEditorModalOpen(true);
+    };
+
+    const getCheckoutVariantTableSummary = (variant, index) => {
+      const cfg = variant?.config || {};
+      const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+      const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
+      const allSections = normalizedExperience.checkout_sections;
+      const actionableSections = getActionableCheckoutSections(cfg);
+      const productSectionEntries = allSections
+        .map((section, sectionIndex) => ({ section, sectionIndex }))
+        .filter(({ section }) => section?.type === 'product_list');
+      const productSections = productSectionEntries.map(({ section }) => section);
+      const manualAddNeedsIdsEntry = productSectionEntries.find(({ section }) => {
+        const props = section?.props || {};
+        const productAction = String(props.product_action || 'display_only')
+          .trim()
+          .toLowerCase();
+        const sourceMode = normalizeCheckoutProductSourceMode(props.product_source_mode);
+        if (productAction !== 'add_to_cart' || sourceMode !== 'manual') {
+          return false;
+        }
+        return !normalizeCheckoutProductItems(props.product_items).some(
+          item => item.merchandise_id || item.variant_gid
+        );
+      });
+      const manualAddNeedsIds = Boolean(manualAddNeedsIdsEntry);
+      const hasCollectionProducts = productSections.some(
+        section =>
+          normalizeCheckoutProductSourceMode(section?.props?.product_source_mode) === 'collection'
+      );
+      const hasCartRelatedProducts = productSections.some(
+        section =>
+          normalizeCheckoutProductSourceMode(section?.props?.product_source_mode) === 'cart_related'
+      );
+      const paymentMethodCount = normalizeCheckoutListInput(cfg.payment_method_names).length;
+      const deliveryMethodCount = normalizeCheckoutListInput(cfg.delivery_method_names).length;
+      const readiness = getCheckoutStudioReadiness({
+        variant,
+        variantIndex: index,
+        checkoutPhase,
+      });
+      const variantConfigured =
+        checkoutPhase === 'experience'
+          ? actionableSections.length > 0
+          : checkoutPhase === 'payment_method'
+            ? paymentMethodCount > 0
+            : deliveryMethodCount > 0;
+      const primaryGoalLabel = getCheckoutOptionLabel(
+        CHECKOUT_PRIMARY_OUTPUT_GOAL_OPTIONS,
+        normalizedExperience.primary_output_goal,
+        'Conversion lift'
+      );
+      return {
+        index,
+        cfg,
+        isControlLike,
+        allSections,
+        actionableSections,
+        productSections,
+        manualAddNeedsIds,
+        manualAddNeedsIdsSectionIndex: manualAddNeedsIdsEntry?.sectionIndex,
+        hasCollectionProducts,
+        hasCartRelatedProducts,
+        paymentMethodCount,
+        deliveryMethodCount,
+        variantConfigured,
+        primaryGoalLabel,
+        readiness,
+      };
+    };
+
+    const checkoutVariantSummaries = checkoutVariants.map((variant, index) =>
+      getCheckoutVariantTableSummary(variant, index)
+    );
+    const checkoutCommandAction = getCheckoutStudioCommandAction(
+      checkoutVariantSummaries,
+      checkoutPhase
+    );
+    const checkoutCommandTopBlocker =
+      checkoutVariantSummaries
+        .flatMap(summary => summary.readiness?.issues || [])
+        .find(issue => issue.severity === 'blocker')?.message ||
+      checkoutVariantSummaries
+        .flatMap(summary => summary.readiness?.issues || [])
+        .find(issue => issue.severity === 'warning')?.message ||
+      checkoutCommandAction.reason;
+    const checkoutCommandBlockerCount = checkoutVariantSummaries.reduce(
+      (total, summary) => total + Number(summary.readiness?.blockerCount || 0),
+      0
+    );
+    const checkoutCommandWarningCount = checkoutVariantSummaries.reduce(
+      (total, summary) => total + Number(summary.readiness?.warningCount || 0),
+      0
+    );
+    const handleCheckoutCommandAction = () => {
+      openCheckoutVariantEditor(
+        checkoutCommandAction.variantIndex ?? activeCheckoutVariantIndex,
+        checkoutCommandAction.mode || 'overview',
+        checkoutCommandAction
+      );
+    };
+
     return (
       <BlockStack gap="400">
-        <div className={styles.checkoutStudioCompactBar}>
-          <div className={styles.checkoutStudioCompactMeta}>
-            <span className={styles.checkoutStudioCompactChip}>{phaseDetails.title}</span>
-            <span className={styles.checkoutStudioCompactChip}>
-              {configuredCount}/{nonControlIndices.length || 1} ready
-            </span>
-            <span className={styles.checkoutStudioCompactChip}>
-              {checkoutPhase === 'experience' ? 'Section design' : selectedPhaseActionLabel}
-            </span>
-            <span className={styles.checkoutStudioCompactChip}>
-              {totalVariants} variant{totalVariants === 1 ? '' : 's'}
-            </span>
-          </div>
-          <TooltipWrapper
-            content={
-              checkoutPhase === 'experience'
-                ? 'Use this step to select the checkout surface once, then edit the active control or treatment tab below. Supporting rollout details stay in readiness and reporting surfaces.'
-                : 'Select the checkout surface once, then edit the active control or treatment tab below. Supporting rollout details stay in readiness and reporting surfaces.'
-            }
-            accessibilityLabel="Checkout studio guidance"
-          >
-            <span className={styles.checkoutStudioCompactInfo} aria-hidden>
-              <Icon source={InfoIcon} />
-            </span>
-          </TooltipWrapper>
-        </div>
+        <CheckoutStudioCommandHeader
+          phaseDetails={phaseDetails}
+          phaseActionLabel={
+            checkoutPhase === 'experience' ? 'Section design' : selectedPhaseActionLabel
+          }
+          variantCount={totalVariants}
+          configuredCount={configuredCount}
+          nonControlCount={nonControlIndices.length || 1}
+          blockerCount={checkoutCommandBlockerCount}
+          warningCount={checkoutCommandWarningCount}
+          action={checkoutCommandAction}
+          topBlocker={checkoutCommandTopBlocker}
+          onPrimaryAction={handleCheckoutCommandAction}
+          onVerify={() =>
+            openCheckoutVariantEditor(
+              checkoutCommandAction.variantIndex ?? activeCheckoutVariantIndex,
+              'preview'
+            )
+          }
+        />
 
-        <Card>
-          <div className={styles.checkoutPhaseShell}>
-            <div className={styles.checkoutPhaseShellTop}>
-              <InlineStack align="space-between" blockAlign="center" wrap gap="300">
-                <div className={styles.checkoutPhaseHeaderCompact}>
-                  <Text variant="headingSm" as="h3" fontWeight="semibold">
-                    Checkout surface
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Pick the checkout surface once, then edit the active control or treatment in the
-                    tabs below.
-                  </Text>
-                </div>
-                <InlineStack gap="200" blockAlign="center">
-                  <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
-                    {configuredCount}/{nonControlIndices.length || 1} configured
-                  </Badge>
-                  <TooltipWrapper
-                    content="Experience block uses the checkout UI extension. Payment and delivery methods use Shopify checkout customizations. Change this once, then continue in the variant tabs."
-                    accessibilityLabel="Checkout surface help"
-                  >
-                    <span className={styles.checkoutStudioCompactInfo} aria-hidden>
-                      <Icon source={InfoIcon} />
-                    </span>
-                  </TooltipWrapper>
-                </InlineStack>
-              </InlineStack>
-
-              <div className={styles.checkoutPhaseGrid}>
-                {CHECKOUT_PHASE_OPTIONS.map(option => {
-                  const details = getCheckoutPhaseDetails(option.value);
-                  const active = option.value === checkoutPhase;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={`${styles.checkoutPhaseCard} ${active ? styles.checkoutPhaseCardActive : ''}`}
-                      onClick={() => updateCheckoutGoal({ checkout_phase: option.value })}
-                      aria-pressed={active}
-                    >
-                      <span className={styles.checkoutPhaseEyebrow}>{details.eyebrow}</span>
-                      <span className={styles.checkoutPhaseTitle}>{details.title}</span>
-                      <span className={styles.checkoutPhaseDescription}>{details.description}</span>
-                      <span className={styles.checkoutPhaseSurface}>{details.surface}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className={styles.checkoutPhaseInlineNote}>
-              <span className={styles.checkoutPhaseInlineNoteLabel}>{phaseDetails.title}</span>
-              <span className={styles.checkoutPhaseInlineNoteText}>{phaseDetails.surface}</span>
-            </div>
-            <div className={styles.checkoutReadinessPreview}>
-              <div className={styles.checkoutReadinessPreviewHeader}>
-                <span>Preview readiness path</span>
-                <Badge tone="info">Before launch</Badge>
-              </div>
-              <div className={styles.checkoutReadinessPreviewGrid}>
-                {checkoutReadinessPreviewItems.map(item => (
-                  <span key={item} className={styles.checkoutReadinessPreviewItem}>
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {checkoutVariants.length > 0 && (
-          <div className={styles.checkoutVariantBrowser}>
-            <div
-              className={styles.checkoutVariantBrowserTabs}
-              role="tablist"
-              aria-label="Checkout variants"
-            >
-              {checkoutVariants.map((variant, index) => {
-                const cfg = variant?.config || {};
-                const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
-                const variantColor = getVariantColor(index);
-                const variantConfigured =
-                  checkoutPhase === 'experience'
-                    ? getActionableCheckoutSections(cfg).length > 0
-                    : checkoutPhase === 'payment_method'
-                      ? normalizeCheckoutListInput(cfg.payment_method_names).length > 0
-                      : normalizeCheckoutListInput(cfg.delivery_method_names).length > 0;
-                const active = index === activeCheckoutVariantIndex;
-                return (
-                  <button
-                    key={`checkout-tab-${index}`}
-                    id={`checkout-variant-tab-${index}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    aria-controls={`checkout-variant-panel-${index}`}
-                    className={`${styles.checkoutVariantBrowserTab} ${active ? styles.checkoutVariantBrowserTabActive : ''}`}
-                    style={{
-                      '--checkout-variant-accent': variantColor,
-                      '--checkout-variant-accent-soft': getVariantColorLight(variantColor),
-                    }}
-                    onClick={() => setCheckoutStudioVariantIndex(index)}
-                  >
-                    <span className={styles.checkoutVariantBrowserDot} aria-hidden />
-                    <span className={styles.checkoutVariantBrowserTabMeta}>
-                      <span className={styles.checkoutVariantBrowserTabTitle}>
-                        {variant?.name || `Variant ${index + 1}`}
-                      </span>
-                      <span className={styles.checkoutVariantBrowserTabSummary}>
-                        {isControlLike
-                          ? 'Control baseline'
-                          : variantConfigured
-                            ? 'Configured treatment'
-                            : 'Draft treatment'}
-                      </span>
-                    </span>
-                    <span className={styles.checkoutVariantBrowserTabTraffic}>
-                      {variant?.allocation ?? 0}%
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className={styles.checkoutVariantBrowserStatus}>
-              <span className={styles.checkoutPhaseSummaryChip}>
-                Active tab:{' '}
-                {checkoutVariants[activeCheckoutVariantIndex]?.name ||
-                  `Variant ${activeCheckoutVariantIndex + 1}`}
+        {checkoutPhaseSwitchDraft ? (
+          <div className={styles.checkoutSurfaceConfirmPanel} role="status" aria-live="polite">
+            <div>
+              <strong>
+                Change checkout test type to{' '}
+                {getCheckoutPhaseDetails(checkoutPhaseSwitchDraft.value).title}?
+              </strong>
+              <span>
+                Saved drafts stay in place: {checkoutPhaseSwitchDraft.savedAssets.sections}{' '}
+                sections, {checkoutPhaseSwitchDraft.savedAssets.payment} payment targets, and{' '}
+                {checkoutPhaseSwitchDraft.savedAssets.delivery} delivery targets. Only the new test
+                type becomes launch-valid.
               </span>
+            </div>
+            <InlineStack gap="200" blockAlign="center">
+              <Button size="slim" onClick={() => setCheckoutPhaseSwitchDraft(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="slim"
+                variant="primary"
+                onClick={() => applyCheckoutPhaseChange(checkoutPhaseSwitchDraft.value)}
+              >
+                Confirm change
+              </Button>
+            </InlineStack>
+          </div>
+        ) : null}
+
+        {checkoutVariants.length > 0 ? (
+          <CheckoutVariantTable
+            variants={checkoutVariants}
+            configuredCount={configuredCount}
+            nonControlCount={nonControlIndices.length || 1}
+            phaseDetails={phaseDetails}
+            checkoutPhase={checkoutPhase}
+            getSummary={getCheckoutVariantTableSummary}
+            onOpenEditor={openCheckoutVariantEditor}
+          />
+        ) : (
+          <div className={styles.checkoutStudioEmptyState}>
+            <div>
+              <span className={styles.checkoutStudioEyebrow}>First-run guidance</span>
+              <Text as="h3" variant="headingMd" fontWeight="semibold">
+                Add a treatment variant to start the launch workflow
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Checkout Studio will show one recommended action per treatment once variants exist.
+              </Text>
+            </div>
+            <div className={styles.checkoutStudioEmptyPreview}>
+              <span>1. Choose test type</span>
+              <span>2. Configure treatment</span>
+              <span>3. Verify in Shopify checkout</span>
             </div>
           </div>
         )}
 
+        <details className={styles.checkoutSetupDisclosure}>
+          <summary className={styles.checkoutSetupSummary}>
+            <span>
+              <strong>Setup details</strong>
+              <small>
+                {phaseDetails.title} / {phaseDetails.surface}
+              </small>
+            </span>
+            <Badge tone="info">Collapsed guidance</Badge>
+          </summary>
+          <Card>
+            <div className={styles.checkoutPhaseShell}>
+              <div className={styles.checkoutPhaseShellTop}>
+                <InlineStack align="space-between" blockAlign="center" wrap gap="300">
+                  <div className={styles.checkoutPhaseHeaderCompact}>
+                    <Text variant="headingSm" as="h3" fontWeight="semibold">
+                      Checkout test type
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      This global setup is available here for review, but day-to-day work starts
+                      from the Checkout variants table above.
+                    </Text>
+                  </div>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
+                      {configuredCount}/{nonControlIndices.length || 1} configured
+                    </Badge>
+                    <Button
+                      size="slim"
+                      onClick={() =>
+                        openCheckoutVariantEditor(activeCheckoutVariantIndex, 'surface', {
+                          mode: 'surface',
+                        })
+                      }
+                    >
+                      Open in Plan
+                    </Button>
+                    <Button
+                      size="slim"
+                      variant="secondary"
+                      onClick={() =>
+                        openCheckoutVariantEditor(activeCheckoutVariantIndex, 'preview')
+                      }
+                    >
+                      Verify
+                    </Button>
+                    <TooltipWrapper
+                      content="Experience block uses the checkout UI extension. Payment and delivery methods use Shopify checkout customizations. Change this once, then continue from the variant table."
+                      accessibilityLabel="Checkout test type help"
+                    >
+                      <span className={styles.checkoutStudioCompactInfo} aria-hidden>
+                        <Icon source={InfoIcon} />
+                      </span>
+                    </TooltipWrapper>
+                  </InlineStack>
+                </InlineStack>
+
+                <div className={styles.checkoutPhaseGrid}>
+                  {CHECKOUT_PHASE_OPTIONS.map(option => {
+                    const details = getCheckoutPhaseDetails(option.value);
+                    const active = option.value === checkoutPhase;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`${styles.checkoutPhaseCard} ${active ? styles.checkoutPhaseCardActive : ''}`}
+                        onClick={() => requestCheckoutPhaseChange(option.value)}
+                        aria-pressed={active}
+                      >
+                        <span className={styles.checkoutPhaseEyebrow}>{details.eyebrow}</span>
+                        <span className={styles.checkoutPhaseTitle}>{details.title}</span>
+                        <span className={styles.checkoutPhaseDescription}>
+                          {details.description}
+                        </span>
+                        <span className={styles.checkoutPhaseSurface}>{details.surface}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className={styles.checkoutPhaseInlineNote}>
+                <span className={styles.checkoutPhaseInlineNoteLabel}>{phaseDetails.title}</span>
+                <span className={styles.checkoutPhaseInlineNoteText}>{phaseDetails.surface}</span>
+              </div>
+              <div className={styles.checkoutReadinessPreview}>
+                <div className={styles.checkoutReadinessPreviewHeader}>
+                  <span>Before launch checklist</span>
+                  <Badge tone="info">Verify in modal</Badge>
+                </div>
+                <div className={styles.checkoutReadinessPreviewGrid}>
+                  {checkoutReadinessPreviewItems.map(item => (
+                    <span key={item} className={styles.checkoutReadinessPreviewItem}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Card>
+        </details>
+
         {checkoutVariants.map((variant, index) => {
           const cfg = variant?.config || {};
-          const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
           const variantColor = getVariantColor(index);
           const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
-          const placementLabel =
-            CHECKOUT_PLACEMENT_OPTIONS.find(
-              option =>
-                option.value ===
-                String(normalizedExperience.checkout_placement || 'purchase.checkout.block.render')
-            )?.label || 'Checkout block';
           const experienceSections =
             normalizedExperience.checkout_sections.length > 0
               ? normalizedExperience.checkout_sections
               : [createEmptyCheckoutSection(0)];
+          const visibleCheckoutSectionEntries = experienceSections
+            .map((section, sectionIndex) => ({ section, sectionIndex }))
+            .filter(({ section }) =>
+              checkoutEditorMode === 'products' ? section?.type === 'product_list' : true
+            );
+          const productListSections = experienceSections.filter(
+            section => section?.type === 'product_list'
+          );
+          const productSourceCards = CHECKOUT_PRODUCT_SOURCE_OPTIONS.map(option => {
+            const matchingSections = productListSections.filter(
+              section =>
+                normalizeCheckoutProductSourceMode(section?.props?.product_source_mode) ===
+                option.value
+            );
+            const addToCartSections = matchingSections.filter(
+              section => String(section?.props?.product_action || 'display_only') === 'add_to_cart'
+            );
+            const needsMerchandiseIds = addToCartSections.some(section => {
+              const items = normalizeCheckoutProductItems(section?.props?.product_items);
+              return !items.some(item => item.merchandise_id || item.variant_gid);
+            });
+            return {
+              ...option,
+              count: matchingSections.length,
+              addToCartCount: addToCartSections.length,
+              needsMerchandiseIds,
+            };
+          });
+          const productMatrixRows = productListSections.flatMap((section, sectionIndex) => {
+            const sourceMode = normalizeCheckoutProductSourceMode(
+              section?.props?.product_source_mode
+            );
+            return normalizeCheckoutProductItems(section?.props?.product_items).map(
+              (item, itemIndex) => ({
+                sectionIndex,
+                itemIndex,
+                sourceMode,
+                title: String(item.title || item.name || '').trim() || `Product ${itemIndex + 1}`,
+                price: String(item.price || '').trim() || 'No price',
+                image: String(item.image_url || item.image || '').trim(),
+                merchandiseId: String(item.merchandise_id || item.variant_gid || '').trim(),
+                action: String(section?.props?.product_action || 'display_only'),
+              })
+            );
+          });
           const actionableSections = getActionableCheckoutSections(cfg);
           const actionableTypeLabels = Array.from(
             new Set(
@@ -12455,160 +12478,744 @@ function TestWizard({
               : checkoutPhase === 'payment_method'
                 ? normalizeCheckoutListInput(cfg.payment_method_names).length > 0
                 : normalizeCheckoutListInput(cfg.delivery_method_names).length > 0;
-          if (index !== activeCheckoutVariantIndex) {
+          const checkoutStudioReadiness = getCheckoutStudioReadiness({
+            variant,
+            variantIndex: index,
+            checkoutPhase,
+          });
+          const checkoutStudioSummary =
+            checkoutVariantSummaries[index] || getCheckoutVariantTableSummary(variant, index);
+          const checkoutStudioNextAction = getCheckoutStudioNextAction(
+            checkoutStudioSummary,
+            checkoutPhase
+          );
+          const activeModeMeta = getCheckoutEditorTabMeta(checkoutEditorMode);
+          const activeModeIsDraft = activeModeMeta.state === 'inactive';
+          const activeCheckoutStep = getCheckoutStudioStepForMode(checkoutEditorMode);
+          const checkoutStepIssueCounts = getCheckoutStudioStepIssueCounts(
+            checkoutStudioReadiness,
+            checkoutPhase
+          );
+          const activeStepIndex = checkoutStudioStepOrder.indexOf(activeCheckoutStep);
+          const previousCheckoutStep =
+            activeStepIndex > 0 ? checkoutStudioStepOrder[activeStepIndex - 1] : null;
+          const modeIntro = getCheckoutModeIntro(checkoutEditorMode);
+          const setCheckoutStudioStep = step => {
+            setCheckoutEditorMode(getDefaultCheckoutModeForStep(step));
+          };
+          const runCheckoutStudioNextAction = () => {
+            setCheckoutEditorMode(checkoutStudioNextAction.mode || 'preview');
+            if (Number.isInteger(checkoutStudioNextAction.sectionIndex)) {
+              openCheckoutSection(index, checkoutStudioNextAction.sectionIndex, {
+                scrollIntoView: true,
+              });
+            }
+          };
+          const handleCheckoutConfidenceIssueAction = issue => {
+            if (issue?.scope === 'product' || issue?.scope === 'runtime') {
+              setCheckoutEditorMode('products');
+              if (Number.isInteger(issue.sectionIndex)) {
+                openCheckoutSection(index, issue.sectionIndex, { scrollIntoView: true });
+              }
+              return;
+            }
+            if (issue?.scope === 'surface') {
+              setCheckoutEditorMode(
+                checkoutPhase === 'payment_method'
+                  ? 'payment'
+                  : checkoutPhase === 'delivery_method'
+                    ? 'delivery'
+                    : 'experience'
+              );
+              return;
+            }
+            runCheckoutStudioNextAction();
+          };
+          const checkoutReadinessIssues = Array.isArray(checkoutStudioReadiness.issues)
+            ? checkoutStudioReadiness.issues
+            : [];
+          const getFirstCheckoutIssueForScopes = scopes =>
+            checkoutReadinessIssues.find(issue => scopes.includes(issue?.scope));
+          const contentReviewIssue = getFirstCheckoutIssueForScopes(['content', 'product']);
+          const runtimeReviewIssue = getFirstCheckoutIssueForScopes(['runtime', 'product']);
+          const surfaceReviewIssue = getFirstCheckoutIssueForScopes(['surface', 'method']);
+          const analyticsReady = Boolean(
+            String(normalizedExperience.analytics_key || '').trim() ||
+            String(normalizedExperience.primary_output_goal || '').trim()
+          );
+          const launchReviewGroups = [
+            {
+              key: 'content',
+              title: 'Content',
+              state: variantConfigured ? 'Ready' : 'Needs content',
+              tone: variantConfigured ? 'success' : 'attention',
+              detail:
+                checkoutPhase === 'experience'
+                  ? `${actionableSections.length} renderable checkout block${actionableSections.length === 1 ? '' : 's'} and ${productListSections.length} product list${productListSections.length === 1 ? '' : 's'} configured.`
+                  : `${phaseDetails.title} targets define the runtime checkout change for this variant.`,
+              actionLabel: checkoutPhase === 'experience' ? 'Edit blocks' : 'Edit targets',
+              mode:
+                checkoutPhase === 'payment_method'
+                  ? 'payment'
+                  : checkoutPhase === 'delivery_method'
+                    ? 'delivery'
+                    : 'experience',
+              issue: contentReviewIssue,
+            },
+            {
+              key: 'runtime',
+              title: 'Runtime behavior',
+              state: runtimeReviewIssue ? 'Needs live proof' : 'Ready to test',
+              tone: runtimeReviewIssue ? 'attention' : 'success',
+              detail:
+                runtimeReviewIssue?.message ||
+                'No dynamic product-list or add-to-cart runtime blocker is currently detected.',
+              actionLabel: runtimeReviewIssue ? 'Fix runtime setup' : 'Review products',
+              mode: 'products',
+              issue: runtimeReviewIssue,
+            },
+            {
+              key: 'shopify',
+              title: 'Shopify deployment',
+              state:
+                checkoutStudioReadiness.status === 'blocked'
+                  ? 'Blocked'
+                  : checkoutStudioReadiness.status === 'needs_attention'
+                    ? 'Verify'
+                    : 'Ready',
+              tone:
+                checkoutStudioReadiness.status === 'blocked'
+                  ? 'critical'
+                  : checkoutStudioReadiness.status === 'needs_attention'
+                    ? 'attention'
+                    : 'success',
+              detail:
+                surfaceReviewIssue?.message ||
+                'Confirm checkout extension placement, assignment attributes, and Shopify customization deployment in a live checkout.',
+              actionLabel: surfaceReviewIssue ? 'Fix surface' : 'Open confidence',
+              mode: surfaceReviewIssue
+                ? checkoutPhase === 'payment_method'
+                  ? 'payment'
+                  : checkoutPhase === 'delivery_method'
+                    ? 'delivery'
+                    : 'surface'
+                : 'preview',
+              issue: surfaceReviewIssue,
+            },
+            {
+              key: 'analytics',
+              title: 'Analytics',
+              state: analyticsReady ? 'Mapped' : 'Needs mapping',
+              tone: analyticsReady ? 'success' : 'attention',
+              detail: analyticsReady
+                ? 'Output goal and analytics naming are available for checkout reporting.'
+                : 'Add an output goal or analytics key so results are easier to read after launch.',
+              actionLabel: 'Edit intent',
+              mode: 'overview',
+            },
+          ];
+          const hasRuntimeBlocker = checkoutReadinessIssues.some(
+            issue => issue?.scope === 'product' || issue?.scope === 'runtime'
+          );
+          const hasSurfaceBlocker = checkoutReadinessIssues.some(
+            issue => issue?.scope === 'surface'
+          );
+          const minimumValidChecklist = [
+            {
+              label: 'Test type selected',
+              detail: phaseDetails.title,
+              done: Boolean(checkoutPhase),
+              required: true,
+            },
+            {
+              label:
+                checkoutPhase === 'experience'
+                  ? 'One renderable checkout block'
+                  : checkoutPhase === 'payment_method'
+                    ? 'One payment method target'
+                    : 'One delivery method target',
+              detail:
+                checkoutPhase === 'experience'
+                  ? `${actionableSections.length} ready`
+                  : checkoutPhase === 'payment_method'
+                    ? `${normalizeCheckoutListInput(cfg.payment_method_names).length} target${normalizeCheckoutListInput(cfg.payment_method_names).length === 1 ? '' : 's'}`
+                    : `${normalizeCheckoutListInput(cfg.delivery_method_names).length} target${normalizeCheckoutListInput(cfg.delivery_method_names).length === 1 ? '' : 's'}`,
+              done: variantConfigured,
+              required: true,
+            },
+            {
+              label: 'Runtime requirements',
+              detail: hasRuntimeBlocker ? 'Needs IDs or runtime proof' : 'No required runtime fix',
+              done: !hasRuntimeBlocker,
+              required: checkoutPhase === 'experience',
+            },
+            {
+              label: 'Shopify verification',
+              detail: hasSurfaceBlocker ? 'Surface setup needs attention' : 'Ready for live proof',
+              done: checkoutStudioReadiness.status === 'ready',
+              required: true,
+            },
+          ];
+          const applyCheckoutQuickSetupPreset = preset => {
+            if (!preset) return;
+            if (preset.mode) {
+              setCheckoutEditorMode(preset.mode);
+            }
+            if (preset.kind === 'section') {
+              openCheckoutSection(index, experienceSections.length, { scrollIntoView: true });
+              updateCheckoutExperienceVariantConfig(index, current => {
+                const currentSections =
+                  getNormalizedCheckoutExperienceConfig(current).checkout_sections;
+                return {
+                  ...current,
+                  checkout_sections: [
+                    ...currentSections,
+                    {
+                      ...createEmptyCheckoutSection(currentSections.length, preset.sectionType),
+                      props: {
+                        ...buildCheckoutSectionSmartPreset(preset.sectionType),
+                        ...(preset.props || {}),
+                      },
+                    },
+                  ],
+                };
+              });
+              return;
+            }
+            if (preset.kind === 'product_list') {
+              openCheckoutSection(index, experienceSections.length, { scrollIntoView: true });
+              updateCheckoutExperienceVariantConfig(index, current => {
+                const currentSections =
+                  getNormalizedCheckoutExperienceConfig(current).checkout_sections;
+                return {
+                  ...current,
+                  checkout_sections: [
+                    ...currentSections,
+                    {
+                      ...createEmptyCheckoutSection(currentSections.length, 'product_list'),
+                      props: {
+                        ...buildCheckoutSectionSmartPreset('product_list'),
+                        product_source_mode: preset.sourceMode,
+                        product_source_limit: preset.sourceLimit || 3,
+                        product_action: preset.productAction || 'display_only',
+                        product_items:
+                          preset.sourceMode === 'manual'
+                            ? [
+                                {
+                                  ...createEmptyCheckoutProductItem(0),
+                                  title: 'Checkout add-on',
+                                  subtitle: 'Recommended with this order',
+                                  price: '$19',
+                                  action_label: 'Add',
+                                },
+                              ]
+                            : [],
+                      },
+                    },
+                  ],
+                };
+              });
+              return;
+            }
+            if (preset.kind === 'payment') {
+              updateCheckoutVariantConfig(index, {
+                payment_action: preset.action,
+                payment_method_names: preset.target || 'PayPal',
+                payment_rename_to: preset.renameTo || '',
+              });
+              return;
+            }
+            if (preset.kind === 'delivery') {
+              updateCheckoutVariantConfig(index, {
+                delivery_action: preset.action,
+                delivery_method_names: preset.target || 'Express Shipping',
+                delivery_rename_to: preset.renameTo || '',
+              });
+            }
+          };
+          const quickSetupPresets =
+            checkoutPhase === 'payment_method'
+              ? [
+                  {
+                    key: 'hide-payment',
+                    title: 'Hide payment method',
+                    detail: 'Fastest payment test. Adds a sample target label you can replace.',
+                    kind: 'payment',
+                    mode: 'payment',
+                    action: 'hide',
+                    target: 'PayPal',
+                  },
+                  {
+                    key: 'rename-payment',
+                    title: 'Rename payment method',
+                    detail: 'Adds target + rename fields for a quick label test.',
+                    kind: 'payment',
+                    mode: 'payment',
+                    action: 'rename',
+                    target: 'PayPal',
+                    renameTo: 'PayPal Express',
+                  },
+                ]
+              : checkoutPhase === 'delivery_method'
+                ? [
+                    {
+                      key: 'hide-delivery',
+                      title: 'Hide delivery method',
+                      detail: 'Fastest delivery test. Adds a sample delivery label to replace.',
+                      kind: 'delivery',
+                      mode: 'delivery',
+                      action: 'hide',
+                      target: 'Express Shipping',
+                    },
+                    {
+                      key: 'rename-delivery',
+                      title: 'Rename delivery method',
+                      detail: 'Adds target + rename fields for a quick shipping-label test.',
+                      kind: 'delivery',
+                      mode: 'delivery',
+                      action: 'rename',
+                      target: 'Express Shipping',
+                      renameTo: 'Priority Shipping',
+                    },
+                  ]
+                : [
+                    {
+                      key: 'trust-message',
+                      title: 'Trust message',
+                      detail: 'Adds one checkout reassurance block. Fastest valid experience test.',
+                      kind: 'section',
+                      mode: 'experience',
+                      sectionType: 'trust_box',
+                    },
+                    {
+                      key: 'announcement',
+                      title: 'Checkout announcement',
+                      detail: 'Adds a simple banner-style message customers can read quickly.',
+                      kind: 'section',
+                      mode: 'experience',
+                      sectionType: 'hero_notice',
+                    },
+                    {
+                      key: 'manual-upsell',
+                      title: 'Manual product display',
+                      detail:
+                        'Adds one editable product card without requiring a variant GID first.',
+                      kind: 'product_list',
+                      mode: 'products',
+                      sourceMode: 'manual',
+                      productAction: 'display_only',
+                    },
+                    {
+                      key: 'cart-related',
+                      title: 'Cart-related products',
+                      detail: 'Adds a runtime product list that depends on the shopper cart.',
+                      kind: 'product_list',
+                      mode: 'products',
+                      sourceMode: 'cart_related',
+                      sourceLimit: 3,
+                    },
+                  ];
+          const checkoutSurfaceCards = CHECKOUT_PHASE_OPTIONS.map(option => {
+            const details = getCheckoutPhaseDetails(option.value);
+            const linkedModes =
+              option.value === 'experience'
+                ? 'Experience blocks + Product lists'
+                : option.value === 'payment_method'
+                  ? 'Payment methods'
+                  : 'Delivery methods';
+            const configuredAssets =
+              option.value === 'experience'
+                ? `${actionableSections.length} renderable section${actionableSections.length === 1 ? '' : 's'}`
+                : option.value === 'payment_method'
+                  ? `${normalizeCheckoutListInput(cfg.payment_method_names).length} payment target${normalizeCheckoutListInput(cfg.payment_method_names).length === 1 ? '' : 's'}`
+                  : `${normalizeCheckoutListInput(cfg.delivery_method_names).length} delivery target${normalizeCheckoutListInput(cfg.delivery_method_names).length === 1 ? '' : 's'}`;
+            const requiredSetup =
+              option.value === 'experience'
+                ? 'Checkout UI extension deployed and placed'
+                : 'Shopify checkout customization deployed';
+            return {
+              value: option.value,
+              active: option.value === checkoutPhase,
+              eyebrow: details.eyebrow,
+              title: details.title,
+              description: details.description,
+              linkedModes,
+              configuredAssets,
+              requiredSetup,
+            };
+          });
+          if (!checkoutEditorModalOpen || index !== activeCheckoutVariantIndex) {
             return null;
           }
           return (
-            <Card key={`checkout-${index}`}>
-              <div
-                id={`checkout-variant-panel-${index}`}
-                role="tabpanel"
-                aria-labelledby={`checkout-variant-tab-${index}`}
-                className={styles.checkoutVariantShell}
-                style={{
-                  '--checkout-variant-accent': variantColor,
-                  '--checkout-variant-accent-soft': getVariantColorLight(variantColor),
-                }}
-              >
-                <div className={styles.checkoutVariantHero}>
-                  <InlineStack align="space-between" blockAlign="start" wrap gap="300">
-                    <div className={styles.checkoutVariantHeroCopy}>
-                      <span className={styles.checkoutVariantHeroEyebrow}>
-                        {isControlLike ? 'Control baseline' : 'Treatment variant'}
-                      </span>
-                      <Text variant="headingSm" as="h4" fontWeight="semibold">
-                        {variant.name}
-                      </Text>
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        {isControlLike
-                          ? 'Baseline checkout experience used as the control.'
-                          : `Treatment configured for ${phaseDetails.title.toLowerCase()} with a deployment-safe checkout contract.`}
-                      </Text>
-                    </div>
-                    <InlineStack gap="200" blockAlign="center" wrap>
-                      <Badge tone="info">{variant.allocation ?? 0}% traffic</Badge>
-                      <Badge tone={variantConfigured ? 'success' : 'attention'}>
-                        {variantConfigured ? 'Configured' : 'Needs content'}
-                      </Badge>
-                      <Badge tone={isControlLike ? 'info' : 'success'}>
-                        {isControlLike ? 'Control' : phaseDetails.title}
-                      </Badge>
-                    </InlineStack>
-                  </InlineStack>
+            <CheckoutStudioModal
+              key={`checkout-${index}`}
+              open={checkoutEditorModalOpen}
+              onClose={() => setCheckoutEditorModalOpen(false)}
+              title={`Checkout studio: ${variant.name || `Variant ${index + 1}`}`}
+              accentStyle={{
+                '--checkout-variant-accent': variantColor,
+                '--checkout-variant-accent-soft': getVariantColorLight(variantColor),
+              }}
+            >
+              <CheckoutModalCommandStrip
+                action={checkoutStudioNextAction}
+                variantName={variant.name || `Variant ${index + 1}`}
+                phaseLabel={phaseDetails.title}
+                allocation={variant.allocation ?? 0}
+                configured={variantConfigured}
+                modeLabel={`${getCheckoutStepLabel(activeCheckoutStep)} · ${getCheckoutModeLabel(checkoutEditorMode)}`}
+                modeState={activeModeMeta.state}
+                blockerCount={checkoutStudioReadiness.blockerCount}
+                warningCount={checkoutStudioReadiness.warningCount}
+                onOpenConfidence={() => setCheckoutEditorMode('preview')}
+                onChangeType={() => setCheckoutEditorMode('surface')}
+              />
 
-                  <div className={styles.checkoutVariantMetrics}>
-                    <div className={styles.checkoutVariantMetric}>
-                      <span className={styles.checkoutVariantMetricLabel}>Phase</span>
-                      <span className={styles.checkoutVariantMetricValue}>
-                        {phaseDetails.title}
-                      </span>
+              <div className={styles.checkoutStudioWorkspace}>
+                <CheckoutStudioModeRail
+                  tabs={checkoutStudioStepTabs}
+                  activeMode={activeCheckoutStep}
+                  variantIndex={index}
+                  groups={checkoutStudioStepGroups}
+                  issueCounts={checkoutStepIssueCounts}
+                  sections={
+                    activeCheckoutStep === 'build' &&
+                    ['experience', 'products'].includes(checkoutEditorMode)
+                      ? experienceSections
+                      : []
+                  }
+                  getTabMeta={getCheckoutStepMeta}
+                  onSelect={setCheckoutStudioStep}
+                  onJumpSection={sectionIndex =>
+                    openCheckoutSection(index, sectionIndex, { scrollIntoView: true })
+                  }
+                />
+                <div
+                  id={`checkout-studio-panel-${index}`}
+                  className={styles.checkoutStudioEditorPane}
+                  role="tabpanel"
+                  aria-labelledby={`checkout-studio-tab-${index}-${activeCheckoutStep}`}
+                >
+                  {activeCheckoutStep !== 'verify' ? (
+                    <div
+                      className={styles.checkoutSubstepSwitch}
+                      role="toolbar"
+                      aria-label={`${getCheckoutStepLabel(activeCheckoutStep)} substeps`}
+                    >
+                      {activeCheckoutStep === 'plan'
+                        ? [
+                            { label: 'Intent', value: 'overview' },
+                            { label: 'Test type', value: 'surface' },
+                          ].map(item => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              className={
+                                checkoutEditorMode === item.value
+                                  ? styles.checkoutSubstepSwitchActive
+                                  : ''
+                              }
+                              aria-pressed={checkoutEditorMode === item.value}
+                              onClick={() => setCheckoutEditorMode(item.value)}
+                            >
+                              {item.label}
+                            </button>
+                          ))
+                        : null}
+                      {activeCheckoutStep === 'build'
+                        ? [
+                            { label: 'Blocks', value: 'experience' },
+                            { label: 'Products', value: 'products' },
+                            { label: 'Payment', value: 'payment' },
+                            { label: 'Delivery', value: 'delivery' },
+                          ].map(item => {
+                            const itemMeta = getCheckoutEditorTabMeta(item.value);
+                            return (
+                              <button
+                                key={item.value}
+                                type="button"
+                                className={`${checkoutEditorMode === item.value ? styles.checkoutSubstepSwitchActive : ''} ${itemMeta.state === 'inactive' ? styles.checkoutSubstepSwitchInactive : ''}`}
+                                aria-pressed={checkoutEditorMode === item.value}
+                                onClick={() => setCheckoutEditorMode(item.value)}
+                              >
+                                {item.label}
+                                {itemMeta.state === 'inactive' ? <small>Draft</small> : null}
+                              </button>
+                            );
+                          })
+                        : null}
                     </div>
-                    <div className={styles.checkoutVariantMetric}>
-                      <span className={styles.checkoutVariantMetricLabel}>Status</span>
-                      <span className={styles.checkoutVariantMetricValue}>
-                        {variantConfigured ? 'Ready to render' : 'Draft'}
-                      </span>
+                  ) : (
+                    <div className={styles.checkoutVerifyContext}>
+                      <strong>Verify launch confidence</strong>
+                      <span>Use the confidence rail to review issues and jump back to fixes.</span>
                     </div>
-                    <div className={styles.checkoutVariantMetric}>
-                      <span className={styles.checkoutVariantMetricLabel}>
-                        {checkoutPhase === 'experience' ? 'Placement' : 'Surface'}
-                      </span>
-                      <span className={styles.checkoutVariantMetricValue}>
-                        {checkoutPhase === 'experience' ? placementLabel : phaseDetails.surface}
-                      </span>
-                    </div>
-                    <div className={styles.checkoutVariantMetric}>
-                      <span className={styles.checkoutVariantMetricLabel}>
-                        {checkoutPhase === 'experience' ? 'Renderable units' : 'Target methods'}
-                      </span>
-                      <span className={styles.checkoutVariantMetricValue}>
-                        {checkoutPhase === 'experience'
-                          ? `${actionableSections.length} section${actionableSections.length === 1 ? '' : 's'}`
-                          : checkoutPhase === 'payment_method'
-                            ? `${normalizeCheckoutListInput(cfg.payment_method_names).length} method${normalizeCheckoutListInput(cfg.payment_method_names).length === 1 ? '' : 's'}`
-                            : `${normalizeCheckoutListInput(cfg.delivery_method_names).length} method${normalizeCheckoutListInput(cfg.delivery_method_names).length === 1 ? '' : 's'}`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  )}
 
-                {checkoutPhase === 'experience' ? (
-                  <BlockStack gap="300">
+                  <details className={styles.checkoutModeIntroPanel}>
+                    <summary>
+                      <span className={styles.checkoutStudioEyebrow}>Why this step matters</span>
+                      <strong>{modeIntro.title}</strong>
+                    </summary>
+                    <div className={styles.checkoutModeIntroSteps}>
+                      {modeIntro.steps.map((step, stepIndex) => (
+                        <span key={`${checkoutEditorMode}-intro-${stepIndex}`}>
+                          {stepIndex + 1}. {step}
+                        </span>
+                      ))}
+                    </div>
+                  </details>
+
+                  {checkoutEditorMode === 'surface' ? (
+                    <CheckoutSurfaceMode
+                      surfaceCards={checkoutSurfaceCards}
+                      currentPhaseLabel={phaseDetails.title}
+                      pendingSwitch={checkoutPhaseSwitchDraft}
+                      onSelectSurface={requestCheckoutPhaseChange}
+                      onCancelSwitch={() => setCheckoutPhaseSwitchDraft(null)}
+                      onConfirmSwitch={applyCheckoutPhaseChange}
+                    />
+                  ) : checkoutEditorMode === 'overview' ? (
                     <div className={styles.checkoutVariantBlock}>
-                      <InlineStack align="space-between" blockAlign="center" wrap>
+                      <InlineStack align="space-between" blockAlign="center" wrap gap="200">
                         <div>
                           <Text as="h5" variant="headingSm">
-                            Experience composition
+                            Experiment intent
                           </Text>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            Build a modular checkout treatment with reusable content blocks, live
-                            preview rhythm, and a structured placement contract.
+                            Keep the variant hypothesis, primary output, and analytics key attached
+                            to the checkout config that reaches runtime analytics.
                           </Text>
                         </div>
-                        <Badge tone={actionableSections.length > 0 ? 'success' : 'attention'}>
-                          {actionableSections.length} renderable section
-                          {actionableSections.length === 1 ? '' : 's'}
-                        </Badge>
+                        <Badge tone="info">Advanced fields</Badge>
                       </InlineStack>
-                      {actionableTypeLabels.length > 0 ? (
-                        <div className={styles.checkoutVariantChips}>
-                          {actionableTypeLabels.map(label => (
-                            <span
-                              key={`${variant.name}-${label}`}
-                              className={styles.checkoutVariantChip}
-                            >
-                              {label}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className={styles.checkoutVariantEmptyHint}>
-                          Start with a smart section below to generate a stronger checkout treatment
-                          faster.
-                        </div>
-                      )}
-                      <Select
-                        label="Checkout placement"
-                        options={CHECKOUT_PLACEMENT_OPTIONS}
-                        value={
-                          normalizedExperience.checkout_placement ||
-                          'purchase.checkout.block.render'
-                        }
+                      {checkoutVariants.length > 1 ? (
+                        <InlineStack gap="200" blockAlign="center" wrap>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            Copy checkout config from:
+                          </Text>
+                          {checkoutVariants.map((sourceVariant, sourceIndex) =>
+                            sourceIndex === index ? null : (
+                              <Button
+                                key={`copy-checkout-${index}-${sourceIndex}`}
+                                size="micro"
+                                onClick={() => copyCheckoutConfigFromVariant(index, sourceIndex)}
+                              >
+                                {sourceVariant?.name || `Variant ${sourceIndex + 1}`}
+                              </Button>
+                            )
+                          )}
+                        </InlineStack>
+                      ) : null}
+                      <div className={styles.checkoutSelectGrid}>
+                        <Select
+                          label="Primary output goal"
+                          options={CHECKOUT_PRIMARY_OUTPUT_GOAL_OPTIONS}
+                          value={normalizeCheckoutPrimaryOutputGoal(
+                            normalizedExperience.primary_output_goal
+                          )}
+                          onChange={value =>
+                            updateCheckoutExperienceVariantConfig(index, current => ({
+                              ...current,
+                              primary_output_goal: value,
+                            }))
+                          }
+                        />
+                        <TextField
+                          label="Analytics key"
+                          value={String(normalizedExperience.analytics_key || '')}
+                          onChange={value =>
+                            updateCheckoutExperienceVariantConfig(index, current => ({
+                              ...current,
+                              analytics_key: normalizeCheckoutStudioAnalyticsKey(value),
+                            }))
+                          }
+                          placeholder={`variant_${index + 1}`}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <TextField
+                        label="Variant hypothesis"
+                        value={String(normalizedExperience.variant_hypothesis || '')}
                         onChange={value =>
                           updateCheckoutExperienceVariantConfig(index, current => ({
                             ...current,
-                            checkout_placement: value,
+                            variant_hypothesis: value,
                           }))
                         }
-                        helpText="All sections for this variant render inside the checkout block extension."
+                        placeholder="Example: Reassurance copy plus checkout product add-ons will lift purchase confidence."
+                        multiline={2}
+                        autoComplete="off"
                       />
                     </div>
+                  ) : null}
 
-                    <div className={styles.checkoutQuickAddShell}>
-                      <InlineStack align="space-between" blockAlign="center" wrap gap="300">
+                  {activeModeIsDraft ? (
+                    <div
+                      className={styles.checkoutInactiveModeBanner}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div>
+                        <strong>Saved draft only</strong>
+                        <span>
+                          This mode is preserved, but it will not launch while {phaseDetails.title}{' '}
+                          is the active checkout test type.
+                        </span>
+                      </div>
+                      <Button size="slim" onClick={() => setCheckoutEditorMode('surface')}>
+                        Change test type
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {activeCheckoutStep === 'build' ? (
+                    <div className={styles.checkoutGuidedSetupShell}>
+                      <div className={styles.checkoutGuidedSetupHeader}>
                         <div>
+                          <span className={styles.checkoutStudioEyebrow}>Fast setup path</span>
                           <Text as="h5" variant="headingSm">
-                            Section starters
+                            Quick setup for {phaseDetails.title.toLowerCase()}
                           </Text>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            Add a preset section first, then refine copy, bullets, and CTA behavior
-                            in the editor.
+                            Pick one preset to create the minimum launch-ready structure, then
+                            refine details in the advanced editor below.
                           </Text>
                         </div>
-                        <div className={styles.checkoutStarterHeaderMeta}>
-                          <span className={styles.checkoutStarterPill}>Preset copy</span>
-                          <span className={styles.checkoutStarterPill}>
-                            {CHECKOUT_SECTION_TYPE_OPTIONS.length} starter types
-                          </span>
-                        </div>
-                      </InlineStack>
-                      <div className={styles.checkoutQuickAddRow}>
-                        {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
+                        <Badge tone={variantConfigured ? 'success' : 'attention'}>
+                          {variantConfigured ? 'Minimum content ready' : 'Choose a preset'}
+                        </Badge>
+                      </div>
+                      <div className={styles.checkoutQuickSetupGrid}>
+                        {quickSetupPresets.map(preset => (
                           <button
-                            key={`${variant.name}-${option.value}`}
+                            key={preset.key}
                             type="button"
-                            className={styles.checkoutQuickAddButton}
-                            onClick={() => {
+                            className={styles.checkoutQuickSetupCard}
+                            onClick={() => applyCheckoutQuickSetupPreset(preset)}
+                          >
+                            <strong>{preset.title}</strong>
+                            <span>{preset.detail}</span>
+                            <em>Use preset</em>
+                          </button>
+                        ))}
+                      </div>
+                      <div className={styles.checkoutMinimumSetupPanel}>
+                        <div>
+                          <span className={styles.checkoutStudioEyebrow}>Minimum valid setup</span>
+                          <strong>Know when you can stop configuring</strong>
+                        </div>
+                        <div className={styles.checkoutMinimumSetupList}>
+                          {minimumValidChecklist.map(item => (
+                            <span
+                              key={item.label}
+                              className={
+                                item.done
+                                  ? styles.checkoutMinimumSetupItemDone
+                                  : item.required
+                                    ? styles.checkoutMinimumSetupItemRequired
+                                    : ''
+                              }
+                            >
+                              <Badge
+                                tone={item.done ? 'success' : item.required ? 'attention' : 'info'}
+                              >
+                                {item.done ? 'Done' : item.required ? 'Required' : 'Optional'}
+                              </Badge>
+                              <strong>{item.label}</strong>
+                              <small>{item.detail}</small>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {checkoutEditorMode === 'experience' || checkoutEditorMode === 'products' ? (
+                    <BlockStack gap="300">
+                      <div className={styles.checkoutVariantBlock}>
+                        <InlineStack align="space-between" blockAlign="center" wrap>
+                          <div>
+                            <Text as="h5" variant="headingSm">
+                              {checkoutEditorMode === 'products'
+                                ? 'Product list studio'
+                                : 'Experience composition'}
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              {checkoutEditorMode === 'products'
+                                ? 'Edit only checkout product-list blocks, source strategy, add-to-cart readiness, and source-specific runtime behavior.'
+                                : 'Build a modular checkout treatment with reusable content blocks, live preview rhythm, and a structured placement contract.'}
+                            </Text>
+                          </div>
+                          <Badge tone={actionableSections.length > 0 ? 'success' : 'attention'}>
+                            {checkoutEditorMode === 'products'
+                              ? `${productListSections.length} product list${productListSections.length === 1 ? '' : 's'}`
+                              : `${actionableSections.length} renderable section${actionableSections.length === 1 ? '' : 's'}`}
+                          </Badge>
+                        </InlineStack>
+                        {actionableTypeLabels.length > 0 ? (
+                          <div className={styles.checkoutVariantChips}>
+                            {actionableTypeLabels.map(label => (
+                              <span
+                                key={`${variant.name}-${label}`}
+                                className={styles.checkoutVariantChip}
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className={styles.checkoutVariantEmptyHint}>
+                            Start with a smart section below to generate a stronger checkout
+                            treatment faster.
+                          </div>
+                        )}
+                        <Select
+                          label="Checkout placement"
+                          options={CHECKOUT_PLACEMENT_OPTIONS}
+                          value={
+                            normalizedExperience.checkout_placement ||
+                            'purchase.checkout.block.render'
+                          }
+                          onChange={value =>
+                            updateCheckoutExperienceVariantConfig(index, current => ({
+                              ...current,
+                              checkout_placement: value,
+                            }))
+                          }
+                          helpText="All sections for this variant render inside the checkout block extension."
+                        />
+                      </div>
+
+                      <div className={styles.checkoutQuickAddShell}>
+                        <InlineStack align="space-between" blockAlign="center" wrap gap="300">
+                          <div>
+                            <Text as="h5" variant="headingSm">
+                              {checkoutEditorMode === 'products'
+                                ? 'Product list starter'
+                                : 'Section starters'}
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              {checkoutEditorMode === 'products'
+                                ? 'Create a dedicated product-list block, then choose manual cards, cart-related rows, or collection-fed hydration.'
+                                : 'Add a preset section first, then refine copy, bullets, and CTA behavior in the editor.'}
+                            </Text>
+                          </div>
+                          <div className={styles.checkoutStarterHeaderMeta}>
+                            <span className={styles.checkoutStarterPill}>Preset copy</span>
+                            <span className={styles.checkoutStarterPill}>
+                              {CHECKOUT_SECTION_TYPE_OPTIONS.length} starter types
+                            </span>
+                          </div>
+                        </InlineStack>
+                        {checkoutEditorMode === 'products' ? (
+                          <CheckoutProductListStudio
+                            sourceCards={productSourceCards}
+                            productRows={productMatrixRows}
+                            sourceOptions={CHECKOUT_PRODUCT_SOURCE_OPTIONS}
+                            getOptionLabel={getCheckoutOptionLabel}
+                            onAddProductList={(sourceMode = 'manual') => {
                               openCheckoutSection(index, experienceSections.length, {
                                 scrollIntoView: true,
                               });
@@ -12622,858 +13229,1113 @@ function TestWizard({
                                     {
                                       ...createEmptyCheckoutSection(
                                         currentSections.length,
-                                        option.value
+                                        'product_list'
                                       ),
-                                      props: buildCheckoutSectionSmartPreset(option.value),
+                                      props: {
+                                        ...buildCheckoutSectionSmartPreset('product_list'),
+                                        product_source_mode: sourceMode,
+                                        product_items:
+                                          sourceMode === 'manual'
+                                            ? [
+                                                {
+                                                  ...createEmptyCheckoutProductItem(0),
+                                                  title: 'Checkout add-on',
+                                                  subtitle: 'Recommended with this order',
+                                                  price: '$19',
+                                                },
+                                              ]
+                                            : [],
+                                      },
                                     },
                                   ],
                                 };
                               });
                             }}
-                          >
-                            <div className={styles.checkoutQuickAddButtonTop}>
-                              <strong>{option.label}</strong>
-                              <span className={styles.checkoutQuickAddButtonBadge}>Starter</span>
-                            </div>
-                            <span>{getCheckoutSectionDetails(option.value).description}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <BlockStack gap="300">
-                      {experienceSections.map((section, sectionIndex) => {
-                        const props = section?.props || {};
-                        const isOnlySection = experienceSections.length === 1;
-                        const sectionDetails = getCheckoutSectionDetails(section.type);
-                        const featureBullets = normalizeCheckoutListInput(props.feature_bullets);
-                        const productItems = normalizeCheckoutProductItems(props.product_items);
-                        const productSourceMode = normalizeCheckoutProductSourceMode(
-                          props.product_source_mode
-                        );
-                        const productSourceLimit = normalizeCheckoutProductSourceLimit(
-                          props.product_source_limit
-                        );
-                        const productDisplayLayout = normalizeCheckoutProductDisplayLayout(
-                          props.product_display_layout
-                        );
-                        const productDisplayLayoutLabel =
-                          CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS.find(
-                            option => option.value === productDisplayLayout
-                          )?.label || 'Stacked cards';
-                        const productSourceCollections = normalizeCheckoutProductSourceCollections(
-                          props.product_source_collections
-                        );
-                        const renderableProductItems = productItems.filter(
-                          hasRenderableCheckoutProductItem
-                        );
-                        const previewProductItems =
-                          section.type === 'product_list' && productSourceMode === 'cart_related'
-                            ? buildCheckoutCartRelatedPreviewItems(productSourceLimit)
-                            : section.type === 'product_list' && productSourceMode === 'collection'
-                              ? buildCheckoutCollectionPreviewItems(
-                                  productSourceCollections,
-                                  productSourceLimit
-                                )
-                              : renderableProductItems;
-                        const sectionId = String(section?.id || '').trim();
-                        const bulletDraftKey = `checkout-bullet-${index}-${section.id || sectionIndex}`;
-                        const bulletDraft = String(checkoutBulletDrafts[bulletDraftKey] || '');
-                        const hasStoredExpandedSection = Object.prototype.hasOwnProperty.call(
-                          checkoutExpandedSectionsByVariant,
-                          index
-                        );
-                        const expandedSectionIndex = hasStoredExpandedSection
-                          ? checkoutExpandedSectionsByVariant[index]
-                          : 0;
-                        const isExpandedSection = expandedSectionIndex === sectionIndex;
-                        const sectionSummary =
-                          String(props.title || '').trim() ||
-                          String(props.message || '').trim() ||
-                          (section.type === 'product_list' && productSourceMode === 'cart_related'
-                            ? `Cart-related source - ${productSourceLimit} slot${productSourceLimit === 1 ? '' : 's'}`
-                            : section.type === 'product_list' &&
-                                productSourceMode === 'collection' &&
-                                productSourceCollections.length > 0
-                              ? `Collection source - ${productSourceCollections.length} collection${productSourceCollections.length === 1 ? '' : 's'}`
-                              : productItems.length > 0
-                                ? `${productItems.length} product card${productItems.length === 1 ? '' : 's'}`
-                                : '') ||
-                          (featureBullets.length > 0
-                            ? `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`
-                            : 'No content yet');
-                        const hasSectionContent = Boolean(
-                          props.title ||
-                          props.message ||
-                          props.badge_text ||
-                          props.disclaimer ||
-                          props.cta_label ||
-                          featureBullets.length > 0 ||
-                          (section.type === 'product_list' &&
-                            productSourceMode === 'cart_related') ||
-                          (section.type === 'product_list' &&
-                            productSourceMode === 'collection' &&
-                            productSourceCollections.length > 0) ||
-                          renderableProductItems.length > 0
-                        );
-                        return (
-                          <Card key={`${variant.name}-section-${section.id || sectionIndex}`}>
-                            <div className={styles.checkoutSectionShell}>
-                              <button
-                                type="button"
-                                className={`${styles.checkoutSectionAccordionHead} ${isExpandedSection ? styles.checkoutSectionAccordionHeadActive : ''}`}
-                                onClick={() => toggleCheckoutSection(index, sectionIndex)}
-                                aria-expanded={isExpandedSection}
-                                aria-controls={`checkout-section-panel-${index}-${sectionIndex}`}
-                                id={`checkout-section-head-${index}-${sectionIndex}`}
+                          />
+                        ) : (
+                          <div className={styles.checkoutStarterGroups}>
+                            {getCheckoutSectionStarterTypes().map(group => (
+                              <div
+                                key={`${variant.name}-${group.label}`}
+                                className={styles.checkoutStarterGroup}
                               >
-                                <div className={styles.checkoutSectionAccordionMain}>
-                                  <div className={styles.checkoutSectionAccordionTitleRow}>
-                                    <Text variant="headingXs" as="h5" fontWeight="semibold">
-                                      Section {sectionIndex + 1}: {sectionDetails.label}
-                                    </Text>
-                                    <span className={styles.checkoutSectionAccordionSummary}>
-                                      {sectionSummary}
-                                    </span>
-                                  </div>
-                                  <div className={styles.checkoutSectionAccordionMeta}>
-                                    <span
-                                      className={`${styles.checkoutSectionAccordionChip} ${section.enabled === false ? styles.checkoutSectionAccordionChipMuted : ''}`}
-                                    >
-                                      {section.enabled === false ? 'Disabled' : 'Enabled'}
-                                    </span>
-                                    <span className={styles.checkoutSectionAccordionChip}>
-                                      {String(props.layout || 'banner')}
-                                    </span>
-                                    <span className={styles.checkoutSectionAccordionChip}>
-                                      {String(props.tone || 'success')}
-                                    </span>
-                                    {sectionId ? (
-                                      <span className={styles.checkoutSectionAccordionChip}>
-                                        ID: {sectionId}
-                                      </span>
-                                    ) : null}
-                                    {section.type === 'product_list' ? (
-                                      <span className={styles.checkoutSectionAccordionChip}>
-                                        {productDisplayLayoutLabel}
-                                      </span>
-                                    ) : null}
-                                  </div>
+                                <div className={styles.checkoutStarterGroupHeader}>
+                                  <strong>{group.label}</strong>
+                                  <span>{group.description}</span>
                                 </div>
-                                <span
-                                  className={styles.checkoutSectionAccordionChevron}
-                                  aria-hidden
-                                >
-                                  <Icon
-                                    source={isExpandedSection ? ChevronDownIcon : ChevronRightIcon}
-                                  />
-                                </span>
-                              </button>
+                                <div className={styles.checkoutQuickAddRow}>
+                                  {(group.starterTypes || []).map(starterType => {
+                                    const option = CHECKOUT_SECTION_TYPE_OPTIONS.find(
+                                      item => item.value === starterType
+                                    );
+                                    if (!option) {
+                                      return null;
+                                    }
+                                    const starterProps = buildCheckoutSectionSmartPreset(
+                                      option.value
+                                    );
+                                    const starterBullets = normalizeCheckoutListInput(
+                                      starterProps.feature_bullets
+                                    );
+                                    const starterPreview =
+                                      String(
+                                        starterProps.message || starterProps.title || ''
+                                      ).trim() ||
+                                      getCheckoutSectionDetails(option.value).description;
+                                    return (
+                                      <button
+                                        key={`${variant.name}-${option.value}`}
+                                        type="button"
+                                        className={styles.checkoutQuickAddButton}
+                                        onClick={() => {
+                                          openCheckoutSection(index, experienceSections.length, {
+                                            scrollIntoView: true,
+                                          });
+                                          updateCheckoutExperienceVariantConfig(index, current => {
+                                            const currentSections =
+                                              getNormalizedCheckoutExperienceConfig(
+                                                current
+                                              ).checkout_sections;
+                                            return {
+                                              ...current,
+                                              checkout_sections: [
+                                                ...currentSections,
+                                                {
+                                                  ...createEmptyCheckoutSection(
+                                                    currentSections.length,
+                                                    option.value
+                                                  ),
+                                                  props: starterProps,
+                                                },
+                                              ],
+                                            };
+                                          });
+                                        }}
+                                      >
+                                        <div className={styles.checkoutQuickAddButtonTop}>
+                                          <strong>{option.label}</strong>
+                                          <span className={styles.checkoutQuickAddButtonBadge}>
+                                            {group.label === 'Recommended patterns'
+                                              ? 'Recommended'
+                                              : 'Starter'}
+                                          </span>
+                                        </div>
+                                        <span>
+                                          {getCheckoutSectionDetails(option.value).description}
+                                        </span>
+                                        <span className={styles.checkoutQuickAddPreview}>
+                                          {starterPreview}
+                                        </span>
+                                        {starterBullets.length > 0 ? (
+                                          <span className={styles.checkoutQuickAddProof}>
+                                            {starterBullets.slice(0, 2).join(' + ')}
+                                          </span>
+                                        ) : null}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
-                              <Collapsible
-                                open={isExpandedSection}
-                                id={`checkout-section-panel-${index}-${sectionIndex}`}
-                                transition={{ duration: '180ms', timingFunction: 'ease' }}
-                              >
-                                <div
-                                  className={styles.checkoutSectionAccordionBody}
-                                  aria-labelledby={`checkout-section-head-${index}-${sectionIndex}`}
+                      <BlockStack gap="300">
+                        {visibleCheckoutSectionEntries.length === 0 ? (
+                          <div className={styles.checkoutVariantEmptyHint}>
+                            No product-list blocks are configured yet. Add a product-list block to
+                            edit source mode, product cards, and add-to-cart readiness.
+                          </div>
+                        ) : null}
+                        {visibleCheckoutSectionEntries.map(({ section, sectionIndex }) => {
+                          const props = section?.props || {};
+                          const isOnlySection = experienceSections.length === 1;
+                          const sectionDetails = getCheckoutSectionDetails(section.type);
+                          const featureBullets = normalizeCheckoutListInput(props.feature_bullets);
+                          const productItems = normalizeCheckoutProductItems(props.product_items);
+                          const productSourceMode = normalizeCheckoutProductSourceMode(
+                            props.product_source_mode
+                          );
+                          const productSourceLimit = normalizeCheckoutProductSourceLimit(
+                            props.product_source_limit
+                          );
+                          const productDisplayLayout = normalizeCheckoutProductDisplayLayout(
+                            props.product_display_layout
+                          );
+                          const productAction = String(props.product_action || 'display_only')
+                            .trim()
+                            .toLowerCase();
+                          const productStrategy = String(
+                            props.selection_strategy || section.strategy_key || 'manual_upsell'
+                          )
+                            .trim()
+                            .toLowerCase();
+                          const checkoutLayoutLabel = getCheckoutOptionLabel(
+                            CHECKOUT_LAYOUT_OPTIONS,
+                            props.layout || 'banner',
+                            'Banner'
+                          );
+                          const checkoutToneLabel = getCheckoutOptionLabel(
+                            CHECKOUT_TONE_OPTIONS,
+                            props.tone || 'success',
+                            'Success'
+                          );
+                          const checkoutCtaKindLabel = getCheckoutOptionLabel(
+                            CHECKOUT_CTA_KIND_OPTIONS,
+                            props.cta_kind || 'track',
+                            'Track CTA'
+                          );
+                          const productSourceModeLabel = getCheckoutOptionLabel(
+                            CHECKOUT_PRODUCT_SOURCE_OPTIONS,
+                            productSourceMode,
+                            'Manual cards'
+                          );
+                          const productActionLabel = getCheckoutOptionLabel(
+                            CHECKOUT_PRODUCT_ACTION_OPTIONS,
+                            productAction,
+                            'Display only'
+                          );
+                          const productStrategyLabel = getCheckoutOptionLabel(
+                            CHECKOUT_PRODUCT_STRATEGY_OPTIONS,
+                            productStrategy,
+                            'Manual upsell'
+                          );
+                          const productSourceCollections =
+                            normalizeCheckoutProductSourceCollections(
+                              props.product_source_collections
+                            );
+                          const renderableProductItems = productItems.filter(
+                            hasRenderableCheckoutProductItem
+                          );
+                          const actionableProductItems = productItems.filter(
+                            item => item.merchandise_id || item.variant_gid
+                          );
+                          const isProductListActionReady =
+                            productAction !== 'add_to_cart' ||
+                            productSourceMode === 'collection' ||
+                            actionableProductItems.length > 0;
+                          const runtimePreviewNotes = getCheckoutRuntimePreviewNotes({
+                            sectionType: section.type,
+                            productSourceMode,
+                            productAction,
+                            checkoutPhase,
+                          });
+                          const previewProductItems =
+                            section.type === 'product_list' && productSourceMode === 'cart_related'
+                              ? buildCheckoutCartRelatedPreviewItems(productSourceLimit)
+                              : section.type === 'product_list' &&
+                                  productSourceMode === 'collection'
+                                ? buildCheckoutCollectionPreviewItems(
+                                    productSourceCollections,
+                                    productSourceLimit
+                                  )
+                                : renderableProductItems;
+                          const sectionId = String(section?.id || '').trim();
+                          const bulletDraftKey = `checkout-bullet-${index}-${section.id || sectionIndex}`;
+                          const bulletDraft = String(checkoutBulletDrafts[bulletDraftKey] || '');
+                          const hasStoredExpandedSection = Object.prototype.hasOwnProperty.call(
+                            checkoutExpandedSectionsByVariant,
+                            index
+                          );
+                          const expandedSectionIndex = hasStoredExpandedSection
+                            ? checkoutExpandedSectionsByVariant[index]
+                            : 0;
+                          const isExpandedSection = expandedSectionIndex === sectionIndex;
+                          const sectionSummary =
+                            String(props.title || '').trim() ||
+                            String(props.message || '').trim() ||
+                            (section.type === 'product_list' && productSourceMode === 'cart_related'
+                              ? `Cart-related source - ${productSourceLimit} slot${productSourceLimit === 1 ? '' : 's'}`
+                              : section.type === 'product_list' &&
+                                  productSourceMode === 'collection' &&
+                                  productSourceCollections.length > 0
+                                ? `Collection source - ${productSourceCollections.length} collection${productSourceCollections.length === 1 ? '' : 's'}`
+                                : productItems.length > 0
+                                  ? `${productItems.length} product card${productItems.length === 1 ? '' : 's'}`
+                                  : '') ||
+                            (featureBullets.length > 0
+                              ? `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`
+                              : 'No content yet');
+                          const hasSectionContent = Boolean(
+                            props.title ||
+                            props.message ||
+                            props.badge_text ||
+                            props.disclaimer ||
+                            props.cta_label ||
+                            featureBullets.length > 0 ||
+                            (section.type === 'product_list' &&
+                              productSourceMode === 'cart_related') ||
+                            (section.type === 'product_list' &&
+                              productSourceMode === 'collection' &&
+                              productSourceCollections.length > 0) ||
+                            renderableProductItems.length > 0
+                          );
+                          const contentHealthReady = hasSectionContent && section.enabled !== false;
+                          const designHealthReady = Boolean(props.layout || props.tone);
+                          const runtimeHealthReady =
+                            section.type !== 'product_list' ||
+                            (productSourceMode === 'manual' &&
+                              (productAction !== 'add_to_cart' || isProductListActionReady));
+                          const sectionReadiness =
+                            section.enabled === false
+                              ? {
+                                  label: 'Disabled',
+                                  tone: 'critical',
+                                  nextAction: 'Enable this section before launch.',
+                                }
+                              : !hasSectionContent
+                                ? {
+                                    label: 'Needs copy',
+                                    tone: 'attention',
+                                    nextAction:
+                                      'Add title, message, proof points, or product content.',
+                                  }
+                                : section.type === 'product_list' &&
+                                    productSourceMode === 'collection' &&
+                                    productSourceCollections.length === 0
+                                  ? {
+                                      label: 'Needs source',
+                                      tone: 'attention',
+                                      nextAction: 'Choose at least one Shopify collection.',
+                                    }
+                                  : section.type === 'product_list' && !isProductListActionReady
+                                    ? {
+                                        label: 'Needs IDs',
+                                        tone: 'critical',
+                                        nextAction:
+                                          'Add a merchandise or variant GID for add-to-cart.',
+                                      }
+                                    : section.type === 'product_list' &&
+                                        (productSourceMode === 'cart_related' ||
+                                          productSourceMode === 'collection')
+                                      ? {
+                                          label: 'Runtime proof',
+                                          tone: 'attention',
+                                          nextAction: 'Verify dynamic rows in a live checkout.',
+                                        }
+                                      : {
+                                          label: 'Ready',
+                                          tone: 'success',
+                                          nextAction:
+                                            'Review preview, then verify in Shopify checkout.',
+                                        };
+                          const sectionHealthChecks = [
+                            {
+                              label: 'Content',
+                              passed: contentHealthReady,
+                              detail: contentHealthReady ? 'Renderable content' : 'Needs copy',
+                            },
+                            {
+                              label: 'Design',
+                              passed: designHealthReady,
+                              detail: `${checkoutLayoutLabel} / ${checkoutToneLabel}`,
+                            },
+                            {
+                              label: 'Runtime',
+                              passed: runtimeHealthReady,
+                              detail:
+                                section.type === 'product_list'
+                                  ? productSourceMode === 'manual'
+                                    ? productAction === 'add_to_cart'
+                                      ? isProductListActionReady
+                                        ? 'Manual add-to-cart ready'
+                                        : 'Needs variant GID'
+                                      : 'Display-only'
+                                    : productSourceMode === 'collection'
+                                      ? productSourceCollections.length > 0
+                                        ? 'Collection-fed'
+                                        : 'Choose collection'
+                                      : 'Cart-related'
+                                  : 'Static block',
+                            },
+                          ];
+                          const primarySetupChecklist = [
+                            {
+                              label: 'Title',
+                              done: Boolean(String(props.title || '').trim()),
+                              detail:
+                                String(props.title || '').trim() || 'Add a short section title',
+                            },
+                            {
+                              label: 'Message',
+                              done: Boolean(String(props.message || '').trim()),
+                              detail:
+                                String(props.message || '').trim() ||
+                                'Add the main checkout-facing copy',
+                            },
+                            {
+                              label: 'CTA',
+                              done:
+                                String(props.cta_kind || 'track') === 'none' ||
+                                Boolean(String(props.cta_label || '').trim()),
+                              detail:
+                                String(props.cta_kind || 'track') === 'none'
+                                  ? 'CTA disabled'
+                                  : String(props.cta_label || '').trim() || 'Add CTA label',
+                            },
+                          ];
+                          if (section.type === 'product_list') {
+                            primarySetupChecklist.push({
+                              label: 'Source',
+                              done:
+                                productSourceMode !== 'collection' ||
+                                productSourceCollections.length > 0,
+                              detail: productSourceModeLabel,
+                            });
+                          }
+                          const productSourceGuidanceCards = CHECKOUT_PRODUCT_SOURCE_OPTIONS.map(
+                            option => ({
+                              ...option,
+                              active: option.value === productSourceMode,
+                              detail:
+                                option.value === 'manual'
+                                  ? 'Curate exact product cards and optional add buttons.'
+                                  : option.value === 'cart_related'
+                                    ? 'Resolve rows from the shopper cart at runtime.'
+                                    : 'Hydrate products from selected Shopify collections.',
+                            })
+                          );
+                          return (
+                            <Card key={`${variant.name}-section-${section.id || sectionIndex}`}>
+                              <div className={styles.checkoutSectionShell}>
+                                <button
+                                  type="button"
+                                  className={`${styles.checkoutSectionAccordionHead} ${isExpandedSection ? styles.checkoutSectionAccordionHeadActive : ''}`}
+                                  onClick={() => toggleCheckoutSection(index, sectionIndex)}
+                                  aria-expanded={isExpandedSection}
+                                  aria-controls={`checkout-section-panel-${index}-${sectionIndex}`}
+                                  id={`checkout-section-head-${index}-${sectionIndex}`}
                                 >
-                                  <div className={styles.checkoutSectionStudio}>
-                                    <div
-                                      className={`${styles.checkoutSectionPreview} ${!hasSectionContent ? styles.checkoutSectionPreviewEmpty : ''}`}
-                                    >
-                                      {hasSectionContent ? (
-                                        <BlockStack gap="200">
-                                          {props.badge_text ? (
-                                            <span className={styles.checkoutSectionPreviewBadge}>
-                                              {props.badge_text}
-                                            </span>
-                                          ) : null}
-                                          <Text as="h6" variant="headingSm">
-                                            {props.title || sectionDetails.label}
-                                          </Text>
-                                          <Text as="p" variant="bodySm" tone="subdued">
-                                            {props.message ||
-                                              'Add supporting copy to preview how this section feels inside checkout.'}
-                                          </Text>
-                                          {featureBullets.length > 0 ? (
-                                            <ul className={styles.checkoutSectionPreviewList}>
-                                              {featureBullets.slice(0, 3).map(item => (
-                                                <li key={item}>{item}</li>
-                                              ))}
-                                            </ul>
-                                          ) : null}
-                                          {section.type === 'product_list' &&
-                                          productSourceMode === 'collection' &&
-                                          productSourceCollections.length > 0 ? (
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              Collections:{' '}
-                                              {productSourceCollections
-                                                .map(item => item.title || item.handle || item.id)
-                                                .filter(Boolean)
-                                                .slice(0, 3)
-                                                .join(', ')}
-                                            </Text>
-                                          ) : null}
-                                          {previewProductItems.length > 0 ? (
-                                            <div
-                                              className={`${styles.checkoutProductPreviewList} ${
-                                                productDisplayLayout === 'compact_rows'
-                                                  ? styles.checkoutProductPreviewListRows
-                                                  : productDisplayLayout === 'two_column_grid'
-                                                    ? styles.checkoutProductPreviewListGrid
-                                                    : productDisplayLayout === 'comparison_table'
-                                                      ? styles.checkoutProductPreviewListTable
-                                                      : ''
-                                              }`}
-                                            >
-                                              {previewProductItems.slice(0, 3).map(item => (
-                                                <div
-                                                  key={item.id}
-                                                  className={styles.checkoutProductPreviewCard}
-                                                >
-                                                  {item.image_url ? (
-                                                    <div
-                                                      className={styles.checkoutProductPreviewMedia}
-                                                    >
-                                                      <img
-                                                        src={item.image_url}
-                                                        alt={item.title || 'Product image'}
-                                                      />
-                                                    </div>
-                                                  ) : (
-                                                    <div
-                                                      className={
-                                                        styles.checkoutProductPreviewMediaPlaceholder
-                                                      }
-                                                    >
-                                                      No image
-                                                    </div>
-                                                  )}
-                                                  <div className={styles.checkoutProductPreviewTop}>
-                                                    <strong>
-                                                      {item.title || 'Untitled product'}
-                                                    </strong>
-                                                    {item.badge_text ? (
-                                                      <span
-                                                        className={
-                                                          styles.checkoutProductPreviewBadge
-                                                        }
-                                                      >
-                                                        {item.badge_text}
-                                                      </span>
-                                                    ) : null}
-                                                  </div>
-                                                  {item.subtitle ? (
-                                                    <span
-                                                      className={
-                                                        styles.checkoutProductPreviewSubtitle
-                                                      }
-                                                    >
-                                                      {item.subtitle}
-                                                    </span>
-                                                  ) : null}
-                                                  {item.price || item.compare_at_price ? (
-                                                    <div
-                                                      className={
-                                                        styles.checkoutProductPreviewPrices
-                                                      }
-                                                    >
-                                                      {item.price ? (
-                                                        <strong>{item.price}</strong>
-                                                      ) : null}
-                                                      {item.compare_at_price ? (
-                                                        <span>{item.compare_at_price}</span>
-                                                      ) : null}
-                                                    </div>
-                                                  ) : null}
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : null}
-                                          <div className={styles.checkoutSectionPreviewFooter}>
-                                            <span>{String(props.cta_kind || 'track')}</span>
-                                            {sectionId ? (
-                                              <span className={styles.checkoutSectionPreviewMeta}>
-                                                ID: {sectionId}
-                                              </span>
-                                            ) : null}
-                                            {props.cta_label ? (
-                                              <strong>{props.cta_label}</strong>
-                                            ) : null}
-                                          </div>
-                                        </BlockStack>
-                                      ) : (
-                                        <Text as="p" variant="bodySm" tone="subdued">
-                                          This section is empty. Add title, message, proof points,
-                                          or CTA copy to make it render in checkout.
+                                  <div className={styles.checkoutSectionAccordionMain}>
+                                    <div className={styles.checkoutSectionAccordionTitleRow}>
+                                      <div>
+                                        <Text variant="headingXs" as="h5" fontWeight="semibold">
+                                          Section {sectionIndex + 1}: {sectionDetails.label}
                                         </Text>
-                                      )}
+                                        <span className={styles.checkoutSectionAccordionSummary}>
+                                          {sectionSummary}
+                                        </span>
+                                        <span className={styles.checkoutSectionNextAction}>
+                                          Next: {sectionReadiness.nextAction}
+                                        </span>
+                                      </div>
+                                      <Badge tone={sectionReadiness.tone}>
+                                        {sectionReadiness.label}
+                                      </Badge>
                                     </div>
+                                    <div className={styles.checkoutSectionAccordionMeta}>
+                                      <span className={styles.checkoutSectionAccordionChip}>
+                                        {checkoutLayoutLabel}
+                                      </span>
+                                      <span className={styles.checkoutSectionAccordionChip}>
+                                        {checkoutToneLabel}
+                                      </span>
+                                      {sectionId ? (
+                                        <span className={styles.checkoutSectionAccordionChip}>
+                                          ID: {sectionId}
+                                        </span>
+                                      ) : null}
+                                      {section.type === 'product_list' ? (
+                                        <span className={styles.checkoutSectionAccordionChip}>
+                                          {productSourceModeLabel}
+                                        </span>
+                                      ) : null}
+                                      {section.type === 'product_list' ? (
+                                        <span className={styles.checkoutSectionAccordionChip}>
+                                          {productActionLabel}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={styles.checkoutSectionAccordionChevron}
+                                    aria-hidden
+                                  >
+                                    <Icon
+                                      source={
+                                        isExpandedSection ? ChevronDownIcon : ChevronRightIcon
+                                      }
+                                    />
+                                  </span>
+                                </button>
 
-                                    <div className={styles.checkoutSectionControls}>
-                                      <div className={styles.checkoutSectionEditorHeader}>
-                                        <InlineStack
-                                          align="space-between"
-                                          blockAlign="center"
-                                          wrap
-                                          gap="200"
-                                        >
-                                          <div>
-                                            <Text as="h6" variant="headingSm">
-                                              Section editor
-                                            </Text>
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              Tune message structure, visual tone, and CTA behavior
-                                              for this section.
-                                            </Text>
-                                            <div className={styles.checkoutSectionEditorMeta}>
-                                              <span
-                                                className={`${styles.checkoutSectionAccordionChip} ${!hasSectionContent ? styles.checkoutSectionAccordionChipMuted : ''}`}
-                                              >
-                                                {hasSectionContent
-                                                  ? 'Content ready'
-                                                  : 'Draft content'}
+                                <Collapsible
+                                  open={isExpandedSection}
+                                  id={`checkout-section-panel-${index}-${sectionIndex}`}
+                                  transition={{ duration: '180ms', timingFunction: 'ease' }}
+                                >
+                                  <div
+                                    className={styles.checkoutSectionAccordionBody}
+                                    aria-labelledby={`checkout-section-head-${index}-${sectionIndex}`}
+                                  >
+                                    <div className={styles.checkoutSectionStudio}>
+                                      <div
+                                        className={`${styles.checkoutSectionPreview} ${!hasSectionContent ? styles.checkoutSectionPreviewEmpty : ''}`}
+                                      >
+                                        {hasSectionContent ? (
+                                          <BlockStack gap="200">
+                                            <div className={styles.checkoutSectionPreviewHeader}>
+                                              <span className={styles.checkoutSectionPreviewLabel}>
+                                                Preview and health
                                               </span>
-                                              <span className={styles.checkoutSectionAccordionChip}>
-                                                {section.type === 'product_list'
-                                                  ? productSourceMode === 'cart_related'
-                                                    ? `Cart-related - ${productSourceLimit} slot${productSourceLimit === 1 ? '' : 's'}`
-                                                    : productSourceMode === 'collection'
-                                                      ? `Collection - ${productSourceCollections.length} selected`
-                                                      : `${productItems.length} product card${productItems.length === 1 ? '' : 's'}`
-                                                  : `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`}
-                                              </span>
-                                              <span className={styles.checkoutSectionAccordionChip}>
-                                                CTA {String(props.cta_kind || 'track')}
+                                              <span className={styles.checkoutSectionPreviewMeta}>
+                                                {checkoutLayoutLabel} / {checkoutToneLabel}
                                               </span>
                                             </div>
-                                          </div>
-                                          <InlineStack gap="200" blockAlign="center" wrap>
-                                            <Button
-                                              size="micro"
-                                              onClick={() => {
-                                                openCheckoutSection(index, sectionIndex + 1, {
-                                                  scrollIntoView: true,
-                                                });
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    const source =
-                                                      currentSections[sectionIndex] || section;
-                                                    const duplicated = {
-                                                      ...source,
-                                                      id: `${String(source.id || source.type || 'section')}-copy-${currentSections.length + 1}`,
-                                                      order: sectionIndex + 1,
-                                                    };
-                                                    const nextSections = [
-                                                      ...currentSections.slice(0, sectionIndex + 1),
-                                                      duplicated,
-                                                      ...currentSections.slice(sectionIndex + 1),
-                                                    ].map((item, itemIndex) => ({
-                                                      ...item,
-                                                      order: itemIndex,
-                                                    }));
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: nextSections,
-                                                    };
+                                            <div className={styles.checkoutSectionHealthGrid}>
+                                              {sectionHealthChecks.map(check => (
+                                                <span
+                                                  key={`${section.id || sectionIndex}-${check.label}`}
+                                                  className={
+                                                    check.passed
+                                                      ? styles.checkoutSectionHealthItemReady
+                                                      : styles.checkoutSectionHealthItemAttention
                                                   }
-                                                );
-                                              }}
-                                            >
-                                              Duplicate
-                                            </Button>
-                                            <Button
-                                              size="micro"
-                                              tone="critical"
-                                              disabled={isOnlySection}
-                                              onClick={() => {
-                                                openCheckoutSection(
-                                                  index,
-                                                  Math.max(
-                                                    0,
-                                                    Math.min(
-                                                      sectionIndex,
-                                                      experienceSections.length - 2
-                                                    )
-                                                  )
-                                                );
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: currentSections
-                                                        .filter(
-                                                          (_, currentIndex) =>
-                                                            currentIndex !== sectionIndex
-                                                        )
-                                                        .map((item, itemIndex) => ({
-                                                          ...item,
-                                                          order: itemIndex,
-                                                        })),
-                                                    };
-                                                  }
-                                                );
-                                              }}
-                                            >
-                                              Remove
-                                            </Button>
-                                          </InlineStack>
-                                        </InlineStack>
-                                      </div>
-                                      <div className={styles.checkoutSectionActionRow}>
-                                        <Button
-                                          size="slim"
-                                          onClick={() =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: buildCheckoutSectionSmartPreset(
-                                                              item.type
-                                                            ),
+                                                >
+                                                  <Badge
+                                                    tone={check.passed ? 'success' : 'attention'}
+                                                  >
+                                                    {check.label}
+                                                  </Badge>
+                                                  <small>{check.detail}</small>
+                                                </span>
+                                              ))}
+                                            </div>
+                                            <Text as="h6" variant="headingSm">
+                                              {props.title || sectionDetails.label}
+                                            </Text>
+                                            {section.type === 'product_list' &&
+                                            productSourceMode === 'cart_related' ? (
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                Product source: Cart-related preview (
+                                                {previewProductItems.length}/{productSourceLimit})
+                                              </Text>
+                                            ) : null}
+                                            {section.type === 'product_list' &&
+                                            productSourceMode === 'collection' &&
+                                            productSourceCollections.length > 0 ? (
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                Product source: Collection (
+                                                {productSourceCollections
+                                                  .map(item => item.title || item.handle || item.id)
+                                                  .filter(Boolean)
+                                                  .slice(0, 2)
+                                                  .join(', ')}
+                                                )
+                                              </Text>
+                                            ) : null}
+                                            {props.badge_text ? (
+                                              <span className={styles.checkoutSectionPreviewBadge}>
+                                                {props.badge_text}
+                                              </span>
+                                            ) : null}
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              {props.message ||
+                                                'Add supporting copy to preview how this section feels inside checkout.'}
+                                            </Text>
+                                            {featureBullets.length > 0 ? (
+                                              <ul className={styles.checkoutSectionPreviewList}>
+                                                {featureBullets.map(item => (
+                                                  <li key={item}>{item}</li>
+                                                ))}
+                                              </ul>
+                                            ) : null}
+                                            {previewProductItems.length > 0 ? (
+                                              <div
+                                                className={`${styles.checkoutProductPreviewList} ${
+                                                  productDisplayLayout === 'compact_rows'
+                                                    ? styles.checkoutProductPreviewListRows
+                                                    : productDisplayLayout === 'two_column_grid'
+                                                      ? styles.checkoutProductPreviewListGrid
+                                                      : productDisplayLayout === 'comparison_table'
+                                                        ? styles.checkoutProductPreviewListTable
+                                                        : ''
+                                                }`}
+                                              >
+                                                {previewProductItems
+                                                  .slice(0, productSourceLimit)
+                                                  .map(item => (
+                                                    <div
+                                                      key={item.id}
+                                                      className={styles.checkoutProductPreviewCard}
+                                                    >
+                                                      {item.image_url ? (
+                                                        <div
+                                                          className={
+                                                            styles.checkoutProductPreviewMedia
                                                           }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        >
-                                          Use smart starter
-                                        </Button>
-                                        <Text as="span" variant="bodySm" tone="subdued">
-                                          Auto-fills this section with a strong starting structure
-                                          for {sectionDetails.label.toLowerCase()}.
-                                        </Text>
-                                      </div>
-                                      <div className={styles.checkoutSectionMetaGrid}>
-                                        <div className={styles.checkoutFieldSpanWide}>
-                                          <Checkbox
-                                            label="Section enabled"
-                                            checked={section.enabled !== false}
-                                            onChange={value =>
-                                              updateCheckoutExperienceVariantConfig(
-                                                index,
-                                                current => {
-                                                  const currentSections =
-                                                    getNormalizedCheckoutExperienceConfig(
-                                                      current
-                                                    ).checkout_sections;
-                                                  return {
-                                                    ...current,
-                                                    checkout_sections: currentSections.map(
-                                                      (item, itemIndex) =>
-                                                        itemIndex === sectionIndex
-                                                          ? { ...item, enabled: value }
-                                                          : item
-                                                    ),
-                                                  };
-                                                }
-                                              )
-                                            }
-                                          />
-                                        </div>
-                                        <Select
-                                          label="Section type"
-                                          options={CHECKOUT_SECTION_TYPE_OPTIONS}
-                                          value={String(section.type || 'hero_notice')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? { ...item, type: value }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        />
+                                                        >
+                                                          <img
+                                                            src={item.image_url}
+                                                            alt={item.title || 'Product image'}
+                                                          />
+                                                        </div>
+                                                      ) : (
+                                                        <div
+                                                          className={
+                                                            styles.checkoutProductPreviewMediaPlaceholder
+                                                          }
+                                                        >
+                                                          No image
+                                                        </div>
+                                                      )}
+                                                      <div
+                                                        className={styles.checkoutProductPreviewTop}
+                                                      >
+                                                        <strong>
+                                                          {item.title || 'Untitled product'}
+                                                        </strong>
+                                                        {item.badge_text ? (
+                                                          <span
+                                                            className={
+                                                              styles.checkoutProductPreviewBadge
+                                                            }
+                                                          >
+                                                            {item.badge_text}
+                                                          </span>
+                                                        ) : null}
+                                                      </div>
+                                                      {item.subtitle ? (
+                                                        <span
+                                                          className={
+                                                            styles.checkoutProductPreviewSubtitle
+                                                          }
+                                                        >
+                                                          {item.subtitle}
+                                                        </span>
+                                                      ) : null}
+                                                      {item.price || item.compare_at_price ? (
+                                                        <div
+                                                          className={
+                                                            styles.checkoutProductPreviewPrices
+                                                          }
+                                                        >
+                                                          {item.price ? (
+                                                            <strong>{item.price}</strong>
+                                                          ) : null}
+                                                          {item.compare_at_price ? (
+                                                            <span>{item.compare_at_price}</span>
+                                                          ) : null}
+                                                        </div>
+                                                      ) : null}
+                                                      {section.type === 'product_list' &&
+                                                      productAction === 'add_to_cart' ? (
+                                                        <span
+                                                          className={
+                                                            styles.checkoutProductPreviewAction
+                                                          }
+                                                        >
+                                                          {item.action_label || 'Add'}
+                                                        </span>
+                                                      ) : null}
+                                                    </div>
+                                                  ))}
+                                              </div>
+                                            ) : null}
+                                            {props.disclaimer ? (
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                {props.disclaimer}
+                                              </Text>
+                                            ) : null}
+                                            {runtimePreviewNotes.length > 0 ? (
+                                              <div className={styles.checkoutRuntimePreviewNotes}>
+                                                {runtimePreviewNotes.map(note => (
+                                                  <span key={note}>{note}</span>
+                                                ))}
+                                              </div>
+                                            ) : null}
+                                            <div className={styles.checkoutSectionPreviewFooter}>
+                                              <span>{checkoutCtaKindLabel}</span>
+                                              {section.type === 'product_list' ? (
+                                                <span>
+                                                  {productActionLabel} / {productStrategyLabel}
+                                                </span>
+                                              ) : null}
+                                              {sectionId ? (
+                                                <span className={styles.checkoutSectionPreviewMeta}>
+                                                  ID: {sectionId}
+                                                </span>
+                                              ) : null}
+                                              {props.cta_label ? (
+                                                <strong>{props.cta_label}</strong>
+                                              ) : null}
+                                            </div>
+                                          </BlockStack>
+                                        ) : (
+                                          <BlockStack gap="200">
+                                            <div className={styles.checkoutSectionPreviewHeader}>
+                                              <span className={styles.checkoutSectionPreviewLabel}>
+                                                Preview and health
+                                              </span>
+                                              <Badge tone={sectionReadiness.tone}>
+                                                {sectionReadiness.label}
+                                              </Badge>
+                                            </div>
+                                            <div className={styles.checkoutSectionHealthGrid}>
+                                              {sectionHealthChecks.map(check => (
+                                                <span
+                                                  key={`${section.id || sectionIndex}-${check.label}`}
+                                                  className={
+                                                    check.passed
+                                                      ? styles.checkoutSectionHealthItemReady
+                                                      : styles.checkoutSectionHealthItemAttention
+                                                  }
+                                                >
+                                                  <Badge
+                                                    tone={check.passed ? 'success' : 'attention'}
+                                                  >
+                                                    {check.label}
+                                                  </Badge>
+                                                  <small>{check.detail}</small>
+                                                </span>
+                                              ))}
+                                            </div>
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              This section is empty. Add title, message, proof
+                                              points, or CTA copy to make it render in checkout.
+                                            </Text>
+                                          </BlockStack>
+                                        )}
                                       </div>
 
-                                      <FormLayout>
-                                        <div className={styles.checkoutSectionGuideRow}>
-                                          <InlineStack gap="200" blockAlign="center" wrap>
-                                            <Text as="span" variant="bodySm" fontWeight="semibold">
-                                              Section ID
-                                            </Text>
-                                            <TooltipWrapper
-                                              content="Use a stable kebab-case ID such as trust-box or shipping-promise. RipX emits this as checkout_section_id in checkout analytics, so matching your checkout block naming makes setup and debugging easier."
-                                              accessibilityLabel="Section ID setup help"
-                                            >
-                                              <span
-                                                className={styles.checkoutSectionGuideIcon}
-                                                aria-hidden
-                                              >
-                                                <Icon source={InfoIcon} />
-                                              </span>
-                                            </TooltipWrapper>
-                                            <a
-                                              href={`${checkoutDocsPath}#tests`}
-                                              className={styles.checkoutInlineDocLink}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                            >
-                                              Setup guide
-                                            </a>
-                                          </InlineStack>
-                                          <TextField
-                                            labelHidden
-                                            label="Section ID"
-                                            value={sectionId}
-                                            onChange={value =>
-                                              updateCheckoutExperienceVariantConfig(
-                                                index,
-                                                current => {
-                                                  const currentSections =
-                                                    getNormalizedCheckoutExperienceConfig(
-                                                      current
-                                                    ).checkout_sections;
-                                                  return {
-                                                    ...current,
-                                                    checkout_sections: currentSections.map(
-                                                      (item, itemIndex) =>
-                                                        itemIndex === sectionIndex
-                                                          ? { ...item, id: value.trim() }
-                                                          : item
-                                                    ),
-                                                  };
-                                                }
-                                              )
-                                            }
-                                            placeholder="e.g. trust-box"
-                                            autoComplete="off"
-                                          />
-                                        </div>
-                                        <TextField
-                                          label="Title"
-                                          value={String(props.title || '')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              title: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                          placeholder="e.g. Checkout with confidence"
-                                          autoComplete="off"
-                                        />
-                                        <TextField
-                                          label="Message"
-                                          value={String(props.message || '')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              message: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                          placeholder="Add reassurance, urgency, or support copy for this section."
-                                          multiline={3}
-                                          autoComplete="off"
-                                        />
-                                        <TextField
-                                          label="Badge text"
-                                          value={String(props.badge_text || '')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              badge_text: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                          placeholder="e.g. Secure checkout"
-                                          autoComplete="off"
-                                        />
-                                        <div className={styles.checkoutBulletEditor}>
+                                      <div className={styles.checkoutSectionControls}>
+                                        <div className={styles.checkoutSectionEditorHeader}>
                                           <InlineStack
                                             align="space-between"
                                             blockAlign="center"
                                             wrap
                                             gap="200"
                                           >
-                                            <InlineStack gap="200" blockAlign="center" wrap>
-                                              <Text
-                                                as="span"
-                                                variant="bodySm"
-                                                fontWeight="semibold"
-                                              >
-                                                Feature bullets
+                                            <div>
+                                              <Text as="h6" variant="headingSm">
+                                                Primary setup
                                               </Text>
-                                              <TooltipWrapper
-                                                content="Use short proof points, one idea per bullet. These render as a compact list in the checkout block."
-                                                accessibilityLabel="Feature bullets help"
-                                              >
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                Start with the content customers see, then use
+                                                product and advanced panels only when needed.
+                                              </Text>
+                                              <div className={styles.checkoutSectionEditorMeta}>
                                                 <span
-                                                  className={styles.checkoutSectionGuideIcon}
-                                                  aria-hidden
+                                                  className={`${styles.checkoutSectionAccordionChip} ${!hasSectionContent ? styles.checkoutSectionAccordionChipMuted : ''}`}
                                                 >
-                                                  <Icon source={InfoIcon} />
+                                                  {hasSectionContent
+                                                    ? 'Content ready'
+                                                    : 'Draft content'}
                                                 </span>
-                                              </TooltipWrapper>
-                                              <a
-                                                href={`${checkoutDocsPath}#tests`}
-                                                className={styles.checkoutInlineDocLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                              >
-                                                Setup guide
-                                              </a>
-                                            </InlineStack>
-                                            <Badge tone="info">
-                                              {featureBullets.length} item
-                                              {featureBullets.length === 1 ? '' : 's'}
-                                            </Badge>
-                                          </InlineStack>
-                                          <BlockStack gap="200">
-                                            {featureBullets.length > 0 ? (
-                                              featureBullets.map((bullet, bulletIndex) => (
-                                                <div
-                                                  key={`${section.id || sectionIndex}-bullet-${bulletIndex}`}
-                                                  className={styles.checkoutBulletRow}
+                                                <span
+                                                  className={styles.checkoutSectionAccordionChip}
                                                 >
-                                                  <TextField
-                                                    labelHidden
-                                                    label={`Feature bullet ${bulletIndex + 1}`}
-                                                    value={bullet}
-                                                    onChange={value =>
-                                                      updateCheckoutExperienceVariantConfig(
-                                                        index,
-                                                        current => {
-                                                          const currentSections =
-                                                            getNormalizedCheckoutExperienceConfig(
-                                                              current
-                                                            ).checkout_sections;
-                                                          return {
-                                                            ...current,
-                                                            checkout_sections: currentSections.map(
-                                                              (item, itemIndex) => {
-                                                                if (itemIndex !== sectionIndex) {
-                                                                  return item;
-                                                                }
-                                                                const nextBullets =
-                                                                  normalizeCheckoutListInput(
-                                                                    item?.props?.feature_bullets
-                                                                  );
-                                                                nextBullets[bulletIndex] = value;
-                                                                return {
-                                                                  ...item,
-                                                                  props: {
-                                                                    ...(item.props || {}),
-                                                                    feature_bullets:
-                                                                      normalizeCheckoutListInput(
-                                                                        nextBullets
-                                                                      ),
-                                                                  },
-                                                                };
-                                                              }
-                                                            ),
-                                                          };
-                                                        }
-                                                      )
-                                                    }
-                                                    placeholder="e.g. 30-day guarantee"
-                                                    autoComplete="off"
-                                                  />
-                                                  <Button
-                                                    size="micro"
-                                                    tone="critical"
-                                                    onClick={() =>
-                                                      updateCheckoutExperienceVariantConfig(
-                                                        index,
-                                                        current => {
-                                                          const currentSections =
-                                                            getNormalizedCheckoutExperienceConfig(
-                                                              current
-                                                            ).checkout_sections;
-                                                          return {
-                                                            ...current,
-                                                            checkout_sections: currentSections.map(
-                                                              (item, itemIndex) => {
-                                                                if (itemIndex !== sectionIndex) {
-                                                                  return item;
-                                                                }
-                                                                return {
-                                                                  ...item,
-                                                                  props: {
-                                                                    ...(item.props || {}),
-                                                                    feature_bullets:
-                                                                      normalizeCheckoutListInput(
-                                                                        item?.props?.feature_bullets
-                                                                      ).filter(
-                                                                        (_, currentBulletIndex) =>
-                                                                          currentBulletIndex !==
-                                                                          bulletIndex
-                                                                      ),
-                                                                  },
-                                                                };
-                                                              }
-                                                            ),
-                                                          };
-                                                        }
-                                                      )
-                                                    }
-                                                  >
-                                                    Remove
-                                                  </Button>
-                                                </div>
-                                              ))
-                                            ) : (
-                                              <div className={styles.checkoutBulletEmpty}>
-                                                Add short proof points to show benefits, trust, or
-                                                next steps in a compact checkout list.
+                                                  {section.type === 'product_list'
+                                                    ? productSourceMode === 'cart_related'
+                                                      ? `Cart-related - ${productSourceLimit} slot${productSourceLimit === 1 ? '' : 's'}`
+                                                      : productSourceMode === 'collection'
+                                                        ? `Collection - ${productSourceCollections.length} selected`
+                                                        : `${productItems.length} product card${productItems.length === 1 ? '' : 's'}`
+                                                    : `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`}
+                                                </span>
+                                                <span
+                                                  className={styles.checkoutSectionAccordionChip}
+                                                >
+                                                  CTA {checkoutCtaKindLabel}
+                                                </span>
                                               </div>
-                                            )}
-                                          </BlockStack>
-                                          <InlineStack gap="200" blockAlign="center" wrap>
-                                            <TextField
-                                              labelHidden
-                                              label="New feature bullet"
-                                              value={bulletDraft}
-                                              onChange={value =>
-                                                setCheckoutBulletDrafts(prev => ({
-                                                  ...prev,
-                                                  [bulletDraftKey]: value,
-                                                }))
-                                              }
-                                              placeholder="e.g. Fast support response"
-                                              autoComplete="off"
-                                            />
-                                            <Button
-                                              size="slim"
-                                              disabled={!bulletDraft.trim()}
-                                              onClick={() => (
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: currentSections.map(
-                                                        (item, itemIndex) => {
-                                                          if (itemIndex !== sectionIndex) {
-                                                            return item;
-                                                          }
-                                                          return {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              feature_bullets: [
-                                                                ...normalizeCheckoutListInput(
-                                                                  item?.props?.feature_bullets
-                                                                ),
-                                                                bulletDraft.trim(),
-                                                              ],
-                                                            },
-                                                          };
-                                                        }
-                                                      ),
-                                                    };
-                                                  }
-                                                ),
-                                                setCheckoutBulletDrafts(prev => ({
-                                                  ...prev,
-                                                  [bulletDraftKey]: '',
-                                                }))
-                                              )}
-                                            >
-                                              Add bullet
-                                            </Button>
+                                            </div>
                                           </InlineStack>
                                         </div>
-                                        {section.type === 'product_list' ? (
-                                          <div className={styles.checkoutProductEditor}>
+                                        <div className={styles.checkoutSectionPrimaryPanel}>
+                                          <div>
+                                            <span className={styles.checkoutStudioEyebrow}>
+                                              Customer-facing content
+                                            </span>
+                                            <strong>Make this section render clearly</strong>
+                                            <small>{sectionReadiness.nextAction}</small>
+                                            <div className={styles.checkoutSectionPrimaryChecklist}>
+                                              {primarySetupChecklist.map(item => (
+                                                <span
+                                                  key={`${section.id || sectionIndex}-${item.label}`}
+                                                  className={
+                                                    item.done
+                                                      ? styles.checkoutSectionPrimaryChecklistDone
+                                                      : ''
+                                                  }
+                                                >
+                                                  <Badge tone={item.done ? 'success' : 'attention'}>
+                                                    {item.done ? 'Done' : 'Next'}
+                                                  </Badge>
+                                                  <strong>{item.label}</strong>
+                                                  <small>{item.detail}</small>
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <details className={styles.checkoutSectionAdvancedDetails}>
+                                          <summary>Advanced section settings</summary>
+                                          <div className={styles.checkoutSectionAdvancedBody}>
+                                            <InlineStack gap="200" blockAlign="center" wrap>
+                                              <Button
+                                                size="micro"
+                                                disabled={sectionIndex === 0}
+                                                onClick={() =>
+                                                  moveCheckoutSection(index, sectionIndex, -1)
+                                                }
+                                              >
+                                                Move up
+                                              </Button>
+                                              <Button
+                                                size="micro"
+                                                disabled={
+                                                  sectionIndex === experienceSections.length - 1
+                                                }
+                                                onClick={() =>
+                                                  moveCheckoutSection(index, sectionIndex, 1)
+                                                }
+                                              >
+                                                Move down
+                                              </Button>
+                                              <Button
+                                                size="micro"
+                                                onClick={() => {
+                                                  openCheckoutSection(index, sectionIndex + 1, {
+                                                    scrollIntoView: true,
+                                                  });
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      const source =
+                                                        currentSections[sectionIndex] || section;
+                                                      const duplicated = {
+                                                        ...source,
+                                                        id: `${String(source.id || source.type || 'section')}-copy-${currentSections.length + 1}`,
+                                                        order: sectionIndex + 1,
+                                                      };
+                                                      const nextSections = [
+                                                        ...currentSections.slice(
+                                                          0,
+                                                          sectionIndex + 1
+                                                        ),
+                                                        duplicated,
+                                                        ...currentSections.slice(sectionIndex + 1),
+                                                      ].map((item, itemIndex) => ({
+                                                        ...item,
+                                                        order: itemIndex,
+                                                      }));
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: nextSections,
+                                                      };
+                                                    }
+                                                  );
+                                                }}
+                                              >
+                                                Duplicate
+                                              </Button>
+                                              <Button
+                                                size="micro"
+                                                tone="critical"
+                                                disabled={isOnlySection}
+                                                onClick={() => {
+                                                  openCheckoutSection(
+                                                    index,
+                                                    Math.max(
+                                                      0,
+                                                      Math.min(
+                                                        sectionIndex,
+                                                        experienceSections.length - 2
+                                                      )
+                                                    )
+                                                  );
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections
+                                                          .filter(
+                                                            (_, currentIndex) =>
+                                                              currentIndex !== sectionIndex
+                                                          )
+                                                          .map((item, itemIndex) => ({
+                                                            ...item,
+                                                            order: itemIndex,
+                                                          })),
+                                                      };
+                                                    }
+                                                  );
+                                                }}
+                                              >
+                                                Remove
+                                              </Button>
+                                            </InlineStack>
+                                            <div className={styles.checkoutSectionActionRow}>
+                                              <Button
+                                                size="slim"
+                                                onClick={() =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props:
+                                                                    buildCheckoutSectionSmartPreset(
+                                                                      item.type
+                                                                    ),
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                              >
+                                                Reset to starter copy
+                                              </Button>
+                                              <Text as="span" variant="bodySm" tone="subdued">
+                                                Replaces this section with the starter structure for{' '}
+                                                {sectionDetails.label.toLowerCase()}.
+                                              </Text>
+                                            </div>
+                                            <div className={styles.checkoutSectionMetaGrid}>
+                                              <div className={styles.checkoutFieldSpanWide}>
+                                                <Checkbox
+                                                  label="Section enabled"
+                                                  checked={section.enabled !== false}
+                                                  onChange={value =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) =>
+                                                              itemIndex === sectionIndex
+                                                                ? { ...item, enabled: value }
+                                                                : item
+                                                          ),
+                                                        };
+                                                      }
+                                                    )
+                                                  }
+                                                />
+                                              </div>
+                                              <Select
+                                                label="Section type"
+                                                options={CHECKOUT_SECTION_TYPE_OPTIONS}
+                                                value={String(section.type || 'hero_notice')}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  type: value,
+                                                                  strategy_key:
+                                                                    value === 'product_list'
+                                                                      ? 'manual_upsell'
+                                                                      : '',
+                                                                  props:
+                                                                    buildCheckoutSectionSmartPreset(
+                                                                      value
+                                                                    ),
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                              />
+                                            </div>
+                                            <div className={styles.checkoutSectionGuideRow}>
+                                              <InlineStack gap="200" blockAlign="center" wrap>
+                                                <Text
+                                                  as="span"
+                                                  variant="bodySm"
+                                                  fontWeight="semibold"
+                                                >
+                                                  Section ID
+                                                </Text>
+                                                <TooltipWrapper
+                                                  content="Use a stable kebab-case ID such as trust-box or shipping-promise. RipX emits this as checkout_section_id in checkout analytics, so matching your checkout block naming makes setup and debugging easier."
+                                                  accessibilityLabel="Section ID setup help"
+                                                >
+                                                  <span
+                                                    className={styles.checkoutSectionGuideIcon}
+                                                    aria-hidden
+                                                  >
+                                                    <Icon source={InfoIcon} />
+                                                  </span>
+                                                </TooltipWrapper>
+                                                <a
+                                                  href={`${checkoutDocsPath}#tests`}
+                                                  className={styles.checkoutInlineDocLink}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                >
+                                                  Setup guide
+                                                </a>
+                                              </InlineStack>
+                                              <TextField
+                                                labelHidden
+                                                label="Section ID"
+                                                value={sectionId}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? { ...item, id: value.trim() }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                                placeholder="e.g. trust-box"
+                                                autoComplete="off"
+                                              />
+                                            </div>
+                                          </div>
+                                        </details>
+
+                                        <FormLayout>
+                                          <TextField
+                                            label="Title"
+                                            value={String(props.title || '')}
+                                            onChange={value =>
+                                              updateCheckoutExperienceVariantConfig(
+                                                index,
+                                                current => {
+                                                  const currentSections =
+                                                    getNormalizedCheckoutExperienceConfig(
+                                                      current
+                                                    ).checkout_sections;
+                                                  return {
+                                                    ...current,
+                                                    checkout_sections: currentSections.map(
+                                                      (item, itemIndex) =>
+                                                        itemIndex === sectionIndex
+                                                          ? {
+                                                              ...item,
+                                                              props: {
+                                                                ...(item.props || {}),
+                                                                title: value,
+                                                              },
+                                                            }
+                                                          : item
+                                                    ),
+                                                  };
+                                                }
+                                              )
+                                            }
+                                            placeholder="e.g. Checkout with confidence"
+                                            autoComplete="off"
+                                          />
+                                          <TextField
+                                            label="Message"
+                                            value={String(props.message || '')}
+                                            onChange={value =>
+                                              updateCheckoutExperienceVariantConfig(
+                                                index,
+                                                current => {
+                                                  const currentSections =
+                                                    getNormalizedCheckoutExperienceConfig(
+                                                      current
+                                                    ).checkout_sections;
+                                                  return {
+                                                    ...current,
+                                                    checkout_sections: currentSections.map(
+                                                      (item, itemIndex) =>
+                                                        itemIndex === sectionIndex
+                                                          ? {
+                                                              ...item,
+                                                              props: {
+                                                                ...(item.props || {}),
+                                                                message: value,
+                                                              },
+                                                            }
+                                                          : item
+                                                    ),
+                                                  };
+                                                }
+                                              )
+                                            }
+                                            placeholder="Add reassurance, urgency, or support copy for this section."
+                                            multiline={3}
+                                            autoComplete="off"
+                                          />
+                                          <TextField
+                                            label="Badge text"
+                                            value={String(props.badge_text || '')}
+                                            onChange={value =>
+                                              updateCheckoutExperienceVariantConfig(
+                                                index,
+                                                current => {
+                                                  const currentSections =
+                                                    getNormalizedCheckoutExperienceConfig(
+                                                      current
+                                                    ).checkout_sections;
+                                                  return {
+                                                    ...current,
+                                                    checkout_sections: currentSections.map(
+                                                      (item, itemIndex) =>
+                                                        itemIndex === sectionIndex
+                                                          ? {
+                                                              ...item,
+                                                              props: {
+                                                                ...(item.props || {}),
+                                                                badge_text: value,
+                                                              },
+                                                            }
+                                                          : item
+                                                    ),
+                                                  };
+                                                }
+                                              )
+                                            }
+                                            placeholder="e.g. Secure checkout"
+                                            autoComplete="off"
+                                          />
+                                          <div className={styles.checkoutBulletEditor}>
                                             <InlineStack
                                               align="space-between"
                                               blockAlign="center"
@@ -13486,11 +14348,11 @@ function TestWizard({
                                                   variant="bodySm"
                                                   fontWeight="semibold"
                                                 >
-                                                  Product cards
+                                                  Feature bullets
                                                 </Text>
                                                 <TooltipWrapper
-                                                  content="Add manual product cards for checkout merchandising. Keep them short and high intent."
-                                                  accessibilityLabel="Product cards help"
+                                                  content="Use short proof points, one idea per bullet. These render as a compact list in the checkout block."
+                                                  accessibilityLabel="Feature bullets help"
                                                 >
                                                   <span
                                                     className={styles.checkoutSectionGuideIcon}
@@ -13499,508 +14361,312 @@ function TestWizard({
                                                     <Icon source={InfoIcon} />
                                                   </span>
                                                 </TooltipWrapper>
+                                                <a
+                                                  href={`${checkoutDocsPath}#tests`}
+                                                  className={styles.checkoutInlineDocLink}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                >
+                                                  Setup guide
+                                                </a>
                                               </InlineStack>
-                                              <Badge
-                                                tone={
-                                                  productSourceMode === 'cart_related' ||
-                                                  productSourceMode === 'collection'
-                                                    ? 'success'
-                                                    : productItems.length > 0
-                                                      ? 'info'
-                                                      : 'attention'
-                                                }
-                                              >
-                                                {productSourceMode === 'cart_related'
-                                                  ? `Cart-related - ${productSourceLimit}`
-                                                  : productSourceMode === 'collection'
-                                                    ? `Collection - ${productSourceCollections.length} picked`
-                                                    : `${productItems.length} card${productItems.length === 1 ? '' : 's'}`}
+                                              <Badge tone="info">
+                                                {featureBullets.length} item
+                                                {featureBullets.length === 1 ? '' : 's'}
                                               </Badge>
                                             </InlineStack>
-                                            <div className={styles.checkoutProductSourceControls}>
-                                              <Select
-                                                label="Product source"
-                                                options={CHECKOUT_PRODUCT_SOURCE_OPTIONS}
-                                                value={productSourceMode}
-                                                onChange={value =>
-                                                  updateCheckoutExperienceVariantConfig(
-                                                    index,
-                                                    current => {
-                                                      const currentSections =
-                                                        getNormalizedCheckoutExperienceConfig(
-                                                          current
-                                                        ).checkout_sections;
-                                                      return {
-                                                        ...current,
-                                                        checkout_sections: currentSections.map(
-                                                          (item, itemIndex) =>
-                                                            itemIndex === sectionIndex
-                                                              ? {
-                                                                  ...item,
-                                                                  props: {
-                                                                    ...(item.props || {}),
-                                                                    product_source_mode: value,
-                                                                    ...(value === 'collection'
-                                                                      ? { product_items: [] }
-                                                                      : {}),
-                                                                    ...(value === 'manual' ||
-                                                                    value === 'cart_related'
-                                                                      ? {
-                                                                          product_source_collections:
-                                                                            [],
-                                                                        }
-                                                                      : {}),
-                                                                  },
-                                                                }
-                                                              : item
-                                                        ),
-                                                      };
-                                                    }
-                                                  )
-                                                }
-                                                helpText="Manual cards are fully curated. Cart-related mirrors the shopper cart. Collection-fed pulls featured products from the collections you pick (resolved at checkout runtime)."
-                                              />
-                                              <Select
-                                                label="Max cards"
-                                                options={CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS}
-                                                value={String(productSourceLimit)}
-                                                onChange={value =>
-                                                  updateCheckoutExperienceVariantConfig(
-                                                    index,
-                                                    current => {
-                                                      const currentSections =
-                                                        getNormalizedCheckoutExperienceConfig(
-                                                          current
-                                                        ).checkout_sections;
-                                                      return {
-                                                        ...current,
-                                                        checkout_sections: currentSections.map(
-                                                          (item, itemIndex) =>
-                                                            itemIndex === sectionIndex
-                                                              ? {
-                                                                  ...item,
-                                                                  props: {
-                                                                    ...(item.props || {}),
-                                                                    product_source_limit: value,
-                                                                  },
-                                                                }
-                                                              : item
-                                                        ),
-                                                      };
-                                                    }
-                                                  )
-                                                }
-                                                helpText="Controls how many products the block shows in checkout."
-                                              />
-                                              <Select
-                                                label="Display design"
-                                                options={CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS}
-                                                value={productDisplayLayout}
-                                                onChange={value =>
-                                                  updateCheckoutExperienceVariantConfig(
-                                                    index,
-                                                    current => {
-                                                      const currentSections =
-                                                        getNormalizedCheckoutExperienceConfig(
-                                                          current
-                                                        ).checkout_sections;
-                                                      return {
-                                                        ...current,
-                                                        checkout_sections: currentSections.map(
-                                                          (item, itemIndex) =>
-                                                            itemIndex === sectionIndex
-                                                              ? {
-                                                                  ...item,
-                                                                  props: {
-                                                                    ...(item.props || {}),
-                                                                    product_display_layout: value,
-                                                                  },
-                                                                }
-                                                              : item
-                                                        ),
-                                                      };
-                                                    }
-                                                  )
-                                                }
-                                                helpText="Test compact rows, richer cards, a two-column grid, or comparison-style rows."
-                                              />
-                                            </div>
-                                            {productSourceMode === 'cart_related' ? (
-                                              <div className={styles.checkoutProductSourceNote}>
-                                                Cart-related mode pulls up to {productSourceLimit}{' '}
-                                                product
-                                                {productSourceLimit === 1 ? '' : 's'} from the live
-                                                checkout cart at runtime. Titles, images,
-                                                quantities, and price text come from the shopper
-                                                cart automatically.
-                                              </div>
-                                            ) : null}
-                                            {productSourceMode === 'collection' ? (
-                                              <BlockStack gap="300">
-                                                <div className={styles.checkoutProductSourceNote}>
-                                                  Collection-fed mode shows up to{' '}
-                                                  {productSourceLimit} product
-                                                  {productSourceLimit === 1 ? '' : 's'} from your
-                                                  selected Shopify collections. The live checkout
-                                                  block receives resolved product cards when the
-                                                  shopper loads checkout (same secret-protected
-                                                  assignment request as other checkout UI data).
-                                                </div>
-                                                {canUseStoreProductPicker ? (
-                                                  <div className={styles.storeResourceList}>
-                                                    <div className={styles.storeResourceListHeader}>
-                                                      <div
-                                                        className={styles.storeResourceListSearch}
-                                                      >
-                                                        <TextField
-                                                          label="Search collections"
-                                                          labelHidden
-                                                          value={checkoutCollectionSearch}
-                                                          onChange={setCheckoutCollectionSearch}
-                                                          placeholder="Search collections…"
-                                                          autoComplete="off"
-                                                          clearButton
-                                                          onClearButtonClick={() =>
-                                                            setCheckoutCollectionSearch('')
-                                                          }
-                                                        />
-                                                      </div>
-                                                      {productSourceCollections.length > 0 ? (
-                                                        <span
-                                                          className={
-                                                            styles.storeResourceSelectedBadge
-                                                          }
-                                                        >
-                                                          {productSourceCollections.length} selected
-                                                        </span>
-                                                      ) : null}
-                                                    </div>
-                                                    {checkoutCollectionLoading ? (
-                                                      <div
-                                                        className={styles.storeResourceListLoading}
-                                                      >
-                                                        <div
-                                                          className={
-                                                            styles.storeResourceListLoadingIcon
-                                                          }
-                                                        >
-                                                          <Spinner size="small" />
-                                                        </div>
-                                                        <Text
-                                                          as="span"
-                                                          variant="bodySm"
-                                                          tone="subdued"
-                                                        >
-                                                          Loading collections…
-                                                        </Text>
-                                                      </div>
-                                                    ) : checkoutCollectionResources.length === 0 ? (
-                                                      <div
-                                                        className={styles.storeResourceListEmpty}
-                                                      >
-                                                        <div
-                                                          className={
-                                                            styles.storeResourceListEmptyIcon
-                                                          }
-                                                        >
-                                                          <Icon source={CollectionIcon} />
-                                                        </div>
-                                                        <Text
-                                                          as="p"
-                                                          variant="bodySm"
-                                                          tone="subdued"
-                                                        >
-                                                          {checkoutCollectionError ||
-                                                            (checkoutCollectionSearch
-                                                              ? 'No matches. Try a different search.'
-                                                              : 'No collections returned yet.')}
-                                                        </Text>
-                                                      </div>
-                                                    ) : (
-                                                      (() => {
-                                                        const selectedCollectionIds =
-                                                          productSourceCollections.map(c => c.id);
-                                                        const collectionsProgressiveWindow =
-                                                          buildProgressiveListWindow(
-                                                            checkoutCollectionResources,
-                                                            checkoutCollectionVisibleCount,
-                                                            { pinnedIds: selectedCollectionIds }
-                                                          );
-                                                        const visibleCheckoutCollections =
-                                                          collectionsProgressiveWindow.visibleItems;
-                                                        const shownCheckoutCollectionsCount =
-                                                          collectionsProgressiveWindow.shownCount;
-                                                        const checkoutCollectionsHasHiddenLoaded =
-                                                          collectionsProgressiveWindow.hasHiddenLoaded;
-                                                        const checkoutCollectionsCanFetchMore =
-                                                          Boolean(
-                                                            checkoutCollectionPageInfo?.hasNextPage
-                                                          );
-                                                        const checkoutCollectionsCanShowMore =
-                                                          checkoutCollectionsHasHiddenLoaded ||
-                                                          checkoutCollectionsCanFetchMore;
-                                                        const checkoutCollectionsCanCollapse =
-                                                          collectionsProgressiveWindow.canCollapse;
-                                                        const loadedCollectionIdSet = new Set(
-                                                          checkoutCollectionResources.map(r =>
-                                                            String(r?.id || '')
-                                                          )
-                                                        );
-                                                        const missingCheckoutCollections =
-                                                          productSourceCollections.filter(
-                                                            c =>
-                                                              c?.id &&
-                                                              !loadedCollectionIdSet.has(
-                                                                String(c.id)
-                                                              )
-                                                          );
-                                                        const renderCheckoutCollectionRow = (
-                                                          resource,
-                                                          rowKey
-                                                        ) => {
-                                                          const active =
-                                                            selectedCollectionIds.includes(
-                                                              resource.id
-                                                            );
-                                                          return (
-                                                            <button
-                                                              key={rowKey}
-                                                              type="button"
-                                                              className={`${styles.storeResourceItem} ${active ? styles.storeResourceItemSelected : ''}`}
-                                                              onClick={() =>
-                                                                updateCheckoutExperienceVariantConfig(
-                                                                  index,
-                                                                  current => {
-                                                                    const currentSections =
-                                                                      getNormalizedCheckoutExperienceConfig(
-                                                                        current
-                                                                      ).checkout_sections;
+                                            <BlockStack gap="200">
+                                              {featureBullets.length > 0 ? (
+                                                featureBullets.map((bullet, bulletIndex) => (
+                                                  <div
+                                                    key={`${section.id || sectionIndex}-bullet-${bulletIndex}`}
+                                                    className={styles.checkoutBulletRow}
+                                                  >
+                                                    <TextField
+                                                      labelHidden
+                                                      label={`Feature bullet ${bulletIndex + 1}`}
+                                                      value={bullet}
+                                                      onChange={value =>
+                                                        updateCheckoutExperienceVariantConfig(
+                                                          index,
+                                                          current => {
+                                                            const currentSections =
+                                                              getNormalizedCheckoutExperienceConfig(
+                                                                current
+                                                              ).checkout_sections;
+                                                            return {
+                                                              ...current,
+                                                              checkout_sections:
+                                                                currentSections.map(
+                                                                  (item, itemIndex) => {
+                                                                    if (
+                                                                      itemIndex !== sectionIndex
+                                                                    ) {
+                                                                      return item;
+                                                                    }
+                                                                    const nextBullets =
+                                                                      normalizeCheckoutListInput(
+                                                                        item?.props?.feature_bullets
+                                                                      );
+                                                                    nextBullets[bulletIndex] =
+                                                                      value;
                                                                     return {
-                                                                      ...current,
-                                                                      checkout_sections:
-                                                                        currentSections.map(
-                                                                          (item, itemIndex) => {
-                                                                            if (
-                                                                              itemIndex !==
-                                                                              sectionIndex
-                                                                            ) {
-                                                                              return item;
-                                                                            }
-                                                                            const existing =
-                                                                              normalizeCheckoutProductSourceCollections(
-                                                                                item?.props
-                                                                                  ?.product_source_collections
-                                                                              );
-                                                                            const isSelected =
-                                                                              existing.some(
-                                                                                row =>
-                                                                                  row.id ===
-                                                                                  resource.id
-                                                                              );
-                                                                            const nextCollections =
-                                                                              isSelected
-                                                                                ? existing.filter(
-                                                                                    row =>
-                                                                                      row.id !==
-                                                                                      resource.id
-                                                                                  )
-                                                                                : [
-                                                                                    ...existing,
-                                                                                    {
-                                                                                      id: resource.id,
-                                                                                      title:
-                                                                                        resource.title ||
-                                                                                        '',
-                                                                                      handle:
-                                                                                        resource.handle ||
-                                                                                        '',
-                                                                                    },
-                                                                                  ];
-                                                                            return {
-                                                                              ...item,
-                                                                              props: {
-                                                                                ...(item.props ||
-                                                                                  {}),
-                                                                                product_source_collections:
-                                                                                  nextCollections,
-                                                                              },
-                                                                            };
-                                                                          }
-                                                                        ),
+                                                                      ...item,
+                                                                      props: {
+                                                                        ...(item.props || {}),
+                                                                        feature_bullets:
+                                                                          normalizeCheckoutListInput(
+                                                                            nextBullets
+                                                                          ),
+                                                                      },
                                                                     };
                                                                   }
-                                                                )
-                                                              }
-                                                            >
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemIcon
-                                                                }
-                                                              >
-                                                                <Icon source={CollectionIcon} />
-                                                              </span>
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemContent
-                                                                }
-                                                              >
-                                                                <span
-                                                                  className={
-                                                                    styles.storeResourceItemTitle
-                                                                  }
-                                                                >
-                                                                  {resource.title ||
-                                                                    'Untitled collection'}
-                                                                </span>
-                                                                {resource.handle ? (
-                                                                  <span
-                                                                    className={
-                                                                      styles.storeResourceItemHandle
+                                                                ),
+                                                            };
+                                                          }
+                                                        )
+                                                      }
+                                                      placeholder="e.g. 30-day guarantee"
+                                                      autoComplete="off"
+                                                    />
+                                                    <Button
+                                                      size="micro"
+                                                      tone="critical"
+                                                      onClick={() =>
+                                                        updateCheckoutExperienceVariantConfig(
+                                                          index,
+                                                          current => {
+                                                            const currentSections =
+                                                              getNormalizedCheckoutExperienceConfig(
+                                                                current
+                                                              ).checkout_sections;
+                                                            return {
+                                                              ...current,
+                                                              checkout_sections:
+                                                                currentSections.map(
+                                                                  (item, itemIndex) => {
+                                                                    if (
+                                                                      itemIndex !== sectionIndex
+                                                                    ) {
+                                                                      return item;
                                                                     }
-                                                                  >
-                                                                    /{resource.handle}
-                                                                  </span>
-                                                                ) : loadedCollectionIdSet.has(
-                                                                    String(resource.id)
-                                                                  ) ? null : (
-                                                                  <span
-                                                                    className={
-                                                                      styles.storeResourceItemHandle
-                                                                    }
-                                                                  >
-                                                                    Previously selected
-                                                                  </span>
-                                                                )}
-                                                              </span>
-                                                            </button>
-                                                          );
-                                                        };
-                                                        return (
-                                                          <>
-                                                            <div
-                                                              className={
-                                                                styles.storeResourceListMeta
-                                                              }
-                                                            >
-                                                              <Text
-                                                                as="span"
-                                                                variant="bodySm"
-                                                                tone="subdued"
-                                                              >
-                                                                Showing{' '}
-                                                                {shownCheckoutCollectionsCount} of{' '}
-                                                                {checkoutCollectionResources.length}{' '}
-                                                                loaded
-                                                              </Text>
-                                                              <InlineStack
-                                                                gap="200"
-                                                                wrap
-                                                                blockAlign="center"
-                                                              >
-                                                                {checkoutCollectionsCanFetchMore && (
-                                                                  <Badge tone="info" size="small">
-                                                                    More available
-                                                                  </Badge>
-                                                                )}
-                                                                {checkoutCollectionsCanCollapse && (
-                                                                  <Button
-                                                                    size="slim"
-                                                                    variant="plain"
-                                                                    onClick={() =>
-                                                                      setCheckoutCollectionVisibleCount(
-                                                                        PRICE_PRODUCT_MODAL_REVEAL_BATCH
-                                                                      )
-                                                                    }
-                                                                  >
-                                                                    Collapse
-                                                                  </Button>
-                                                                )}
-                                                              </InlineStack>
-                                                            </div>
-                                                            <div
-                                                              className={
-                                                                styles.storeResourceListScroll
-                                                              }
-                                                            >
-                                                              {visibleCheckoutCollections.map(
-                                                                resource =>
-                                                                  renderCheckoutCollectionRow(
-                                                                    resource,
-                                                                    resource.id
-                                                                  )
-                                                              )}
-                                                              {missingCheckoutCollections.map(c =>
-                                                                renderCheckoutCollectionRow(
-                                                                  {
-                                                                    id: c.id,
-                                                                    title:
-                                                                      c.title ||
-                                                                      String(c.id).replace(
-                                                                        /.*\//,
-                                                                        ''
-                                                                      ),
-                                                                    handle: c.handle || '',
-                                                                  },
-                                                                  `saved-${c.id}`
-                                                                )
-                                                              )}
-                                                            </div>
-                                                            {checkoutCollectionsCanShowMore && (
-                                                              <div
-                                                                className={
-                                                                  styles.storeResourceListFooter
-                                                                }
-                                                              >
-                                                                <Button
-                                                                  size="slim"
-                                                                  onClick={
-                                                                    handleLoadMoreCheckoutCollections
+                                                                    return {
+                                                                      ...item,
+                                                                      props: {
+                                                                        ...(item.props || {}),
+                                                                        feature_bullets:
+                                                                          normalizeCheckoutListInput(
+                                                                            item?.props
+                                                                              ?.feature_bullets
+                                                                          ).filter(
+                                                                            (
+                                                                              _,
+                                                                              currentBulletIndex
+                                                                            ) =>
+                                                                              currentBulletIndex !==
+                                                                              bulletIndex
+                                                                          ),
+                                                                      },
+                                                                    };
                                                                   }
-                                                                  loading={
-                                                                    checkoutCollectionLoadingMore
-                                                                  }
-                                                                  disabled={
-                                                                    checkoutCollectionLoadingMore
-                                                                  }
-                                                                >
-                                                                  {checkoutCollectionsHasHiddenLoaded
-                                                                    ? `Show ${Math.min(
-                                                                        collectionsProgressiveWindow.nextRevealCount ||
-                                                                          PRICE_PRODUCT_MODAL_REVEAL_BATCH,
-                                                                        checkoutCollectionResources.length -
-                                                                          shownCheckoutCollectionsCount
-                                                                      )} more`
-                                                                    : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
-                                                                </Button>
-                                                              </div>
-                                                            )}
-                                                          </>
-                                                        );
-                                                      })()
-                                                    )}
+                                                                ),
+                                                            };
+                                                          }
+                                                        )
+                                                      }
+                                                    >
+                                                      Remove
+                                                    </Button>
                                                   </div>
-                                                ) : (
-                                                  <TextField
-                                                    label="Collection GIDs"
-                                                    multiline={4}
-                                                    value={productSourceCollections
-                                                      .map(row => row.id)
-                                                      .join('\n')}
-                                                    onChange={value => {
-                                                      const rawIds = String(value || '')
-                                                        .split(/[\n,]+/)
-                                                        .map(part => part.trim())
-                                                        .filter(Boolean);
-                                                      const nextCollections = rawIds.map(id => {
-                                                        if (id.startsWith('gid://')) {
-                                                          return { id, title: '', handle: '' };
+                                                ))
+                                              ) : (
+                                                <div className={styles.checkoutBulletEmpty}>
+                                                  Add short proof points to show benefits, trust, or
+                                                  next steps in a compact checkout list.
+                                                </div>
+                                              )}
+                                            </BlockStack>
+                                            <InlineStack gap="200" blockAlign="center" wrap>
+                                              <TextField
+                                                labelHidden
+                                                label="New feature bullet"
+                                                value={bulletDraft}
+                                                onChange={value =>
+                                                  setCheckoutBulletDrafts(prev => ({
+                                                    ...prev,
+                                                    [bulletDraftKey]: value,
+                                                  }))
+                                                }
+                                                placeholder="e.g. Fast support response"
+                                                autoComplete="off"
+                                              />
+                                              <Button
+                                                size="slim"
+                                                disabled={!bulletDraft.trim()}
+                                                onClick={() => (
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) => {
+                                                            if (itemIndex !== sectionIndex) {
+                                                              return item;
+                                                            }
+                                                            return {
+                                                              ...item,
+                                                              props: {
+                                                                ...(item.props || {}),
+                                                                feature_bullets: [
+                                                                  ...normalizeCheckoutListInput(
+                                                                    item?.props?.feature_bullets
+                                                                  ),
+                                                                  bulletDraft.trim(),
+                                                                ],
+                                                              },
+                                                            };
+                                                          }
+                                                        ),
+                                                      };
+                                                    }
+                                                  ),
+                                                  setCheckoutBulletDrafts(prev => ({
+                                                    ...prev,
+                                                    [bulletDraftKey]: '',
+                                                  }))
+                                                )}
+                                              >
+                                                Add bullet
+                                              </Button>
+                                            </InlineStack>
+                                          </div>
+                                          {section.type === 'product_list' ? (
+                                            <div className={styles.checkoutProductEditor}>
+                                              <InlineStack
+                                                align="space-between"
+                                                blockAlign="center"
+                                                wrap
+                                                gap="200"
+                                              >
+                                                <InlineStack gap="200" blockAlign="center" wrap>
+                                                  <Text
+                                                    as="span"
+                                                    variant="bodySm"
+                                                    fontWeight="semibold"
+                                                  >
+                                                    Product cards
+                                                  </Text>
+                                                  <TooltipWrapper
+                                                    content="Add manual product cards for checkout merchandising. Keep them short and high intent."
+                                                    accessibilityLabel="Product cards help"
+                                                  >
+                                                    <span
+                                                      className={styles.checkoutSectionGuideIcon}
+                                                      aria-hidden
+                                                    >
+                                                      <Icon source={InfoIcon} />
+                                                    </span>
+                                                  </TooltipWrapper>
+                                                </InlineStack>
+                                                {productSourceMode === 'manual' &&
+                                                canUseStoreProductPicker ? (
+                                                  <Button
+                                                    size="slim"
+                                                    icon={ProductIcon}
+                                                    onClick={async () => {
+                                                      const product =
+                                                        await fetchFirstPricePreviewProduct();
+                                                      if (!product) {
+                                                        return;
+                                                      }
+                                                      updateCheckoutExperienceVariantConfig(
+                                                        index,
+                                                        current => {
+                                                          const currentSections =
+                                                            getNormalizedCheckoutExperienceConfig(
+                                                              current
+                                                            ).checkout_sections;
+                                                          return {
+                                                            ...current,
+                                                            checkout_sections: currentSections.map(
+                                                              (item, itemIndex) => {
+                                                                if (itemIndex !== sectionIndex) {
+                                                                  return item;
+                                                                }
+                                                                return {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    product_items: [
+                                                                      ...normalizeCheckoutProductItems(
+                                                                        item?.props?.product_items
+                                                                      ),
+                                                                      {
+                                                                        ...createEmptyCheckoutProductItem(
+                                                                          productItems.length
+                                                                        ),
+                                                                        product_gid:
+                                                                          product.id || '',
+                                                                        handle:
+                                                                          product.handle || '',
+                                                                        image_url:
+                                                                          product.imageUrl ||
+                                                                          product.image_url ||
+                                                                          '',
+                                                                        title:
+                                                                          product.title ||
+                                                                          product.name ||
+                                                                          'Store product',
+                                                                      },
+                                                                    ],
+                                                                  },
+                                                                };
+                                                              }
+                                                            ),
+                                                          };
                                                         }
-                                                        const num = id.replace(/\D/g, '');
-                                                        const gid = num
-                                                          ? `gid://shopify/Collection/${num}`
-                                                          : id;
-                                                        return { id: gid, title: '', handle: '' };
-                                                      });
+                                                      );
+                                                    }}
+                                                  >
+                                                    Add store product
+                                                  </Button>
+                                                ) : null}
+                                                <Badge
+                                                  tone={
+                                                    productSourceMode === 'cart_related' ||
+                                                    productSourceMode === 'collection'
+                                                      ? 'success'
+                                                      : productItems.length > 0
+                                                        ? 'info'
+                                                        : 'attention'
+                                                  }
+                                                >
+                                                  {productSourceMode === 'cart_related'
+                                                    ? `Cart-related - ${productSourceLimit}`
+                                                    : productSourceMode === 'collection'
+                                                      ? `Collection - ${productSourceCollections.length} picked`
+                                                      : `${productItems.length} card${productItems.length === 1 ? '' : 's'}`}
+                                                </Badge>
+                                              </InlineStack>
+                                              <div
+                                                className={styles.checkoutProductSourceChoiceGrid}
+                                              >
+                                                {productSourceGuidanceCards.map(sourceCard => (
+                                                  <button
+                                                    key={`${section.id || sectionIndex}-${sourceCard.value}`}
+                                                    type="button"
+                                                    className={`${styles.checkoutProductSourceChoice} ${
+                                                      sourceCard.active
+                                                        ? styles.checkoutProductSourceChoiceActive
+                                                        : ''
+                                                    }`}
+                                                    aria-pressed={sourceCard.active}
+                                                    onClick={() =>
                                                       updateCheckoutExperienceVariantConfig(
                                                         index,
                                                         current => {
@@ -14017,105 +14683,663 @@ function TestWizard({
                                                                       ...item,
                                                                       props: {
                                                                         ...(item.props || {}),
-                                                                        product_source_collections:
-                                                                          nextCollections,
+                                                                        product_source_mode:
+                                                                          sourceCard.value,
+                                                                        ...(sourceCard.value ===
+                                                                        'collection'
+                                                                          ? { product_items: [] }
+                                                                          : {}),
+                                                                        ...(sourceCard.value ===
+                                                                          'manual' ||
+                                                                        sourceCard.value ===
+                                                                          'cart_related'
+                                                                          ? {
+                                                                              product_source_collections:
+                                                                                [],
+                                                                            }
+                                                                          : {}),
                                                                       },
                                                                     }
                                                                   : item
                                                             ),
                                                           };
                                                         }
-                                                      );
-                                                    }}
-                                                    helpText="Standalone or advanced setup: one Shopify collection GID per line (gid://shopify/Collection/…). You can paste numeric IDs; they are normalized automatically."
-                                                    autoComplete="off"
-                                                  />
-                                                )}
-                                              </BlockStack>
-                                            ) : null}
-                                            {productSourceMode === 'manual' &&
-                                            productItems.length > 0 ? (
-                                              <BlockStack gap="200">
-                                                {productItems.map((productItem, productIndex) => (
-                                                  <div
-                                                    key={
-                                                      productItem.id || `product-${productIndex}`
+                                                      )
                                                     }
-                                                    className={styles.checkoutProductEditorCard}
                                                   >
-                                                    <div
-                                                      className={
-                                                        styles.checkoutProductEditorCardHead
+                                                    <strong>{sourceCard.label}</strong>
+                                                    <span>{sourceCard.detail}</span>
+                                                    <small>
+                                                      {sourceCard.active
+                                                        ? 'Selected source'
+                                                        : 'Use source'}
+                                                    </small>
+                                                  </button>
+                                                ))}
+                                              </div>
+                                              <div className={styles.checkoutProductSourceControls}>
+                                                <Select
+                                                  label="Product source"
+                                                  options={CHECKOUT_PRODUCT_SOURCE_OPTIONS}
+                                                  value={productSourceMode}
+                                                  onChange={value =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) =>
+                                                              itemIndex === sectionIndex
+                                                                ? {
+                                                                    ...item,
+                                                                    props: {
+                                                                      ...(item.props || {}),
+                                                                      product_source_mode: value,
+                                                                      ...(value === 'collection'
+                                                                        ? { product_items: [] }
+                                                                        : {}),
+                                                                      ...(value === 'manual' ||
+                                                                      value === 'cart_related'
+                                                                        ? {
+                                                                            product_source_collections:
+                                                                              [],
+                                                                          }
+                                                                        : {}),
+                                                                    },
+                                                                  }
+                                                                : item
+                                                          ),
+                                                        };
                                                       }
-                                                    >
-                                                      <Text
-                                                        as="span"
-                                                        variant="bodySm"
-                                                        fontWeight="semibold"
+                                                    )
+                                                  }
+                                                  helpText="Manual cards are fully curated. Cart-related mirrors the shopper cart. Collection-fed pulls featured products from the collections you pick (resolved at checkout runtime)."
+                                                />
+                                                <Select
+                                                  label="Max cards"
+                                                  options={CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS}
+                                                  value={String(productSourceLimit)}
+                                                  onChange={value =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) =>
+                                                              itemIndex === sectionIndex
+                                                                ? {
+                                                                    ...item,
+                                                                    props: {
+                                                                      ...(item.props || {}),
+                                                                      product_source_limit: value,
+                                                                    },
+                                                                  }
+                                                                : item
+                                                          ),
+                                                        };
+                                                      }
+                                                    )
+                                                  }
+                                                  helpText="Controls how many products the block shows in checkout."
+                                                />
+                                                <Select
+                                                  label="Display design"
+                                                  options={CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS}
+                                                  value={productDisplayLayout}
+                                                  onChange={value =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) =>
+                                                              itemIndex === sectionIndex
+                                                                ? {
+                                                                    ...item,
+                                                                    props: {
+                                                                      ...(item.props || {}),
+                                                                      product_display_layout: value,
+                                                                    },
+                                                                  }
+                                                                : item
+                                                          ),
+                                                        };
+                                                      }
+                                                    )
+                                                  }
+                                                  helpText="Test compact rows, richer cards, a two-column grid, or comparison-style rows."
+                                                />
+                                                <Select
+                                                  label="Offer strategy"
+                                                  options={CHECKOUT_PRODUCT_STRATEGY_OPTIONS}
+                                                  value={productStrategy}
+                                                  onChange={value =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) =>
+                                                              itemIndex === sectionIndex
+                                                                ? {
+                                                                    ...item,
+                                                                    strategy_key: value,
+                                                                    props: {
+                                                                      ...(item.props || {}),
+                                                                      selection_strategy: value,
+                                                                    },
+                                                                  }
+                                                                : item
+                                                          ),
+                                                        };
+                                                      }
+                                                    )
+                                                  }
+                                                  helpText="Labels the hypothesis and analytics strategy for this product-list variant."
+                                                />
+                                                <Select
+                                                  label="Product action"
+                                                  options={CHECKOUT_PRODUCT_ACTION_OPTIONS}
+                                                  value={productAction}
+                                                  onChange={value =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) =>
+                                                              itemIndex === sectionIndex
+                                                                ? {
+                                                                    ...item,
+                                                                    props: {
+                                                                      ...(item.props || {}),
+                                                                      product_action: value,
+                                                                    },
+                                                                  }
+                                                                : item
+                                                          ),
+                                                        };
+                                                      }
+                                                    )
+                                                  }
+                                                  helpText="Display-only preserves merchandising. Add-to-cart shows row buttons when Shopify merchandise IDs are available."
+                                                />
+                                              </div>
+                                              <div className={styles.checkoutProductSourceNote}>
+                                                {productAction === 'add_to_cart'
+                                                  ? isProductListActionReady
+                                                    ? 'Action readiness: product rows can show secondary add buttons when checkout permits cart-line changes.'
+                                                    : 'Action readiness: add a Shopify merchandise/variant GID to at least one manual product before launch.'
+                                                  : 'Action readiness: display-only mode tracks product exposure without changing checkout cart lines.'}
+                                              </div>
+                                              {productSourceMode === 'cart_related' ? (
+                                                <div className={styles.checkoutProductSourceNote}>
+                                                  Cart-related mode pulls up to {productSourceLimit}{' '}
+                                                  product
+                                                  {productSourceLimit === 1 ? '' : 's'} from the
+                                                  live checkout cart at runtime. Titles, images,
+                                                  quantities, and price text come from the shopper
+                                                  cart automatically.
+                                                </div>
+                                              ) : null}
+                                              {productSourceMode === 'collection' ? (
+                                                <BlockStack gap="300">
+                                                  <div className={styles.checkoutProductSourceNote}>
+                                                    Collection-fed mode shows up to{' '}
+                                                    {productSourceLimit} product
+                                                    {productSourceLimit === 1 ? '' : 's'} from your
+                                                    selected Shopify collections. The live checkout
+                                                    block receives resolved product cards when the
+                                                    shopper loads checkout (same secret-protected
+                                                    assignment request as other checkout UI data).
+                                                  </div>
+                                                  {canUseStoreProductPicker ? (
+                                                    <div className={styles.storeResourceList}>
+                                                      <div
+                                                        className={styles.storeResourceListHeader}
                                                       >
-                                                        Product card {productIndex + 1}
-                                                      </Text>
-                                                      <Button
-                                                        size="micro"
-                                                        tone="critical"
-                                                        onClick={() =>
-                                                          updateCheckoutExperienceVariantConfig(
-                                                            index,
-                                                            current => {
-                                                              const currentSections =
-                                                                getNormalizedCheckoutExperienceConfig(
-                                                                  current
-                                                                ).checkout_sections;
-                                                              return {
-                                                                ...current,
-                                                                checkout_sections:
-                                                                  currentSections.map(
-                                                                    (item, itemIndex) => {
-                                                                      if (
-                                                                        itemIndex !== sectionIndex
-                                                                      ) {
-                                                                        return item;
-                                                                      }
+                                                        <div
+                                                          className={styles.storeResourceListSearch}
+                                                        >
+                                                          <TextField
+                                                            label="Search collections"
+                                                            labelHidden
+                                                            value={checkoutCollectionSearch}
+                                                            onChange={setCheckoutCollectionSearch}
+                                                            placeholder="Search collections…"
+                                                            autoComplete="off"
+                                                            clearButton
+                                                            onClearButtonClick={() =>
+                                                              setCheckoutCollectionSearch('')
+                                                            }
+                                                          />
+                                                        </div>
+                                                        {productSourceCollections.length > 0 ? (
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceSelectedBadge
+                                                            }
+                                                          >
+                                                            {productSourceCollections.length}{' '}
+                                                            selected
+                                                          </span>
+                                                        ) : null}
+                                                      </div>
+                                                      {checkoutCollectionLoading ? (
+                                                        <div
+                                                          className={
+                                                            styles.storeResourceListLoading
+                                                          }
+                                                        >
+                                                          <div
+                                                            className={
+                                                              styles.storeResourceListLoadingIcon
+                                                            }
+                                                          >
+                                                            <Spinner size="small" />
+                                                          </div>
+                                                          <Text
+                                                            as="span"
+                                                            variant="bodySm"
+                                                            tone="subdued"
+                                                          >
+                                                            Loading collections…
+                                                          </Text>
+                                                        </div>
+                                                      ) : checkoutCollectionResources.length ===
+                                                        0 ? (
+                                                        <div
+                                                          className={styles.storeResourceListEmpty}
+                                                        >
+                                                          <div
+                                                            className={
+                                                              styles.storeResourceListEmptyIcon
+                                                            }
+                                                          >
+                                                            <Icon source={CollectionIcon} />
+                                                          </div>
+                                                          <Text
+                                                            as="p"
+                                                            variant="bodySm"
+                                                            tone="subdued"
+                                                          >
+                                                            {checkoutCollectionError ||
+                                                              (checkoutCollectionSearch
+                                                                ? 'No matches. Try a different search.'
+                                                                : 'No collections returned yet.')}
+                                                          </Text>
+                                                        </div>
+                                                      ) : (
+                                                        (() => {
+                                                          const selectedCollectionIds =
+                                                            productSourceCollections.map(c => c.id);
+                                                          const collectionsProgressiveWindow =
+                                                            buildProgressiveListWindow(
+                                                              checkoutCollectionResources,
+                                                              checkoutCollectionVisibleCount,
+                                                              { pinnedIds: selectedCollectionIds }
+                                                            );
+                                                          const visibleCheckoutCollections =
+                                                            collectionsProgressiveWindow.visibleItems;
+                                                          const shownCheckoutCollectionsCount =
+                                                            collectionsProgressiveWindow.shownCount;
+                                                          const checkoutCollectionsHasHiddenLoaded =
+                                                            collectionsProgressiveWindow.hasHiddenLoaded;
+                                                          const checkoutCollectionsCanFetchMore =
+                                                            Boolean(
+                                                              checkoutCollectionPageInfo?.hasNextPage
+                                                            );
+                                                          const checkoutCollectionsCanShowMore =
+                                                            checkoutCollectionsHasHiddenLoaded ||
+                                                            checkoutCollectionsCanFetchMore;
+                                                          const checkoutCollectionsCanCollapse =
+                                                            collectionsProgressiveWindow.canCollapse;
+                                                          const loadedCollectionIdSet = new Set(
+                                                            checkoutCollectionResources.map(r =>
+                                                              String(r?.id || '')
+                                                            )
+                                                          );
+                                                          const missingCheckoutCollections =
+                                                            productSourceCollections.filter(
+                                                              c =>
+                                                                c?.id &&
+                                                                !loadedCollectionIdSet.has(
+                                                                  String(c.id)
+                                                                )
+                                                            );
+                                                          const renderCheckoutCollectionRow = (
+                                                            resource,
+                                                            rowKey
+                                                          ) => {
+                                                            const active =
+                                                              selectedCollectionIds.includes(
+                                                                resource.id
+                                                              );
+                                                            return (
+                                                              <button
+                                                                key={rowKey}
+                                                                type="button"
+                                                                className={`${styles.storeResourceItem} ${active ? styles.storeResourceItemSelected : ''}`}
+                                                                onClick={() =>
+                                                                  updateCheckoutExperienceVariantConfig(
+                                                                    index,
+                                                                    current => {
+                                                                      const currentSections =
+                                                                        getNormalizedCheckoutExperienceConfig(
+                                                                          current
+                                                                        ).checkout_sections;
                                                                       return {
-                                                                        ...item,
-                                                                        props: {
-                                                                          ...(item.props || {}),
-                                                                          product_items:
-                                                                            normalizeCheckoutProductItems(
-                                                                              item?.props
-                                                                                ?.product_items
-                                                                            ).filter(
-                                                                              (
-                                                                                _,
-                                                                                currentProductIndex
-                                                                              ) =>
-                                                                                currentProductIndex !==
-                                                                                productIndex
-                                                                            ),
-                                                                        },
+                                                                        ...current,
+                                                                        checkout_sections:
+                                                                          currentSections.map(
+                                                                            (item, itemIndex) => {
+                                                                              if (
+                                                                                itemIndex !==
+                                                                                sectionIndex
+                                                                              ) {
+                                                                                return item;
+                                                                              }
+                                                                              const existing =
+                                                                                normalizeCheckoutProductSourceCollections(
+                                                                                  item?.props
+                                                                                    ?.product_source_collections
+                                                                                );
+                                                                              const isSelected =
+                                                                                existing.some(
+                                                                                  row =>
+                                                                                    row.id ===
+                                                                                    resource.id
+                                                                                );
+                                                                              const nextCollections =
+                                                                                isSelected
+                                                                                  ? existing.filter(
+                                                                                      row =>
+                                                                                        row.id !==
+                                                                                        resource.id
+                                                                                    )
+                                                                                  : [
+                                                                                      ...existing,
+                                                                                      {
+                                                                                        id: resource.id,
+                                                                                        title:
+                                                                                          resource.title ||
+                                                                                          '',
+                                                                                        handle:
+                                                                                          resource.handle ||
+                                                                                          '',
+                                                                                      },
+                                                                                    ];
+                                                                              return {
+                                                                                ...item,
+                                                                                props: {
+                                                                                  ...(item.props ||
+                                                                                    {}),
+                                                                                  product_source_collections:
+                                                                                    nextCollections,
+                                                                                },
+                                                                              };
+                                                                            }
+                                                                          ),
                                                                       };
                                                                     }
-                                                                  ),
-                                                              };
-                                                            }
-                                                          )
-                                                        }
-                                                      >
-                                                        Remove
-                                                      </Button>
+                                                                  )
+                                                                }
+                                                              >
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemIcon
+                                                                  }
+                                                                >
+                                                                  <Icon source={CollectionIcon} />
+                                                                </span>
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemContent
+                                                                  }
+                                                                >
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemTitle
+                                                                    }
+                                                                  >
+                                                                    {resource.title ||
+                                                                      'Untitled collection'}
+                                                                  </span>
+                                                                  {resource.handle ? (
+                                                                    <span
+                                                                      className={
+                                                                        styles.storeResourceItemHandle
+                                                                      }
+                                                                    >
+                                                                      /{resource.handle}
+                                                                    </span>
+                                                                  ) : loadedCollectionIdSet.has(
+                                                                      String(resource.id)
+                                                                    ) ? null : (
+                                                                    <span
+                                                                      className={
+                                                                        styles.storeResourceItemHandle
+                                                                      }
+                                                                    >
+                                                                      Previously selected
+                                                                    </span>
+                                                                  )}
+                                                                </span>
+                                                              </button>
+                                                            );
+                                                          };
+                                                          return (
+                                                            <>
+                                                              <div
+                                                                className={
+                                                                  styles.storeResourceListMeta
+                                                                }
+                                                              >
+                                                                <Text
+                                                                  as="span"
+                                                                  variant="bodySm"
+                                                                  tone="subdued"
+                                                                >
+                                                                  Showing{' '}
+                                                                  {shownCheckoutCollectionsCount} of{' '}
+                                                                  {
+                                                                    checkoutCollectionResources.length
+                                                                  }{' '}
+                                                                  loaded
+                                                                </Text>
+                                                                <InlineStack
+                                                                  gap="200"
+                                                                  wrap
+                                                                  blockAlign="center"
+                                                                >
+                                                                  {checkoutCollectionsCanFetchMore && (
+                                                                    <Badge tone="info" size="small">
+                                                                      More available
+                                                                    </Badge>
+                                                                  )}
+                                                                  {checkoutCollectionsCanCollapse && (
+                                                                    <Button
+                                                                      size="slim"
+                                                                      variant="plain"
+                                                                      onClick={() =>
+                                                                        setCheckoutCollectionVisibleCount(
+                                                                          PRICE_PRODUCT_MODAL_REVEAL_BATCH
+                                                                        )
+                                                                      }
+                                                                    >
+                                                                      Collapse
+                                                                    </Button>
+                                                                  )}
+                                                                </InlineStack>
+                                                              </div>
+                                                              <div
+                                                                className={
+                                                                  styles.storeResourceListScroll
+                                                                }
+                                                              >
+                                                                {visibleCheckoutCollections.map(
+                                                                  resource =>
+                                                                    renderCheckoutCollectionRow(
+                                                                      resource,
+                                                                      resource.id
+                                                                    )
+                                                                )}
+                                                                {missingCheckoutCollections.map(c =>
+                                                                  renderCheckoutCollectionRow(
+                                                                    {
+                                                                      id: c.id,
+                                                                      title:
+                                                                        c.title ||
+                                                                        String(c.id).replace(
+                                                                          /.*\//,
+                                                                          ''
+                                                                        ),
+                                                                      handle: c.handle || '',
+                                                                    },
+                                                                    `saved-${c.id}`
+                                                                  )
+                                                                )}
+                                                              </div>
+                                                              {checkoutCollectionsCanShowMore && (
+                                                                <div
+                                                                  className={
+                                                                    styles.storeResourceListFooter
+                                                                  }
+                                                                >
+                                                                  <Button
+                                                                    size="slim"
+                                                                    onClick={
+                                                                      handleLoadMoreCheckoutCollections
+                                                                    }
+                                                                    loading={
+                                                                      checkoutCollectionLoadingMore
+                                                                    }
+                                                                    disabled={
+                                                                      checkoutCollectionLoadingMore
+                                                                    }
+                                                                  >
+                                                                    {checkoutCollectionsHasHiddenLoaded
+                                                                      ? `Show ${Math.min(
+                                                                          collectionsProgressiveWindow.nextRevealCount ||
+                                                                            PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                                                          checkoutCollectionResources.length -
+                                                                            shownCheckoutCollectionsCount
+                                                                        )} more`
+                                                                      : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
+                                                                  </Button>
+                                                                </div>
+                                                              )}
+                                                            </>
+                                                          );
+                                                        })()
+                                                      )}
                                                     </div>
+                                                  ) : (
+                                                    <TextField
+                                                      label="Collection GIDs"
+                                                      multiline={4}
+                                                      value={productSourceCollections
+                                                        .map(row => row.id)
+                                                        .join('\n')}
+                                                      onChange={value => {
+                                                        const rawIds = String(value || '')
+                                                          .split(/[\n,]+/)
+                                                          .map(part => part.trim())
+                                                          .filter(Boolean);
+                                                        const nextCollections = rawIds.map(id => {
+                                                          if (id.startsWith('gid://')) {
+                                                            return { id, title: '', handle: '' };
+                                                          }
+                                                          const num = id.replace(/\D/g, '');
+                                                          const gid = num
+                                                            ? `gid://shopify/Collection/${num}`
+                                                            : id;
+                                                          return { id: gid, title: '', handle: '' };
+                                                        });
+                                                        updateCheckoutExperienceVariantConfig(
+                                                          index,
+                                                          current => {
+                                                            const currentSections =
+                                                              getNormalizedCheckoutExperienceConfig(
+                                                                current
+                                                              ).checkout_sections;
+                                                            return {
+                                                              ...current,
+                                                              checkout_sections:
+                                                                currentSections.map(
+                                                                  (item, itemIndex) =>
+                                                                    itemIndex === sectionIndex
+                                                                      ? {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_source_collections:
+                                                                              nextCollections,
+                                                                          },
+                                                                        }
+                                                                      : item
+                                                                ),
+                                                            };
+                                                          }
+                                                        );
+                                                      }}
+                                                      helpText="Standalone or advanced setup: one Shopify collection GID per line (gid://shopify/Collection/…). You can paste numeric IDs; they are normalized automatically."
+                                                      autoComplete="off"
+                                                    />
+                                                  )}
+                                                </BlockStack>
+                                              ) : null}
+                                              {productSourceMode === 'manual' &&
+                                              productItems.length > 0 ? (
+                                                <BlockStack gap="200">
+                                                  {productItems.map((productItem, productIndex) => (
                                                     <div
-                                                      className={styles.checkoutProductEditorGrid}
+                                                      key={
+                                                        productItem.id || `product-${productIndex}`
+                                                      }
+                                                      className={styles.checkoutProductEditorCard}
                                                     >
                                                       <div
                                                         className={
-                                                          styles.checkoutProductEditorGridWide
+                                                          styles.checkoutProductEditorCardHead
                                                         }
                                                       >
-                                                        <TextField
-                                                          label="Image URL"
-                                                          value={productItem.image_url || ''}
-                                                          onChange={value =>
+                                                        <Text
+                                                          as="span"
+                                                          variant="bodySm"
+                                                          fontWeight="semibold"
+                                                        >
+                                                          Product card {productIndex + 1}
+                                                        </Text>
+                                                        <Button
+                                                          size="micro"
+                                                          tone="critical"
+                                                          onClick={() =>
                                                             updateCheckoutExperienceVariantConfig(
                                                               index,
                                                               current => {
@@ -14133,138 +15357,98 @@ function TestWizard({
                                                                         ) {
                                                                           return item;
                                                                         }
-                                                                        const nextProducts =
-                                                                          normalizeCheckoutProductItems(
-                                                                            item?.props
-                                                                              ?.product_items
-                                                                          );
-                                                                        nextProducts[productIndex] =
-                                                                          {
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              normalizeCheckoutProductItems(
+                                                                                item?.props
+                                                                                  ?.product_items
+                                                                              ).filter(
+                                                                                (
+                                                                                  _,
+                                                                                  currentProductIndex
+                                                                                ) =>
+                                                                                  currentProductIndex !==
+                                                                                  productIndex
+                                                                              ),
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                        >
+                                                          Remove
+                                                        </Button>
+                                                      </div>
+                                                      <div
+                                                        className={styles.checkoutProductEditorGrid}
+                                                      >
+                                                        <div
+                                                          className={
+                                                            styles.checkoutProductEditorGridWide
+                                                          }
+                                                        >
+                                                          <TextField
+                                                            label="Image URL"
+                                                            value={productItem.image_url || ''}
+                                                            onChange={value =>
+                                                              updateCheckoutExperienceVariantConfig(
+                                                                index,
+                                                                current => {
+                                                                  const currentSections =
+                                                                    getNormalizedCheckoutExperienceConfig(
+                                                                      current
+                                                                    ).checkout_sections;
+                                                                  return {
+                                                                    ...current,
+                                                                    checkout_sections:
+                                                                      currentSections.map(
+                                                                        (item, itemIndex) => {
+                                                                          if (
+                                                                            itemIndex !==
+                                                                            sectionIndex
+                                                                          ) {
+                                                                            return item;
+                                                                          }
+                                                                          const nextProducts =
+                                                                            normalizeCheckoutProductItems(
+                                                                              item?.props
+                                                                                ?.product_items
+                                                                            );
+                                                                          nextProducts[
+                                                                            productIndex
+                                                                          ] = {
                                                                             ...nextProducts[
                                                                               productIndex
                                                                             ],
                                                                             image_url: value,
                                                                           };
-                                                                        return {
-                                                                          ...item,
-                                                                          props: {
-                                                                            ...(item.props || {}),
-                                                                            product_items:
-                                                                              nextProducts,
-                                                                          },
-                                                                        };
-                                                                      }
-                                                                    ),
-                                                                };
-                                                              }
-                                                            )
-                                                          }
-                                                          placeholder="https://cdn.example.com/product-image.jpg"
-                                                          autoComplete="off"
-                                                        />
-                                                      </div>
-                                                      <TextField
-                                                        label="Product title"
-                                                        value={productItem.title}
-                                                        onChange={value =>
-                                                          updateCheckoutExperienceVariantConfig(
-                                                            index,
-                                                            current => {
-                                                              const currentSections =
-                                                                getNormalizedCheckoutExperienceConfig(
-                                                                  current
-                                                                ).checkout_sections;
-                                                              return {
-                                                                ...current,
-                                                                checkout_sections:
-                                                                  currentSections.map(
-                                                                    (item, itemIndex) => {
-                                                                      if (
-                                                                        itemIndex !== sectionIndex
-                                                                      ) {
-                                                                        return item;
-                                                                      }
-                                                                      const nextProducts =
-                                                                        normalizeCheckoutProductItems(
-                                                                          item?.props?.product_items
-                                                                        );
-                                                                      nextProducts[productIndex] = {
-                                                                        ...nextProducts[
-                                                                          productIndex
-                                                                        ],
-                                                                        title: value,
-                                                                      };
-                                                                      return {
-                                                                        ...item,
-                                                                        props: {
-                                                                          ...(item.props || {}),
-                                                                          product_items:
-                                                                            nextProducts,
-                                                                        },
-                                                                      };
-                                                                    }
-                                                                  ),
-                                                              };
+                                                                          return {
+                                                                            ...item,
+                                                                            props: {
+                                                                              ...(item.props || {}),
+                                                                              product_items:
+                                                                                nextProducts,
+                                                                            },
+                                                                          };
+                                                                        }
+                                                                      ),
+                                                                  };
+                                                                }
+                                                              )
                                                             }
-                                                          )
-                                                        }
-                                                        autoComplete="off"
-                                                      />
-                                                      <TextField
-                                                        label="Badge"
-                                                        value={productItem.badge_text}
-                                                        onChange={value =>
-                                                          updateCheckoutExperienceVariantConfig(
-                                                            index,
-                                                            current => {
-                                                              const currentSections =
-                                                                getNormalizedCheckoutExperienceConfig(
-                                                                  current
-                                                                ).checkout_sections;
-                                                              return {
-                                                                ...current,
-                                                                checkout_sections:
-                                                                  currentSections.map(
-                                                                    (item, itemIndex) => {
-                                                                      if (
-                                                                        itemIndex !== sectionIndex
-                                                                      ) {
-                                                                        return item;
-                                                                      }
-                                                                      const nextProducts =
-                                                                        normalizeCheckoutProductItems(
-                                                                          item?.props?.product_items
-                                                                        );
-                                                                      nextProducts[productIndex] = {
-                                                                        ...nextProducts[
-                                                                          productIndex
-                                                                        ],
-                                                                        badge_text: value,
-                                                                      };
-                                                                      return {
-                                                                        ...item,
-                                                                        props: {
-                                                                          ...(item.props || {}),
-                                                                          product_items:
-                                                                            nextProducts,
-                                                                        },
-                                                                      };
-                                                                    }
-                                                                  ),
-                                                              };
-                                                            }
-                                                          )
-                                                        }
-                                                        autoComplete="off"
-                                                      />
-                                                      <div
-                                                        className={
-                                                          styles.checkoutProductEditorGridWide
-                                                        }
-                                                      >
+                                                            placeholder="https://cdn.example.com/product-image.jpg"
+                                                            autoComplete="off"
+                                                          />
+                                                        </div>
                                                         <TextField
-                                                          label="Subtitle"
-                                                          value={productItem.subtitle}
+                                                          label="Product title"
+                                                          value={productItem.title}
                                                           onChange={value =>
                                                             updateCheckoutExperienceVariantConfig(
                                                               index,
@@ -14293,7 +15477,376 @@ function TestWizard({
                                                                             ...nextProducts[
                                                                               productIndex
                                                                             ],
+                                                                            title: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          autoComplete="off"
+                                                        />
+                                                        <TextField
+                                                          label="Badge"
+                                                          value={productItem.badge_text}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            badge_text: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          autoComplete="off"
+                                                        />
+                                                        <div
+                                                          className={
+                                                            styles.checkoutProductEditorGridWide
+                                                          }
+                                                        >
+                                                          <TextField
+                                                            label="Subtitle"
+                                                            value={productItem.subtitle}
+                                                            onChange={value =>
+                                                              updateCheckoutExperienceVariantConfig(
+                                                                index,
+                                                                current => {
+                                                                  const currentSections =
+                                                                    getNormalizedCheckoutExperienceConfig(
+                                                                      current
+                                                                    ).checkout_sections;
+                                                                  return {
+                                                                    ...current,
+                                                                    checkout_sections:
+                                                                      currentSections.map(
+                                                                        (item, itemIndex) => {
+                                                                          if (
+                                                                            itemIndex !==
+                                                                            sectionIndex
+                                                                          ) {
+                                                                            return item;
+                                                                          }
+                                                                          const nextProducts =
+                                                                            normalizeCheckoutProductItems(
+                                                                              item?.props
+                                                                                ?.product_items
+                                                                            );
+                                                                          nextProducts[
+                                                                            productIndex
+                                                                          ] = {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
                                                                             subtitle: value,
+                                                                          };
+                                                                          return {
+                                                                            ...item,
+                                                                            props: {
+                                                                              ...(item.props || {}),
+                                                                              product_items:
+                                                                                nextProducts,
+                                                                            },
+                                                                          };
+                                                                        }
+                                                                      ),
+                                                                  };
+                                                                }
+                                                              )
+                                                            }
+                                                            autoComplete="off"
+                                                          />
+                                                        </div>
+                                                        <TextField
+                                                          label="Price"
+                                                          value={productItem.price}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            price: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          autoComplete="off"
+                                                        />
+                                                        <TextField
+                                                          label="Compare at price"
+                                                          value={productItem.compare_at_price}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            compare_at_price: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          autoComplete="off"
+                                                        />
+                                                        <div
+                                                          className={
+                                                            styles.checkoutProductEditorGridWide
+                                                          }
+                                                        >
+                                                          <TextField
+                                                            label="Merchandise or variant GID"
+                                                            value={
+                                                              productItem.merchandise_id ||
+                                                              productItem.variant_gid ||
+                                                              ''
+                                                            }
+                                                            onChange={value =>
+                                                              updateCheckoutExperienceVariantConfig(
+                                                                index,
+                                                                current => {
+                                                                  const currentSections =
+                                                                    getNormalizedCheckoutExperienceConfig(
+                                                                      current
+                                                                    ).checkout_sections;
+                                                                  return {
+                                                                    ...current,
+                                                                    checkout_sections:
+                                                                      currentSections.map(
+                                                                        (item, itemIndex) => {
+                                                                          if (
+                                                                            itemIndex !==
+                                                                            sectionIndex
+                                                                          ) {
+                                                                            return item;
+                                                                          }
+                                                                          const nextProducts =
+                                                                            normalizeCheckoutProductItems(
+                                                                              item?.props
+                                                                                ?.product_items
+                                                                            );
+                                                                          nextProducts[
+                                                                            productIndex
+                                                                          ] = {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            merchandise_id: value,
+                                                                            variant_gid: value,
+                                                                          };
+                                                                          return {
+                                                                            ...item,
+                                                                            props: {
+                                                                              ...(item.props || {}),
+                                                                              product_items:
+                                                                                nextProducts,
+                                                                            },
+                                                                          };
+                                                                        }
+                                                                      ),
+                                                                  };
+                                                                }
+                                                              )
+                                                            }
+                                                            placeholder="gid://shopify/ProductVariant/123456789"
+                                                            helpText="Required only when this product list uses add-to-cart actions."
+                                                            autoComplete="off"
+                                                          />
+                                                        </div>
+                                                        <TextField
+                                                          label="Action label"
+                                                          value={productItem.action_label || 'Add'}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            action_label: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          autoComplete="off"
+                                                        />
+                                                        <TextField
+                                                          label="Quantity"
+                                                          type="number"
+                                                          min={1}
+                                                          max={10}
+                                                          value={String(productItem.quantity || 1)}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            quantity: value,
                                                                           };
                                                                         return {
                                                                           ...item,
@@ -14312,114 +15865,100 @@ function TestWizard({
                                                           autoComplete="off"
                                                         />
                                                       </div>
-                                                      <TextField
-                                                        label="Price"
-                                                        value={productItem.price}
-                                                        onChange={value =>
-                                                          updateCheckoutExperienceVariantConfig(
-                                                            index,
-                                                            current => {
-                                                              const currentSections =
-                                                                getNormalizedCheckoutExperienceConfig(
-                                                                  current
-                                                                ).checkout_sections;
-                                                              return {
-                                                                ...current,
-                                                                checkout_sections:
-                                                                  currentSections.map(
-                                                                    (item, itemIndex) => {
-                                                                      if (
-                                                                        itemIndex !== sectionIndex
-                                                                      ) {
-                                                                        return item;
-                                                                      }
-                                                                      const nextProducts =
-                                                                        normalizeCheckoutProductItems(
-                                                                          item?.props?.product_items
-                                                                        );
-                                                                      nextProducts[productIndex] = {
-                                                                        ...nextProducts[
-                                                                          productIndex
-                                                                        ],
-                                                                        price: value,
-                                                                      };
-                                                                      return {
-                                                                        ...item,
-                                                                        props: {
-                                                                          ...(item.props || {}),
-                                                                          product_items:
-                                                                            nextProducts,
-                                                                        },
-                                                                      };
-                                                                    }
-                                                                  ),
-                                                              };
-                                                            }
-                                                          )
-                                                        }
-                                                        autoComplete="off"
-                                                      />
-                                                      <TextField
-                                                        label="Compare at price"
-                                                        value={productItem.compare_at_price}
-                                                        onChange={value =>
-                                                          updateCheckoutExperienceVariantConfig(
-                                                            index,
-                                                            current => {
-                                                              const currentSections =
-                                                                getNormalizedCheckoutExperienceConfig(
-                                                                  current
-                                                                ).checkout_sections;
-                                                              return {
-                                                                ...current,
-                                                                checkout_sections:
-                                                                  currentSections.map(
-                                                                    (item, itemIndex) => {
-                                                                      if (
-                                                                        itemIndex !== sectionIndex
-                                                                      ) {
-                                                                        return item;
-                                                                      }
-                                                                      const nextProducts =
-                                                                        normalizeCheckoutProductItems(
-                                                                          item?.props?.product_items
-                                                                        );
-                                                                      nextProducts[productIndex] = {
-                                                                        ...nextProducts[
-                                                                          productIndex
-                                                                        ],
-                                                                        compare_at_price: value,
-                                                                      };
-                                                                      return {
-                                                                        ...item,
-                                                                        props: {
-                                                                          ...(item.props || {}),
-                                                                          product_items:
-                                                                            nextProducts,
-                                                                        },
-                                                                      };
-                                                                    }
-                                                                  ),
-                                                              };
-                                                            }
-                                                          )
-                                                        }
-                                                        autoComplete="off"
-                                                      />
                                                     </div>
-                                                  </div>
-                                                ))}
-                                              </BlockStack>
-                                            ) : productSourceMode === 'manual' ? (
-                                              <div className={styles.checkoutBulletEmpty}>
-                                                Add one or more product cards to merchandise
-                                                products at checkout.
-                                              </div>
-                                            ) : null}
-                                            {productSourceMode === 'manual' ? (
-                                              <Button
-                                                size="slim"
-                                                onClick={() =>
+                                                  ))}
+                                                </BlockStack>
+                                              ) : productSourceMode === 'manual' ? (
+                                                <div className={styles.checkoutBulletEmpty}>
+                                                  Add one or more product cards to merchandise
+                                                  products at checkout.
+                                                </div>
+                                              ) : null}
+                                              {productSourceMode === 'manual' ? (
+                                                <Button
+                                                  size="slim"
+                                                  onClick={() =>
+                                                    updateCheckoutExperienceVariantConfig(
+                                                      index,
+                                                      current => {
+                                                        const currentSections =
+                                                          getNormalizedCheckoutExperienceConfig(
+                                                            current
+                                                          ).checkout_sections;
+                                                        return {
+                                                          ...current,
+                                                          checkout_sections: currentSections.map(
+                                                            (item, itemIndex) => {
+                                                              if (itemIndex !== sectionIndex) {
+                                                                return item;
+                                                              }
+                                                              const nextProducts =
+                                                                normalizeCheckoutProductItems(
+                                                                  item?.props?.product_items
+                                                                );
+                                                              return {
+                                                                ...item,
+                                                                props: {
+                                                                  ...(item.props || {}),
+                                                                  product_items: [
+                                                                    ...nextProducts,
+                                                                    createEmptyCheckoutProductItem(
+                                                                      nextProducts.length
+                                                                    ),
+                                                                  ],
+                                                                },
+                                                              };
+                                                            }
+                                                          ),
+                                                        };
+                                                      }
+                                                    )
+                                                  }
+                                                >
+                                                  Add product card
+                                                </Button>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
+                                          <TextField
+                                            label="Disclaimer"
+                                            value={String(props.disclaimer || '')}
+                                            onChange={value =>
+                                              updateCheckoutExperienceVariantConfig(
+                                                index,
+                                                current => {
+                                                  const currentSections =
+                                                    getNormalizedCheckoutExperienceConfig(
+                                                      current
+                                                    ).checkout_sections;
+                                                  return {
+                                                    ...current,
+                                                    checkout_sections: currentSections.map(
+                                                      (item, itemIndex) =>
+                                                        itemIndex === sectionIndex
+                                                          ? {
+                                                              ...item,
+                                                              props: {
+                                                                ...(item.props || {}),
+                                                                disclaimer: value,
+                                                              },
+                                                            }
+                                                          : item
+                                                    ),
+                                                  };
+                                                }
+                                              )
+                                            }
+                                            placeholder="Optional fine print shown under the main message."
+                                            autoComplete="off"
+                                          />
+                                          <div className={styles.checkoutSelectGrid}>
+                                            <div className={styles.checkoutSelectItem}>
+                                              <Select
+                                                label="Layout"
+                                                options={CHECKOUT_LAYOUT_OPTIONS}
+                                                value={String(props.layout || 'banner')}
+                                                onChange={value =>
                                                   updateCheckoutExperienceVariantConfig(
                                                     index,
                                                     current => {
@@ -14430,260 +15969,332 @@ function TestWizard({
                                                       return {
                                                         ...current,
                                                         checkout_sections: currentSections.map(
-                                                          (item, itemIndex) => {
-                                                            if (itemIndex !== sectionIndex) {
-                                                              return item;
-                                                            }
-                                                            const nextProducts =
-                                                              normalizeCheckoutProductItems(
-                                                                item?.props?.product_items
-                                                              );
-                                                            return {
-                                                              ...item,
-                                                              props: {
-                                                                ...(item.props || {}),
-                                                                product_items: [
-                                                                  ...nextProducts,
-                                                                  createEmptyCheckoutProductItem(
-                                                                    nextProducts.length
-                                                                  ),
-                                                                ],
-                                                              },
-                                                            };
-                                                          }
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    layout: value,
+                                                                  },
+                                                                }
+                                                              : item
                                                         ),
                                                       };
                                                     }
                                                   )
                                                 }
-                                              >
-                                                Add product card
-                                              </Button>
-                                            ) : null}
+                                              />
+                                            </div>
+                                            <div className={styles.checkoutSelectItem}>
+                                              <Select
+                                                label="Tone"
+                                                options={CHECKOUT_TONE_OPTIONS}
+                                                value={String(props.tone || 'success')}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    tone: value,
+                                                                  },
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                              />
+                                            </div>
                                           </div>
-                                        ) : null}
-                                        <TextField
-                                          label="Disclaimer"
-                                          value={String(props.disclaimer || '')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              disclaimer: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                          placeholder="Optional fine print shown under the main message."
-                                          autoComplete="off"
-                                        />
-                                        <div className={styles.checkoutSelectGrid}>
-                                          <div className={styles.checkoutSelectItem}>
-                                            <Select
-                                              label="Layout"
-                                              options={CHECKOUT_LAYOUT_OPTIONS}
-                                              value={String(props.layout || 'banner')}
-                                              onChange={value =>
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: currentSections.map(
-                                                        (item, itemIndex) =>
-                                                          itemIndex === sectionIndex
-                                                            ? {
-                                                                ...item,
-                                                                props: {
-                                                                  ...(item.props || {}),
-                                                                  layout: value,
-                                                                },
-                                                              }
-                                                            : item
-                                                      ),
-                                                    };
-                                                  }
-                                                )
-                                              }
-                                            />
+                                          <div className={styles.checkoutSelectGrid}>
+                                            <div className={styles.checkoutSelectItem}>
+                                              <Select
+                                                label="CTA behavior"
+                                                options={CHECKOUT_CTA_KIND_OPTIONS}
+                                                value={String(props.cta_kind || 'track')}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    cta_kind: value,
+                                                                  },
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                              />
+                                            </div>
+                                            <div
+                                              className={`${styles.checkoutSelectItem} ${styles.checkoutFieldSpanWide}`}
+                                            >
+                                              <TextField
+                                                label="CTA label"
+                                                value={String(props.cta_label || '')}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    cta_label: value,
+                                                                  },
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                                disabled={
+                                                  String(props.cta_kind || 'track') === 'none'
+                                                }
+                                                placeholder="e.g. Continue securely"
+                                                autoComplete="off"
+                                              />
+                                            </div>
                                           </div>
-                                          <div className={styles.checkoutSelectItem}>
-                                            <Select
-                                              label="Tone"
-                                              options={CHECKOUT_TONE_OPTIONS}
-                                              value={String(props.tone || 'success')}
-                                              onChange={value =>
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: currentSections.map(
-                                                        (item, itemIndex) =>
-                                                          itemIndex === sectionIndex
-                                                            ? {
-                                                                ...item,
-                                                                props: {
-                                                                  ...(item.props || {}),
-                                                                  tone: value,
-                                                                },
-                                                              }
-                                                            : item
-                                                      ),
-                                                    };
-                                                  }
-                                                )
-                                              }
-                                            />
-                                          </div>
-                                        </div>
-                                        <div className={styles.checkoutSelectGrid}>
-                                          <div className={styles.checkoutSelectItem}>
-                                            <Select
-                                              label="CTA behavior"
-                                              options={CHECKOUT_CTA_KIND_OPTIONS}
-                                              value={String(props.cta_kind || 'track')}
-                                              onChange={value =>
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: currentSections.map(
-                                                        (item, itemIndex) =>
-                                                          itemIndex === sectionIndex
-                                                            ? {
-                                                                ...item,
-                                                                props: {
-                                                                  ...(item.props || {}),
-                                                                  cta_kind: value,
-                                                                },
-                                                              }
-                                                            : item
-                                                      ),
-                                                    };
-                                                  }
-                                                )
-                                              }
-                                            />
-                                          </div>
-                                          <div
-                                            className={`${styles.checkoutSelectItem} ${styles.checkoutFieldSpanWide}`}
-                                          >
-                                            <TextField
-                                              label="CTA label"
-                                              value={String(props.cta_label || '')}
-                                              onChange={value =>
-                                                updateCheckoutExperienceVariantConfig(
-                                                  index,
-                                                  current => {
-                                                    const currentSections =
-                                                      getNormalizedCheckoutExperienceConfig(
-                                                        current
-                                                      ).checkout_sections;
-                                                    return {
-                                                      ...current,
-                                                      checkout_sections: currentSections.map(
-                                                        (item, itemIndex) =>
-                                                          itemIndex === sectionIndex
-                                                            ? {
-                                                                ...item,
-                                                                props: {
-                                                                  ...(item.props || {}),
-                                                                  cta_label: value,
-                                                                },
-                                                              }
-                                                            : item
-                                                      ),
-                                                    };
-                                                  }
-                                                )
-                                              }
-                                              disabled={
-                                                String(props.cta_kind || 'track') === 'none'
-                                              }
-                                              placeholder="e.g. Continue securely"
-                                              autoComplete="off"
-                                            />
-                                          </div>
-                                        </div>
-                                      </FormLayout>
+                                        </FormLayout>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              </Collapsible>
-                            </div>
-                          </Card>
-                        );
-                      })}
+                                </Collapsible>
+                              </div>
+                            </Card>
+                          );
+                        })}
+                      </BlockStack>
                     </BlockStack>
-                  </BlockStack>
-                ) : checkoutPhase === 'payment_method' ? (
-                  renderCheckoutMethodStudio({
-                    index,
-                    cfg,
-                    actionKey: 'payment_action',
-                    namesKey: 'payment_method_names',
-                    renameKey: 'payment_rename_to',
-                    summaryLabel: 'Payment strategy',
-                    description:
-                      'Configure which payment methods are targeted and how the checkout layer should change them for this variant.',
-                    emptyText:
-                      'No payment methods targeted yet. Add the customer-facing names Shopify exposes in checkout.',
-                    inputPlaceholder: 'e.g. PayPal',
-                    renamePlaceholder: 'Optional shared rename target for matched methods',
-                    notePlaceholder:
-                      'Explain what should change in checkout for this payment-method variant.',
-                  })
-                ) : (
-                  renderCheckoutMethodStudio({
-                    index,
-                    cfg,
-                    actionKey: 'delivery_action',
-                    namesKey: 'delivery_method_names',
-                    renameKey: 'delivery_rename_to',
-                    summaryLabel: 'Delivery strategy',
-                    description:
-                      'Configure which delivery methods are targeted and how the checkout layer should adjust them for this variant.',
-                    emptyText:
-                      'No delivery methods targeted yet. Add the option labels customers see at checkout.',
-                    inputPlaceholder: 'e.g. Express Shipping',
-                    renamePlaceholder: 'Optional shared rename target for matched delivery methods',
-                    notePlaceholder:
-                      'Explain what should change in checkout for this delivery-method variant.',
-                  })
-                )}
+                  ) : checkoutEditorMode === 'payment' ? (
+                    renderCheckoutMethodStudio({
+                      index,
+                      cfg,
+                      actionKey: 'payment_action',
+                      namesKey: 'payment_method_names',
+                      renameKey: 'payment_rename_to',
+                      summaryLabel: 'Payment strategy',
+                      description:
+                        'Configure which payment methods are targeted and how the checkout layer should change them for this variant.',
+                      emptyText:
+                        'No payment methods targeted yet. Add the customer-facing names Shopify exposes in checkout.',
+                      inputPlaceholder: 'e.g. PayPal',
+                      renamePlaceholder: 'Optional shared rename target for matched methods',
+                      notePlaceholder:
+                        'Explain what should change in checkout for this payment-method variant.',
+                    })
+                  ) : checkoutEditorMode === 'delivery' ? (
+                    renderCheckoutMethodStudio({
+                      index,
+                      cfg,
+                      actionKey: 'delivery_action',
+                      namesKey: 'delivery_method_names',
+                      renameKey: 'delivery_rename_to',
+                      summaryLabel: 'Delivery strategy',
+                      description:
+                        'Configure which delivery methods are targeted and how the checkout layer should adjust them for this variant.',
+                      emptyText:
+                        'No delivery methods targeted yet. Add the option labels customers see at checkout.',
+                      inputPlaceholder: 'e.g. Express Shipping',
+                      renamePlaceholder:
+                        'Optional shared rename target for matched delivery methods',
+                      notePlaceholder:
+                        'Explain what should change in checkout for this delivery-method variant.',
+                    })
+                  ) : checkoutEditorMode === 'preview' ? (
+                    <div className={styles.checkoutVariantBlock}>
+                      <InlineStack align="space-between" blockAlign="center" wrap gap="200">
+                        <div>
+                          <Text as="h5" variant="headingSm">
+                            Launch review
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Review content, runtime behavior, Shopify deployment, and analytics
+                            before launch. Each row can jump back to the right setup area.
+                          </Text>
+                        </div>
+                        <Badge tone={variantConfigured ? 'success' : 'attention'}>
+                          {variantConfigured ? 'Ready to verify' : 'Needs setup'}
+                        </Badge>
+                      </InlineStack>
+                      <div className={styles.checkoutLaunchReviewGrid}>
+                        {launchReviewGroups.map(group => (
+                          <div key={group.key} className={styles.checkoutLaunchReviewCard}>
+                            <div>
+                              <span className={styles.checkoutSectionPreviewLabel}>
+                                {group.title}
+                              </span>
+                              <strong>{group.state}</strong>
+                              <p>{group.detail}</p>
+                            </div>
+                            <InlineStack gap="200" blockAlign="center" wrap>
+                              <Badge tone={group.tone}>{group.state}</Badge>
+                              <Button
+                                size="slim"
+                                variant="secondary"
+                                onClick={() => {
+                                  if (group.issue) {
+                                    handleCheckoutConfidenceIssueAction(group.issue);
+                                    return;
+                                  }
+                                  setCheckoutEditorMode(group.mode);
+                                }}
+                              >
+                                {group.actionLabel}
+                              </Button>
+                            </InlineStack>
+                          </div>
+                        ))}
+                      </div>
+                      <div className={styles.checkoutModalPreviewPanel}>
+                        <span className={styles.checkoutSectionPreviewLabel}>Experience stack</span>
+                        {experienceSections.length > 0 ? (
+                          <div className={styles.checkoutModalSectionStack}>
+                            {experienceSections.map((section, sectionIndex) => {
+                              const sectionProps = section?.props || {};
+                              const sectionDetails = getCheckoutSectionDetails(section?.type);
+                              const sectionRenderable = actionableSections.some(
+                                item => item.id === section.id
+                              );
+                              const sectionProductMode = normalizeCheckoutProductSourceMode(
+                                sectionProps.product_source_mode
+                              );
+                              const sectionSummary =
+                                String(
+                                  sectionProps.title ||
+                                    sectionProps.message ||
+                                    sectionProps.badge_text ||
+                                    sectionProps.disclaimer ||
+                                    ''
+                                ).trim() ||
+                                (section?.type === 'product_list'
+                                  ? `${getCheckoutOptionLabel(
+                                      CHECKOUT_PRODUCT_SOURCE_OPTIONS,
+                                      sectionProductMode,
+                                      'Manual cards'
+                                    )} product list`
+                                  : 'No content yet');
+                              return (
+                                <div
+                                  key={`${variant.name}-modal-preview-${section.id || sectionIndex}`}
+                                  className={styles.checkoutModalSectionRow}
+                                >
+                                  <div>
+                                    <strong>
+                                      {sectionIndex + 1}. {sectionDetails.label}
+                                    </strong>
+                                    <span>{sectionSummary}</span>
+                                  </div>
+                                  <Badge
+                                    tone={
+                                      section.enabled === false
+                                        ? 'critical'
+                                        : sectionRenderable
+                                          ? 'success'
+                                          : 'attention'
+                                    }
+                                  >
+                                    {section.enabled === false
+                                      ? 'Disabled'
+                                      : sectionRenderable
+                                        ? 'Renders'
+                                        : 'Draft'}
+                                  </Badge>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            No checkout sections configured yet.
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <CheckoutPreviewRail
+                  title="Launch confidence"
+                  readiness={checkoutStudioReadiness}
+                  phaseLabel={phaseDetails.title}
+                  activeMode={checkoutEditorMode}
+                  compact={
+                    activeCheckoutStep !== 'verify' && checkoutStudioReadiness.status === 'ready'
+                  }
+                  collapsible
+                  defaultOpen={
+                    checkoutStudioReadiness.status !== 'ready' || activeCheckoutStep === 'verify'
+                  }
+                  onIssueAction={handleCheckoutConfidenceIssueAction}
+                />
               </div>
-            </Card>
+              <div className={styles.checkoutStudioWorkspaceFooter}>
+                <div className={styles.checkoutStudioWorkspaceFooterProgress}>
+                  <strong>
+                    Step {activeStepIndex + 1} of {checkoutStudioStepOrder.length}:{' '}
+                    {getCheckoutStepLabel(activeCheckoutStep)}
+                  </strong>
+                  <span>{getCheckoutModeLabel(checkoutEditorMode)}</span>
+                </div>
+                <InlineStack gap="200" blockAlign="center">
+                  <Button
+                    variant="secondary"
+                    disabled={!previousCheckoutStep}
+                    onClick={() => {
+                      if (previousCheckoutStep) {
+                        setCheckoutStudioStep(previousCheckoutStep);
+                      }
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button variant="primary" onClick={runCheckoutStudioNextAction}>
+                    Next best action:{' '}
+                    {checkoutStudioNextAction.shortLabel || checkoutStudioNextAction.label}
+                  </Button>
+                  <Button onClick={() => setCheckoutEditorModalOpen(false)}>Done</Button>
+                </InlineStack>
+              </div>
+            </CheckoutStudioModal>
           );
         })}
       </BlockStack>
@@ -14733,7 +16344,7 @@ function TestWizard({
         ? 'Checkout Variant Studio'
         : 'Variant Configuration';
       const moduleSubtitle = isCheckoutVariantConfig
-        ? `Choose the checkout surface once, then edit the active control or treatment tab below.`
+        ? `Choose the checkout test type once, then edit the active control or treatment tab below.`
         : null;
       const moduleTitles = {
         url: 'Variant URLs',
@@ -16315,7 +17926,7 @@ function TestWizard({
     const reviewSegments = formData.segments || initialData?.segments || {};
     const reviewCountries =
       Array.isArray(reviewSegments.countries) && reviewSegments.countries.length > 0
-        ? reviewSegments.countries.join(', ')
+        ? formatCountryCodesSummary(reviewSegments.countries, 12)
         : 'All countries';
     const reviewHoldout = formData.holdout_percent ?? initialData?.holdout_percent ?? 0;
     const reviewVariants = formData.variants?.length
@@ -16756,20 +18367,28 @@ function TestWizard({
             <div className={stepStyles.reviewItem}>
               <span className={stepStyles.reviewItemLabel}>Success Metric</span>
               <span className={stepStyles.reviewItemValue}>
-                {(() => {
-                  const m = formData.goal?.metric || initialData?.goal?.metric;
-                  return m
-                    ? {
-                        revenue: 'Revenue',
-                        conversion_rate: 'Conversion',
-                        revenue_per_visitor: 'RPV',
-                        profit_per_visitor: 'PPV',
-                        aov: 'AOV',
-                      }[m] || m
-                    : 'Not set';
-                })()}
+                {getGoalMetricLabel(formData.goal?.metric || initialData?.goal?.metric)}
               </span>
             </div>
+            {normalizeGoalSecondaryMetric(
+              formData.goal?.metric || initialData?.goal?.metric,
+              formData.goal?.secondary_metric ??
+                formData.goal?.secondaryMetric ??
+                initialData?.goal?.secondary_metric ??
+                initialData?.goal?.secondaryMetric
+            ) ? (
+              <div className={stepStyles.reviewItem}>
+                <span className={stepStyles.reviewItemLabel}>Secondary Metric</span>
+                <span className={stepStyles.reviewItemValue}>
+                  {getGoalMetricLabel(
+                    formData.goal?.secondary_metric ??
+                      formData.goal?.secondaryMetric ??
+                      initialData?.goal?.secondary_metric ??
+                      initialData?.goal?.secondaryMetric
+                  )}
+                </span>
+              </div>
+            ) : null}
             <div className={stepStyles.reviewItem}>
               <span className={stepStyles.reviewItemLabel}>Conversion Window</span>
               <span className={stepStyles.reviewItemValue}>
@@ -16927,6 +18546,8 @@ function TestWizard({
                   const cfg = v?.config || {};
                   const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
                   const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
+                  const normalizedReviewExperience = getNormalizedCheckoutExperienceConfig(cfg);
+                  const allExperienceSections = normalizedReviewExperience.checkout_sections;
                   const experienceSections = getActionableCheckoutSections(cfg);
                   const primarySection = experienceSections[0] || null;
                   const primaryProps = primarySection?.props || {};
@@ -16957,9 +18578,36 @@ function TestWizard({
                       ? `${String(cfg.payment_action || 'hide')} methods`
                       : checkoutReviewPhase === 'delivery_method'
                         ? `${String(cfg.delivery_action || 'hide')} methods`
-                        : `${experienceSections.length || 0} section(s) • ${String(
-                            primaryProps.layout || 'banner'
-                          )} layout • ${String(primaryProps.tone || 'success')} tone`;
+                        : `${experienceSections.length || 0}/${allExperienceSections.length || 0} renderable sections`;
+                  const runtimeReviewNotes =
+                    checkoutReviewPhase === 'experience'
+                      ? [
+                          'Final visual truth lives in Shopify checkout; this preview shows content order and runtime constraints.',
+                          allExperienceSections.some(
+                            section =>
+                              section?.type === 'product_list' &&
+                              section?.props?.product_source_mode === 'cart_related'
+                          )
+                            ? 'Cart-related product rows depend on the live shopper cart.'
+                            : null,
+                          allExperienceSections.some(
+                            section =>
+                              section?.type === 'product_list' &&
+                              section?.props?.product_source_mode === 'collection'
+                          )
+                            ? 'Collection rows hydrate during checkout assignment.'
+                            : null,
+                          allExperienceSections.some(
+                            section =>
+                              section?.type === 'product_list' &&
+                              section?.props?.product_action === 'add_to_cart'
+                          )
+                            ? 'Add-to-cart buttons require merchandise IDs and checkout cart-line API access.'
+                            : null,
+                        ].filter(Boolean)
+                      : [
+                          'Readiness verifies Shopify customization deployment for this checkout surface after save.',
+                        ];
                   return (
                     <div key={i} className={stepStyles.reviewVariantCard}>
                       <div className={stepStyles.reviewVariantCardHeader}>
@@ -16992,21 +18640,100 @@ function TestWizard({
                           </span>
                         </div>
                       </div>
-                      {checkoutReviewPhase === 'experience' &&
-                      Array.isArray(primaryProps.feature_bullets) &&
-                      primaryProps.feature_bullets.length > 0 ? (
-                        <p className={stepStyles.reviewVariantCardHint}>
-                          Bullets: {primaryProps.feature_bullets.join(', ')}
-                        </p>
-                      ) : checkoutReviewPhase === 'experience' &&
-                        renderablePrimaryProductItems.length > 0 ? (
-                        <p className={stepStyles.reviewVariantCardHint}>
-                          Products:{' '}
-                          {renderablePrimaryProductItems
-                            .map(item => item.title)
-                            .filter(Boolean)
-                            .join(', ')}
-                        </p>
+                      {checkoutReviewPhase === 'experience' && allExperienceSections.length > 0 ? (
+                        <div className={stepStyles.reviewCheckoutPreview}>
+                          <div className={stepStyles.reviewCheckoutPreviewHeader}>
+                            <span>Ordered checkout section stack</span>
+                            <Badge tone={experienceSections.length > 0 ? 'success' : 'attention'}>
+                              {experienceSections.length > 0 ? 'Renderable' : 'Needs content'}
+                            </Badge>
+                          </div>
+                          <div className={stepStyles.reviewCheckoutSectionList}>
+                            {allExperienceSections.map((section, sectionIndex) => {
+                              const sectionProps = section?.props || {};
+                              const sectionDetails = getCheckoutSectionDetails(section?.type);
+                              const sectionProductItems = normalizeCheckoutProductItems(
+                                sectionProps.product_items
+                              );
+                              const sectionRenderable = experienceSections.some(
+                                item => item.id === section.id
+                              );
+                              const sectionProductMode = normalizeCheckoutProductSourceMode(
+                                sectionProps.product_source_mode
+                              );
+                              const sectionProductModeLabel = getCheckoutOptionLabel(
+                                CHECKOUT_PRODUCT_SOURCE_OPTIONS,
+                                sectionProductMode,
+                                'Manual cards'
+                              );
+                              const sectionLayoutLabel = getCheckoutOptionLabel(
+                                CHECKOUT_LAYOUT_OPTIONS,
+                                sectionProps.layout || 'banner',
+                                'Banner'
+                              );
+                              const sectionToneLabel = getCheckoutOptionLabel(
+                                CHECKOUT_TONE_OPTIONS,
+                                sectionProps.tone || 'success',
+                                'Success'
+                              );
+                              const sectionSummaryText =
+                                String(
+                                  sectionProps.title ||
+                                    sectionProps.message ||
+                                    sectionProps.badge_text ||
+                                    sectionProps.disclaimer ||
+                                    ''
+                                ).trim() ||
+                                (section?.type === 'product_list'
+                                  ? `${sectionProductModeLabel} product list`
+                                  : 'No content yet');
+                              return (
+                                <div
+                                  key={`${v.name}-review-section-${section.id || sectionIndex}`}
+                                  className={stepStyles.reviewCheckoutSectionItem}
+                                >
+                                  <div className={stepStyles.reviewCheckoutSectionItemHead}>
+                                    <span>
+                                      {sectionIndex + 1}. {sectionDetails.label}
+                                    </span>
+                                    <Badge
+                                      tone={
+                                        section.enabled === false
+                                          ? 'critical'
+                                          : sectionRenderable
+                                            ? 'success'
+                                            : 'attention'
+                                      }
+                                    >
+                                      {section.enabled === false
+                                        ? 'Disabled'
+                                        : sectionRenderable
+                                          ? 'Renders'
+                                          : 'Draft'}
+                                    </Badge>
+                                  </div>
+                                  <p>{sectionSummaryText}</p>
+                                  <div className={stepStyles.reviewCheckoutSectionMeta}>
+                                    <span>{sectionLayoutLabel}</span>
+                                    <span>{sectionToneLabel}</span>
+                                    {section?.type === 'product_list' ? (
+                                      <span>
+                                        {sectionProductModeLabel} / {sectionProductItems.length}{' '}
+                                        product
+                                        {sectionProductItems.length === 1 ? '' : 's'}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className={stepStyles.reviewCheckoutRuntimeNotes}>
+                            {runtimeReviewNotes.map(note => (
+                              <span key={note}>{note}</span>
+                            ))}
+                          </div>
+                        </div>
                       ) : (
                         <p className={stepStyles.reviewVariantCardHint}>
                           {checkoutReviewPhase === 'payment_method'

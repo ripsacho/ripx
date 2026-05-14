@@ -1,5 +1,6 @@
 jest.mock('../shopifyService', () => ({
   requestAdminGraphql: jest.fn(),
+  listCollectionProducts: jest.fn(),
 }));
 
 const originalEnv = { ...process.env };
@@ -9,6 +10,7 @@ describe('checkoutReadinessService', () => {
     process.env = { ...originalEnv };
     const shopifyService = require('../shopifyService');
     shopifyService.requestAdminGraphql.mockReset();
+    shopifyService.listCollectionProducts.mockReset();
     jest.resetModules();
   });
 
@@ -229,6 +231,67 @@ describe('checkoutReadinessService', () => {
       false
     );
     expect(readiness.checks.find(item => item.id === 'checkout_ui_secret_synced')?.ok).toBe(false);
+    expect(
+      readiness.checks.find(item => item.id === 'checkout_ui_test_binding_configured')?.ok
+    ).toBe(true);
+  });
+
+  it('warns when checkout ui extension has no test binding configured', async () => {
+    process.env.APP_URL = 'https://app.ripx.com';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-checkout-unbound',
+        name: 'Checkout block test',
+        type: 'checkout',
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'hero_notice',
+                  enabled: true,
+                  props: {
+                    title: 'Checkout with confidence',
+                    message: 'Secure payment and free returns.',
+                    cta_kind: 'track',
+                    cta_label: 'Continue securely',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      checkoutUiConfig: {
+        source: 'present',
+        contents: `
+          export const RIPX_CHECKOUT_ASSIGNMENT_URL = 'https://app.ripx.com/api/track/checkout-assignment';
+          export const RIPX_CHECKOUT_CONVERSION_URL = 'https://app.ripx.com/api/track/checkout-conversion';
+          export const RIPX_CHECKOUT_PRICE_SECRET = '';
+          export const RIPX_CHECKOUT_UI_TEST_ID = '';
+          export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = 'store.myshopify.com';
+        `,
+      },
+    });
+
+    const bindingCheck = readiness.checks.find(
+      item => item.id === 'checkout_ui_test_binding_configured'
+    );
+    expect(readiness.summary.status).toBe('needs_attention');
+    expect(readiness.capabilities.checkout_ui_extension.level).toBe('needs_attention');
+    expect(bindingCheck?.ok).toBe(false);
+    expect(bindingCheck?.severity).toBe('warning');
+    expect(readiness.sources.checkout_ui.extension_test_binding_mode).toBe(
+      'runtime_cart_attribute'
+    );
   });
 
   it('blocks checkout experience readiness when no renderable checkout sections are configured', async () => {
@@ -546,6 +609,10 @@ describe('checkoutReadinessService', () => {
     process.env.SHOPIFY_API_SECRET = 'test-secret';
     process.env.SHOPIFY_SCOPES = 'read_products';
 
+    const shopifyService = require('../shopifyService');
+    shopifyService.listCollectionProducts.mockResolvedValueOnce([
+      { id: 'gid://shopify/Product/1', merchandise_id: 'gid://shopify/ProductVariant/1' },
+    ]);
     const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
     const readiness = await buildTestCheckoutReadiness({
       test: {
@@ -581,6 +648,7 @@ describe('checkoutReadinessService', () => {
         ],
       },
       shopDomain: 'store.myshopify.com',
+      accessToken: 'token',
       checkoutUiConfig: {
         source: 'present',
         contents: `
@@ -596,6 +664,61 @@ describe('checkoutReadinessService', () => {
     expect(
       readiness.checks.find(item => item.id === 'checkout_collection_scope_configured')?.ok
     ).toBe(true);
+    expect(
+      readiness.checks.find(item => item.id === 'checkout_collection_products_resolvable')?.ok
+    ).toBe(true);
     expect(readiness.summary.status).toBe('ready');
+  });
+
+  it('warns when cart-related checkout product lists depend on runtime cart contents', async () => {
+    process.env.APP_URL = 'https://app.ripx.com';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-checkout-cart-related',
+        name: 'Checkout cart related test',
+        type: 'checkout',
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'product_list',
+                  enabled: true,
+                  props: {
+                    product_source_mode: 'cart_related',
+                    product_source_limit: 3,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      checkoutUiConfig: {
+        source: 'present',
+        contents: `
+          export const RIPX_CHECKOUT_ASSIGNMENT_URL = 'https://app.ripx.com/api/track/checkout-assignment';
+          export const RIPX_CHECKOUT_CONVERSION_URL = 'https://app.ripx.com/api/track/checkout-conversion';
+          export const RIPX_CHECKOUT_PRICE_SECRET = '';
+          export const RIPX_CHECKOUT_UI_TEST_ID = 'test-checkout-cart-related';
+          export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = 'store.myshopify.com';
+        `,
+      },
+    });
+
+    const cartRelatedCheck = readiness.checks.find(
+      item => item.id === 'checkout_cart_related_runtime_dependent'
+    );
+    expect(cartRelatedCheck?.ok).toBe(false);
+    expect(cartRelatedCheck?.severity).toBe('warning');
+    expect(readiness.sources.checkout_experience.cart_related_section_count).toBe(1);
   });
 });

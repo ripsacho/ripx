@@ -24,6 +24,7 @@ const {
   SCRIPT_VERSION,
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
+  buildEarlyStorefrontAntiFlickerBootstrap,
   mapTestToStorefrontPayload,
 } = require('../utils/storefrontScriptRuntime');
 const {
@@ -31,11 +32,15 @@ const {
   isMaintenanceActiveForDomain,
   getBlockListMessage,
 } = require('../utils/maintenanceMode');
-const logger = require('../utils/logger');
+const { getShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
 const {
   normalizeCheckoutTrackingMetadata,
   normalizeEventName,
 } = require('../utils/checkoutTracking');
+const {
+  parseOperatingSystemFromUserAgent,
+  inferTrafficSourceFromAttribution,
+} = require('../utils/audienceContextInference');
 const {
   getStorefrontScriptPath,
   readStorefrontScriptSource,
@@ -82,6 +87,7 @@ const {
 const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
 const { normalizeShippingVariantConfig } = require('../services/shippingTestConfigService');
 const { evaluateFlag } = require('../services/featureFlagService');
+const logger = require('../utils/logger');
 const PRICE_RESOLVE_LINE_ID_MAX = Math.max(
   32,
   Number.parseInt(process.env.RIPX_PRICE_RESOLVE_LINE_ID_MAX || '256', 10) || 256
@@ -456,11 +462,33 @@ async function enrichCheckoutAssignmentCollectionProducts(config = {}, shopDomai
     String(shopDomain || '')
       .trim()
       .toLowerCase();
+  const sourceConfig = config && typeof config === 'object' ? config : {};
+  const normalizedConfig = normalizeCheckoutExperienceConfig(sourceConfig);
+  const withSectionStatus = (status, reason) => ({
+    ...sourceConfig,
+    checkout_placement: normalizedConfig.checkout_placement,
+    checkout_sections: normalizedConfig.checkout_sections.map(section => {
+      const props = section?.props || {};
+      if (section?.type !== 'product_list' || props.product_source_mode !== 'collection') {
+        return section;
+      }
+      return {
+        ...section,
+        props: {
+          ...props,
+          enrichment_status: {
+            status,
+            reason,
+            product_count: Array.isArray(props.product_items) ? props.product_items.length : 0,
+          },
+        },
+      };
+    }),
+  });
   if (!normalizedDomain) {
-    return config;
+    return withSectionStatus('skipped', 'missing_shop_domain');
   }
 
-  const normalizedConfig = normalizeCheckoutExperienceConfig(config);
   const collectionSections = normalizedConfig.checkout_sections.filter(section => {
     const props = section?.props || {};
     return (
@@ -472,13 +500,17 @@ async function enrichCheckoutAssignmentCollectionProducts(config = {}, shopDomai
   });
 
   if (!collectionSections.length) {
-    return config;
+    return {
+      ...sourceConfig,
+      checkout_placement: normalizedConfig.checkout_placement,
+      checkout_sections: normalizedConfig.checkout_sections,
+    };
   }
 
   const session = await getShopSession(normalizedDomain).catch(() => null);
   const accessToken = String(session?.access_token || '').trim();
   if (!accessToken) {
-    return config;
+    return withSectionStatus('skipped', 'missing_shop_session_token');
   }
 
   const checkoutSections = await Promise.all(
@@ -500,11 +532,27 @@ async function enrichCheckoutAssignmentCollectionProducts(config = {}, shopDomai
           props.product_source_collections.map(item => item.id),
           props.product_source_limit
         );
+        const sectionProductAction = String(props.product_action || 'display_only')
+          .trim()
+          .toLowerCase();
+        const hydratedProductItems = productItems.map(item => ({
+          ...item,
+          product_action:
+            sectionProductAction === 'add_to_cart' ? item.product_action : 'display_only',
+          selection_strategy: props.selection_strategy || item.selection_strategy,
+          exclude_cart_items: props.exclude_cart_items !== false,
+        }));
         return {
           ...section,
           props: {
             ...props,
-            product_items: productItems,
+            product_items: hydratedProductItems,
+            enrichment_status: {
+              status: hydratedProductItems.length > 0 ? 'success' : 'empty',
+              reason:
+                productItems.length > 0 ? 'resolved_collection_products' : 'no_products_returned',
+              product_count: hydratedProductItems.length,
+            },
           },
         };
       } catch (error) {
@@ -513,13 +561,23 @@ async function enrichCheckoutAssignmentCollectionProducts(config = {}, shopDomai
           sectionId: section?.id || null,
           error: error?.message || String(error),
         });
-        return section;
+        return {
+          ...section,
+          props: {
+            ...props,
+            enrichment_status: {
+              status: 'failed',
+              reason: 'collection_product_lookup_failed',
+              product_count: Array.isArray(props.product_items) ? props.product_items.length : 0,
+            },
+          },
+        };
       }
     })
   );
 
   return {
-    ...(config && typeof config === 'object' ? config : {}),
+    ...sourceConfig,
     checkout_placement: normalizedConfig.checkout_placement,
     checkout_sections: checkoutSections,
   };
@@ -829,11 +887,14 @@ router.get(
           .json({ success: false, error: 'Access suspended. Contact support.' });
       }
 
-      const [tests, goalMetricDefinitions] = await Promise.all([
+      const [tests, goalMetricDefinitions, shopPriceSurfaceMappings] = await Promise.all([
         getActiveTestsForStorefront(domain),
         listGoalMetricDefinitions(domain).catch(() => []),
+        getShopPriceSurfaceMappings(domain).catch(() => []),
       ]);
-      runtimeConfig = buildStorefrontRuntimeConfig(domain, tests, req, goalMetricDefinitions);
+      runtimeConfig = buildStorefrontRuntimeConfig(domain, tests, req, goalMetricDefinitions, {
+        shopMappings: shopPriceSurfaceMappings,
+      });
     }
 
     const scriptPath = getStorefrontScriptPath();
@@ -846,7 +907,11 @@ router.get(
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('X-Script-Version', versionLabel);
     res.set('Cache-Control', cacheControl);
-    res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
+    res.send(
+      `window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n` +
+        buildEarlyStorefrontAntiFlickerBootstrap(runtimeConfig.activeTests) +
+        scriptContents
+    );
   })
 );
 
@@ -1485,6 +1550,7 @@ router.get(
       device,
       customer,
       country,
+      operating_system,
       traffic_source,
       current_url,
       session_count,
@@ -1536,7 +1602,7 @@ router.get(
 
     // Keep this context aligned with `shopify/storefront-script.js#getVariantCachePromise`.
     // Missing fields here can make live bucketing behave differently from debugStatus/preview.
-    const context = { device, customer, country };
+    const context = { device, customer, country, operating_system };
     context.user_agent = req.headers['user-agent'] || req.query.user_agent || null;
     context.user_ip =
       req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
@@ -1669,6 +1735,7 @@ router.get(
       device,
       customer,
       country,
+      operating_system,
       traffic_source,
       current_url,
       session_count,
@@ -1699,7 +1766,7 @@ router.get(
         .json({ success: false, error: 'user_id or shop_domain exceeds max length' });
     }
 
-    const context = { device, customer, country };
+    const context = { device, customer, country, operating_system };
     context.user_agent = req.headers['user-agent'] || req.query.user_agent || null;
     context.user_ip =
       req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
@@ -1817,7 +1884,10 @@ router.get(
 /**
  * POST /api/track/checkout-assignment
  * Resolve assignment for Checkout UI extensions using a checkout-scoped user key.
- * Body/query: shop|shop_domain|site, test_id, checkout_id, optional current_url/current_pathname/device/customer/country.
+ * Body/query: shop|shop_domain|site, test_id, checkout_id, optional current_url/current_pathname/device/customer/country,
+ * traffic_source, operating_system, utm_source, utm_medium, referrer, session_count, assignment_variant.
+ * When traffic_source is omitted, it is inferred from utm_* / referrer / current_url query string (parity with storefront).
+ * When operating_system is omitted, it is derived from the request User-Agent when possible.
  * Requires checkout secret when RIPX_CHECKOUT_PRICE_SECRET is configured.
  */
 router.post(
@@ -1864,6 +1934,33 @@ router.post(
       country: body.country ?? req.query.country ?? null,
       user_agent: req.headers['user-agent'] || null,
     };
+    const bodyTraffic = body.traffic_source ?? req.query.traffic_source;
+    if (bodyTraffic !== null && bodyTraffic !== undefined && String(bodyTraffic).trim()) {
+      context.traffic_source = String(bodyTraffic).trim().toLowerCase();
+    }
+    const bodyOs = body.operating_system ?? req.query.operating_system;
+    if (bodyOs !== null && bodyOs !== undefined && String(bodyOs).trim()) {
+      context.operating_system = String(bodyOs).trim().toLowerCase();
+    }
+    const utmSourceRaw = body.utm_source ?? req.query.utm_source;
+    const utmMediumRaw = body.utm_medium ?? req.query.utm_medium;
+    const referrerRaw = body.referrer ?? req.query.referrer;
+    if (utmSourceRaw !== null && utmSourceRaw !== undefined && String(utmSourceRaw).trim()) {
+      context.utm_source = String(utmSourceRaw).trim();
+    }
+    if (utmMediumRaw !== null && utmMediumRaw !== undefined && String(utmMediumRaw).trim()) {
+      context.utm_medium = String(utmMediumRaw).trim();
+    }
+    if (referrerRaw !== null && referrerRaw !== undefined && String(referrerRaw).trim()) {
+      context.referrer = String(referrerRaw).trim();
+    }
+    const sessionCountRaw = body.session_count ?? req.query.session_count;
+    if (sessionCountRaw !== undefined && sessionCountRaw !== null && sessionCountRaw !== '') {
+      const n = Number(sessionCountRaw);
+      if (!Number.isNaN(n)) {
+        context.session_count = n;
+      }
+    }
     const currentUrl = body.current_url ?? req.query.current_url;
     const currentPathname = body.current_pathname ?? req.query.current_pathname;
     if (currentUrl && String(currentUrl).trim()) {
@@ -1872,6 +1969,38 @@ router.post(
     }
     if (currentPathname && String(currentPathname).trim()) {
       context.current_pathname = String(currentPathname).trim();
+    }
+    let utmSource = context.utm_source || '';
+    let utmMedium = context.utm_medium || '';
+    const referrer = context.referrer || '';
+    if ((!utmSource || !utmMedium) && context.current_url) {
+      try {
+        const u = new URL(context.current_url);
+        if (!utmSource) {
+          utmSource = u.searchParams.get('utm_source') || '';
+        }
+        if (!utmMedium) {
+          utmMedium = u.searchParams.get('utm_medium') || '';
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!context.traffic_source) {
+      const inferred = inferTrafficSourceFromAttribution({
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        referrer,
+      });
+      if (inferred) {
+        context.traffic_source = inferred;
+      }
+    }
+    if (!context.operating_system && context.user_agent) {
+      const derivedOs = parseOperatingSystemFromUserAgent(context.user_agent);
+      if (derivedOs) {
+        context.operating_system = derivedOs;
+      }
     }
     const previewSession =
       parsePreviewSessionFlag(body.preview_session ?? req.query.preview_session) ||
@@ -1940,7 +2069,7 @@ router.post(
 
 /**
  * POST /api/track/checkout-conversion
- * Track a checkout UI extension conversion event for a checkout-scoped user key.
+ * Track a checkout UI extension engagement signal for a checkout-scoped user key.
  * Body/query: shop|shop_domain|site, test_id, checkout_id, optional event_name/event_value/metadata.
  * Requires checkout secret when RIPX_CHECKOUT_PRICE_SECRET is configured.
  */
@@ -1995,7 +2124,12 @@ router.post(
     }
     const variant = await abTestEngine.getVariant(testId, userId, domain, context);
     if (!variant) {
-      return res.status(404).json({ success: false, error: 'Test not found or not running' });
+      return res.json({
+        success: true,
+        tracked: false,
+        reason: 'no_assignment',
+        assignment: null,
+      });
     }
     const test = await getTestById(testId, domain).catch(() => null);
     const checkoutPhase = getCheckoutPhaseFromTest(test);
@@ -2016,14 +2150,14 @@ router.post(
       variant_id: variant.variantId,
       user_id: userId,
       shop_domain: domain,
-      event_type: 'conversion',
+      event_type: 'custom',
       event_name: eventName || null,
       event_value: Number.isFinite(eventValue) ? eventValue : 0,
       metadata: {
+        ...metadata,
         source: 'checkout_ui_extension',
         checkout_id: checkoutId,
-        checkout_phase: metadata.checkout_phase || checkoutPhase,
-        ...metadata,
+        checkout_phase: checkoutPhase,
       },
     };
     await trackEvent(eventPayload);
@@ -2036,6 +2170,7 @@ router.post(
 
     return res.json({
       success: true,
+      tracked: true,
       variant_id: variant.variantId,
       checkout_phase: checkoutPhase,
       event_name: eventName,

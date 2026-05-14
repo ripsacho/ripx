@@ -1,12 +1,24 @@
 import {
   CHECKOUT_CTA_KINDS,
   CHECKOUT_LAYOUTS,
+  CHECKOUT_PRODUCT_ACTIONS,
+  CHECKOUT_PRODUCT_DISPLAY_LAYOUTS,
+  CHECKOUT_PRODUCT_SOURCE_MODES,
   CHECKOUT_TONES,
   getActionableCheckoutSections,
   getNormalizedCheckoutExperienceConfig,
+  hasRenderableCheckoutProductItem,
   normalizeCheckoutListInput,
   normalizeCheckoutPhase,
+  normalizeCheckoutProductItems,
+  normalizeCheckoutProductSourceCollections,
 } from '../../utils/checkoutSections';
+import { collectPriceSurfaceMappingIssues } from '../../utils/priceSurfaceRegistry';
+import { normalizeGoalSecondaryMetric } from '../../utils/goalMetricConfig';
+import {
+  resolveCustomRuleGroupsFromSegments,
+  validateCustomRuleGroups,
+} from './customAudienceRules';
 
 /**
  * Test Wizard validation (pure functions)
@@ -151,6 +163,21 @@ export function getWizardStepErrors(stepId, options) {
           ? 'Enable COGS in the Goal & Metrics step to use PPV.'
           : 'Enable COGS to use Profit per visitor (PPV).'
       );
+    }
+
+    const rawSecondaryMetric = goal.secondary_metric ?? goal.secondaryMetric;
+    if (
+      rawSecondaryMetric !== undefined &&
+      rawSecondaryMetric !== null &&
+      String(rawSecondaryMetric).trim()
+    ) {
+      const normalizedSecondaryMetric = normalizeGoalSecondaryMetric(
+        goal.metric,
+        rawSecondaryMetric
+      );
+      if (!normalizedSecondaryMetric) {
+        errors.push('Secondary metric must be different from the primary winner metric.');
+      }
     }
 
     const conversionWindow = Number(goal.conversion_window_days ?? 30);
@@ -405,6 +432,58 @@ export function getWizardStepErrors(stepId, options) {
       const normalized = getNormalizedCheckoutExperienceConfig(config);
       normalized.checkout_sections.forEach((section, sectionIndex) => {
         const props = section?.props || {};
+        const rawSection =
+          Array.isArray(config.checkout_sections) && config.checkout_sections[sectionIndex]
+            ? config.checkout_sections[sectionIndex]
+            : {};
+        const rawProps =
+          rawSection?.props && typeof rawSection.props === 'object'
+            ? { ...rawSection, ...rawSection.props }
+            : rawSection;
+        const rawTone = String(rawProps.tone || rawProps.checkout_tone || '')
+          .trim()
+          .toLowerCase();
+        const rawLayout = String(rawProps.layout || rawProps.checkout_layout || '')
+          .trim()
+          .toLowerCase();
+        const rawCtaKind = String(rawProps.cta_kind || rawProps.checkout_cta_kind || '')
+          .trim()
+          .toLowerCase();
+        const rawProductSourceMode = String(
+          rawProps.product_source_mode || rawProps.checkout_product_source_mode || ''
+        )
+          .trim()
+          .toLowerCase();
+        const rawProductDisplayLayout = String(
+          rawProps.product_display_layout || rawProps.checkout_product_display_layout || ''
+        )
+          .trim()
+          .toLowerCase();
+        const rawProductAction = String(
+          rawProps.product_action || rawProps.checkout_product_action || ''
+        )
+          .trim()
+          .toLowerCase();
+        const rawCollections = Array.isArray(
+          rawProps.product_source_collections || rawProps.checkout_product_source_collections
+        )
+          ? rawProps.product_source_collections || rawProps.checkout_product_source_collections
+          : [];
+        if (rawLayout && !CHECKOUT_LAYOUTS.includes(rawLayout)) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} layout must be banner, stacked, or compact.`
+          );
+        }
+        if (rawTone && !CHECKOUT_TONES.includes(rawTone)) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} tone must be success, info, warning, or critical.`
+          );
+        }
+        if (rawCtaKind && !CHECKOUT_CTA_KINDS.includes(rawCtaKind)) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} CTA behavior must be track, offer_code, or none.`
+          );
+        }
         if (
           !CHECKOUT_LAYOUTS.includes(
             String(props.layout || '')
@@ -438,6 +517,30 @@ export function getWizardStepErrors(stepId, options) {
             `${label}: section ${sectionIndex + 1} CTA behavior must be track, offer_code, or none.`
           );
         }
+        if (rawProductSourceMode && !CHECKOUT_PRODUCT_SOURCE_MODES.includes(rawProductSourceMode)) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} product source must be manual, cart-related, or collection-fed.`
+          );
+        }
+        if (
+          rawProductDisplayLayout &&
+          !CHECKOUT_PRODUCT_DISPLAY_LAYOUTS.includes(rawProductDisplayLayout)
+        ) {
+          errors.push(`${label}: section ${sectionIndex + 1} product display design is invalid.`);
+        }
+        if (rawProductAction && !CHECKOUT_PRODUCT_ACTIONS.includes(rawProductAction)) {
+          errors.push(`${label}: section ${sectionIndex + 1} product action is invalid.`);
+        }
+        rawCollections.forEach((collection, collectionIndex) => {
+          const collectionId = String(
+            collection?.id || collection?.collection_id || collection || ''
+          ).trim();
+          if (collectionId && !/^gid:\/\/shopify\/Collection\/\d+$/.test(collectionId)) {
+            errors.push(
+              `${label}: section ${sectionIndex + 1} collection ${collectionIndex + 1} must be a Shopify Collection GID.`
+            );
+          }
+        });
         if (
           !isControl &&
           section.enabled !== false &&
@@ -447,6 +550,32 @@ export function getWizardStepErrors(stepId, options) {
           errors.push(
             `${label}: section ${sectionIndex + 1} CTA label is required when CTA behavior is enabled.`
           );
+        }
+        if (!isControl && section.enabled !== false && section.type === 'product_list') {
+          const productItems = normalizeCheckoutProductItems(props.product_items);
+          const renderableProductItems = productItems.filter(hasRenderableCheckoutProductItem);
+          const collections = normalizeCheckoutProductSourceCollections(
+            props.product_source_collections
+          );
+          if (props.product_source_mode === 'manual' && renderableProductItems.length === 0) {
+            errors.push(
+              `${label}: section ${sectionIndex + 1} manual product list needs at least one product card.`
+            );
+          }
+          if (props.product_source_mode === 'collection' && collections.length === 0) {
+            errors.push(
+              `${label}: section ${sectionIndex + 1} collection-fed product list needs at least one collection.`
+            );
+          }
+          if (
+            props.product_action === 'add_to_cart' &&
+            props.product_source_mode === 'manual' &&
+            !productItems.some(item => item.merchandise_id || item.variant_gid)
+          ) {
+            errors.push(
+              `${label}: section ${sectionIndex + 1} add-to-cart product lists need a merchandise or variant GID on at least one manual product.`
+            );
+          }
         }
       });
       if (!isControl && getActionableCheckoutSections(config).length === 0) {
@@ -571,6 +700,9 @@ export function getWizardStepErrors(stepId, options) {
         }
       }
     }
+    errors.push(
+      ...validateCustomRuleGroups(resolveCustomRuleGroupsFromSegments(formData.segments))
+    );
   }
 
   // Traffic step: only validate allocation. Variant price config is required on Code and Review.
@@ -693,6 +825,10 @@ export function getWizardStepErrors(stepId, options) {
             : 'Price tests currently require Direct Price Override, but the RipX cart transform is not deployed for this shop yet. Deploy it before continuing.'
         );
       }
+      const { errors: priceSurfaceErrors } = collectPriceSurfaceMappingIssues(
+        formData.segments?.price_surface_mappings || []
+      );
+      priceSurfaceErrors.forEach(message => errors.push(message));
     }
     // Split-URL: non-empty url must be valid
     const isSplitUrl = templateKeyCode === 'split-url';
@@ -1101,4 +1237,159 @@ export function getWizardStepErrors(stepId, options) {
   }
 
   return errors;
+}
+
+/**
+ * Maps wizard targeting-step error strings to accordion sections for inline UX
+ * (badges, scroll targets). Keep in sync with messages pushed in getWizardStepErrors targeting block.
+ *
+ * @param {string[]} messages
+ * @returns {{ page: string[], audience: string[], holdout: string[], advanced: string[], unmapped: string[] }}
+ */
+export function partitionTargetingStepErrors(messages) {
+  const sections = {
+    page: [],
+    audience: [],
+    holdout: [],
+    advanced: [],
+    unmapped: [],
+  };
+  if (!Array.isArray(messages)) {
+    return sections;
+  }
+  for (const raw of messages) {
+    const m = String(raw || '');
+    if (
+      m.startsWith('Target ID is required') ||
+      m.includes('Shipping test is set to carts with selected products') ||
+      m.includes('test is set to "Selected products only"') ||
+      m.includes('Some selected products are also in the excluded products list') ||
+      m.includes('Targeting has selected products that are also excluded')
+    ) {
+      sections.page.push(m);
+    } else if (m.includes('Holdout percent must')) {
+      sections.holdout.push(m);
+    } else if (m.includes('Traffic ramp')) {
+      sections.advanced.push(m);
+    } else if (
+      m.toLowerCase().includes('guardrail') ||
+      m.toLowerCase().includes('javascript targeting') ||
+      m.toLowerCase().includes('js targeting') ||
+      m.toLowerCase().includes('bot') ||
+      m.toLowerCase().includes('internal ip')
+    ) {
+      sections.advanced.push(m);
+    } else if (m.startsWith('Custom audience rule')) {
+      sections.audience.push(m);
+    } else if (m.toLowerCase().includes('country') || m.toLowerCase().includes('audience')) {
+      sections.audience.push(m);
+    } else {
+      sections.unmapped.push(m);
+    }
+  }
+  return sections;
+}
+
+/**
+ * Non-blocking suggestions for the targeting step (shown when there are no or few blocking errors).
+ *
+ * @param {Object} options
+ * @param {Object} options.formData
+ * @param {boolean} options.isStandalone
+ * @param {boolean} options.isCheckoutTestType
+ * @param {boolean} [options.isShippingTestType]
+ * @param {boolean} [options.targetingScopeFixedForCommerce]
+ * @param {number} [options.selectedScopeProductCount]
+ * @param {number} [options.maxHints]
+ * @returns {{ section: string, tone: 'info'|'warning', message: string }[]}
+ */
+export function getTargetingCoachHints(options) {
+  const {
+    formData,
+    isStandalone,
+    isCheckoutTestType,
+    isShippingTestType = false,
+    targetingScopeFixedForCommerce = false,
+    selectedScopeProductCount = 0,
+    maxHints = 3,
+  } = options || {};
+  const hints = [];
+
+  const holdoutRaw = formData?.holdout_percent;
+  const holdoutNum =
+    holdoutRaw === '' || holdoutRaw === null || holdoutRaw === undefined ? NaN : Number(holdoutRaw);
+
+  if (Number.isFinite(holdoutNum) && holdoutNum === 0) {
+    hints.push({
+      section: 'holdout',
+      tone: 'info',
+      message: isCheckoutTestType
+        ? 'Checkout holdout keeps a slice of checkout sessions on the default experience for incrementality. Many teams start around 10%.'
+        : 'A nonzero holdout reserves visitors who never see variants so you can measure incrementality. 10% is a common starting point.',
+    });
+  } else if (Number.isFinite(holdoutNum) && holdoutNum > 0 && holdoutNum < 10) {
+    hints.push({
+      section: 'holdout',
+      tone: 'info',
+      message:
+        'For production readouts, many teams use at least 10% holdout for a steadier control baseline.',
+    });
+  }
+
+  const rampRaw = formData?.segments?.traffic_ramp_percent;
+  const rampNum =
+    rampRaw === '' || rampRaw === null || rampRaw === undefined ? NaN : Number(rampRaw);
+  if (Number.isFinite(rampNum) && rampNum > 0 && rampNum < 100) {
+    hints.push({
+      section: 'advanced',
+      tone: 'info',
+      message:
+        'Traffic ramp is on: double-check ramp percent and days under Advanced before you go live.',
+    });
+  }
+
+  if (isStandalone) {
+    const pr = formData?.segments?.page_rules || [];
+    const p = formData?.segments?.url_pattern ?? '';
+    const emptyPattern = !p || String(p).trim() === '' || String(p).trim() === ' ';
+    if (pr.length === 0 && emptyPattern) {
+      hints.push({
+        section: 'page',
+        tone: 'info',
+        message:
+          'Standalone tests need an explicit page scope. Add URL rules or a homepage/custom pattern before launch.',
+      });
+    }
+  } else if (!isCheckoutTestType) {
+    const pr = formData?.segments?.page_rules || [];
+    const p = formData?.segments?.url_pattern ?? '';
+    const emptyPattern = !p || String(p).trim() === '' || String(p).trim() === ' ';
+    if (pr.length === 0 && emptyPattern) {
+      hints.push({
+        section: 'page',
+        tone: 'info',
+        message:
+          'Page scope is wide open (all pages). Add URL rules or a narrower scope when you want this test limited to specific storefront URLs.',
+      });
+    }
+  }
+
+  if (isShippingTestType && selectedScopeProductCount === 0) {
+    hints.push({
+      section: 'page',
+      tone: 'info',
+      message:
+        'Shipping qualification is product-scoped but no products are selected yet. Pick included products or switch to a storewide cart scope.',
+    });
+  } else if (targetingScopeFixedForCommerce && selectedScopeProductCount === 0) {
+    hints.push({
+      section: 'page',
+      tone: 'info',
+      message:
+        'This commerce test is limited to selected products, but the product list is still empty. Choose products before you start traffic.',
+    });
+  }
+
+  const cap = Math.max(0, Math.min(5, Number(maxHints) || 3));
+  return hints.slice(0, cap);
 }

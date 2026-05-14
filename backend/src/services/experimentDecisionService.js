@@ -1,7 +1,11 @@
 const analyticsService = require('./analytics');
 const { getFunnelMetrics } = require('../models/analytics');
 const { getTestById } = require('../models/test');
-const { normalizeGoalMetric, parseGoalConfig } = require('../utils/goalConfig');
+const {
+  normalizeGoalMetric,
+  parseGoalConfig,
+  resolveGoalMetricSelections,
+} = require('../utils/goalConfig');
 const logger = require('../utils/logger');
 
 function getMetricValue(variant = {}, metric = 'conversion_rate') {
@@ -401,6 +405,7 @@ async function getExperimentDecisionOverview(testId, shopDomain, options = {}) {
     analyticsService.getTestAnalytics(testId, shopDomain, options),
   ]);
   const goal = parseGoalConfig(test?.goal);
+  const { primaryMetric, secondaryMetric } = resolveGoalMetricSelections(goal);
   let funnel = null;
   let funnelError = null;
   try {
@@ -446,7 +451,8 @@ async function getExperimentDecisionOverview(testId, shopDomain, options = {}) {
   return {
     testId,
     shopDomain,
-    primaryMetric: normalizeGoalMetric(goal?.metric),
+    primaryMetric,
+    secondaryMetric,
     analysisMethod: analytics.analysisMethod || 'frequentist',
     statistics: buildStatisticsReadiness(analytics),
     guardrails,

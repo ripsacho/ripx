@@ -379,7 +379,7 @@ describe('API integration', () => {
       expect(res.body.error).toMatch(/test_id|invalid/i);
     });
 
-    it('returns explicit checkout phase and stores it in conversion metadata', async () => {
+    it('returns explicit checkout phase and stores it in custom event metadata', async () => {
       mockCheckoutContractData('delivery_method');
 
       const res = await request(app)
@@ -389,7 +389,12 @@ describe('API integration', () => {
           test_id: CHECKOUT_CONTRACT_TEST_ID,
           checkout_id: 'checkout-456',
           event_name: 'checkout_delivery_method_action',
-          metadata: { checkout_phase: 'delivery_method', action: 'hide' },
+          metadata: {
+            source: 'spoofed_client',
+            checkout_id: 'spoofed-checkout',
+            checkout_phase: 'payment_method',
+            action: 'hide',
+          },
         });
 
       expect(res.status).toBe(200);
@@ -403,6 +408,8 @@ describe('API integration', () => {
         String(call[0]).toLowerCase().includes('insert into events')
       );
       expect(insertCall).toBeTruthy();
+      expect(insertCall[1]).toContain('custom');
+      expect(insertCall[1]).not.toContain('conversion');
       const metadataJson = insertCall[1].find(value => {
         try {
           return JSON.parse(value)?.checkout_phase === 'delivery_method';

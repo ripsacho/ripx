@@ -67,6 +67,19 @@ describe('analytics model database optimizations', () => {
     ]);
   });
 
+  it('includes legacy checkout conversion rows when aggregating checkout signals', async () => {
+    query.mockResolvedValue({ rows: [] });
+
+    await analytics.getSecondaryEventMetrics('test-1', 'shop.myshopify.com', [
+      'checkout_section_impression',
+    ]);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][0]).toContain("e.event_type = 'custom'");
+    expect(query.mock.calls[0][0]).toContain("e.event_type = 'conversion'");
+    expect(query.mock.calls[0][0]).toContain("LEFT(e.event_name, 9) = 'checkout_'");
+  });
+
   it('normalizes shop domains and goal event names for secondary metrics', async () => {
     query.mockResolvedValue({ rows: [] });
 
@@ -182,12 +195,58 @@ describe('analytics model database optimizations', () => {
     ]);
     expect(query.mock.calls[1][0]).toContain('ta.assigned_at >= $4 AND e.created_at >= $4');
     expect(query.mock.calls[1][0]).toContain('ta.assigned_at < $5 AND e.created_at < $5');
+    expect(query.mock.calls[1][0]).toContain("NOT (LEFT(e.event_name, 9) = 'checkout_')");
     expect(query.mock.calls[1][1]).toEqual([
       'test-1',
       'shop.myshopify.com',
       'mobile',
       '2026-05-01',
       '2026-05-08',
+    ]);
+  });
+
+  it('returns checkout event breakdown rows grouped by metadata', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          event_name: 'checkout_section_cta_click',
+          variant_id: 'variant-a',
+          checkout_phase: 'experience',
+          checkout_section_id: 'trust-box',
+          checkout_section_type: 'trust_box',
+          diagnostic_reason: null,
+          checkout_customization_type: null,
+          checkout_method_action: null,
+          total_events: '5',
+          unique_users: '4',
+          sum: '0',
+          first_seen: '2026-05-01T00:00:00.000Z',
+          last_seen: '2026-05-02T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const result = await analytics.getCheckoutEventBreakdown('test-1', ' Shop.MyShopify.com ', {
+      device: 'mobile',
+      country: 'US',
+    });
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][0]).toContain("LEFT(e.event_name, 9) = 'checkout_'");
+    expect(query.mock.calls[0][0]).toContain("e.event_type = 'custom'");
+    expect(query.mock.calls[0][0]).toContain("e.event_type = 'conversion'");
+    expect(query.mock.calls[0][0]).toContain('ta.device = $3');
+    expect(query.mock.calls[0][0]).toContain('ta.country = $4');
+    expect(query.mock.calls[0][1]).toEqual(['test-1', 'shop.myshopify.com', 'mobile', 'US']);
+    expect(result).toEqual([
+      expect.objectContaining({
+        eventName: 'checkout_section_cta_click',
+        variantId: 'variant-a',
+        checkoutSectionId: 'trust-box',
+        checkoutSectionType: 'trust_box',
+        totalEvents: 5,
+        uniqueUsers: 4,
+      }),
     ]);
   });
 

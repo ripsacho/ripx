@@ -58,7 +58,15 @@ import { CHART_PALETTE } from '../../constants';
 import {
   CHECKOUT_SECTION_EVENT_DEFINITIONS,
   formatCheckoutSectionEventLabel,
+  formatCheckoutSectionTypeLabel,
 } from '../../utils/checkoutReporting';
+import {
+  formatGoalBusinessMetricValue,
+  getGoalBusinessMetricValue,
+  getGoalCogsProfit,
+  getGoalMetricLabel,
+  resolveGoalMetricSelections,
+} from '../../utils/goalMetricConfig';
 
 const COLORS = CHART_PALETTE;
 const ANALYTICS_TABS = ['overview', 'funnel', 'heatmap', 'events'];
@@ -117,51 +125,6 @@ function normalizeAnalyticsEventName(value) {
     .slice(0, 100);
 }
 
-function getVariantProfit(variant = {}, goalConfig = {}) {
-  const revenue = Number(variant.revenue) || 0;
-  const conversions = Number(variant.conversions) || 0;
-  const cogs = goalConfig?.cogs;
-  if (!cogs?.enabled) {
-    return Number(variant.profit) || revenue;
-  }
-  if (cogs.type === 'fixed_per_order') {
-    return revenue - conversions * (Number(cogs.value) || 0);
-  }
-  return revenue - revenue * ((Number(cogs.value) || 0) / 100);
-}
-
-function getPrimaryMetricValue(variant = {}, metric = 'conversion_rate', goalConfig = {}) {
-  const visitors = Number(variant.visitors) || 0;
-  const revenue = Number(variant.revenue) || 0;
-  const profit = getVariantProfit(variant, goalConfig);
-  switch (metric) {
-    case 'revenue':
-      return revenue;
-    case 'aov':
-    case 'average_order_value':
-      return Number(variant.avgOrderValue) || 0;
-    case 'revenue_per_visitor':
-      return visitors > 0 ? revenue / visitors : 0;
-    case 'profit_per_visitor':
-      return visitors > 0 ? profit / visitors : 0;
-    case 'conversions':
-      return Number(variant.conversions) || 0;
-    case 'conversion_rate':
-    default:
-      return Number(variant.conversionRate) || 0;
-  }
-}
-
-function formatPrimaryMetricValue(value, metric = 'conversion_rate') {
-  if (metric === 'conversion_rate') {
-    return `${(Number(value) || 0).toFixed(2)}%`;
-  }
-  if (metric === 'conversions') {
-    return (Number(value) || 0).toLocaleString();
-  }
-  return formatCurrency(value);
-}
-
 function formatCompactNumber(value) {
   return (Number(value) || 0).toLocaleString(undefined, {
     notation: Math.abs(Number(value) || 0) >= 10000 ? 'compact' : 'standard',
@@ -175,6 +138,48 @@ function formatSignedPercent(value) {
   }
   const numeric = Number(value);
   return `${numeric > 0 ? '+' : ''}${numeric.toFixed(1)}%`;
+}
+
+function getCheckoutDiagnosticRepair(reason) {
+  const normalized = String(reason || '')
+    .trim()
+    .toLowerCase();
+  const repairs = {
+    assignment_fetch_failed:
+      'Check assignment URL, tunnel/deploy URL, secret alignment, and shop domain.',
+    no_assignment:
+      'Confirm the test is running and checkout cart attributes include the test context.',
+    no_renderable_checkout_sections:
+      'Add enabled content to at least one non-control checkout section.',
+    collection_products_not_hydrated:
+      'Verify read_products scope, selected collection GIDs, and Admin API product access.',
+    cart_line_api_unavailable:
+      'Keep product lists display-only or confirm checkout cart-line changes are available.',
+    discount_code_api_unavailable:
+      'Confirm discount-code changes are permitted in this checkout context.',
+    discount_code_apply_failed:
+      'Verify the generated discount code exists and applies to this cart.',
+    discount_code_apply_exception: 'Review checkout extension logs and discount API availability.',
+  };
+  return (
+    repairs[normalized] || 'Review the checkout runtime event metadata for the failing section.'
+  );
+}
+
+function getCheckoutProductRepair(row = {}) {
+  const failures = Number(row.addFailures) || 0;
+  const attempts = Number(row.addAttempts) || 0;
+  const impressions = Number(row.impressions) || 0;
+  if (failures > 0) {
+    return 'High failed adds: verify merchandise IDs, product availability, and cart-line API support.';
+  }
+  if (attempts === 0 && impressions > 20) {
+    return 'No add attempts yet: test stronger product copy, action label, or product relevance.';
+  }
+  if ((Number(row.clickRate) || 0) < 1 && impressions > 50) {
+    return 'Low click rate: review product rank, badge, price copy, and offer strategy.';
+  }
+  return 'Healthy enough for monitoring; compare against section and variant-level lift.';
 }
 
 function getConfiguredVariant(testInfo, variant) {
@@ -396,6 +401,32 @@ function Analytics() {
   const checkoutSectionEventNames = Array.isArray(analytics?.checkoutSectionEventNames)
     ? analytics.checkoutSectionEventNames
     : [];
+  const checkoutAdvanced = analytics?.checkoutAdvanced || null;
+  const checkoutJourneySteps = Array.isArray(checkoutAdvanced?.journeySteps)
+    ? checkoutAdvanced.journeySteps
+    : [];
+  const checkoutSectionRows = Array.isArray(checkoutAdvanced?.sectionPerformanceRows)
+    ? checkoutAdvanced.sectionPerformanceRows
+    : [];
+  const checkoutProductRows = Array.isArray(checkoutAdvanced?.productPerformanceRows)
+    ? checkoutAdvanced.productPerformanceRows
+    : [];
+  const hasCheckoutAdvancedSignals = Boolean(
+    checkoutAdvanced &&
+    (checkoutSectionRows.length > 0 ||
+      checkoutProductRows.length > 0 ||
+      Number(checkoutAdvanced?.signalTotals?.totalCheckoutEvents || 0) > 0)
+  );
+  const checkoutDiagnosticRows = Array.isArray(checkoutAdvanced?.diagnostics)
+    ? checkoutAdvanced.diagnostics
+    : [];
+  const checkoutMethodActionRows = Array.isArray(checkoutAdvanced?.methodActions)
+    ? checkoutAdvanced.methodActions
+    : [];
+  const checkoutMaxJourneyTotal = Math.max(
+    1,
+    ...checkoutJourneySteps.map(step => Number(step.total) || 0)
+  );
   const goalConfig =
     testInfo?.goal && typeof testInfo.goal === 'string'
       ? (() => {
@@ -416,24 +447,35 @@ function Analytics() {
       })
       .filter(Boolean)
   );
-  const primaryMetric = String(goalConfig.metric || 'conversion_rate').toLowerCase();
-  const primaryMetricLabel = PRIMARY_METRIC_LABELS[primaryMetric] || primaryMetric;
+  const { primaryMetric, secondaryMetric } = resolveGoalMetricSelections(goalConfig);
+  const primaryMetricLabel =
+    PRIMARY_METRIC_LABELS[primaryMetric] || getGoalMetricLabel(primaryMetric);
+  const secondaryMetricLabel = secondaryMetric
+    ? PRIMARY_METRIC_LABELS[secondaryMetric] || getGoalMetricLabel(secondaryMetric)
+    : null;
   const isConversionPrimaryMetric =
     primaryMetric === 'conversion_rate' || primaryMetric === 'conversions';
   const significanceContextLabel = isConversionPrimaryMetric
-    ? 'conversion-rate inference'
-    : 'primary metric leader with conversion-rate inference';
+    ? secondaryMetricLabel
+      ? `conversion-rate inference with ${secondaryMetricLabel.toLowerCase()} secondary readout`
+      : 'conversion-rate inference'
+    : secondaryMetricLabel
+      ? `primary metric leader with ${secondaryMetricLabel.toLowerCase()} secondary readout`
+      : 'primary metric leader with conversion-rate inference';
   const variantsWithBusinessMetrics = variants.map(variant => {
     const visitors = Number(variant.visitors) || 0;
     const revenue = Number(variant.revenue) || 0;
-    const profit = getVariantProfit(variant, goalConfig);
+    const profit = getGoalCogsProfit(variant, goalConfig);
     return {
       ...variant,
       revenuePerVisitor:
         Number(variant.revenuePerVisitor) || (visitors > 0 ? revenue / visitors : 0),
       profit,
       profitPerVisitor: Number(variant.profitPerVisitor) || (visitors > 0 ? profit / visitors : 0),
-      primaryMetricValue: getPrimaryMetricValue(variant, primaryMetric, goalConfig),
+      primaryMetricValue: getGoalBusinessMetricValue(variant, primaryMetric, goalConfig),
+      secondaryMetricValue: secondaryMetric
+        ? getGoalBusinessMetricValue(variant, secondaryMetric, goalConfig)
+        : null,
     };
   });
 
@@ -469,33 +511,67 @@ function Analytics() {
 
   const promoteCandidate = winner || bestVariant;
 
-  const tableRows = variantsWithBusinessMetrics.map((variant, index) => [
-    <InlineStack key={variant.id || `v-${index}`} gap="200" align="start">
-      <div
-        style={{
-          width: '12px',
-          height: '12px',
-          borderRadius: '50%',
-          backgroundColor: COLORS[index % COLORS.length],
-          marginTop: '4px',
-        }}
-      />
-      <Text variant="bodyMd" fontWeight="semibold" as="span">
-        {variant.name}
-      </Text>
-      {promoteCandidate && variant.id === promoteCandidate.id && (
-        <Badge tone={winner ? 'success' : 'info'}>{winner ? 'Winner' : 'Leading'}</Badge>
-      )}
-    </InlineStack>,
-    (variant.visitors ?? 0).toLocaleString(),
-    (variant.conversions ?? 0).toLocaleString(),
-    `${(variant.conversionRate ?? 0).toFixed(2)}%`,
-    formatCurrency(variant.revenue),
-    formatCurrency(variant.revenuePerVisitor),
-    formatCurrency(variant.profitPerVisitor),
-    formatCurrency(variant.avgOrderValue),
-    formatPrimaryMetricValue(variant.primaryMetricValue, primaryMetric),
-  ]);
+  const tableRows = variantsWithBusinessMetrics.map((variant, index) => {
+    const row = [
+      <InlineStack key={variant.id || `v-${index}`} gap="200" align="start">
+        <div
+          style={{
+            width: '12px',
+            height: '12px',
+            borderRadius: '50%',
+            backgroundColor: COLORS[index % COLORS.length],
+            marginTop: '4px',
+          }}
+        />
+        <Text variant="bodyMd" fontWeight="semibold" as="span">
+          {variant.name}
+        </Text>
+        {promoteCandidate && variant.id === promoteCandidate.id && (
+          <Badge tone={winner ? 'success' : 'info'}>{winner ? 'Winner' : 'Leading'}</Badge>
+        )}
+      </InlineStack>,
+      (variant.visitors ?? 0).toLocaleString(),
+      (variant.conversions ?? 0).toLocaleString(),
+      `${(variant.conversionRate ?? 0).toFixed(2)}%`,
+      formatCurrency(variant.revenue),
+      formatCurrency(variant.revenuePerVisitor),
+      formatCurrency(variant.profitPerVisitor),
+      formatCurrency(variant.avgOrderValue),
+      formatGoalBusinessMetricValue(variant.primaryMetricValue, primaryMetric),
+    ];
+    if (secondaryMetric) {
+      row.push(formatGoalBusinessMetricValue(variant.secondaryMetricValue, secondaryMetric));
+    }
+    return row;
+  });
+  const variantTableHeadings = [
+    'Variant',
+    'Visitors',
+    'Conversions',
+    'Conversion Rate',
+    'Revenue',
+    'RPV',
+    'PPV',
+    'AOV',
+    'Primary Metric',
+  ];
+  if (secondaryMetric) {
+    variantTableHeadings.push(secondaryMetricLabel);
+  }
+  const variantTableColumnTypes = [
+    'text',
+    'numeric',
+    'numeric',
+    'numeric',
+    'numeric',
+    'numeric',
+    'numeric',
+    'numeric',
+    'numeric',
+  ];
+  if (secondaryMetric) {
+    variantTableColumnTypes.push('numeric');
+  }
 
   const totalVisitors = variants.reduce((sum, v) => sum + (v.visitors || 0), 0);
   const totalConversions = variants.reduce((sum, v) => sum + (v.conversions || 0), 0);
@@ -568,6 +644,10 @@ function Analytics() {
       conversions,
       conversionRate,
       primaryMetricValue: Number(variant.primaryMetricValue) || 0,
+      secondaryMetricValue:
+        secondaryMetric && variant.secondaryMetricValue !== null
+          ? Number(variant.secondaryMetricValue) || 0
+          : null,
       revenuePerVisitor: Number(variant.revenuePerVisitor) || 0,
       profitPerVisitor: Number(variant.profitPerVisitor) || 0,
       lift,
@@ -1112,6 +1192,11 @@ function Analytics() {
                     <span>
                       Primary <strong>{primaryMetricLabel}</strong>
                     </span>
+                    {secondaryMetricLabel ? (
+                      <span>
+                        Secondary <strong>{secondaryMetricLabel}</strong>
+                      </span>
+                    ) : null}
                     <span>
                       Leader{' '}
                       <strong>
@@ -1170,8 +1255,18 @@ function Analytics() {
                   <div className={styles.winnerTitle}>Winner: {winner.name}</div>
                   <div className={styles.winnerSubtitle}>
                     {primaryMetricLabel}:{' '}
-                    {formatPrimaryMetricValue(winner.primaryMetricValue, primaryMetric)} ·{' '}
-                    {significanceContextLabel}
+                    {formatGoalBusinessMetricValue(winner.primaryMetricValue, primaryMetric)}
+                    {secondaryMetric && winner.secondaryMetricValue !== null ? (
+                      <>
+                        {' '}
+                        · {secondaryMetricLabel}:{' '}
+                        {formatGoalBusinessMetricValue(
+                          winner.secondaryMetricValue,
+                          secondaryMetric
+                        )}
+                      </>
+                    ) : null}{' '}
+                    · {significanceContextLabel}
                   </div>
                 </div>
               </div>
@@ -1285,7 +1380,7 @@ function Analytics() {
                         <MetricCard
                           title="Winner"
                           value={winner.name}
-                          subtitle={`${primaryMetricLabel}: ${formatPrimaryMetricValue(winner.primaryMetricValue, primaryMetric)}`}
+                          subtitle={`${primaryMetricLabel}: ${formatGoalBusinessMetricValue(winner.primaryMetricValue, primaryMetric)}`}
                           variant="success"
                           tooltip="Winning or leading variant for the selected primary metric"
                         />
@@ -1379,7 +1474,10 @@ function Analytics() {
                             <div className={styles.variantScoreMetric}>
                               <span>{primaryMetricLabel}</span>
                               <strong>
-                                {formatPrimaryMetricValue(card.primaryMetricValue, primaryMetric)}
+                                {formatGoalBusinessMetricValue(
+                                  card.primaryMetricValue,
+                                  primaryMetric
+                                )}
                               </strong>
                               <small>
                                 {card.isControl
@@ -1387,6 +1485,17 @@ function Analytics() {
                                   : `${formatSignedPercent(card.lift)} vs control`}
                               </small>
                             </div>
+                            {secondaryMetric && card.secondaryMetricValue !== null ? (
+                              <div className={styles.variantScoreSecondaryMetric}>
+                                <span>{secondaryMetricLabel}</span>
+                                <strong>
+                                  {formatGoalBusinessMetricValue(
+                                    card.secondaryMetricValue,
+                                    secondaryMetric
+                                  )}
+                                </strong>
+                              </div>
+                            ) : null}
                             <div className={styles.variantScoreBars}>
                               <span>
                                 <em>Visitors</em>
@@ -1894,7 +2003,7 @@ function Analytics() {
                                 </Text>
                                 <Text variant="bodySm" as="p">
                                   This variant is leading on {primaryMetricLabel.toLowerCase()} at{' '}
-                                  {formatPrimaryMetricValue(
+                                  {formatGoalBusinessMetricValue(
                                     winner.primaryMetricValue,
                                     primaryMetric
                                   )}
@@ -2169,28 +2278,8 @@ function Analytics() {
                         </Text>
                         <div className={styles.dataTableCard}>
                           <DataTable
-                            columnContentTypes={[
-                              'text',
-                              'numeric',
-                              'numeric',
-                              'numeric',
-                              'numeric',
-                              'numeric',
-                              'numeric',
-                              'numeric',
-                              'numeric',
-                            ]}
-                            headings={[
-                              'Variant',
-                              'Visitors',
-                              'Conversions',
-                              'Conversion Rate',
-                              'Revenue',
-                              'RPV',
-                              'PPV',
-                              'AOV',
-                              'Primary Metric',
-                            ]}
+                            columnContentTypes={variantTableColumnTypes}
+                            headings={variantTableHeadings}
                             rows={tableRows}
                           />
                         </div>
@@ -2198,55 +2287,282 @@ function Analytics() {
                     </Card>
                   </Layout.Section>
 
-                  {/* Checkout Section Signals */}
+                  {/* Checkout Output Intelligence */}
                   {checkoutSectionEventNames.length > 0 && (
                     <Layout.Section>
                       <Card>
                         <BlockStack gap="400">
-                          <Text variant="headingLg" as="h2">
-                            Checkout Section Signals
-                          </Text>
-                          <Text variant="bodySm" color="subdued" as="p">
-                            Built-in checkout experience events tracked for section impressions, CTA
-                            clicks, and offer applies.
-                          </Text>
-                          {checkoutSectionEventNames.map(eventName => (
-                            <BlockStack key={eventName} gap="200">
-                              <Text variant="headingMd" as="h3">
-                                {formatCheckoutSectionEventLabel(eventName)}
+                          <div className={styles.visualSectionHeader}>
+                            <div>
+                              <Text variant="headingLg" as="h2">
+                                Checkout Output Intelligence
                               </Text>
                               <Text variant="bodySm" color="subdued" as="p">
-                                {CHECKOUT_SECTION_EVENT_DEFINITIONS[eventName]?.description ||
-                                  'Checkout section engagement signal.'}
+                                Advanced checkout signals separated from purchase conversions, with
+                                journey, section, diagnostics, and customization output views.
                               </Text>
-                              <div className="grid-responsive">
-                                {variants.map(variant => {
-                                  const ev = variant.checkoutSectionEvents?.[eventName] || {
-                                    count: 0,
-                                    sum: 0,
-                                    rate: 0,
-                                  };
-                                  return (
-                                    <Card key={`${variant.id}-${eventName}`} sectioned>
-                                      <BlockStack gap="100">
-                                        <Text variant="bodySm" color="subdued" as="p">
-                                          {variant.name}
-                                        </Text>
-                                        <Text variant="headingLg" as="p" fontWeight="bold">
-                                          {ev.count.toLocaleString()}
-                                        </Text>
-                                        <Text variant="bodySm" color="subdued" as="p">
-                                          {(variant.visitors ?? 0) > 0
-                                            ? `${(ev.rate ?? 0).toFixed(2)}% of visitors`
-                                            : '—'}
-                                        </Text>
-                                      </BlockStack>
-                                    </Card>
-                                  );
-                                })}
+                            </div>
+                            <Badge tone="info">
+                              {checkoutAdvanced?.phase
+                                ? checkoutAdvanced.phase.replace(/_/g, ' ')
+                                : 'checkout'}
+                            </Badge>
+                          </div>
+
+                          {checkoutAdvanced?.signalTotals && (
+                            <div className={styles.checkoutSignalSummary}>
+                              <div>
+                                <span>Total checkout events</span>
+                                <strong>
+                                  {Number(
+                                    checkoutAdvanced.signalTotals.totalCheckoutEvents || 0
+                                  ).toLocaleString()}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Signal types</span>
+                                <strong>
+                                  {Number(
+                                    checkoutAdvanced.signalTotals.uniqueCheckoutSignals || 0
+                                  ).toLocaleString()}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Tracked sections</span>
+                                <strong>
+                                  {Number(
+                                    checkoutAdvanced.signalTotals.sectionsTracked || 0
+                                  ).toLocaleString()}
+                                </strong>
+                              </div>
+                            </div>
+                          )}
+
+                          {checkoutJourneySteps.length > 0 && (
+                            <div className={styles.checkoutJourneyGrid}>
+                              {checkoutJourneySteps.map(step => (
+                                <div key={step.id} className={styles.checkoutJourneyStep}>
+                                  <InlineStack align="space-between" blockAlign="center" gap="200">
+                                    <Text variant="headingSm" as="h3">
+                                      {step.label}
+                                    </Text>
+                                    <Badge tone={step.total > 0 ? 'success' : 'attention'}>
+                                      {Number(step.total || 0).toLocaleString()}
+                                    </Badge>
+                                  </InlineStack>
+                                  <div className={styles.checkoutJourneyTrack}>
+                                    <span
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          (Number(step.total || 0) / checkoutMaxJourneyTotal) * 100
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <Text variant="bodySm" color="subdued" as="p">
+                                    Leader:{' '}
+                                    {step.leader?.variantName
+                                      ? `${step.leader.variantName} (${(
+                                          step.leader.rate || 0
+                                        ).toFixed(1)}%)`
+                                      : 'No signal yet'}
+                                  </Text>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {checkoutSectionRows.length > 0 && (
+                            <BlockStack gap="250">
+                              <Text variant="headingMd" as="h3">
+                                Section Performance Matrix
+                              </Text>
+                              <div className={styles.checkoutSectionMatrix}>
+                                {checkoutSectionRows.slice(0, 6).map(row => (
+                                  <div
+                                    key={`${row.sectionId}-${row.sectionType}`}
+                                    className={styles.checkoutSectionMatrixRow}
+                                  >
+                                    <div>
+                                      <Text variant="bodyMd" fontWeight="semibold" as="p">
+                                        {row.sectionId}
+                                      </Text>
+                                      <Text variant="bodySm" color="subdued" as="p">
+                                        {formatCheckoutSectionTypeLabel(row.sectionType)}
+                                      </Text>
+                                    </div>
+                                    <div>
+                                      <span>Views</span>
+                                      <strong>
+                                        {Number(row.impressions || 0).toLocaleString()}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span>CTA CTR</span>
+                                      <strong>{(Number(row.ctr) || 0).toFixed(1)}%</strong>
+                                    </div>
+                                    <div>
+                                      <span>Offer apply</span>
+                                      <strong>
+                                        {(Number(row.offerApplyRate) || 0).toFixed(1)}%
+                                      </strong>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </BlockStack>
-                          ))}
+                          )}
+
+                          {checkoutProductRows.length > 0 && (
+                            <BlockStack gap="250">
+                              <Text variant="headingMd" as="h3">
+                                Product List Output
+                              </Text>
+                              <div className={styles.checkoutSectionMatrix}>
+                                {checkoutProductRows.slice(0, 8).map(row => (
+                                  <div
+                                    key={`${row.sectionId}-${row.productId}-${row.analyticsKey || ''}`}
+                                    className={`${styles.checkoutSectionMatrixRow} ${styles.checkoutSectionMatrixRowProducts}`}
+                                  >
+                                    <div>
+                                      <Text variant="bodyMd" fontWeight="semibold" as="p">
+                                        {row.analyticsKey ||
+                                          String(row.productId || 'Product').replace(/.*\//, '')}
+                                      </Text>
+                                      <Text variant="bodySm" color="subdued" as="p">
+                                        {String(row.sourceMode || 'manual').replace(/_/g, ' ')} ·{' '}
+                                        {String(row.strategy || 'strategy').replace(/_/g, ' ')} ·{' '}
+                                        rank {row.rank || '-'}
+                                      </Text>
+                                    </div>
+                                    <div>
+                                      <strong>
+                                        {Number(row.impressions || 0).toLocaleString()}
+                                      </strong>
+                                      <span>views</span>
+                                    </div>
+                                    <div>
+                                      <strong>{(Number(row.clickRate) || 0).toFixed(1)}%</strong>
+                                      <span>click rate</span>
+                                    </div>
+                                    <div>
+                                      <strong>
+                                        {(Number(row.addSuccessRate) || 0).toFixed(1)}%
+                                      </strong>
+                                      <span>add success</span>
+                                    </div>
+                                    <div>
+                                      <strong>
+                                        {Number(row.addFailures || 0).toLocaleString()}
+                                      </strong>
+                                      <span>failed adds</span>
+                                    </div>
+                                    <div className={styles.checkoutMatrixInsight}>
+                                      <span>next action</span>
+                                      <strong>{getCheckoutProductRepair(row)}</strong>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </BlockStack>
+                          )}
+
+                          {(checkoutDiagnosticRows.length > 0 ||
+                            checkoutMethodActionRows.length > 0 ||
+                            hasCheckoutAdvancedSignals) && (
+                            <div className={styles.checkoutOpsGrid}>
+                              {hasCheckoutAdvancedSignals && (
+                                <div className={styles.checkoutOpsCard}>
+                                  <Text variant="headingMd" as="h3">
+                                    Checkout Analytics Scope
+                                  </Text>
+                                  <Text variant="bodySm" color="subdued" as="p">
+                                    Checkout signal tables use checkout event metadata and
+                                    assignment joins for device or country filters. If a checkout
+                                    event cannot be matched to an assignment row, filtered views may
+                                    under-count it.
+                                  </Text>
+                                </div>
+                              )}
+                              {checkoutDiagnosticRows.length > 0 && (
+                                <div className={styles.checkoutOpsCard}>
+                                  <Text variant="headingMd" as="h3">
+                                    Runtime Diagnostics
+                                  </Text>
+                                  {checkoutDiagnosticRows.slice(0, 4).map((row, rowIndex) => (
+                                    <div
+                                      key={`${row.reason || 'diagnostic'}-${rowIndex}`}
+                                      className={styles.checkoutOpsRow}
+                                    >
+                                      <span>{String(row.reason || '').replace(/_/g, ' ')}</span>
+                                      <strong>{Number(row.count || 0).toLocaleString()}</strong>
+                                      <em>{getCheckoutDiagnosticRepair(row.reason)}</em>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {checkoutMethodActionRows.length > 0 && (
+                                <div className={styles.checkoutOpsCard}>
+                                  <Text variant="headingMd" as="h3">
+                                    Customization Actions
+                                  </Text>
+                                  {checkoutMethodActionRows.slice(0, 4).map(row => (
+                                    <div
+                                      key={`${row.eventName}-${row.action}`}
+                                      className={styles.checkoutOpsRow}
+                                    >
+                                      <span>{String(row.action || '').replace(/_/g, ' ')}</span>
+                                      <strong>{Number(row.count || 0).toLocaleString()}</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <BlockStack gap="200">
+                            <Text variant="headingMd" as="h3">
+                              Signal Cards
+                            </Text>
+                            {checkoutSectionEventNames.map(eventName => (
+                              <BlockStack key={eventName} gap="200">
+                                <Text variant="bodyMd" fontWeight="semibold" as="p">
+                                  {formatCheckoutSectionEventLabel(eventName)}
+                                </Text>
+                                <Text variant="bodySm" color="subdued" as="p">
+                                  {CHECKOUT_SECTION_EVENT_DEFINITIONS[eventName]?.description ||
+                                    'Checkout engagement signal.'}
+                                </Text>
+                                <div className="grid-responsive">
+                                  {variants.map(variant => {
+                                    const ev = variant.checkoutSectionEvents?.[eventName] || {
+                                      count: 0,
+                                      sum: 0,
+                                      rate: 0,
+                                    };
+                                    return (
+                                      <Card key={`${variant.id}-${eventName}`} sectioned>
+                                        <BlockStack gap="100">
+                                          <Text variant="bodySm" color="subdued" as="p">
+                                            {variant.name}
+                                          </Text>
+                                          <Text variant="headingLg" as="p" fontWeight="bold">
+                                            {ev.count.toLocaleString()}
+                                          </Text>
+                                          <Text variant="bodySm" color="subdued" as="p">
+                                            {(variant.visitors ?? 0) > 0
+                                              ? `${(ev.rate ?? 0).toFixed(2)}% of visitors`
+                                              : 'No visitors yet'}
+                                          </Text>
+                                        </BlockStack>
+                                      </Card>
+                                    );
+                                  })}
+                                </div>
+                              </BlockStack>
+                            ))}
+                          </BlockStack>
                         </BlockStack>
                       </Card>
                     </Layout.Section>

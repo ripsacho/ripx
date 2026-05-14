@@ -195,6 +195,17 @@ describe('ABTestEngine.isUserEligible', () => {
     expect(ABTestEngine.isUserEligible(test, { country: 'BD' })).toBe(true);
   });
 
+  it('returns false when operating system does not match', () => {
+    const test = { segments: { operating_system: 'ios' } };
+    expect(ABTestEngine.isUserEligible(test, { operating_system: 'android' })).toBe(false);
+  });
+
+  it('keeps legacy broad traffic source filters compatible with detailed sources', () => {
+    const test = { segments: { traffic_source: 'social' } };
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'instagram' })).toBe(true);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'paid_search' })).toBe(false);
+  });
+
   it('ignores legacy url_pattern for price tests in all-products scope', () => {
     const test = {
       type: 'price',
@@ -333,6 +344,44 @@ describe('ABTestEngine.isUserEligible', () => {
         current_product_id: 'gid://shopify/Product/300',
       })
     ).toBe(false);
+  });
+});
+
+describe('ABTestEngine.validateTest audience segments', () => {
+  const baseSplit = {
+    name: 'Split',
+    type: 'split-url',
+    goal: { type: 'conversion', template_key: 'split-url' },
+    variants: [
+      { name: 'Control', allocation: 50, config: { url: '' } },
+      { name: 'Variant A', allocation: 50, config: { url: '/pages/a' } },
+    ],
+  };
+
+  it('accepts granular traffic_source values used by Audience Standard', () => {
+    const result = ABTestEngine.validateTest({
+      ...baseSplit,
+      segments: { traffic_source: 'instagram' },
+    });
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects unknown traffic_source strings', () => {
+    const result = ABTestEngine.validateTest({
+      ...baseSplit,
+      segments: { traffic_source: 'not_a_real_channel' },
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('traffic_source'))).toBe(true);
+  });
+
+  it('validates operating_system slugs', () => {
+    const result = ABTestEngine.validateTest({
+      ...baseSplit,
+      segments: { operating_system: 'iphone_os' },
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('operating_system'))).toBe(true);
   });
 });
 

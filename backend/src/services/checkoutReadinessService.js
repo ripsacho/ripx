@@ -238,17 +238,30 @@ function buildCheckoutUiExtensionDiagnostics({
     );
   }
 
-  if (includeBindingChecks && configuredTestId) {
+  if (includeBindingChecks && source === 'present') {
+    const currentTestId = String(test?.id || '').trim();
     checklist.push(
       buildCheck(
-        'checkout_ui_default_test_matches',
-        String(test?.id || '').trim() === configuredTestId,
+        'checkout_ui_test_binding_configured',
+        Boolean(configuredTestId),
         'warning',
-        String(test?.id || '').trim() === configuredTestId
-          ? 'Checkout UI default test ID matches this test.'
-          : 'Checkout UI default test ID points to a different test. Fine for shared builds, but update it if this extension build should default to the current test.'
+        configuredTestId
+          ? 'Checkout UI extension has a default test ID or can be overridden by checkout/cart context.'
+          : 'Checkout UI extension has no default test ID. Set RIPX_CHECKOUT_UI_TEST_ID before deploying this test, or pass _ripx_checkout_test into checkout cart attributes.'
       )
     );
+    if (configuredTestId) {
+      checklist.push(
+        buildCheck(
+          'checkout_ui_default_test_matches',
+          !currentTestId || currentTestId === configuredTestId,
+          'warning',
+          !currentTestId || currentTestId === configuredTestId
+            ? 'Checkout UI default test ID matches this test.'
+            : 'Checkout UI default test ID points to a different test. Fine for shared builds, but update it if this extension build should default to the current test.'
+        )
+      );
+    }
   }
 
   if (includeBindingChecks && configuredShopDomain) {
@@ -287,6 +300,7 @@ function buildCheckoutUiExtensionDiagnostics({
       extension_conversion_url: configuredConversionUrl || null,
       extension_default_test_id: configuredTestId || null,
       extension_default_shop_domain: configuredShopDomain || null,
+      extension_test_binding_mode: configuredTestId ? 'default_test_id' : 'runtime_cart_attribute',
     },
   };
 }
@@ -606,6 +620,39 @@ async function buildCheckoutExperienceReadiness({
         : [];
       return sum + sections.filter(section => hasRenderableSection(section)).length;
     }, 0);
+    const productListSections = variants.flatMap((variant, variantIndex) => {
+      if (isLikelyControlVariant(variant, variantIndex)) {
+        return [];
+      }
+      const sections = Array.isArray(variant?.config?.checkout_sections)
+        ? variant.config.checkout_sections
+        : [];
+      return sections
+        .map((section, sectionIndex) => ({ variant, variantIndex, section, sectionIndex }))
+        .filter(
+          item =>
+            item.section?.enabled !== false && normalizeLower(item.section?.type) === 'product_list'
+        );
+    });
+    const cartRelatedSections = productListSections.filter(
+      item => normalizeLower(item.section?.props?.product_source_mode) === 'cart_related'
+    );
+    const collectionAddToCartSections = productListSections.filter(
+      item =>
+        normalizeLower(item.section?.props?.product_source_mode) === 'collection' &&
+        normalizeLower(item.section?.props?.product_action) === 'add_to_cart'
+    );
+    const manualAddToCartMissingMerchandise = productListSections.filter(item => {
+      const props = item.section?.props || {};
+      if (
+        normalizeLower(props.product_source_mode) !== 'manual' ||
+        normalizeLower(props.product_action) !== 'add_to_cart'
+      ) {
+        return false;
+      }
+      const rows = Array.isArray(props.product_items) ? props.product_items : [];
+      return !rows.some(row => String(row?.merchandise_id || row?.variant_gid || '').trim());
+    });
     const needsCollectionProductScope = variants.some(variant => {
       const sections = Array.isArray(variant?.config?.checkout_sections)
         ? variant.config.checkout_sections
@@ -636,6 +683,44 @@ async function buildCheckoutExperienceReadiness({
       .map(s => s.trim())
       .filter(Boolean);
     const hasReadProductsScope = configuredScopes.includes('read_products');
+    let collectionProbe = { attempted: false, ok: !needsCollectionProductScope, productCount: 0 };
+    if (needsCollectionProductScope && accessToken && shopDomain) {
+      const firstCollectionSection = productListSections
+        .map(item => item.section)
+        .find(section => {
+          const props = section?.props || {};
+          return (
+            section?.enabled !== false &&
+            normalizeLower(section?.type) === 'product_list' &&
+            normalizeLower(props.product_source_mode) === 'collection' &&
+            Array.isArray(props.product_source_collections) &&
+            props.product_source_collections.some(col => String(col?.id || '').trim())
+          );
+        });
+      if (firstCollectionSection) {
+        const props = firstCollectionSection.props || {};
+        try {
+          const rows = await shopifyService.listCollectionProducts(
+            shopDomain,
+            accessToken,
+            props.product_source_collections.map(col => col.id).filter(Boolean),
+            props.product_source_limit || 3
+          );
+          collectionProbe = {
+            attempted: true,
+            ok: rows.length > 0,
+            productCount: rows.length,
+          };
+        } catch (error) {
+          collectionProbe = {
+            attempted: true,
+            ok: false,
+            productCount: 0,
+            error: error?.message || 'collection_probe_failed',
+          };
+        }
+      }
+    }
     const uiDiagnostics = buildCheckoutUiExtensionDiagnostics({
       test: normalizedTest,
       shopDomain,
@@ -668,8 +753,44 @@ async function buildCheckoutExperienceReadiness({
                 ? 'SHOPIFY_SCOPES includes read_products for collection-fed checkout product lists (Admin API collections use this scope).'
                 : 'Collection-fed checkout product lists require read_products in SHOPIFY_SCOPES and shopify.app.toml; reinstall the app on the shop after updating scopes.'
             ),
+            buildCheck(
+              'checkout_collection_products_resolvable',
+              collectionProbe.ok,
+              collectionProbe.attempted ? 'error' : 'warning',
+              collectionProbe.ok
+                ? `Collection-fed checkout product lists resolved ${collectionProbe.productCount} product card(s).`
+                : collectionProbe.attempted
+                  ? `Collection-fed checkout product lookup failed${collectionProbe.error ? ` (${collectionProbe.error})` : ''}.`
+                  : 'Collection-fed product lookup could not be probed because no shop access token was available.'
+            ),
           ]
         : []),
+      buildCheck(
+        'checkout_manual_add_to_cart_merchandise_ready',
+        manualAddToCartMissingMerchandise.length === 0,
+        'error',
+        manualAddToCartMissingMerchandise.length === 0
+          ? 'Manual add-to-cart product lists include Shopify merchandise IDs where needed.'
+          : `${manualAddToCartMissingMerchandise.length} manual add-to-cart product list section(s) are missing merchandise or variant GIDs.`
+      ),
+      buildCheck(
+        'checkout_collection_add_to_cart_probe_ready',
+        collectionAddToCartSections.length === 0 || collectionProbe.ok,
+        collectionProbe.attempted ? 'error' : 'warning',
+        collectionAddToCartSections.length === 0
+          ? 'No collection-fed add-to-cart product lists require product hydration.'
+          : collectionProbe.ok
+            ? 'Collection-fed add-to-cart product lists resolved product cards for runtime buttons.'
+            : 'Collection-fed add-to-cart product lists need a successful product hydration probe before launch.'
+      ),
+      buildCheck(
+        'checkout_cart_related_runtime_dependent',
+        cartRelatedSections.length === 0,
+        'warning',
+        cartRelatedSections.length === 0
+          ? 'No cart-related product lists depend on live cart contents.'
+          : `${cartRelatedSections.length} cart-related product list section(s) depend on the shopper cart and can render empty for empty carts.`
+      ),
       ...(uiDiagnostics.checklist || []),
     ];
     const summary = summarizeChecks(checklist, getTypeLabel('checkout'));
@@ -697,6 +818,11 @@ async function buildCheckoutExperienceReadiness({
           actionable_variant_count: actionableVariants.length,
           renderable_section_count: totalRenderableSections,
           normalized_variant_count: variants.length,
+          collection_probe: collectionProbe,
+          product_list_section_count: productListSections.length,
+          cart_related_section_count: cartRelatedSections.length,
+          collection_add_to_cart_section_count: collectionAddToCartSections.length,
+          manual_add_to_cart_missing_merchandise_count: manualAddToCartMissingMerchandise.length,
         },
       },
     };

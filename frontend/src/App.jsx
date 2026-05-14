@@ -708,7 +708,14 @@ function AppContent() {
     !shouldHideChromeForPublicPath &&
     !isAdminRoute &&
     isAppDomainRoute;
-  const showAssistantWidget = showTopBar && !isAdminRoute;
+  const isCreateTestFlowRoute =
+    location.pathname === ROUTES.CREATE_TEST ||
+    /^\/app\/[^/]+\/tests\/new\/?$/.test(location.pathname);
+  const isTestDetailFlowRoute =
+    /^\/tests\/(?!new(?:\/|$))[^/]+(?:\/.*)?$/.test(location.pathname) ||
+    /^\/app\/[^/]+\/tests\/(?!new(?:\/|$))[^/]+(?:\/.*)?$/.test(location.pathname);
+  const shouldHideAssistantWidget = isCreateTestFlowRoute || isTestDetailFlowRoute;
+  const showAssistantWidget = showTopBar && !isAdminRoute && !shouldHideAssistantWidget;
   const shouldRaiseAssistantWidget =
     location.pathname === ROUTES.DASHBOARD || /^\/app\/[^/]+\/?$/.test(location.pathname);
   const appTestDetailMatch =

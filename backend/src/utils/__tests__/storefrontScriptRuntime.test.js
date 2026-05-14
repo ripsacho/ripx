@@ -9,6 +9,7 @@ const {
   buildStorefrontRuntimeConfig,
   getHeatmapCollectionRuntimeConfig,
   getStorefrontScriptCacheControl,
+  buildEarlyStorefrontAntiFlickerBootstrap,
 } = require('../storefrontScriptRuntime');
 
 describe('storefrontScriptRuntime', () => {
@@ -145,6 +146,42 @@ describe('storefrontScriptRuntime', () => {
     expect(normalizeTargetTypeForStorefront(row)).toBe('all-products');
     const mapped = mapTestToStorefrontPayload(row);
     expect(mapped.targetType).toBe('all-products');
+  });
+
+  it('maps price surface mappings from segments', () => {
+    const mapped = mapTestToStorefrontPayload({
+      id: 't-price-surfaces',
+      type: 'price',
+      target_type: 'product',
+      target_id: 'gid://shopify/Product/1',
+      target_ids: null,
+      segments: {
+        price_surface_mappings: [
+          { surface: 'pdp', role: 'regular', selector: '.product__price' },
+          { selector: '' },
+        ],
+      },
+    });
+    expect(mapped.priceSurfaceMappings).toEqual([
+      expect.objectContaining({
+        surface: 'pdp',
+        role: 'regular',
+        selector: '.product__price',
+      }),
+    ]);
+  });
+
+  it('embeds shop price surface mappings in runtime config', () => {
+    const req = {
+      protocol: 'https',
+      get: h => (h === 'host' ? 'api.example.com' : ''),
+    };
+    const cfg = buildStorefrontRuntimeConfig('s.myshopify.com', [], req, [], {
+      shopMappings: [{ surface: 'plp', role: 'regular', selector: '.money', priority: 1 }],
+    });
+    expect(cfg.priceSurfaceRegistry.shopMappings).toEqual([
+      expect.objectContaining({ surface: 'plp', role: 'regular', selector: '.money' }),
+    ]);
   });
 
   it('buildStorefrontRuntimeConfig uses req for fallback app URL', () => {
@@ -293,6 +330,20 @@ describe('storefrontScriptRuntime', () => {
         delete process.env.RIPX_SCRIPT_CACHE_MAX_AGE;
       }
     }
+  });
+
+  it('buildEarlyStorefrontAntiFlickerBootstrap injects hide snippet for price or strict tests', () => {
+    expect(buildEarlyStorefrontAntiFlickerBootstrap([])).toBe('');
+    expect(
+      buildEarlyStorefrontAntiFlickerBootstrap([
+        { id: 't1', type: 'content', antiFlickerMode: 'balanced' },
+      ])
+    ).toBe('');
+    const snippet = buildEarlyStorefrontAntiFlickerBootstrap([
+      { id: 't1', type: 'price', antiFlickerMode: 'balanced' },
+    ]);
+    expect(snippet).toContain('data-ripx-af');
+    expect(snippet).toContain('opacity:0');
   });
 
   it('keeps theme app embed script version aligned with backend runtime version', () => {

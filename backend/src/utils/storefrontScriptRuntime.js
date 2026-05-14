@@ -33,6 +33,8 @@ function normalizeTargetTypeForStorefront(test) {
   return '';
 }
 
+const { normalizePriceSurfaceMappings } = require('./priceSurfaceRegistry');
+
 function normalizeProductIdList(rawList) {
   const list = Array.isArray(rawList) ? rawList : [];
   const normalized = list
@@ -85,6 +87,7 @@ function mapTestToStorefrontPayload(test) {
       };
     })
     .filter(Boolean);
+  const priceSurfaceMappings = normalizePriceSurfaceMappings(test.segments?.price_surface_mappings);
   return {
     id: test.id,
     type: normalizeTestTypeForStorefront(test.type),
@@ -98,6 +101,7 @@ function mapTestToStorefrontPayload(test) {
     jsTargeting:
       jsTargeting?.enabled && jsTargeting?.code ? { enabled: true, code: jsTargeting.code } : null,
     goalEvents,
+    priceSurfaceMappings: priceSurfaceMappings.length > 0 ? priceSurfaceMappings : null,
   };
 }
 
@@ -157,11 +161,18 @@ function getHeatmapCollectionRuntimeConfig() {
  * @param {object[]} tests
  * @param {import('express').Request} req
  */
-function buildStorefrontRuntimeConfig(shop, tests, req, goalMetricDefinitions = []) {
+function buildStorefrontRuntimeConfig(
+  shop,
+  tests,
+  req,
+  goalMetricDefinitions = [],
+  priceSurfaceRegistry = {}
+) {
   const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
     /\/+$/,
     ''
   );
+  const shopMappings = normalizePriceSurfaceMappings(priceSurfaceRegistry.shopMappings);
 
   return {
     apiUrl: `${appUrl}/api`,
@@ -174,6 +185,10 @@ function buildStorefrontRuntimeConfig(shop, tests, req, goalMetricDefinitions = 
     goalMetricDefinitions: (goalMetricDefinitions || [])
       .map(mapGoalMetricDefinitionToRuntime)
       .filter(Boolean),
+    priceSurfaceRegistry: {
+      version: 1,
+      shopMappings,
+    },
   };
 }
 
@@ -189,9 +204,48 @@ function getStorefrontScriptCacheControl() {
   return `public, max-age=${maxAge}, must-revalidate`;
 }
 
+function shouldBootstrapAntiFlickerForTests(activeTests) {
+  if (!Array.isArray(activeTests) || activeTests.length === 0) {
+    return false;
+  }
+  return activeTests.some(test => {
+    if (!test || typeof test !== 'object') {
+      return false;
+    }
+    const mode = String(test.antiFlickerMode || '')
+      .toLowerCase()
+      .trim();
+    if (mode === 'strict') {
+      return true;
+    }
+    const type = normalizeTestTypeForStorefront(test.type);
+    return type === 'price';
+  });
+}
+
+/**
+ * Synchronous snippet injected before the main storefront script so anti-flicker can hide the page
+ * before the deferred runtime executes.
+ * @param {object[]} activeTests
+ * @returns {string}
+ */
+function buildEarlyStorefrontAntiFlickerBootstrap(activeTests) {
+  if (!shouldBootstrapAntiFlickerForTests(activeTests)) {
+    return '';
+  }
+  return (
+    ';(function(){try{var h=document.documentElement;if(!h||h.getAttribute("data-ripx-af"))return;' +
+    'h.setAttribute("data-ripx-af","1");var id="ripx-anti-flicker-style";' +
+    'if(!document.getElementById(id)){var s=document.createElement("style");s.id=id;' +
+    's.textContent=\'html[data-ripx-af="1"] body{opacity:0 !important;}\';' +
+    '(document.head||h).appendChild(s);}}catch(_e){}})();\n'
+  );
+}
+
 module.exports = {
   SCRIPT_VERSION,
   buildStorefrontRuntimeConfig,
+  buildEarlyStorefrontAntiFlickerBootstrap,
   getStorefrontScriptCacheControl,
   getHeatmapCollectionRuntimeConfig,
   normalizeTestTypeForStorefront,

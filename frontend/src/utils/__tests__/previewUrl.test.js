@@ -5,6 +5,7 @@ import {
   buildShopifyPricePreviewBootstrapUrl,
   buildShopifyPreviewBootstrapUrl,
   buildPreviewUrl,
+  buildVisualPickerLaunchUrl,
   ensureShopifyPreviewBootstrapUrl,
   isShopifyPreviewUrl,
   stripPreviewDocumentSecretParams,
@@ -95,6 +96,41 @@ describe('previewUrl', () => {
     );
     expect(url.searchParams.get(PREVIEW_PARAMS.TENANT_DOMAIN)).toBe('echologyx.com');
     expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_EDITOR)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
+  });
+
+  it('builds visual picker launch URLs for saved and unsaved tests', () => {
+    const withTest = buildVisualPickerLaunchUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      apiBaseUrl: '/api',
+    });
+    const withTestUrl = new URL(withTest, 'https://app.example.com');
+    expect(withTestUrl.pathname).toBe('/api/track/preview-document');
+    expect(withTestUrl.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
+    expect(withTestUrl.searchParams.get(PREVIEW_PARAMS.TEST_ID)).toBe(
+      '1d1f39c4-4083-44f4-b046-1c341b88cc29'
+    );
+
+    const withoutTest = buildVisualPickerLaunchUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      apiBaseUrl: '/api',
+    });
+    const withoutTestUrl = new URL(withoutTest, 'https://app.example.com');
+    expect(withoutTestUrl.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
+    expect(withoutTestUrl.searchParams.get(PREVIEW_PARAMS.TEST_ID)).toBeNull();
+  });
+
+  it('adds price surface pick mode to visual picker launch URLs', () => {
+    const launchUrl = buildVisualPickerLaunchUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      apiBaseUrl: '/api',
+      priceSurfacePick: true,
+    });
+    const url = new URL(launchUrl, 'https://app.example.com');
+    expect(url.searchParams.get(PREVIEW_PARAMS.PRICE_SURFACE_PICK)).toBe('1');
     expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
   });
 

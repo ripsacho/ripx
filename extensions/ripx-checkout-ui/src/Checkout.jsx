@@ -1,7 +1,8 @@
 import '@shopify/ui-extensions/preact';
 import { h, render } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
+  useApplyCartLinesChange,
   useApplyDiscountCodeChange,
   useAttributes,
   useCartLines,
@@ -16,6 +17,28 @@ import {
   RIPX_CHECKOUT_UI_SHOP_DOMAIN,
   RIPX_CHECKOUT_UI_TEST_ID,
 } from './ripxConfig.generated';
+
+function safeCheckoutDocumentUrl() {
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.href) {
+      return String(window.location.href).trim().slice(0, 2000);
+    }
+  } catch (_) {
+    // ignore
+  }
+  return '';
+}
+
+function safeDocumentReferrer() {
+  try {
+    if (typeof document !== 'undefined' && document.referrer) {
+      return String(document.referrer).trim().slice(0, 2000);
+    }
+  } catch (_) {
+    // ignore
+  }
+  return '';
+}
 
 function normalizeShopDomain(input) {
   const raw = String(input || '')
@@ -310,7 +333,10 @@ function parseCheckoutProductItems(rawValue) {
   const rows = Array.isArray(rawValue) ? rawValue : [];
   return rows
     .map((item, index) => {
-      const source = item && typeof item === 'object' ? item : {};
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const source = item;
       const imageUrl = String(
         source.image_url || source.image || source.product_image_url || ''
       ).trim();
@@ -321,9 +347,14 @@ function parseCheckoutProductItems(rawValue) {
         source.compare_at_price || source.product_compare_at_price || ''
       ).trim();
       const badgeText = String(source.badge_text || source.product_badge_text || '').trim();
-      if (!source || typeof source !== 'object') {
-        return null;
-      }
+      const variantGid = String(
+        source.variant_gid || source.variant_id || source.variantGid || ''
+      ).trim();
+      const merchandiseId = String(
+        source.merchandise_id || source.merchandiseId || variantGid || ''
+      ).trim();
+      const quantity = Number.parseInt(String(source.quantity ?? '1').trim(), 10);
+      const rank = Number.parseInt(String(source.rank ?? index + 1).trim(), 10);
       return {
         id:
           String(source.id || '')
@@ -337,6 +368,26 @@ function parseCheckoutProductItems(rawValue) {
         price,
         compare_at_price: compareAtPrice,
         badge_text: badgeText,
+        product_gid: String(
+          source.product_gid || source.product_id || source.productGid || ''
+        ).trim(),
+        variant_gid: variantGid || merchandiseId,
+        merchandise_id: merchandiseId,
+        handle: String(source.handle || source.product_handle || '').trim(),
+        quantity: Number.isFinite(quantity) ? Math.min(10, Math.max(1, quantity)) : 1,
+        rank: Number.isFinite(rank) ? Math.max(1, rank) : index + 1,
+        action_label: String(source.action_label || source.cta_label || 'Add').trim(),
+        product_action: normalizeCheckoutProductAction(
+          source.product_action || source.checkout_product_action
+        ),
+        selection_strategy: normalizeCheckoutProductSelectionStrategy(
+          source.selection_strategy ||
+            source.strategy_key ||
+            source.checkout_product_selection_strategy
+        ),
+        exclude_cart_items: source.exclude_cart_items !== false,
+        fallback_mode: String(source.fallback_mode || 'hide_button').trim(),
+        analytics_key: normalizeCheckoutAnalyticsKey(source.analytics_key, `product_${index + 1}`),
       };
     })
     .filter(Boolean);
@@ -349,7 +400,10 @@ function hasRenderableCheckoutProductItem(item = {}) {
     item.subtitle ||
     item.price ||
     item.compare_at_price ||
-    item.badge_text
+    item.badge_text ||
+    item.merchandise_id ||
+    item.variant_gid ||
+    item.product_gid
   );
 }
 
@@ -391,12 +445,21 @@ function getCartRelatedCheckoutProductItems(lines, limit = 3) {
 
     const item = {
       id: dedupeKey,
+      product_gid: String(merchandise?.product?.id || '').trim(),
+      variant_gid: String(merchandise?.id || '').trim(),
+      merchandise_id: String(merchandise?.id || '').trim(),
       image_url: imageUrl,
       title,
       subtitle: variantTitle || (quantity > 1 ? `Qty ${quantity}` : ''),
       price: totalAmount ? `${totalAmount}${currencyCode ? ` ${currencyCode}` : ''}` : '',
       compare_at_price: '',
       badge_text: quantity > 1 ? `${quantity} in cart` : 'In cart',
+      quantity: Math.max(1, quantity || 1),
+      rank: items.length + 1,
+      action_label: 'Added',
+      product_action: 'display_only',
+      selection_strategy: 'cart_companion',
+      analytics_key: `cart_${items.length + 1}`,
     };
 
     if (!hasRenderableCheckoutProductItem(item)) {
@@ -460,6 +523,39 @@ function normalizeCheckoutProductDisplayLayout(rawLayout) {
     : 'stacked_cards';
 }
 
+function normalizeCheckoutAnalyticsKey(rawValue, fallback = '') {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  return normalized || fallback;
+}
+
+function normalizeCheckoutProductAction(rawValue) {
+  const value = String(rawValue || 'display_only')
+    .trim()
+    .toLowerCase();
+  return ['display_only', 'add_to_cart'].includes(value) ? value : 'display_only';
+}
+
+function normalizeCheckoutProductSelectionStrategy(rawValue) {
+  const value = String(rawValue || 'manual_upsell')
+    .trim()
+    .toLowerCase();
+  return [
+    'manual_upsell',
+    'cart_companion',
+    'collection_ordered',
+    'collection_bestseller',
+    'reassurance_bundle',
+    'display_only',
+  ].includes(value)
+    ? value
+    : 'manual_upsell';
+}
+
 function parseCheckoutProductSourceCollections(rawValue) {
   const rows = Array.isArray(rawValue) ? rawValue : [];
   return rows
@@ -517,6 +613,14 @@ function normalizeCheckoutSectionProps(rawSection = {}) {
     product_display_layout: normalizeCheckoutProductDisplayLayout(
       source.product_display_layout || source.checkout_product_display_layout
     ),
+    product_action: normalizeCheckoutProductAction(
+      source.product_action || source.checkout_product_action
+    ),
+    selection_strategy: normalizeCheckoutProductSelectionStrategy(
+      source.selection_strategy || source.strategy_key || source.checkout_product_selection_strategy
+    ),
+    exclude_cart_items: source.exclude_cart_items !== false,
+    fallback_mode: String(source.fallback_mode || 'hide_section').trim() || 'hide_section',
     product_source_collections: parseCheckoutProductSourceCollections(
       source.product_source_collections ||
         source.checkout_product_source_collections ||
@@ -556,6 +660,14 @@ function normalizeCheckoutSection(rawSection = {}, index = 0) {
     type,
     enabled: rawSection.enabled !== false,
     order: Number.isInteger(rawSection.order) ? rawSection.order : index,
+    strategy_key:
+      type === 'product_list'
+        ? normalizeCheckoutProductSelectionStrategy(
+            rawSection.strategy_key ||
+              rawSection.props?.strategy_key ||
+              rawSection.props?.selection_strategy
+          )
+        : '',
     props: normalizeCheckoutSectionProps(rawSection),
   };
 }
@@ -587,10 +699,26 @@ function inferCheckoutPhaseFromConfig(config = {}) {
   if (parseCheckoutFeatureBullets(config.delivery_method_names).length > 0) {
     return 'delivery_method';
   }
-  if (getCheckoutSections(config).length > 0) {
-    return 'experience';
-  }
   return 'experience';
+}
+
+function getProductActionKey(section, item, productIndex) {
+  return `${section?.id || 'section'}:${item?.id || `product-${productIndex}`}`;
+}
+
+function getCheckoutProductRowsForSection(section, cartLines = []) {
+  const props = section?.props || {};
+  const sourceMode = normalizeCheckoutProductSourceMode(props.product_source_mode);
+  const limit = normalizeCheckoutProductSourceLimit(props.product_source_limit);
+  const rows =
+    sourceMode === 'cart_related'
+      ? getCartRelatedCheckoutProductItems(cartLines, limit)
+      : parseCheckoutProductItems(props.product_items).filter(hasRenderableCheckoutProductItem);
+  return {
+    sourceMode,
+    limit,
+    rows: rows.slice(0, limit),
+  };
 }
 
 const CHECKOUT_EVENT_NAMES = {
@@ -605,12 +733,18 @@ const CHECKOUT_EVENT_NAMES = {
   sectionImpression: 'checkout_section_impression',
   sectionCtaClick: 'checkout_section_cta_click',
   sectionOfferApplied: 'checkout_section_offer_apply',
+  productImpression: 'checkout_product_impression',
+  productClick: 'checkout_product_click',
+  productAddAttempt: 'checkout_product_add_attempt',
+  productAddSuccess: 'checkout_product_add_success',
+  productAddFailed: 'checkout_product_add_failed',
 };
 
 function CheckoutExperiment() {
   const attributes = useAttributes() || [];
   const cartLines = useCartLines() || [];
   const checkoutToken = useCheckoutToken();
+  const applyCartLinesChange = useApplyCartLinesChange();
   const applyDiscountCodeChange = useApplyDiscountCodeChange();
   const discountCodes = useDiscountCodes();
   const shop = useShop();
@@ -623,6 +757,10 @@ function CheckoutExperiment() {
   const [applyingDiscountCode, setApplyingDiscountCode] = useState(false);
   const [discountCodeApplyError, setDiscountCodeApplyError] = useState('');
   const [autoApplyAttempted, setAutoApplyAttempted] = useState(false);
+  const [productActionState, setProductActionState] = useState({});
+  const conversionInFlightRef = useRef(false);
+  const productActionLocksRef = useRef({});
+  const productImpressionKeysRef = useRef(new Set());
 
   const shopDomain = useMemo(() => {
     const configured = normalizeShopDomain(RIPX_CHECKOUT_UI_SHOP_DOMAIN);
@@ -690,17 +828,19 @@ function CheckoutExperiment() {
 
   const trackConversion = useCallback(
     async (eventName, metadata = {}) => {
-      if (sendingConversion) {
+      if (conversionInFlightRef.current) {
         return;
       }
+      conversionInFlightRef.current = true;
       setSendingConversion(true);
       try {
         await sendCheckoutEvent(eventName, metadata);
       } finally {
+        conversionInFlightRef.current = false;
         setSendingConversion(false);
       }
     },
-    [sendingConversion, sendCheckoutEvent]
+    [sendCheckoutEvent]
   );
 
   const sendRuntimeDiagnostic = useCallback(
@@ -712,6 +852,101 @@ function CheckoutExperiment() {
       });
     },
     [sendCheckoutEvent]
+  );
+
+  const buildProductEventMetadata = useCallback(
+    (section, item, productIndex, extra = {}) => ({
+      variant_id: assignment?.variant_id || null,
+      checkout_phase: assignmentCheckoutPhase,
+      checkout_section_id: section?.id || null,
+      checkout_section_type: section?.type || null,
+      checkout_product_id: item?.product_gid || item?.id || null,
+      checkout_merchandise_id: item?.merchandise_id || item?.variant_gid || null,
+      checkout_product_rank: item?.rank || productIndex + 1,
+      checkout_product_source_mode: section?.props?.product_source_mode || 'manual',
+      checkout_product_strategy:
+        item?.selection_strategy ||
+        section?.props?.selection_strategy ||
+        section?.strategy_key ||
+        '',
+      checkout_product_action:
+        item?.product_action || section?.props?.product_action || 'display_only',
+      checkout_product_analytics_key: item?.analytics_key || '',
+      ...extra,
+    }),
+    [assignment?.variant_id, assignmentCheckoutPhase]
+  );
+
+  const applyProductCartLine = useCallback(
+    async (section, item, productIndex) => {
+      const merchandiseId = String(item?.merchandise_id || item?.variant_gid || '').trim();
+      const actionKey = getProductActionKey(section, item, productIndex);
+      const metadata = buildProductEventMetadata(section, item, productIndex);
+      if (!merchandiseId) {
+        void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productAddFailed, {
+          ...metadata,
+          checkout_product_failure_reason: 'missing_merchandise_id',
+        });
+        return;
+      }
+      if (typeof applyCartLinesChange !== 'function') {
+        void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productAddFailed, {
+          ...metadata,
+          checkout_product_failure_reason: 'cart_line_api_unavailable',
+        });
+        sendRuntimeDiagnostic('cart_line_api_unavailable', metadata);
+        return;
+      }
+      if (productActionLocksRef.current[actionKey]) {
+        return;
+      }
+      productActionLocksRef.current[actionKey] = true;
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productClick, metadata);
+      setProductActionState(current => ({
+        ...current,
+        [actionKey]: { loading: true, error: '' },
+      }));
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productAddAttempt, metadata);
+      try {
+        const result = await applyCartLinesChange({
+          type: 'addCartLine',
+          merchandiseId,
+          quantity: Number(item?.quantity) || 1,
+        });
+        if (result?.type === 'error') {
+          const message = String(result?.message || 'Could not add product to checkout.');
+          setProductActionState(current => ({
+            ...current,
+            [actionKey]: { loading: false, error: message },
+          }));
+          void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productAddFailed, {
+            ...metadata,
+            checkout_product_failure_reason: 'cart_line_add_failed',
+            error_message: message.slice(0, 180),
+          });
+          return;
+        }
+        setProductActionState(current => ({
+          ...current,
+          [actionKey]: { loading: false, error: '' },
+        }));
+        void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productAddSuccess, metadata);
+      } catch (e) {
+        const message = String(e?.message || 'Could not add product to checkout.');
+        setProductActionState(current => ({
+          ...current,
+          [actionKey]: { loading: false, error: message },
+        }));
+        void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productAddFailed, {
+          ...metadata,
+          checkout_product_failure_reason: 'cart_line_add_exception',
+          error_message: message.slice(0, 180),
+        });
+      } finally {
+        productActionLocksRef.current[actionKey] = false;
+      }
+    },
+    [applyCartLinesChange, buildProductEventMetadata, sendCheckoutEvent, sendRuntimeDiagnostic]
   );
 
   useEffect(() => {
@@ -748,6 +983,8 @@ function CheckoutExperiment() {
             test_id: testId,
             checkout_id: checkoutId,
             assignment_variant: assignmentVariantFromLines || undefined,
+            current_url: safeCheckoutDocumentUrl() || undefined,
+            referrer: safeDocumentReferrer() || undefined,
           }),
         });
         const payload = await response.json().catch(() => null);
@@ -852,6 +1089,64 @@ function CheckoutExperiment() {
     sendRuntimeDiagnostic,
   ]);
 
+  useEffect(() => {
+    setImpressionTracked(false);
+    productImpressionKeysRef.current = new Set();
+    setProductActionState({});
+  }, [assignment?.variant_id, checkoutId, testId]);
+
+  useEffect(() => {
+    if (!assignment || assignmentCheckoutPhase !== 'experience') {
+      return;
+    }
+    const sections =
+      assignment?.config && typeof assignment.config === 'object'
+        ? getCheckoutSections(assignment.config).filter(
+            section => section?.type === 'product_list' && hasRenderableCheckoutSection(section)
+          )
+        : [];
+    sections.forEach(section => {
+      const props = section.props || {};
+      const { sourceMode, rows } = getCheckoutProductRowsForSection(section, cartLines);
+      if (
+        sourceMode === 'collection' &&
+        props.product_source_collections?.length &&
+        rows.length === 0
+      ) {
+        sendRuntimeDiagnostic('collection_products_not_hydrated', {
+          variant_id: assignment?.variant_id || null,
+          checkout_phase: assignmentCheckoutPhase,
+          checkout_section_id: section.id || null,
+          checkout_section_type: section.type || null,
+        });
+      }
+      rows.forEach((item, productIndex) => {
+        const metadata = buildProductEventMetadata(section, item, productIndex, {
+          checkout_product_source_mode: sourceMode,
+        });
+        const impressionKey = [
+          assignment?.variant_id || '',
+          section.id || '',
+          metadata.checkout_product_id || '',
+          metadata.checkout_merchandise_id || '',
+          metadata.checkout_product_rank || productIndex + 1,
+        ].join(':');
+        if (productImpressionKeysRef.current.has(impressionKey)) {
+          return;
+        }
+        productImpressionKeysRef.current.add(impressionKey);
+        void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.productImpression, metadata);
+      });
+    });
+  }, [
+    assignment,
+    assignmentCheckoutPhase,
+    cartLines,
+    buildProductEventMetadata,
+    sendCheckoutEvent,
+    sendRuntimeDiagnostic,
+  ]);
+
   const cfg =
     assignment && assignment.config && typeof assignment.config === 'object'
       ? assignment.config
@@ -868,11 +1163,15 @@ function CheckoutExperiment() {
   );
   const discountCodeName = resolvedOfferCode.codeName;
   const offerCodeSourceLabel = resolvedOfferCode.sourceLabel;
-  const checkoutSections = getCheckoutSections(cfg);
+  const checkoutSections = getCheckoutSections(cfg).filter(section =>
+    hasRenderableCheckoutSection(section)
+  );
   const primarySection =
     checkoutSections.find(section => hasRenderableCheckoutSection(section)) ||
     checkoutSections[0] ||
     null;
+  const offerSection =
+    checkoutSections.find(section => section?.type === 'offer_code_panel') || primarySection;
   const checkoutPhase = assignmentCheckoutPhase;
   const activeDiscountCodes = useMemo(() => {
     const rows = Array.isArray(discountCodes)
@@ -966,19 +1265,24 @@ function CheckoutExperiment() {
           discount_code: discountCodeName,
           checkout_phase: checkoutPhase,
         });
-        if (primarySection) {
+        if (offerSection) {
           void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.sectionOfferApplied, {
             variant_id: assignment?.variant_id || null,
             discount_code: discountCodeName,
             checkout_phase: checkoutPhase,
-            checkout_section_id: primarySection.id || null,
-            checkout_section_type: primarySection.type || null,
+            checkout_section_id: offerSection.id || null,
+            checkout_section_type: offerSection.type || null,
           });
         }
       } catch (e) {
-        setDiscountCodeApplyError(
-          String(e?.message || 'Could not apply discount code at checkout.')
-        );
+        const message = String(e?.message || 'Could not apply discount code at checkout.');
+        setDiscountCodeApplyError(message);
+        sendRuntimeDiagnostic('discount_code_apply_exception', {
+          variant_id: assignment?.variant_id || null,
+          checkout_phase: checkoutPhase,
+          discount_code: discountCodeName,
+          error_message: message.slice(0, 180),
+        });
       } finally {
         setApplyingDiscountCode(false);
       }
@@ -990,7 +1294,7 @@ function CheckoutExperiment() {
       discountCodeName,
       hasDiscountCodeApplied,
       hasOfferConfig,
-      primarySection,
+      offerSection,
       sendCheckoutEvent,
       sendRuntimeDiagnostic,
     ]
@@ -1047,7 +1351,7 @@ function CheckoutExperiment() {
   return h(
     's-stack',
     { direction: 'block', gap: 'tight' },
-    ...(checkoutSections.length > 0 ? checkoutSections : [null]).map((section, sectionIndex) => {
+    ...checkoutSections.map((section, sectionIndex) => {
       const props = section?.props || {};
       const title =
         String(props.title || '').trim() ||
@@ -1075,10 +1379,33 @@ function CheckoutExperiment() {
       const isOfferSection =
         hasOfferConfig &&
         ((section && section.type === 'offer_code_panel') ||
-          (primarySection && section?.id === primarySection.id) ||
+          (offerSection && section?.id === offerSection.id) ||
           (!section && sectionIndex === 0));
       const renderProductItem = (item, productIndex) => {
         const key = item.id || `product-${productIndex}`;
+        const actionKey = getProductActionKey(section, item, productIndex);
+        const actionState = productActionState[actionKey] || {};
+        const sectionProductAction = String(props.product_action || 'display_only').toLowerCase();
+        const itemProductAction =
+          sectionProductAction === 'add_to_cart'
+            ? 'add_to_cart'
+            : String(item.product_action || sectionProductAction).toLowerCase();
+        const canAddProduct =
+          section?.type === 'product_list' &&
+          itemProductAction === 'add_to_cart' &&
+          Boolean(item.merchandise_id || item.variant_gid);
+        const productActionButton = canAddProduct
+          ? h(
+              's-button',
+              {
+                key: 'product-action',
+                variant: 'secondary',
+                loading: Boolean(actionState.loading),
+                onClick: () => void applyProductCartLine(section, item, productIndex),
+              },
+              item.action_label || 'Add'
+            )
+          : null;
         if (productDisplayLayout === 'comparison_table') {
           return h(
             's-stack',
@@ -1093,7 +1420,9 @@ function CheckoutExperiment() {
                     .filter(Boolean)
                     .join(' / ')
                 )
-              : null
+              : null,
+            productActionButton,
+            actionState.error ? h('s-text', { key: 'error' }, actionState.error) : null
           );
         }
         return h(
@@ -1125,7 +1454,9 @@ function CheckoutExperiment() {
                   .filter(Boolean)
                   .join(' • ')
               )
-            : null
+            : null,
+          productActionButton,
+          actionState.error ? h('s-text', { key: 'error' }, actionState.error) : null
         );
       };
       const children = [
@@ -1162,7 +1493,7 @@ function CheckoutExperiment() {
                 direction: productDisplayLayout === 'two_column_grid' ? 'inline' : 'block',
                 gap: 'tight',
               },
-              ...productItems.map(renderProductItem)
+              ...productItems.slice(0, productSourceLimit).map(renderProductItem)
             )
           : null,
         props.disclaimer ? h('s-text', { key: 'disclaimer' }, props.disclaimer) : null,

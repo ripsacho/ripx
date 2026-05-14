@@ -4,6 +4,41 @@
  * Normalizes and validates targeting segment data for AB tests.
  */
 
+const { normalizePriceSurfaceMappings } = require('./priceSurfaceRegistry');
+
+/** Values the wizard + storefront can persist on `segments.traffic_source` (keep aligned with TestWizard AUDIENCE_SOURCE_OPTIONS + legacy buckets). */
+const AUDIENCE_TRAFFIC_SOURCE_VALUES = new Set([
+  'all',
+  'direct',
+  'email',
+  'referral',
+  'organic_social',
+  'paid_social',
+  'organic_search',
+  'paid_search',
+  'paid_shopping',
+  'sms',
+  'google',
+  'facebook',
+  'instagram',
+  'tiktok',
+  'twitter',
+  'youtube',
+  'organic',
+  'paid',
+  'social',
+]);
+
+const AUDIENCE_OPERATING_SYSTEM_VALUES = new Set([
+  'all',
+  'windows',
+  'macos',
+  'ios',
+  'android',
+  'linux',
+  'other',
+]);
+
 /**
  * Normalize segments object for storage
  *
@@ -44,6 +79,12 @@ function normalizeSegments(segments) {
 
   const device = segments.device ? String(segments.device).toLowerCase() : 'all';
   const customer = segments.customer ? String(segments.customer).toLowerCase() : 'all';
+  let operatingSystem = segments.operating_system
+    ? String(segments.operating_system).toLowerCase()
+    : 'all';
+  if (!AUDIENCE_OPERATING_SYSTEM_VALUES.has(operatingSystem)) {
+    operatingSystem = 'all';
+  }
   let countries = segments.countries;
 
   if (typeof countries === 'string') {
@@ -57,14 +98,17 @@ function normalizeSegments(segments) {
     countries = [];
   }
 
-  const result = { device, customer, countries };
+  const result = { device, customer, countries, operating_system: operatingSystem };
   const excludedProductIds = normalizeProductIds(segments.excluded_product_ids);
   if (excludedProductIds.length > 0) {
     result.excluded_product_ids = excludedProductIds;
   }
 
   if (segments.traffic_source && typeof segments.traffic_source === 'string') {
-    result.traffic_source = segments.traffic_source.toLowerCase();
+    const ts = segments.traffic_source.toLowerCase();
+    if (AUDIENCE_TRAFFIC_SOURCE_VALUES.has(ts)) {
+      result.traffic_source = ts;
+    }
   }
   if (segments.url_pattern && typeof segments.url_pattern === 'string') {
     result.url_pattern = segments.url_pattern.trim() || null;
@@ -79,9 +123,104 @@ function normalizeSegments(segments) {
   }
 
   if (Array.isArray(segments.custom_rules) && segments.custom_rules.length > 0) {
-    result.custom_rules = segments.custom_rules.filter(
-      r => r && typeof r.field === 'string' && r.value != null // eslint-disable-line eqeqeq
-    );
+    const VALID_CUSTOM_RULE_FIELDS = new Set([
+      'utm_source',
+      'utm_medium',
+      'current_url',
+      'referrer',
+      'device',
+      'country',
+      'traffic_source',
+      'operating_system',
+    ]);
+    const VALID_CUSTOM_RULE_OPERATORS = new Set(['equals', 'contains', 'regex', 'in']);
+    const normalizeCustomRule = r => {
+      const field = String(r.field || '').toLowerCase();
+      const operator = String(r.operator || 'equals').toLowerCase();
+      const normalizedOperator = VALID_CUSTOM_RULE_OPERATORS.has(operator) ? operator : 'equals';
+      let value = r.value;
+      if (normalizedOperator === 'in') {
+        value = Array.isArray(value)
+          ? value.map(item => String(item || '').trim()).filter(Boolean)
+          : String(value || '')
+              .split(',')
+              .map(item => item.trim())
+              .filter(Boolean);
+      } else if (Array.isArray(value)) {
+        value = value
+          .map(item => String(item || '').trim())
+          .filter(Boolean)
+          .join(', ');
+      } else {
+        value = String(value ?? '').trim();
+      }
+      return {
+        field: VALID_CUSTOM_RULE_FIELDS.has(field) ? field : 'utm_source',
+        operator: normalizedOperator,
+        value,
+      };
+    };
+    result.custom_rules = segments.custom_rules
+      .filter(
+        r => r && typeof r.field === 'string' && r.value != null // eslint-disable-line eqeqeq
+      )
+      .map(normalizeCustomRule)
+      .filter(r => (Array.isArray(r.value) ? r.value.length > 0 : String(r.value).trim() !== ''));
+  }
+
+  if (Array.isArray(segments.custom_rule_groups) && segments.custom_rule_groups.length > 0) {
+    const VALID_CUSTOM_RULE_FIELDS = new Set([
+      'utm_source',
+      'utm_medium',
+      'current_url',
+      'referrer',
+      'device',
+      'country',
+      'traffic_source',
+      'operating_system',
+    ]);
+    const VALID_CUSTOM_RULE_OPERATORS = new Set(['equals', 'contains', 'regex', 'in']);
+    const normalizeCustomRule = r => {
+      const field = String(r.field || '').toLowerCase();
+      const operator = String(r.operator || 'equals').toLowerCase();
+      const normalizedOperator = VALID_CUSTOM_RULE_OPERATORS.has(operator) ? operator : 'equals';
+      let value = r.value;
+      if (normalizedOperator === 'in') {
+        value = Array.isArray(value)
+          ? value.map(item => String(item || '').trim()).filter(Boolean)
+          : String(value || '')
+              .split(',')
+              .map(item => item.trim())
+              .filter(Boolean);
+      } else if (Array.isArray(value)) {
+        value = value
+          .map(item => String(item || '').trim())
+          .filter(Boolean)
+          .join(', ');
+      } else {
+        value = String(value ?? '').trim();
+      }
+      return {
+        field: VALID_CUSTOM_RULE_FIELDS.has(field) ? field : 'utm_source',
+        operator: normalizedOperator,
+        value,
+      };
+    };
+    result.custom_rule_groups = segments.custom_rule_groups
+      .filter(group => group && typeof group === 'object' && Array.isArray(group.rules))
+      .map(group => {
+        const match = String(group.match || 'all').toLowerCase() === 'any' ? 'any' : 'all';
+        const rules = group.rules
+          .filter(
+            r => r && typeof r.field === 'string' && r.value != null // eslint-disable-line eqeqeq
+          )
+          .map(normalizeCustomRule)
+          .filter(r =>
+            Array.isArray(r.value) ? r.value.length > 0 : String(r.value).trim() !== ''
+          );
+        return rules.length > 0 ? { match, rules } : null;
+      })
+      .filter(Boolean);
   }
 
   // Page rules: multiple include/exclude URL patterns with match_type
@@ -192,6 +331,13 @@ function normalizeSegments(segments) {
     result.visual_editor_selector = segments.visual_editor_selector.trim();
   }
 
+  const normalizedPriceSurfaceMappings = normalizePriceSurfaceMappings(
+    segments.price_surface_mappings
+  ).slice(0, 25);
+  if (normalizedPriceSurfaceMappings.length > 0) {
+    result.price_surface_mappings = normalizedPriceSurfaceMappings;
+  }
+
   const MAX_VISUAL_EDITOR_RULES = 5;
   const POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
   const MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_attr', 'set_style'];
@@ -252,4 +398,6 @@ function normalizeSegments(segments) {
 
 module.exports = {
   normalizeSegments,
+  AUDIENCE_TRAFFIC_SOURCE_VALUES,
+  AUDIENCE_OPERATING_SYSTEM_VALUES,
 };

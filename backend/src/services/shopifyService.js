@@ -587,7 +587,7 @@ class ShopifyService {
    * @param {string} accessToken - Access token
    * @param {string[]} collectionIds - Shopify collection GIDs
    * @param {number} [first] - Max product cards to return
-   * @returns {Promise<Array<{id: string, image_url: string, title: string, subtitle: string, price: string, compare_at_price: string, badge_text: string}>>}
+   * @returns {Promise<Array<{id: string, product_gid: string, merchandise_id: string, image_url: string, title: string, subtitle: string, price: string, compare_at_price: string, badge_text: string}>>}
    */
   async listCollectionProducts(shopDomain, accessToken, collectionIds = [], first = 3) {
     const ids = Array.isArray(collectionIds)
@@ -620,6 +620,7 @@ class ShopifyService {
                   variants(first: 1) {
                     edges {
                       node {
+                        id
                         title
                         price
                         compareAtPrice
@@ -661,8 +662,13 @@ class ShopifyService {
           }
           const firstVariant = product?.variants?.edges?.[0]?.node || {};
           const variantTitle = String(firstVariant.title || '').trim();
+          const variantId = String(firstVariant.id || '').trim();
           items.push({
             id: productId,
+            product_gid: productId,
+            variant_gid: variantId,
+            merchandise_id: variantId,
+            handle: String(product?.handle || '').trim(),
             image_url: String(product?.featuredImage?.url || '').trim(),
             title: String(product?.title || '').trim(),
             subtitle:
@@ -672,6 +678,14 @@ class ShopifyService {
             price: String(firstVariant.price || '').trim(),
             compare_at_price: String(firstVariant.compareAtPrice || '').trim(),
             badge_text: collectionTitle,
+            quantity: 1,
+            rank: items.length + 1,
+            action_label: 'Add',
+            product_action: variantId ? 'add_to_cart' : 'display_only',
+            selection_strategy: 'collection_ordered',
+            exclude_cart_items: true,
+            fallback_mode: 'hide_button',
+            analytics_key: `collection_${items.length + 1}`,
           });
           seen.add(productId);
           if (items.length >= limit) {

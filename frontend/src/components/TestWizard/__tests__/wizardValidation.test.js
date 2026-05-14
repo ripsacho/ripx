@@ -1,4 +1,8 @@
-import { getWizardStepErrors } from '../wizardValidation';
+import {
+  getWizardStepErrors,
+  partitionTargetingStepErrors,
+  getTargetingCoachHints,
+} from '../wizardValidation';
 import { getStepIds } from '../testWizardConfig';
 
 describe('wizardValidation', () => {
@@ -130,6 +134,22 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
         });
         expect(errors).toContain('Enable COGS to use Profit per visitor (PPV).');
+      });
+
+      it('rejects a secondary business metric that matches the primary metric', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.goal, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            name: 'Test',
+            goal: { metric: 'revenue', secondary_metric: 'revenue' },
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain(
+          'Secondary metric must be different from the primary winner metric.'
+        );
       });
 
       it('validates duplicate and malformed secondary event goals', () => {
@@ -264,6 +284,56 @@ describe('wizardValidation', () => {
           'Traffic ramp days must be between 1 and 30 when ramp % is enabled.'
         );
       });
+
+      it('partitionTargetingStepErrors maps known targeting errors to sections', () => {
+        const parts = partitionTargetingStepErrors([
+          'Target ID is required for the selected target type.',
+          'Holdout percent must be between 0 and 50.',
+          'Traffic ramp percent must be between 0 and 100.',
+          'Targeting has selected products that are also excluded. Remove overlaps before starting.',
+          'Some unexpected validation string',
+        ]);
+        expect(parts.page).toHaveLength(2);
+        expect(parts.holdout).toHaveLength(1);
+        expect(parts.advanced).toHaveLength(1);
+        expect(parts.unmapped).toEqual(['Some unexpected validation string']);
+      });
+
+      it('getTargetingCoachHints surfaces holdout guidance when holdout is zero', () => {
+        const hints = getTargetingCoachHints({
+          formData: { holdout_percent: 0, segments: {} },
+          isStandalone: false,
+          isCheckoutTestType: false,
+          maxHints: 5,
+        });
+        expect(hints.some(h => h.section === 'holdout')).toBe(true);
+      });
+
+      it('getTargetingCoachHints surfaces checkout holdout guidance', () => {
+        const hints = getTargetingCoachHints({
+          formData: { holdout_percent: 0, segments: {} },
+          isStandalone: false,
+          isCheckoutTestType: true,
+          maxHints: 5,
+        });
+        expect(
+          hints.some(h => h.section === 'holdout' && h.message.includes('Checkout holdout'))
+        ).toBe(true);
+      });
+
+      it('getTargetingCoachHints surfaces commerce product scope guidance', () => {
+        const hints = getTargetingCoachHints({
+          formData: { holdout_percent: 10, segments: {} },
+          isStandalone: false,
+          isCheckoutTestType: false,
+          targetingScopeFixedForCommerce: true,
+          selectedScopeProductCount: 0,
+          maxHints: 5,
+        });
+        expect(
+          hints.some(h => h.section === 'page' && h.message.includes('selected products'))
+        ).toBe(true);
+      });
     });
 
     describe('traffic step', () => {
@@ -371,6 +441,33 @@ describe('wizardValidation', () => {
         });
         expect(errors.some(e => e.includes('Native Variant Price'))).toBe(false);
         expect(errors.some(e => e.includes('Discounted Checkout Price'))).toBe(false);
+      });
+
+      it('returns error when price surface mappings contain duplicate selectors', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            target_type: 'all',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: 10 } },
+              { name: 'Variant A', allocation: 50, config: { priceMode: 'fixed', price: 12 } },
+            ],
+            segments: {
+              price_surface_mappings: [
+                { surface: 'pdp', role: 'regular', selector: '.product__price' },
+                { surface: 'pdp', role: 'regular', selector: '.product__price' },
+              ],
+            },
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+          cssValidationErrors: [],
+          jsValidationErrors: [],
+        });
+        expect(errors.some(error => error.includes('duplicates'))).toBe(true);
       });
 
       it('returns error when cssValidationErrors is non-empty', () => {
@@ -1224,6 +1321,109 @@ describe('wizardValidation', () => {
         });
 
         expect(errors.some(e => e.includes('enabled checkout section'))).toBe(true);
+      });
+
+      it('rejects manual add-to-cart product lists without a merchandise or variant GID', () => {
+        const errors = getWizardStepErrors(stepIdsNoTemplate.code, {
+          stepIds: stepIdsNoTemplate,
+          reviewStepId: 5,
+          formData: {
+            type: 'checkout',
+            goal: { checkout_phase: 'experience' },
+            variants: [
+              { name: 'Control', allocation: 50, config: {} },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  checkout_sections: [
+                    {
+                      type: 'product_list',
+                      enabled: true,
+                      props: {
+                        title: 'Recommended add-ons',
+                        product_action: 'add_to_cart',
+                        product_source_mode: 'manual',
+                        product_items: [{ title: 'Gift wrap' }],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: false,
+          selectedTemplate: 'checkout',
+        });
+
+        expect(errors.some(e => e.includes('merchandise or variant GID'))).toBe(true);
+      });
+
+      it('runs checkout validation on the review step', () => {
+        const errors = getWizardStepErrors(5, {
+          stepIds: stepIdsNoTemplate,
+          reviewStepId: 5,
+          formData: {
+            name: 'Checkout Review Test',
+            type: 'checkout',
+            goal: {
+              metric: 'conversion_rate',
+              checkout_phase: 'delivery_method',
+            },
+            variants: [
+              { name: 'Control', allocation: 50, config: {} },
+              { name: 'Variant A', allocation: 50, config: { delivery_action: 'hide' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: false,
+          selectedTemplate: 'checkout',
+        });
+
+        expect(errors.some(e => e.includes('delivery method'))).toBe(true);
+      });
+
+      it('rejects invalid checkout studio enum and collection GID values before coercion', () => {
+        const errors = getWizardStepErrors(stepIdsNoTemplate.code, {
+          stepIds: stepIdsNoTemplate,
+          reviewStepId: 5,
+          formData: {
+            type: 'checkout',
+            goal: { checkout_phase: 'experience' },
+            variants: [
+              { name: 'Control', allocation: 50, config: {} },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  checkout_sections: [
+                    {
+                      type: 'product_list',
+                      enabled: true,
+                      props: {
+                        title: 'Recommended add-ons',
+                        tone: 'loud',
+                        layout: 'floating',
+                        cta_kind: 'launch',
+                        product_source_mode: 'collection',
+                        product_source_collections: [{ id: 'not-a-gid' }],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: false,
+          selectedTemplate: 'checkout',
+        });
+
+        expect(errors.some(e => e.includes('tone must be success'))).toBe(true);
+        expect(errors.some(e => e.includes('layout must be banner'))).toBe(true);
+        expect(errors.some(e => e.includes('CTA behavior must be'))).toBe(true);
+        expect(errors.some(e => e.includes('must be a Shopify Collection GID'))).toBe(true);
       });
 
       it('goal step uses stepIds.goal (3)', () => {

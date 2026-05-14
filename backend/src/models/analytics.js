@@ -5,6 +5,9 @@
  */
 
 const { query } = require('../utils/database');
+const logger = require('../utils/logger');
+
+const CHECKOUT_EVENT_NAME_PREFIX = 'checkout_';
 
 function normalizeShopDomain(value) {
   return String(value || '')
@@ -44,6 +47,24 @@ function buildFunnelTransitions(steps = [], byVariant = {}, semantics = {}) {
     });
   });
   return transitionsByVariant;
+}
+
+function buildCustomEventTypeCondition(safeNames = []) {
+  const includesCheckoutEvents = safeNames.some(eventName =>
+    String(eventName || '').startsWith(CHECKOUT_EVENT_NAME_PREFIX)
+  );
+  if (!includesCheckoutEvents) {
+    return "e.event_type = 'custom'";
+  }
+  return `(e.event_type = 'custom' OR (e.event_type = 'conversion' AND ${buildCheckoutEventNamePrefixCondition('e')}))`;
+}
+
+function buildCheckoutEventNamePrefixCondition(alias = 'e') {
+  return `LEFT(${alias}.event_name, ${CHECKOUT_EVENT_NAME_PREFIX.length}) = '${CHECKOUT_EVENT_NAME_PREFIX}'`;
+}
+
+function buildPrimaryConversionCondition(alias = 'e') {
+  return `(${alias}.event_name IS NULL OR NOT (${buildCheckoutEventNamePrefixCondition(alias)}))`;
 }
 
 class AnalyticsModel {
@@ -220,6 +241,7 @@ class AnalyticsModel {
       WHERE e.test_id = $1 
         AND LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))
         AND e.event_type = 'conversion'
+        AND ${buildPrimaryConversionCondition('e')}
         ${convExtra}
       GROUP BY e.variant_id
     `;
@@ -345,7 +367,7 @@ class AnalyticsModel {
     const conditions = [
       'e.test_id = $1',
       'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
-      "e.event_type = 'custom'",
+      buildCustomEventTypeCondition(safeNames),
       'e.event_name = ANY($3::text[])',
     ];
     let joinClause = '';
@@ -432,7 +454,7 @@ class AnalyticsModel {
     const conditions = [
       'e.test_id = $1',
       'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
-      "e.event_type = 'custom'",
+      buildCustomEventTypeCondition(safeNames),
       'e.event_name = ANY($3::text[])',
     ];
     const joinClause =
@@ -564,6 +586,123 @@ class AnalyticsModel {
     }
 
     return result;
+  }
+
+  /**
+   * Get checkout-specific event breakdowns from normalized metadata.
+   *
+   * @param {string} testId - Test ID
+   * @param {string} shopDomain - Shop domain
+   * @param {Object} options - Optional filters: { device, country, start_date, end_date }
+   * @returns {Promise<Array>} Checkout event rows grouped by event, variant, section, and action metadata
+   */
+  async getCheckoutEventBreakdown(testId, shopDomain, options = {}) {
+    const params = [testId, normalizeShopDomain(shopDomain)];
+    const conditions = [
+      'e.test_id = $1',
+      'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
+      buildCheckoutEventNamePrefixCondition('e'),
+      "(e.event_type = 'custom' OR e.event_type = 'conversion')",
+    ];
+    const joinClause =
+      'LEFT JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id';
+
+    if (options.device) {
+      conditions.push(`ta.device = $${params.length + 1}`);
+      params.push(options.device);
+    }
+    if (options.country) {
+      conditions.push(`ta.country = $${params.length + 1}`);
+      params.push(options.country);
+    }
+    if (options.start_date) {
+      conditions.push(`e.created_at >= $${params.length + 1}`);
+      params.push(options.start_date);
+    }
+    if (options.end_date) {
+      conditions.push(`e.created_at < $${params.length + 1}`);
+      params.push(options.end_date);
+    }
+
+    const sql = `
+      SELECT
+        e.event_name,
+        e.variant_id,
+        COALESCE(NULLIF(e.metadata->>'checkout_phase', ''), 'experience') AS checkout_phase,
+        NULLIF(e.metadata->>'checkout_section_id', '') AS checkout_section_id,
+        NULLIF(e.metadata->>'checkout_section_type', '') AS checkout_section_type,
+        NULLIF(e.metadata->>'diagnostic_reason', '') AS diagnostic_reason,
+        NULLIF(e.metadata->>'checkout_customization_type', '') AS checkout_customization_type,
+        NULLIF(e.metadata->>'checkout_method_action', '') AS checkout_method_action,
+        NULLIF(e.metadata->>'checkout_product_id', '') AS checkout_product_id,
+        NULLIF(e.metadata->>'checkout_merchandise_id', '') AS checkout_merchandise_id,
+        NULLIF(e.metadata->>'checkout_product_source_mode', '') AS checkout_product_source_mode,
+        NULLIF(e.metadata->>'checkout_product_strategy', '') AS checkout_product_strategy,
+        NULLIF(e.metadata->>'checkout_product_action', '') AS checkout_product_action,
+        NULLIF(e.metadata->>'checkout_product_failure_reason', '') AS checkout_product_failure_reason,
+        NULLIF(e.metadata->>'checkout_product_analytics_key', '') AS checkout_product_analytics_key,
+        NULLIF(e.metadata->>'checkout_product_rank', '') AS checkout_product_rank,
+        COUNT(*)::integer AS total_events,
+        COUNT(DISTINCT e.user_id)::integer AS unique_users,
+        COALESCE(SUM(e.event_value), 0)::float AS sum,
+        MIN(e.created_at) AS first_seen,
+        MAX(e.created_at) AS last_seen
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY
+        e.event_name,
+        e.variant_id,
+        checkout_phase,
+        checkout_section_id,
+        checkout_section_type,
+        diagnostic_reason,
+        checkout_customization_type,
+        checkout_method_action,
+        checkout_product_id,
+        checkout_merchandise_id,
+        checkout_product_source_mode,
+        checkout_product_strategy,
+        checkout_product_action,
+        checkout_product_failure_reason,
+        checkout_product_analytics_key,
+        checkout_product_rank
+      ORDER BY total_events DESC, e.event_name ASC
+    `;
+
+    try {
+      const result = await query(sql, params);
+      return result.rows.map(row => ({
+        eventName: row.event_name,
+        variantId: row.variant_id,
+        checkoutPhase: row.checkout_phase || 'experience',
+        checkoutSectionId: row.checkout_section_id || null,
+        checkoutSectionType: row.checkout_section_type || null,
+        diagnosticReason: row.diagnostic_reason || null,
+        checkoutCustomizationType: row.checkout_customization_type || null,
+        checkoutMethodAction: row.checkout_method_action || null,
+        checkoutProductId: row.checkout_product_id || null,
+        checkoutMerchandiseId: row.checkout_merchandise_id || null,
+        checkoutProductSourceMode: row.checkout_product_source_mode || null,
+        checkoutProductStrategy: row.checkout_product_strategy || null,
+        checkoutProductAction: row.checkout_product_action || null,
+        checkoutProductFailureReason: row.checkout_product_failure_reason || null,
+        checkoutProductAnalyticsKey: row.checkout_product_analytics_key || null,
+        checkoutProductRank: parseInt(row.checkout_product_rank, 10) || null,
+        totalEvents: parseInt(row.total_events, 10) || 0,
+        uniqueUsers: parseInt(row.unique_users, 10) || 0,
+        sum: parseFloat(row.sum) || 0,
+        firstSeen: row.first_seen || null,
+        lastSeen: row.last_seen || null,
+      }));
+    } catch (error) {
+      logger.warn('Checkout event breakdown query failed', {
+        testId,
+        shopDomain: normalizeShopDomain(shopDomain),
+        error: error?.message || String(error),
+      });
+      return [];
+    }
   }
 
   /**
@@ -713,11 +852,14 @@ class AnalyticsModel {
           `e.created_at >= ${timestampFloor}`,
         ];
         if (step.type === 'event') {
-          conditions.push("e.event_type = 'custom'");
+          conditions.push(
+            buildCustomEventTypeCondition([normalizeAnalyticsEventName(step.event_name)])
+          );
           conditions.push(`e.event_name = $${idx}`);
           idx += 1;
         } else {
           conditions.push("e.event_type = 'conversion'");
+          conditions.push(buildPrimaryConversionCondition('e'));
         }
         if (start_date) {
           conditions.push(`e.created_at >= $${idx}`);
@@ -821,7 +963,7 @@ class AnalyticsModel {
       const cond = [
         'e.test_id = $1',
         'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
-        "e.event_type = 'custom'",
+        buildCustomEventTypeCondition([normalizeAnalyticsEventName(step.event_name)]),
         'e.event_name = $3',
       ];
       if (device) {
@@ -856,6 +998,7 @@ class AnalyticsModel {
         'e.test_id = $1',
         'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
         "e.event_type = 'conversion'",
+        buildPrimaryConversionCondition('e'),
       ];
       if (device) {
         cond.push(`ta.device = $${p.length + 1}`);
@@ -1118,6 +1261,7 @@ class AnalyticsModel {
       'e.test_id = $1',
       'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
       "e.event_type = 'conversion'",
+      buildPrimaryConversionCondition('e'),
     ];
     if (options.device) {
       params.push(options.device);
@@ -1238,6 +1382,7 @@ class AnalyticsModel {
       WHERE LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($1))
         AND e.test_id IN (${placeholders})
         AND e.event_type = 'conversion'
+        AND ${buildPrimaryConversionCondition('e')}
       GROUP BY e.test_id, e.variant_id
     `;
 
@@ -1315,6 +1460,8 @@ module.exports = {
     model.getSecondaryEventMetrics(testId, shop, names, opts),
   getEventCollectionStats: (testId, shop, names, opts) =>
     model.getEventCollectionStats(testId, shop, names, opts),
+  getCheckoutEventBreakdown: (testId, shop, opts) =>
+    model.getCheckoutEventBreakdown(testId, shop, opts),
   getFunnelMetrics: (testId, shop, opts) => model.getFunnelMetrics(testId, shop, opts),
   getEventsList: (testId, shop, opts) => model.getEventsList(testId, shop, opts),
   getEventTypesForTest: (testId, shop, opts) => model.getEventTypesForTest(testId, shop, opts),
