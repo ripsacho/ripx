@@ -1025,6 +1025,7 @@ function AppContent() {
         style={{
           marginLeft: showSidebar ? effectiveSidebarWidth : 0,
           width: showSidebar ? `calc(100% - ${effectiveSidebarWidth}px)` : '100%',
+          ['--ripx-app-sidebar-width']: showSidebar ? `${effectiveSidebarWidth}px` : '0px',
           transition:
             'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           minHeight: location.pathname === ROUTES.SUPPORT ? undefined : '100vh',

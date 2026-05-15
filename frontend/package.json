@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "copy:storefront": "node -e \"require('fs').copyFileSync(require('path').join(__dirname,'..','shopify','storefront-script.js'), require('path').join(__dirname,'public','ripx-storefront.js'))\"",
+    "copy:storefront": "node -e \"const fs=require('fs');const path=require('path');const src=path.join(__dirname,'..','shopify','storefront-script.js');const targets=[path.join(__dirname,'public','ripx-storefront.js'),path.join(__dirname,'dist','ripx-storefront.js')];targets.forEach(t=>{fs.mkdirSync(path.dirname(t),{recursive:true});fs.copyFileSync(src,t);});\"",
     "predev": "npm run copy:storefront",
     "dev": "vite",
     "build": "vite build",

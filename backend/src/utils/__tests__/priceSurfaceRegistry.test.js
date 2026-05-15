@@ -1,6 +1,7 @@
 const {
   normalizePriceSurfaceMappings,
   resolvePriceSurfaceSelectors,
+  buildPriceSurfaceReadinessSummary,
 } = require('../priceSurfaceRegistry');
 
 describe('priceSurfaceRegistry', () => {
@@ -41,5 +42,21 @@ describe('priceSurfaceRegistry', () => {
       shopMappings: [{ surface: 'pdp', role: 'regular', selector: '.pdp-price', priority: 1 }],
     });
     expect(selectors).toEqual(['.global-price', '.pdp-price']);
+  });
+
+  it('summarizes storefront readiness gaps for checkout and wizard', () => {
+    const blocked = buildPriceSurfaceReadinessSummary([], []);
+    expect(blocked.status).toBe('blocked');
+    expect(blocked.highSeverityGapCount).toBeGreaterThan(0);
+
+    const ready = buildPriceSurfaceReadinessSummary(
+      [{ surface: 'pdp', role: 'regular', selector: '.product__price' }],
+      [
+        { surface: 'plp', role: 'regular', selector: '.card__price' },
+        { surface: 'cart', role: 'regular', selector: '.cart-item__price' },
+        { surface: 'search', role: 'regular', selector: '.card__price' },
+      ]
+    );
+    expect(ready.status).toBe('ready');
   });
 });

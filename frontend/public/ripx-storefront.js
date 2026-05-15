@@ -474,6 +474,20 @@
       },
       schedules: schedules,
       byScope: byScope,
+      parity: {
+        checked: Number(_ripxPaintParityAudit.checked) || 0,
+        ok: Number(_ripxPaintParityAudit.ok) || 0,
+        mismatchCount: Array.isArray(_ripxPaintParityAudit.mismatches)
+          ? _ripxPaintParityAudit.mismatches.length
+          : 0,
+        updatedAtMs:
+          _ripxPaintParityAudit.updatedAt != null
+            ? Number(_ripxPaintParityAudit.updatedAt) || null
+            : null,
+        mismatches: Array.isArray(_ripxPaintParityAudit.mismatches)
+          ? _ripxPaintParityAudit.mismatches.slice(0, RIPX_PAINT_PARITY_MAX_ISSUES)
+          : [],
+      },
     };
   }
 
@@ -567,6 +581,51 @@
       return nested !== null && nested !== undefined && nested !== '' ? nested : direct;
     } catch (_ePreviewParam) {
       return direct;
+    }
+  }
+  function getEffectivePreviewPathname() {
+    try {
+      var nestedTarget = URL_PARAMS.get('url') || '';
+      if (nestedTarget) {
+        var parsedTarget = new URL(nestedTarget, window.location.origin);
+        var nestedPath = String(parsedTarget.pathname || '').toLowerCase();
+        if (nestedPath) return nestedPath;
+      }
+    } catch (_eNestedPath) {}
+    return String(window.location.pathname || '').toLowerCase();
+  }
+  function inferPriceSurfaceFromPathname(pathname) {
+    var path = String(pathname || '')
+      .trim()
+      .toLowerCase();
+    if (!path) return 'home';
+    if (path.indexOf('/products/') !== -1) return 'pdp';
+    if (path.indexOf('/collections/') !== -1) return 'plp';
+    if (path.indexOf('/cart') !== -1) return 'cart';
+    if (path.indexOf('/search') !== -1) return 'search';
+    if (path === '/' || path === '') return 'home';
+    if (path.indexOf('/pages/') !== -1) return 'home';
+    return null;
+  }
+  function getListingPriceSurfaceKeys() {
+    var primary = inferPriceSurfaceFromPathname(getEffectivePreviewPathname());
+    if (primary === 'plp') return ['plp', 'recommendation', 'global'];
+    if (primary === 'search') return ['search', 'recommendation', 'global'];
+    if (primary === 'home') return ['home', 'recommendation', 'global'];
+    if (primary === 'pdp') return ['pdp', 'quickview', 'recommendation', 'global'];
+    if (primary === 'cart') return ['cart', 'global'];
+    return ['plp', 'search', 'home', 'recommendation', 'global'];
+  }
+  function getPriceSurfaceHintFromHref(href) {
+    try {
+      var parsed = new URL(String(href || window.location.href || ''), window.location.origin);
+      var nestedTarget = parsed.searchParams.get('url') || '';
+      if (nestedTarget) {
+        parsed = new URL(nestedTarget, window.location.origin);
+      }
+      return inferPriceSurfaceFromPathname(parsed.pathname);
+    } catch (_eSurfaceHint) {
+      return null;
     }
   }
   const PREVIEW_RESET_SESSION = getPreviewParam('ab_preview_reset') === '1';
@@ -728,6 +787,10 @@
     (persistedPreview && persistedPreview.preview ? persistedPreview.tenantDomain : null) ||
     (windowNamePreview && windowNamePreview.preview ? windowNamePreview.tenantDomain : null) ||
     null;
+  const EMBEDDED_PREVIEW_VARIANT =
+    CONFIG.previewVariant && typeof CONFIG.previewVariant === 'object'
+      ? CONFIG.previewVariant
+      : null;
 
   // True only when a concrete preview context is active (target test id or runtime preview flag).
   const PREVIEW_TEST_CONTEXT = !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
@@ -1163,10 +1226,10 @@
   }
   seedPreviewCartAttributesEarly();
 
-  const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
-  const PRICE_SURFACE_PICK_MODE = URL_PARAMS.get('ab_price_surface_pick') === '1';
+  const VISUAL_PICKER_MODE = getPreviewParam('ab_visual_picker') === '1';
+  const PRICE_SURFACE_PICK_MODE = getPreviewParam('ab_price_surface_pick') === '1';
   const AB_VISUAL_EDITOR =
-    URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
+    getPreviewParam('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
   const IN_IFRAME = typeof window.parent !== 'undefined' && window.self !== window.top;
   const HAS_VISUAL_PICKER_OPENER = (function () {
     try {
@@ -1403,8 +1466,16 @@
   var _previewVariantCacheByTestId = {};
   var _ripxInitStarted = false;
   var _ripxPreviewStabilityTimer = null;
+  function getPreviewVariantScopeKey() {
+    return [String(PREVIEW_VARIANT_ID || ''), String(PREVIEW_VARIANT_NAME || '')].join('\u0001');
+  }
   function getPreviewVariantCacheStorageKey(testId) {
-    return 'ripx_preview_variant_cache_' + String(testId || '');
+    return (
+      'ripx_preview_variant_cache_v2_' +
+      String(testId || '') +
+      '__' +
+      encodeURIComponent(getPreviewVariantScopeKey())
+    );
   }
   function writePreviewVariantCache(testId, variant) {
     if (!variant || !variant.config || typeof variant.config !== 'object') return;
@@ -1471,6 +1542,13 @@
   var _ripxTargetUnitByVariantId = {};
   var _ripxDiscountUnitByVariantId = {};
   var _ripxPriceMethodByVariantId = {};
+  var _ripxAssignedPriceByProductId = {};
+  var _ripxAssignedPriceByVariantId = {};
+  var _ripxPaintParityAudit = { checked: 0, ok: 0, mismatches: [], updatedAt: 0 };
+  var _ripxPaintParityPublishTimer = null;
+  var RIPX_PAINT_PARITY_TOLERANCE = 0.02;
+  var RIPX_PAINT_PARITY_MAX_ISSUES = 12;
+  var RIPX_PAINT_PARITY_PUBLISH_MS = 120;
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
@@ -1786,7 +1864,7 @@
   }
 
   function isPdpProductPath() {
-    var path = String((window.location && window.location.pathname) || '').toLowerCase();
+    var path = getEffectivePreviewPathname();
     return path.indexOf('/products/') !== -1 && path.length > '/products/'.length + 1;
   }
 
@@ -1853,6 +1931,42 @@
     return true;
   }
 
+  function previewQueryMatchesVariantLabel(query, variant) {
+    if (!variant || typeof variant !== 'object') return false;
+    var q = String(query || '').trim();
+    if (!q) return false;
+    var variantId =
+      variant.variantId != null
+        ? String(variant.variantId).trim()
+        : variant.id != null
+          ? String(variant.id).trim()
+          : '';
+    var variantName = variant.variantName != null ? String(variant.variantName).trim() : '';
+    if (variant.name != null && !variantName) variantName = String(variant.name).trim();
+    if (variantId && variantId === q) return true;
+    if (variantName && variantName.toLowerCase() === q.toLowerCase()) return true;
+    return false;
+  }
+
+  function getEmbeddedPreviewVariant(testId) {
+    if (!EMBEDDED_PREVIEW_VARIANT || String(testId) !== String(PREVIEW_TEST_ID)) return null;
+    if (
+      PREVIEW_VARIANT_ID &&
+      !previewQueryMatchesVariantLabel(PREVIEW_VARIANT_ID, EMBEDDED_PREVIEW_VARIANT)
+    ) {
+      return null;
+    }
+    if (
+      PREVIEW_VARIANT_NAME &&
+      !previewQueryMatchesVariantLabel(PREVIEW_VARIANT_NAME, EMBEDDED_PREVIEW_VARIANT)
+    ) {
+      return null;
+    }
+    return normalizeVariantForStorefront(
+      Object.assign({}, EMBEDDED_PREVIEW_VARIANT, { isPreview: true })
+    );
+  }
+
   /**
    * Get variant for a test
    */
@@ -1864,6 +1978,10 @@
       return null;
     }
     if (STRICT_PREVIEW_TEST_MODE && PREVIEW_TEST_ID === String(testId)) {
+      var embeddedPreviewVariant = getEmbeddedPreviewVariant(testId);
+      if (embeddedPreviewVariant) {
+        return embeddedPreviewVariant;
+      }
       const previewVariant = await getPreviewVariantSingleFlight(testId);
       if (previewVariant) {
         return normalizeVariantForStorefront({
@@ -4523,6 +4641,175 @@
     return _ripxTargetUnitByVariantId[String(vid)] || '';
   }
 
+  function registerRipxAssignedPrice(record) {
+    if (!record || record.testId == null) return;
+    var targetUnit = Number(record.targetUnit);
+    if (!isFinite(targetUnit)) return;
+    var entry = {
+      testId: String(record.testId),
+      display: record.display != null ? String(record.display) : '',
+      targetUnit: targetUnit,
+      variantIdForCart:
+        record.variantIdForCart != null && String(record.variantIdForCart).trim() !== ''
+          ? String(record.variantIdForCart)
+          : '',
+      updatedAt: Date.now(),
+    };
+    var pid = toNumericProductId(record.productId);
+    if (pid) {
+      _ripxAssignedPriceByProductId[String(pid)] = entry;
+      rememberRipxTargetUnitForProduct(pid, targetUnit);
+    }
+    var vid = normalizeCartVariantId(record.variantId);
+    if (vid) {
+      _ripxAssignedPriceByVariantId[String(vid)] = entry;
+      rememberRipxTargetUnitForVariant(vid, targetUnit);
+    }
+    if (record.variantIdForCart != null && String(record.variantIdForCart).trim() !== '') {
+      rememberRipxTargetUnitForVariant(record.variantIdForCart, targetUnit);
+    }
+  }
+
+  function getRipxAssignedPriceForContext(productId, variantId) {
+    var vid = normalizeCartVariantId(variantId);
+    if (vid && _ripxAssignedPriceByVariantId[String(vid)]) {
+      return _ripxAssignedPriceByVariantId[String(vid)];
+    }
+    var pid = toNumericProductId(productId);
+    if (pid && _ripxAssignedPriceByProductId[String(pid)]) {
+      return _ripxAssignedPriceByProductId[String(pid)];
+    }
+    return null;
+  }
+
+  function compareRipxPaintParity(targetUnit, displayedAmount, tolerance) {
+    var target = Number(targetUnit);
+    var shown = Number(displayedAmount);
+    var tol =
+      tolerance != null && isFinite(Number(tolerance))
+        ? Number(tolerance)
+        : RIPX_PAINT_PARITY_TOLERANCE;
+    if (!isFinite(target) || !isFinite(shown)) {
+      return { ok: false, reason: 'missing_amount' };
+    }
+    if (Math.abs(shown - target) <= tol) {
+      return { ok: true, delta: 0, targetUnit: target, displayedAmount: shown };
+    }
+    return {
+      ok: false,
+      reason: 'mismatch',
+      delta: Math.round((shown - target) * 100) / 100,
+      targetUnit: target,
+      displayedAmount: shown,
+    };
+  }
+
+  function recordRipxPricePaintParity(testId, el, targetUnit, scope) {
+    if (!el || targetUnit == null || !isFinite(Number(targetUnit))) return;
+    var shown = parsePriceFromDisplay(el);
+    var parity = compareRipxPaintParity(targetUnit, shown);
+    if (parity.ok) return;
+    if (!Array.isArray(_ripxPaintParityAudit.mismatches)) {
+      _ripxPaintParityAudit.mismatches = [];
+    }
+    if (_ripxPaintParityAudit.mismatches.length >= RIPX_PAINT_PARITY_MAX_ISSUES) return;
+    _ripxPaintParityAudit.mismatches.push({
+      testId: testId != null ? String(testId) : null,
+      scope: scope || 'unknown',
+      targetUnit: parity.targetUnit,
+      displayedAmount: parity.displayedAmount,
+      delta: parity.delta,
+      reason: parity.reason || 'mismatch',
+    });
+    _ripxPaintParityAudit.updatedAt = Date.now();
+    scheduleRipxPreviewPaintParityPublish();
+  }
+
+  function scheduleRipxPreviewPaintParityPublish() {
+    if (!PREVIEW_MODE) return;
+    if (_ripxPaintParityPublishTimer) {
+      clearTimeout(_ripxPaintParityPublishTimer);
+    }
+    _ripxPaintParityPublishTimer = setTimeout(function () {
+      _ripxPaintParityPublishTimer = null;
+      publishRipxPreviewPaintParity(_ripxPaintParityAudit);
+    }, RIPX_PAINT_PARITY_PUBLISH_MS);
+  }
+
+  function auditRipxPaintParityStampedNodes() {
+    var checked = 0;
+    var ok = 0;
+    var mismatches = [];
+    try {
+      document.querySelectorAll('[data-ripx-price="1"]').forEach(function (el) {
+        if (!el) return;
+        var variantId = el.getAttribute('data-test-variant');
+        var targetStr = getRememberedRipxTargetUnitForVariantId(variantId);
+        if (!targetStr && el.closest) {
+          var holder = el.closest('[data-product-id]');
+          if (holder) {
+            targetStr = getRememberedRipxTargetUnitForProductId(
+              holder.getAttribute('data-product-id')
+            );
+          }
+        }
+        if (!targetStr) return;
+        checked += 1;
+        var shown = parsePriceFromDisplay(el);
+        var parity = compareRipxPaintParity(Number(targetStr), shown);
+        if (parity.ok) {
+          ok += 1;
+          return;
+        }
+        if (mismatches.length < RIPX_PAINT_PARITY_MAX_ISSUES) {
+          mismatches.push({
+            testId: el.getAttribute('data-test-id'),
+            scope: 'audit',
+            targetUnit: parity.targetUnit,
+            displayedAmount: parity.displayedAmount,
+            delta: parity.delta,
+            reason: parity.reason || 'mismatch',
+          });
+        }
+      });
+    } catch (eAudit) {}
+    _ripxPaintParityAudit = {
+      checked: checked,
+      ok: ok,
+      mismatches: mismatches,
+      updatedAt: Date.now(),
+    };
+    if (_ripxPaintParityPublishTimer) {
+      clearTimeout(_ripxPaintParityPublishTimer);
+      _ripxPaintParityPublishTimer = null;
+    }
+    publishRipxPreviewPaintParity(_ripxPaintParityAudit);
+    return _ripxPaintParityAudit;
+  }
+
+  function publishRipxPreviewPaintParity(audit) {
+    if (!PREVIEW_MODE || !audit) return;
+    var payload = {
+      type: 'ripx-price-paint-parity',
+      source: 'ripx-storefront',
+      paintParity: {
+        checked: Number(audit.checked) || 0,
+        ok: Number(audit.ok) || 0,
+        mismatches: Array.isArray(audit.mismatches) ? audit.mismatches.slice(0, 12) : [],
+      },
+    };
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, '*');
+      }
+    } catch (eParent) {}
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(payload, '*');
+      }
+    } catch (eOpener) {}
+  }
+
   function rememberRipxDiscountUnitForProduct(productId, discountUnit) {
     var pid = toNumericProductId(productId);
     var num = Number(discountUnit);
@@ -5560,6 +5847,15 @@
     var display = formatShopPrice(priceNum);
     if (!display) return;
 
+    registerRipxAssignedPrice({
+      testId: testId,
+      productId: productId,
+      variantId: currentPdpVariantId,
+      variantIdForCart: variantIdForCart,
+      targetUnit: priceNum,
+      display: display,
+    });
+
     var currentDisplay = display;
 
     function recomputeDisplay() {
@@ -5636,6 +5932,8 @@
     var activeTest = getActiveTestById(testId);
     appendConfiguredRegistrySelectors(specificSelectors, 'pdp', 'regular', activeTest);
     appendConfiguredRegistrySelectors(specificSelectors, 'pdp', 'compare_at', activeTest);
+    appendConfiguredRegistrySelectors(specificSelectors, 'quickview', 'regular', activeTest);
+    appendConfiguredRegistrySelectors(specificSelectors, 'quickview', 'compare_at', activeTest);
     if (pid) {
       specificSelectors.push(
         '.product-price[data-product-id="' + pid + '"]',
@@ -5740,6 +6038,7 @@
           attrWrites += 1;
         }
         recordRipxPaintEvent('pdp', textWrites, attrWrites);
+        recordRipxPricePaintParity(testId, el, priceNum, 'pdp');
       }
       specificSelectors.forEach(function (sel) {
         try {
@@ -5909,7 +6208,7 @@
     return catalog;
   }
 
-  function paintPriceNode(el, display, testId, variantIdForCart, scope) {
+  function paintPriceNode(el, display, testId, variantIdForCart, scope, targetUnit) {
     if (!el || !display) return;
     var textWrites = 0;
     var attrWrites = 0;
@@ -5934,6 +6233,9 @@
       attrWrites += 1;
     }
     recordRipxPaintEvent(scope || 'listing', textWrites, attrWrites);
+    if (targetUnit != null && isFinite(Number(targetUnit))) {
+      recordRipxPricePaintParity(testId, el, Number(targetUnit), scope || 'listing');
+    }
   }
 
   function getConfiguredShopPriceSurfaceMappings() {
@@ -5950,6 +6252,14 @@
       if (targetList.indexOf(sel) === -1) {
         targetList.push(sel);
       }
+    });
+  }
+
+  function appendConfiguredRegistrySelectorsForSurfaces(targetList, surfaces, roles, test) {
+    (surfaces || []).forEach(function (surface) {
+      (roles || ['regular']).forEach(function (role) {
+        appendConfiguredRegistrySelectors(targetList, surface, role, test);
+      });
     });
   }
 
@@ -6136,7 +6446,8 @@
             display,
             testId,
             variantIdForCart,
-            scope === 'cart' ? 'cart_global_fallback' : 'listing_global_fallback'
+            scope === 'cart' ? 'cart_global_fallback' : 'listing_global_fallback',
+            adjusted
           );
         });
       } catch (e) {}
@@ -6278,6 +6589,14 @@
         if (cardVariantId) {
           rememberRipxTargetUnitForVariant(cardVariantId, cardPriceNum);
         }
+        registerRipxAssignedPrice({
+          testId: testId,
+          productId: pid,
+          variantId: cardVariantId,
+          variantIdForCart: variantIdForCart,
+          targetUnit: cardPriceNum,
+          display: cardDisplay,
+        });
         if (checkoutMethodProof && checkoutMethodProof.applicationMethod) {
           rememberRipxPriceMethodForProduct(pid, checkoutMethodProof.applicationMethod);
           if (cardVariantId) {
@@ -6288,19 +6607,30 @@
           '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
         );
         var registrySelectors = [];
-        appendConfiguredRegistrySelectors(registrySelectors, 'plp', 'regular', activeTest);
-        appendConfiguredRegistrySelectors(registrySelectors, 'plp', 'compare_at', activeTest);
+        appendConfiguredRegistrySelectorsForSurfaces(
+          registrySelectors,
+          getListingPriceSurfaceKeys(),
+          ['regular', 'compare_at'],
+          activeTest
+        );
         registrySelectors.forEach(function (sel) {
           try {
             card.querySelectorAll(sel).forEach(function (el) {
               if (!el || inCartUi(el)) return;
-              paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards');
+              paintPriceNode(
+                el,
+                cardDisplay,
+                testId,
+                variantIdForCart,
+                'listing_cards',
+                cardPriceNum
+              );
             });
           } catch (eRegistry) {}
         });
         priceEls.forEach(function (el) {
           if (!el || inCartUi(el)) return;
-          paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards');
+          paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards', cardPriceNum);
         });
       });
     });
@@ -6412,6 +6742,14 @@
       if (cardVariantId) {
         rememberRipxTargetUnitForVariant(cardVariantId, cardPriceNum);
       }
+      registerRipxAssignedPrice({
+        testId: testId,
+        productId: pid,
+        variantId: cardVariantId,
+        variantIdForCart: variantIdForCart,
+        targetUnit: cardPriceNum,
+        display: cardDisplay,
+      });
       if (checkoutMethodProof && checkoutMethodProof.applicationMethod) {
         rememberRipxPriceMethodForProduct(pid, checkoutMethodProof.applicationMethod);
         if (cardVariantId) {
@@ -6421,9 +6759,31 @@
       var priceEls = card.querySelectorAll(
         '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
       );
+      var registrySelectors = [];
+      appendConfiguredRegistrySelectorsForSurfaces(
+        registrySelectors,
+        getListingPriceSurfaceKeys(),
+        ['regular', 'compare_at'],
+        activeTest
+      );
+      registrySelectors.forEach(function (sel) {
+        try {
+          card.querySelectorAll(sel).forEach(function (el) {
+            if (!el || inCartUi(el)) return;
+            paintPriceNode(
+              el,
+              cardDisplay,
+              testId,
+              variantIdForCart,
+              'collection_cards',
+              cardPriceNum
+            );
+          });
+        } catch (eRegistryCollection) {}
+      });
       priceEls.forEach(function (el) {
         if (!el || inCartUi(el)) return;
-        paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'collection_cards');
+        paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'collection_cards', cardPriceNum);
       });
     });
     applyRipxStateToCartForms(null);
@@ -6434,6 +6794,70 @@
     if (!excludedProductIds.length) {
       schedulePaintAllProductsGlobalPrices(testId, variant, 'listing');
     }
+  }
+
+  function applyPriceTestOnAssignedVariant(test, variant) {
+    if (!test || !variant) return;
+    if (!testTypeIsPrice(test)) return;
+    if (!variant.config) {
+      injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
+      return;
+    }
+    var tt = getNormalizedTargetType(test);
+    var productScope = isProductScopeTargetType(tt);
+    var matched = matchesTarget(test);
+    if (!matched && PREVIEW_TEST_CONTEXT && productScope) {
+      var pathM = getEffectivePreviewPathname();
+      if (pathM.indexOf('/products/') !== -1 && pathM.length > '/products/'.length + 1) {
+        matched = true;
+      } else if (isProductListingSurface() || isCartSurface()) {
+        matched = true;
+      }
+    }
+    var tids =
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+    var curProductId = getCurrentProductId();
+    var pdpProductMatch =
+      productScope &&
+      matched &&
+      curProductId &&
+      (tt === 'all-products' ||
+        tt === 'all_products' ||
+        (tids.length &&
+          tids.some(function (id) {
+            return id && gidMatches(id, curProductId);
+          })));
+    var pdpCollectionMatch =
+      tt === 'collection' &&
+      curProductId &&
+      tids.length &&
+      productBelongsToPriceTestCollections(tids);
+    if (pdpProductMatch || pdpCollectionMatch) {
+      applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
+    }
+    if (!(tids.length || tt === 'all-products' || tt === 'all_products')) return;
+    if (tt === 'product' && isProductListingSurface()) {
+      applyPriceTestToProductCards(test.id, variant, tids);
+    } else if ((tt === 'all-products' || tt === 'all_products') && isProductListingSurface()) {
+      applyPriceTestToCollectionListingCards(test.id, variant);
+    } else if (tt === 'collection' && matched && isProductListingSurface()) {
+      applyPriceTestToCollectionListingCards(test.id, variant);
+    }
+    if (tt === 'product') {
+      applyPriceTestToCart(test.id, variant, tids);
+    } else if (tt === 'all-products' || tt === 'all_products') {
+      var cartTids = getCartVisibleProductTargetIds();
+      if (cartTids.length) {
+        applyPriceTestToCart(test.id, variant, cartTids);
+      } else if (shouldRunAllProductsCartFallback()) {
+        if (hasByProductOverrides(variant.config)) {
+          applyPriceTestToCartAllProductsByCartState(test.id, variant);
+        } else {
+          applyPriceTestToCartAllProductsFallback(test.id, variant);
+        }
+      }
+    }
+    auditRipxPaintParityStampedNodes();
   }
 
   /**
@@ -6482,31 +6906,11 @@
     var registryCartSelectors = [];
     appendConfiguredRegistrySelectors(registryCartSelectors, 'cart', 'cart_line', activeTest);
     appendConfiguredRegistrySelectors(registryCartSelectors, 'cart', 'regular', activeTest);
-    function paintCartRow(row, rowDisplay, skipIfPainted) {
+    function paintCartRow(row, rowDisplay, rowTargetUnit, skipIfPainted) {
       registryCartSelectors.forEach(function (sel) {
         try {
           row.querySelectorAll(sel).forEach(function (el) {
-            var textWrites = 0;
-            var attrWrites = 0;
-            if (el.textContent !== rowDisplay) {
-              el.textContent = rowDisplay;
-              textWrites += 1;
-            }
-            var variantStr = String(variantIdForCart);
-            if (el.getAttribute('data-test-variant') !== variantStr) {
-              el.setAttribute('data-test-variant', variantStr);
-              attrWrites += 1;
-            }
-            var testStr = String(testId);
-            if (el.getAttribute('data-test-id') !== testStr) {
-              el.setAttribute('data-test-id', testStr);
-              attrWrites += 1;
-            }
-            if (el.getAttribute('data-ripx-price') !== '1') {
-              el.setAttribute('data-ripx-price', '1');
-              attrWrites += 1;
-            }
-            recordRipxPaintEvent('cart', textWrites, attrWrites);
+            paintPriceNode(el, rowDisplay, testId, variantIdForCart, 'cart', rowTargetUnit);
           });
         } catch (_eRegistryCart) {}
       });
@@ -6521,27 +6925,7 @@
           return;
       }
       priceEls.forEach(function (el) {
-        var textWrites = 0;
-        var attrWrites = 0;
-        if (el.textContent !== rowDisplay) {
-          el.textContent = rowDisplay;
-          textWrites += 1;
-        }
-        var variantStr = String(variantIdForCart);
-        if (el.getAttribute('data-test-variant') !== variantStr) {
-          el.setAttribute('data-test-variant', variantStr);
-          attrWrites += 1;
-        }
-        var testStr = String(testId);
-        if (el.getAttribute('data-test-id') !== testStr) {
-          el.setAttribute('data-test-id', testStr);
-          attrWrites += 1;
-        }
-        if (el.getAttribute('data-ripx-price') !== '1') {
-          el.setAttribute('data-ripx-price', '1');
-          attrWrites += 1;
-        }
-        recordRipxPaintEvent('cart', textWrites, attrWrites);
+        paintPriceNode(el, rowDisplay, testId, variantIdForCart, 'cart', rowTargetUnit);
       });
     }
     filteredTargetIds.forEach(function (targetId) {
@@ -6583,6 +6967,7 @@
               row.querySelector('[data-product-id]').getAttribute('data-product-id'));
           if (!linePid || toNumericProductId(linePid) !== pid) return;
           var rowDisplay = display || formatShopPrice(0);
+          var rowTargetUnit = priceNum;
           var priceEls = row.querySelectorAll(cartPriceSelectors);
           if (priceMode !== 'fixed' && priceEls.length) {
             var catalog = parsePriceFromDisplay(priceEls[0]);
@@ -6595,10 +6980,23 @@
                 var pct = parseFloat(cfg.pricePercent, 10);
                 if (!isNaN(pct)) rowPrice = Math.max(0, catalog * (1 - pct / 100));
               }
-              rowDisplay = formatShopPrice(Math.round(rowPrice * 100) / 100);
+              rowTargetUnit = Math.round(rowPrice * 100) / 100;
+              rowDisplay = formatShopPrice(rowTargetUnit);
             }
           }
-          paintCartRow(row, rowDisplay, false);
+          var lineVariantId =
+            row.getAttribute('data-variant-id') ||
+            (row.querySelector('[data-variant-id]') &&
+              row.querySelector('[data-variant-id]').getAttribute('data-variant-id'));
+          registerRipxAssignedPrice({
+            testId: testId,
+            productId: pid,
+            variantId: lineVariantId,
+            variantIdForCart: variantIdForCart,
+            targetUnit: rowTargetUnit,
+            display: rowDisplay,
+          });
+          paintCartRow(row, rowDisplay, rowTargetUnit, false);
         });
       });
     });
@@ -6641,6 +7039,7 @@
                 )
                   return;
                 var rowDisplay = displayByVariant;
+                var rowTargetUnit = priceNum;
                 if (priceMode === 'amount' || priceMode === 'percent') {
                   var priceEls = row.querySelectorAll(cartPriceSelectors);
                   if (priceEls.length) {
@@ -6654,11 +7053,20 @@
                         var p = parseFloat(cfg.pricePercent, 10);
                         if (!isNaN(p)) rowPrice = Math.max(0, catalog * (1 - p / 100));
                       }
-                      rowDisplay = formatShopPrice(Math.round(rowPrice * 100) / 100);
+                      rowTargetUnit = Math.round(rowPrice * 100) / 100;
+                      rowDisplay = formatShopPrice(rowTargetUnit);
                     }
                   }
                 }
-                paintCartRow(row, rowDisplay, true);
+                registerRipxAssignedPrice({
+                  testId: testId,
+                  productId: linePidNum || linePid,
+                  variantId: variantIdForCart,
+                  variantIdForCart: variantIdForCart,
+                  targetUnit: rowTargetUnit,
+                  display: rowDisplay,
+                });
+                paintCartRow(row, rowDisplay, rowTargetUnit, true);
               });
             });
           }
@@ -7273,15 +7681,7 @@
       'background:#059669;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;'
     );
     function inferPickerPriceSurfaceFromHref(href) {
-      try {
-        var path = new URL(String(href || window.location.href || '')).pathname.toLowerCase();
-        if (path.indexOf('/products/') !== -1) return 'pdp';
-        if (path.indexOf('/collections/') !== -1) return 'plp';
-        if (path.indexOf('/cart') !== -1) return 'cart';
-        if (path.indexOf('/search') !== -1) return 'search';
-        if (path === '/' || path === '') return 'home';
-      } catch (_eHref) {}
-      return null;
+      return getPriceSurfaceHintFromHref(href);
     }
 
     function inferPickerPriceSurfaceRoleFromElement(el) {
@@ -7567,6 +7967,7 @@
               selector: selector,
               source: 'ripx-visual-editor',
               pageUrl: String(window.location.href || ''),
+              surfaceHint: getPriceSurfaceHintFromHref(window.location.href),
             },
             '*'
           );
@@ -7810,7 +8211,7 @@
    * Path-based so we still run price listing when meta product id is missing or wrong.
    */
   function isProductListingSurface() {
-    var p = (window.location.pathname || '').trim() || '/';
+    var p = getEffectivePreviewPathname() || '/';
     if (p === '/' || p === '') return true;
     if (p.indexOf('/collections/') === 0) return true;
     if (p.indexOf('/search') === 0) return true;
@@ -7819,7 +8220,7 @@
   }
 
   function isCartSurface() {
-    var p = (window.location.pathname || '').trim().toLowerCase();
+    var p = getEffectivePreviewPathname();
     return p === '/cart' || p.indexOf('/cart/') === 0;
   }
 
@@ -8746,7 +9147,7 @@
       (testTypeIsPrice(test) || testTypeIsShipping(test)) &&
       isProductScopeTargetType(getNormalizedTargetType(test))
     ) {
-      var pathPv = (window.location.pathname || '').toLowerCase();
+      var pathPv = getEffectivePreviewPathname();
       if (pathPv.indexOf('/products/') !== -1 && pathPv.length > '/products/'.length + 1) {
         return true;
       }
@@ -9585,7 +9986,7 @@
                 var matched = matchesTarget(test);
                 seedFixedPriceCartAttributesWithoutProductId(test, variant, 'assigned');
                 if (!matched && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
-                  var pathM = (window.location.pathname || '').toLowerCase();
+                  var pathM = getEffectivePreviewPathname();
                   if (
                     pathM.indexOf('/products/') !== -1 &&
                     pathM.length > '/products/'.length + 1
@@ -9679,32 +10080,7 @@
                   test.targetIds ||
                   (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
                 if (testTypeIsPrice(test)) {
-                  // Read after async preview merge / deferred Product JSON (avoids stale null on PDP).
-                  var curProductId = getCurrentProductId();
-                  var pdpProductMatch =
-                    productScope &&
-                    matched &&
-                    curProductId &&
-                    (tt === 'all-products' ||
-                      tt === 'all_products' ||
-                      (tids.length &&
-                        tids.some(function (id) {
-                          return id && gidMatches(id, curProductId);
-                        })));
-                  var pdpCollectionMatch =
-                    tt === 'collection' &&
-                    curProductId &&
-                    tids.length &&
-                    productBelongsToPriceTestCollections(tids);
-                  if (pdpProductMatch || pdpCollectionMatch) {
-                    persistRipxLiveDiagnostics('price_apply:pdp', {
-                      testId: test.id,
-                      productId: curProductId,
-                      targetType: tt,
-                      variant: sanitizeDiagnosticVariant(variant),
-                    });
-                    applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
-                  } else if (
+                  if (
                     deferPdpPriceApplyUntilProductId(
                       test,
                       variant,
@@ -9713,39 +10089,9 @@
                       shouldTrackAntiFlicker
                     )
                   ) {
-                    // Meta / ProductJson often loads after our first tick — keep the guard pending.
                     antiFlickerDeferred = shouldTrackAntiFlicker;
                   }
-                  if (
-                    variant &&
-                    variant.config &&
-                    (tids.length || tt === 'all-products' || tt === 'all_products')
-                  ) {
-                    if (tt === 'product' && isProductListingSurface()) {
-                      applyPriceTestToProductCards(test.id, variant, tids);
-                    } else if (
-                      (tt === 'all-products' || tt === 'all_products') &&
-                      isProductListingSurface()
-                    ) {
-                      applyPriceTestToCollectionListingCards(test.id, variant);
-                    } else if (tt === 'collection' && matched && isProductListingSurface()) {
-                      applyPriceTestToCollectionListingCards(test.id, variant);
-                    }
-                    if (tt === 'product') {
-                      applyPriceTestToCart(test.id, variant, tids);
-                    } else if (tt === 'all-products' || tt === 'all_products') {
-                      var cartTids = getCartVisibleProductTargetIds();
-                      if (cartTids.length) {
-                        applyPriceTestToCart(test.id, variant, cartTids);
-                      } else if (shouldRunAllProductsCartFallback()) {
-                        if (hasByProductOverrides(variant.config)) {
-                          applyPriceTestToCartAllProductsByCartState(test.id, variant);
-                        } else {
-                          applyPriceTestToCartAllProductsFallback(test.id, variant);
-                        }
-                      }
-                    }
-                  }
+                  applyPriceTestOnAssignedVariant(test, variant);
                 }
               } finally {
                 if (shouldTrackAntiFlicker && !antiFlickerDeferred) markAntiFlickerDone();
@@ -9787,6 +10133,10 @@
               }
               applyCustomCode(PREVIEW_TEST_ID, variant);
               applyVisualEditorRules(PREVIEW_TEST_ID, variant);
+              var previewTest = getActiveTestById(PREVIEW_TEST_ID);
+              if (previewTest) {
+                applyPriceTestOnAssignedVariant(previewTest, variant);
+              }
             }
           });
         }
@@ -9819,7 +10169,7 @@
               var curPid = getCurrentProductId();
               var matchedNow = matchesTarget(test);
               if (!matchedNow && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
-                var pathRm = (window.location.pathname || '').toLowerCase();
+                var pathRm = getEffectivePreviewPathname();
                 if (
                   pathRm.indexOf('/products/') !== -1 &&
                   pathRm.length > '/products/'.length + 1
@@ -9870,6 +10220,7 @@
               }
             });
           });
+          setTimeout(auditRipxPaintParityStampedNodes, 150);
         }
         function hasDynamicPriceSurface() {
           return isProductListingSurface() || isCartSurface() || hasCartUiInDom() || !!cartUiRoot();

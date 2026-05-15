@@ -3,6 +3,10 @@ jest.mock('../shopifyService', () => ({
   listCollectionProducts: jest.fn(),
 }));
 
+jest.mock('../priceSurfaceRegistryService', () => ({
+  getShopPriceSurfaceMappings: jest.fn().mockResolvedValue([]),
+}));
+
 const originalEnv = { ...process.env };
 
 describe('checkoutReadinessService', () => {
@@ -64,6 +68,48 @@ describe('checkoutReadinessService', () => {
     expect(
       readiness.checks.find(item => item.id === 'pricing_direct_price_override_ready')?.ok
     ).toBe(false);
+  });
+
+  it('flags missing storefront price surface mappings during pricing readiness', async () => {
+    process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'shared-secret';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-price-surfaces',
+        name: 'Price test',
+        type: 'price',
+        status: 'draft',
+        segments: { price_surface_mappings: [] },
+        variants: [{ id: 'control', name: 'Control', config: {} }],
+      },
+      shopDomain: 'store.myshopify.com',
+      accessToken: 'token',
+      shopifyFunctions: [],
+      shopifyCartTransforms: [],
+      cartTransformsLookupStatus: 'ok',
+      extensionConfig: {
+        source: 'present',
+        contents:
+          "export const RIPX_PRICE_RESOLVE_BATCH_URL = 'https://api.example.com/api/track/price-resolve-batch';\n" +
+          "export const RIPX_CHECKOUT_PRICE_SECRET = '';\n",
+      },
+      checkoutMethodCapabilities: {
+        directPriceOverrideAvailable: true,
+        cartTransformFunctionAvailable: true,
+        cartTransformInstalled: true,
+      },
+    });
+
+    const surfaceCheck = readiness.checks.find(
+      item => item.id === 'pricing_storefront_surface_mapping'
+    );
+    expect(surfaceCheck?.ok).toBe(false);
+    expect(
+      readiness.highlights?.some(item => item.id === 'pricing_storefront_surface_mapping')
+    ).toBe(true);
   });
 
   it('allows pricing readiness with warning when cart transform install lookup is uncertain', async () => {

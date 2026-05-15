@@ -20,6 +20,19 @@ export const PRICE_SURFACE_ROLES = [
 
 export const MAX_PRICE_SURFACE_MAPPINGS = 25;
 
+export const PRICE_SURFACE_READINESS_TARGETS = [
+  { surface: 'pdp', role: 'regular', severity: 'high' },
+  { surface: 'plp', role: 'regular', severity: 'medium' },
+  { surface: 'cart', role: 'regular', severity: 'medium' },
+  { surface: 'search', role: 'regular', severity: 'medium' },
+  { surface: 'home', role: 'regular', severity: 'low' },
+  { surface: 'recommendation', role: 'regular', severity: 'low' },
+  { surface: 'quickview', role: 'regular', severity: 'low' },
+  { surface: 'pdp', role: 'compare_at', severity: 'low' },
+  { surface: 'plp', role: 'compare_at', severity: 'low' },
+  { surface: 'cart', role: 'cart_line', severity: 'low' },
+];
+
 const MATCH_STRATEGY_BY_SURFACE = {
   pdp: 'page_product',
   plp: 'within_product_card',
@@ -160,32 +173,85 @@ export function createEmptyPriceSurfaceMapping(overrides = {}) {
   );
 }
 
+export function inferPriceSurfaceFromPath(pathname) {
+  const path = String(pathname || '')
+    .trim()
+    .toLowerCase();
+  if (!path) {
+    return 'home';
+  }
+  if (path.includes('/products/')) {
+    return 'pdp';
+  }
+  if (path.includes('/collections/')) {
+    return 'plp';
+  }
+  if (path.includes('/cart')) {
+    return 'cart';
+  }
+  if (path.includes('/search')) {
+    return 'search';
+  }
+  if (path === '/' || path === '') {
+    return 'home';
+  }
+  if (path.includes('/pages/')) {
+    return 'home';
+  }
+  return null;
+}
+
 export function inferPriceSurfaceFromHref(href) {
   const raw = String(href || '').trim();
   if (!raw) {
     return null;
   }
   try {
-    const path = new URL(raw).pathname.toLowerCase();
-    if (path.includes('/products/')) {
-      return 'pdp';
-    }
-    if (path.includes('/collections/')) {
-      return 'plp';
-    }
-    if (path.includes('/cart')) {
-      return 'cart';
-    }
-    if (path.includes('/search')) {
-      return 'search';
-    }
-    if (path === '/' || path === '') {
-      return 'home';
-    }
+    const url = new URL(raw);
+    const nestedTarget = url.searchParams.get('url');
+    const path = (nestedTarget ? new URL(nestedTarget) : url).pathname;
+    return inferPriceSurfaceFromPath(path);
   } catch {
     return null;
   }
-  return null;
+}
+
+export function resolveListingPriceSurfaceKeys(pathname) {
+  const primary = inferPriceSurfaceFromPath(pathname);
+  if (primary === 'plp') {
+    return ['plp', 'recommendation', 'global'];
+  }
+  if (primary === 'search') {
+    return ['search', 'recommendation', 'global'];
+  }
+  if (primary === 'home') {
+    return ['home', 'recommendation', 'global'];
+  }
+  if (primary === 'pdp') {
+    return ['pdp', 'quickview', 'recommendation', 'global'];
+  }
+  if (primary === 'cart') {
+    return ['cart', 'global'];
+  }
+  return ['plp', 'search', 'home', 'recommendation', 'global'];
+}
+
+export function resolvePricePreviewVariant(variants, options = {}) {
+  const list = Array.isArray(variants) ? variants : [];
+  if (!list.length) {
+    return null;
+  }
+  const preferredIndex = Number(options.preferredIndex);
+  if (Number.isInteger(preferredIndex) && preferredIndex >= 0 && preferredIndex < list.length) {
+    return list[preferredIndex];
+  }
+  const treatmentIndex = list.findIndex((variant, index) => {
+    const name = String(variant?.name || '')
+      .trim()
+      .toLowerCase();
+    return !(index === 0 || name === 'control' || name.startsWith('control '));
+  });
+  return treatmentIndex >= 0 ? list[treatmentIndex] : list[0];
 }
 
 export function inferPriceSurfaceRoleFromPickerHints({ selector, roleHint } = {}) {
@@ -236,6 +302,12 @@ export function buildPriceSurfacePickerPath(surface, options = {}) {
       return '/search?q=a';
     case 'home':
       return '/';
+    case 'recommendation':
+      return productPath;
+    case 'quickview':
+      return productPath;
+    case 'global':
+      return productPath;
     default:
       return productPath;
   }
@@ -257,26 +329,52 @@ export function applyRecommendedPriceSurfaceDefaults(mapping) {
 }
 
 export function analyzePriceSurfaceRegistryGaps(testMappings, shopMappings) {
-  const targets = [
-    { surface: 'pdp', role: 'regular', severity: 'high' },
-    { surface: 'plp', role: 'regular', severity: 'medium' },
-    { surface: 'pdp', role: 'compare_at', severity: 'low' },
-    { surface: 'plp', role: 'compare_at', severity: 'low' },
-  ];
-  return targets
-    .filter(target => {
-      const selectors = resolvePriceSurfaceSelectors(target.surface, target.role, {
-        testMappings,
-        shopMappings,
-      });
-      return selectors.length === 0;
-    })
-    .map(target => ({
+  return PRICE_SURFACE_READINESS_TARGETS.filter(target => {
+    const selectors = resolvePriceSurfaceSelectors(target.surface, target.role, {
+      testMappings,
+      shopMappings,
+    });
+    return selectors.length === 0;
+  }).map(target => ({
+    surface: target.surface,
+    role: target.role,
+    severity: target.severity,
+    message: `No ${target.surface.toUpperCase()} ${target.role.replace(/_/g, ' ')} selector is configured.`,
+  }));
+}
+
+export function buildPriceSurfaceCoverageMatrix(testMappings, shopMappings) {
+  return PRICE_SURFACE_READINESS_TARGETS.map(target => {
+    const selectors = resolvePriceSurfaceSelectors(target.surface, target.role, {
+      testMappings,
+      shopMappings,
+    });
+    return {
       surface: target.surface,
       role: target.role,
       severity: target.severity,
-      message: `No ${target.surface.toUpperCase()} ${target.role.replace(/_/g, ' ')} selector is configured.`,
-    }));
+      selectorCount: selectors.length,
+      configured: selectors.length > 0,
+    };
+  });
+}
+
+export function compareCheckoutPaintParity(targetUnit, displayedAmount, tolerance = 0.02) {
+  const target = Number(targetUnit);
+  const shown = Number(displayedAmount);
+  if (!Number.isFinite(target) || !Number.isFinite(shown)) {
+    return { ok: false, reason: 'missing_amount' };
+  }
+  if (Math.abs(shown - target) <= tolerance) {
+    return { ok: true, delta: 0 };
+  }
+  return {
+    ok: false,
+    reason: 'mismatch',
+    delta: Math.round((shown - target) * 100) / 100,
+    targetUnit: target,
+    displayedAmount: shown,
+  };
 }
 
 export function summarizePriceSurfaceRegistry(testMappings, shopMappings) {
@@ -362,6 +460,7 @@ export function buildPriceSurfaceRegistryStatus(testMappings, shopMappings, opti
   const testRows = normalizePriceSurfaceMappingsForEditor(testMappings);
   const shopRows = normalizePriceSurfaceMappingsForEditor(shopMappings);
   const gaps = analyzePriceSurfaceRegistryGaps(testRows, shopRows);
+  const coverageMatrix = buildPriceSurfaceCoverageMatrix(testRows, shopRows);
   const configuredTest = testRows.filter(row => row.selector.trim()).length;
   const configuredShop = shopRows.filter(row => row.selector.trim()).length;
   const highSeverityGaps = gaps.filter(gap => gap.severity === 'high');
@@ -379,7 +478,7 @@ export function buildPriceSurfaceRegistryStatus(testMappings, shopMappings, opti
     recommendExpand = true;
   } else if (highSeverityGaps.length > 0 && configuredTest === 0 && configuredShop === 0) {
     tone = 'warning';
-    label = 'Map PDP selectors';
+    label = 'Map storefront prices';
     hint = highSeverityGaps[0].message;
     recommendExpand = true;
   } else if (actionableGaps.length > 0) {
@@ -399,11 +498,13 @@ export function buildPriceSurfaceRegistryStatus(testMappings, shopMappings, opti
     configuredShop,
     gapCount: gaps.length,
     highSeverityGapCount: highSeverityGaps.length,
+    actionableGapCount: actionableGaps.length,
     tone,
     label,
     hint,
     showMetaChip: picking || recommendExpand || actionableGaps.length > 0,
     recommendExpand,
     gaps,
+    coverageMatrix,
   };
 }

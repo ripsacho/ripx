@@ -264,6 +264,8 @@ export function buildPreviewDocumentUrl({
       PREVIEW_PARAMS.RESET_SESSION,
       PREVIEW_PARAMS.SESSION_ID,
       PREVIEW_PARAMS.VISUAL_PICKER,
+      PREVIEW_PARAMS.VISUAL_EDITOR,
+      PREVIEW_PARAMS.PRICE_SURFACE_PICK,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
       if (value !== undefined && value !== null && value !== '') {
@@ -302,6 +304,8 @@ export function buildVisualPickerLaunchUrl({
   storefrontPassword,
   parentOrigin,
   priceSurfacePick = false,
+  resetPreviewSession = false,
+  previewSessionId,
 }) {
   const normalized = normalizePreviewBaseUrl(baseUrl);
   if (!normalized) {
@@ -320,6 +324,8 @@ export function buildVisualPickerLaunchUrl({
         tenantDomain,
         visualEditor: true,
         visualPicker: true,
+        resetPreviewSession,
+        previewSessionId,
       }) || '';
   } else {
     try {

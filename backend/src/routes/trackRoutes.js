@@ -715,6 +715,44 @@ function normalizePreviewVariantConfig(config) {
   return normalized;
 }
 
+function resolveEmbeddedPreviewVariantForRuntime(testRow, query = {}) {
+  if (!testRow || typeof testRow !== 'object') {
+    return null;
+  }
+  const variants = Array.isArray(testRow.variants) ? testRow.variants : [];
+  const variant =
+    findVariantForPreviewQuery(variants, {
+      variant_id: query.variant_id,
+      variant_name: query.variant_name,
+    }) ||
+    variants.find((item, index) => {
+      if (!item) {
+        return false;
+      }
+      if (index === 0) {
+        return true;
+      }
+      const label = String(item.name || '')
+        .trim()
+        .toLowerCase();
+      return label === 'control' || label.startsWith('control ');
+    }) ||
+    variants[0];
+  if (!variant) {
+    return null;
+  }
+  const rawConfig = variant.config && typeof variant.config === 'object' ? variant.config : {};
+  const config = normalizePreviewVariantConfig(rawConfig);
+  if (variant.code && config.code === undefined) {
+    config.code = variant.code;
+  }
+  return {
+    variantId: variant.id,
+    variantName: variant.name,
+    config,
+  };
+}
+
 /** Return a safe, low-detail diagnostics payload for unauthenticated public route callers. */
 function toPublicCheckoutDiagnosticsPayload(body) {
   const checks = Array.isArray(body?.checklist)
@@ -1289,8 +1327,35 @@ router.get(
         previewTestId: req.query.ab_preview_test || null,
         previewVariantId: req.query.ab_preview_variant || null,
         previewVariantName: req.query.ab_preview_variant_name || null,
+        previewTenantDomain: req.query.ab_preview_domain || null,
         previewMode: req.query.ab_preview === '1' || !!req.query.ab_preview_test,
+        priceSurfaceRegistry: {
+          version: 1,
+          shopMappings: [],
+        },
       };
+      const previewTestId =
+        typeof req.query.ab_preview_test === 'string' ? req.query.ab_preview_test.trim() : '';
+      const previewDomain = await resolveTenantDomain(hostname, hostname);
+      if (previewDomain) {
+        const [shopPriceSurfaceMappings, previewTestRow] = await Promise.all([
+          getShopPriceSurfaceMappings(previewDomain).catch(() => []),
+          previewTestId && validators.isValidUUID(previewTestId)
+            ? getTestById(previewTestId, previewDomain)
+            : Promise.resolve(null),
+        ]);
+        runtimeConfig.priceSurfaceRegistry.shopMappings = shopPriceSurfaceMappings;
+        if (previewTestRow) {
+          runtimeConfig.activeTests = [mapTestToStorefrontPayload(previewTestRow)];
+          const embeddedPreviewVariant = resolveEmbeddedPreviewVariantForRuntime(previewTestRow, {
+            variant_id: req.query.ab_preview_variant || null,
+            variant_name: req.query.ab_preview_variant_name || null,
+          });
+          if (embeddedPreviewVariant) {
+            runtimeConfig.previewVariant = embeddedPreviewVariant;
+          }
+        }
+      }
       let scriptContent;
       try {
         scriptContent = readStorefrontScriptSource(getStorefrontScriptPath());

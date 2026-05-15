@@ -114,6 +114,17 @@ describe('previewUrl', () => {
       '1d1f39c4-4083-44f4-b046-1c341b88cc29'
     );
 
+    const withPricePick = buildVisualPickerLaunchUrl({
+      baseUrl: 'https://makripon.myshopify.com/collections/all',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      apiBaseUrl: '/api',
+      priceSurfacePick: true,
+    });
+    const withPricePickUrl = new URL(withPricePick, 'https://app.example.com');
+    expect(withPricePickUrl.searchParams.get(PREVIEW_PARAMS.PRICE_SURFACE_PICK)).toBe('1');
+
     const withoutTest = buildVisualPickerLaunchUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
       apiBaseUrl: '/api',

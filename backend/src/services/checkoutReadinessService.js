@@ -21,6 +21,11 @@ const {
 const shopifyService = require('./shopifyService');
 const { inferTemplateKey } = require('../utils/testType');
 const { getSignatureSecret } = require('../utils/priceAssignmentSignature');
+const {
+  buildPriceSurfaceReadinessSummary,
+  normalizePriceSurfaceMappings,
+} = require('../utils/priceSurfaceRegistry');
+const { getShopPriceSurfaceMappings } = require('./priceSurfaceRegistryService');
 
 const CHECKOUT_UI_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-ui/src/ripxConfig.generated.js';
 const SUPPORTED_TEMPLATE_KEYS = new Set(['pricing', 'offer', 'checkout', 'shipping']);
@@ -537,6 +542,38 @@ async function buildPricingOrOfferReadiness({
           : 'Price assignment signing is not configured. Set RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET or RIPX_CHECKOUT_PRICE_SECRET before launching price tests, otherwise Cart Transform cannot trust or apply RipX cart line prices.'
       )
     );
+
+    const testMappings = normalizePriceSurfaceMappings(test?.segments?.price_surface_mappings);
+    let shopMappings = [];
+    if (shopDomain) {
+      try {
+        shopMappings = await getShopPriceSurfaceMappings(shopDomain);
+      } catch (_surfaceError) {
+        shopMappings = [];
+      }
+    }
+    const surfaceReadiness = buildPriceSurfaceReadinessSummary(testMappings, shopMappings);
+    checklist.push(
+      buildCheck(
+        'pricing_storefront_surface_mapping',
+        surfaceReadiness.status === 'ready',
+        surfaceReadiness.status === 'ready' ? 'ok' : 'warning',
+        surfaceReadiness.status === 'ready'
+          ? 'Theme price selectors cover the storefront surfaces RipX expects for this test.'
+          : surfaceReadiness.nextAction ||
+              'Map theme price selectors for PDP and listing surfaces before relying on preview paint.'
+      )
+    );
+    if (surfaceReadiness.actionableGapCount > 0) {
+      checklist.push(
+        buildCheck(
+          'pricing_storefront_surface_coverage',
+          false,
+          'warning',
+          `${surfaceReadiness.actionableGapCount} storefront price surface${surfaceReadiness.actionableGapCount === 1 ? '' : 's'} still need theme selectors (${surfaceReadiness.configuredTest} test · ${surfaceReadiness.configuredShop} shop).`
+        )
+      );
+    }
   }
 
   checklist.push(
@@ -553,6 +590,13 @@ async function buildPricingOrOfferReadiness({
   return {
     summary: summarizeChecks(checklist, getTypeLabel(templateKey)),
     checks: checklist,
+    highlights: checklist
+      .filter(item => item && item.ok === false)
+      .map(item => ({
+        id: item.id,
+        message: item.message,
+        severity: item.severity,
+      })),
     capabilities: {
       checkout_alignment: priceDiagnostics?.support?.checkout_alignment || null,
       direct_price_override:

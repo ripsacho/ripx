@@ -127,6 +127,8 @@ import {
   inferPriceSurfaceRoleFromPickerHints,
   buildPriceSurfacePickerPath,
   applyRecommendedPriceSurfaceDefaults,
+  resolvePricePreviewVariant,
+  buildPriceSurfaceRegistryStatus,
 } from '../../utils/priceSurfaceRegistry';
 import { shouldHydrateInitialData } from './initialDataHydration';
 import {
@@ -401,8 +403,10 @@ function TestWizard({
   const [visualPreviewRetryKey, setVisualPreviewRetryKey] = useState(0); // increment to force iframe remount on retry
   const [visualPreviewLoadingSlow, setVisualPreviewLoadingSlow] = useState(false); // true after 3s in loading
   const [visualPreviewVariantIndex, setVisualPreviewVariantIndex] = useState(0);
+  const [visualEditorPreviewSurface, setVisualEditorPreviewSurface] = useState('pdp');
   const [visualEditorStorefrontPassword, setVisualEditorStorefrontPassword] = useState('');
   const [visualPreviewToast, setVisualPreviewToast] = useState(null);
+  const [previewPaintParity, setPreviewPaintParity] = useState(null);
   const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
   const [visualSnippetActiveElementIndex, setVisualSnippetActiveElementIndex] = useState(0); // which element (rule index 0–4) is shown in the snippet panel
   const [visualRuleActiveTab, setVisualRuleActiveTab] = useState({}); // { ruleIndex: 'selector'|'css'|'js' }
@@ -841,6 +845,7 @@ function TestWizard({
   const [wizardCheckoutReadiness, setWizardCheckoutReadiness] = useState(null);
   const [wizardCheckoutReadinessLoading, setWizardCheckoutReadinessLoading] = useState(false);
   const [wizardCheckoutReadinessError, setWizardCheckoutReadinessError] = useState(null);
+  const [reviewShopPriceSurfaceMappings, setReviewShopPriceSurfaceMappings] = useState([]);
   const isCheckoutTestType =
     selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
   const { wizardUiStateKey, pendingWizardUiStateRef, didRestoreWizardUiStateRef } =
@@ -1126,7 +1131,8 @@ function TestWizard({
       setWizardCheckoutReadinessLoading(true);
       setWizardCheckoutReadinessError(null);
       try {
-        const data = await apiGet(`/tests/${initialData.id}/checkout/readiness`);
+        const res = await apiGet(`/tests/${initialData.id}/checkout/readiness`);
+        const data = unwrapData(res);
         if (!cancelled) {
           setWizardCheckoutReadiness(data || null);
         }
@@ -1147,6 +1153,43 @@ function TestWizard({
       cancelled = true;
     };
   }, [currentStep, formData.type, initialData?.id, initialData?.type, mode, reviewStepId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const currentType = String(formData.type || initialData?.type || '').toLowerCase();
+    const isPriceReviewType = isPriceLikeTestType(currentType);
+    if (currentStep !== reviewStepId || !isPriceReviewType) {
+      setReviewShopPriceSurfaceMappings([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadReviewShopPriceSurfaces = async () => {
+      try {
+        const res = await apiGet('/settings/price-surfaces');
+        const data = unwrapData(res);
+        if (!cancelled) {
+          setReviewShopPriceSurfaceMappings(
+            normalizePriceSurfaceMappingsForEditor(data?.mappings || [])
+          );
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setReviewShopPriceSurfaceMappings([]);
+        }
+      }
+    };
+
+    loadReviewShopPriceSurfaces();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep, formData.type, initialData?.type, reviewStepId]);
+
+  useEffect(() => {
+    setPreviewPaintParity(null);
+  }, [visualPreviewRetryKey, visualPreviewVariantIndex, visualEditorPreviewSurface]);
 
   useEffect(() => {
     if (!wizardUiStateKey || didRestoreWizardUiStateRef.current) return;
@@ -3054,7 +3097,9 @@ function TestWizard({
         return '';
       }
       const variants = formData.variants ?? [];
-      const previewVariant = variants[0];
+      const previewVariant = resolvePricePreviewVariant(variants, {
+        preferredIndex: visualPreviewVariantIndex,
+      });
       return (
         buildVisualPickerLaunchUrl({
           baseUrl,
@@ -3070,6 +3115,9 @@ function TestWizard({
               ? window.location.origin
               : undefined,
           priceSurfacePick: true,
+          resetPreviewSession: visualPreviewRetryKey > 0,
+          previewSessionId:
+            visualPreviewRetryKey > 0 ? `wizard-price-pick-${visualPreviewRetryKey}` : undefined,
         }) || ''
       );
     },
@@ -3082,6 +3130,8 @@ function TestWizard({
       initialData?.id,
       initialData?.shop_domain,
       visualEditorStorefrontPassword,
+      visualPreviewVariantIndex,
+      visualPreviewRetryKey,
     ]
   );
 
@@ -3219,6 +3269,21 @@ function TestWizard({
         if (event.data?.type === 'ripx-preview-error') {
           if (!allowedPreviewMessageOrigins.includes(event.origin)) return;
           setVisualPreviewLoadState('error');
+          return;
+        }
+        if (event.data?.type === 'ripx-price-paint-parity') {
+          const source = String(event.data?.source || '');
+          if (
+            !allowedPreviewMessageOrigins.includes(event.origin) &&
+            source !== 'ripx-storefront'
+          ) {
+            return;
+          }
+          const parity = event.data?.paintParity;
+          if (!parity || typeof parity !== 'object') {
+            return;
+          }
+          setPreviewPaintParity(parity);
           return;
         }
         if (event.data?.type !== 'ripx-visual-selector' || typeof event.data.selector !== 'string')
@@ -4597,14 +4662,23 @@ function TestWizard({
     return index === 0 || name === 'control' || name.startsWith('control ');
   };
 
+  const ensureVisualPreviewSaved = useCallback(async () => {
+    if (mode !== 'edit' || !isDirty) {
+      return true;
+    }
+    await handleSubmit({ silent: true });
+    const stillDirty = JSON.stringify(buildPayload()) !== lastSavedSnapshotRef.current;
+    if (stillDirty) {
+      setError('Save failed. Fix validation or network issues, then retry preview.');
+      return false;
+    }
+    setVisualPreviewRetryKey(key => key + 1);
+    return true;
+  }, [mode, isDirty, handleSubmit, buildPayload]);
+
   const handlePreviewVariant = async (variant, index) => {
-    if (mode === 'edit' && isDirty) {
-      await handleSubmit({ silent: true });
-      const stillDirty = JSON.stringify(buildPayload()) !== lastSavedSnapshotRef.current;
-      if (stillDirty) {
-        setError('Save failed. Fix validation or network issues, then try preview again.');
-        return;
-      }
+    if (!(await ensureVisualPreviewSaved())) {
+      return;
     }
     let pricePreviewProductOverride = null;
     const targetType = normalizePriceTargetTypeValue(
@@ -10306,6 +10380,15 @@ function TestWizard({
               </Button>
             </div>
 
+            {priceSurfaceRegistryStatus?.highSeverityGapCount > 0 ? (
+              <Banner tone="warning" title="Storefront price paint">
+                <Text as="p" variant="bodySm">
+                  {priceSurfaceRegistryStatus.gaps?.find(gap => gap.severity === 'high')?.message ||
+                    'Map PDP price selectors before relying on preview paint.'}
+                </Text>
+              </Banner>
+            ) : null}
+
             <PriceSurfaceMappingsPanel
               styles={styles}
               testMappings={formData.segments?.price_surface_mappings || []}
@@ -10315,9 +10398,14 @@ function TestWizard({
               pickTarget={priceSurfacePickTarget}
               onBeginVisualPick={target => {
                 setChangingSelectorIndex(null);
+                priceSurfacePickTargetRef.current = target;
                 setPriceSurfacePickTarget(target);
               }}
-              onCancelVisualPick={() => setPriceSurfacePickTarget(null)}
+              onCancelVisualPick={() => {
+                priceSurfacePickTargetRef.current = null;
+                setPriceSurfacePickTarget(null);
+              }}
+              onPrepareVisualPick={ensureVisualPreviewSaved}
               onRegisterShopPickHandler={handler => {
                 priceSurfaceShopPickRef.current = handler;
               }}
@@ -16436,9 +16524,17 @@ function TestWizard({
                     type="button"
                     className="config-editor-accordion-head"
                     onClick={() => {
-                      const next = !visualEditorExpanded;
-                      setVisualEditorExpanded(next);
-                      if (next) setCodeEditorExpanded(false);
+                      void (async () => {
+                        if (!visualEditorExpanded) {
+                          const ready = await ensureVisualPreviewSaved();
+                          if (!ready) {
+                            return;
+                          }
+                        }
+                        const next = !visualEditorExpanded;
+                        setVisualEditorExpanded(next);
+                        if (next) setCodeEditorExpanded(false);
+                      })();
                     }}
                     aria-expanded={visualEditorExpanded}
                     aria-controls="config-editor-accordion-visual-body"
@@ -16549,6 +16645,25 @@ function TestWizard({
                               helpText="For password-protected Shopify dev stores. Leave empty for public stores."
                             />
                           )}
+                          {isPriceTestType &&
+                          !(formData.segments?.visual_editor_preview_url ?? '').trim() ? (
+                            <Select
+                              label="Preview page"
+                              options={[
+                                { label: 'Product (PDP)', value: 'pdp' },
+                                { label: 'Collection (PLP)', value: 'plp' },
+                                { label: 'Cart', value: 'cart' },
+                                { label: 'Search', value: 'search' },
+                                { label: 'Home', value: 'home' },
+                              ]}
+                              value={visualEditorPreviewSurface}
+                              onChange={value => {
+                                setVisualEditorPreviewSurface(value);
+                                setVisualPreviewLoadState('loading');
+                              }}
+                              helpText="Load the storefront surface you are mapping or editing."
+                            />
+                          ) : null}
                           {(() => {
                             const veUrl = (
                               formData.segments?.visual_editor_preview_url ?? ''
@@ -16559,7 +16674,13 @@ function TestWizard({
                               getPreviewDomain() ||
                               getShopDomain() ||
                               (initialData?.shop_domain && String(initialData.shop_domain).trim());
-                            const pathForPreview = getFirstTargetPreviewPath();
+                            const pathForPreview =
+                              !hasOverride && isPriceTestType
+                                ? buildPriceSurfacePickerPath(visualEditorPreviewSurface, {
+                                    productPath: getFirstTargetPreviewPath(),
+                                    collectionPath: getCollectionPreviewPath(),
+                                  })
+                                : getFirstTargetPreviewPath();
                             const baseUrl = resolvePreviewBaseUrl({
                               variantUrl: null,
                               overrideUrl: hasOverride ? veUrl : null,
@@ -16571,7 +16692,16 @@ function TestWizard({
                               Math.max(0, visualPreviewVariantIndex),
                               Math.max(0, variants.length - 1)
                             );
-                            const previewVariant = variants[safeVisualIndex];
+                            const previewVariant = resolvePricePreviewVariant(variants, {
+                              preferredIndex: safeVisualIndex,
+                            });
+                            const previewVariantSignature = [
+                              previewVariant?.config?.priceMode,
+                              previewVariant?.config?.price,
+                              previewVariant?.config?.priceDelta,
+                              previewVariant?.config?.pricePercent,
+                              previewVariant?.config?.roundTo,
+                            ].join('|');
                             const testId = initialData?.id;
                             const previewTenantDomain =
                               normalizeTextValue(initialData?.shop_domain) || null;
@@ -16589,6 +16719,11 @@ function TestWizard({
                                       (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
                                     tenantDomain: previewTenantDomain,
                                     visualEditor: true,
+                                    resetPreviewSession: visualPreviewRetryKey > 0,
+                                    previewSessionId:
+                                      visualPreviewRetryKey > 0
+                                        ? `wizard-visual-${visualPreviewRetryKey}`
+                                        : undefined,
                                   })
                                 : null;
                             const directPreviewUrl = fullPreviewUrl || baseUrl || '';
@@ -16745,9 +16880,25 @@ function TestWizard({
                                         )}
                                       </div>
                                     )}
+                                    {isPriceTestType &&
+                                    previewPaintParity &&
+                                    Array.isArray(previewPaintParity.mismatches) &&
+                                    previewPaintParity.mismatches.length > 0 ? (
+                                      <div
+                                        className="variant-visual-editor-preview-hint"
+                                        role="status"
+                                      >
+                                        <Text as="p" variant="bodySm" tone="critical">
+                                          Preview paint mismatch: visible price still differs from
+                                          checkout target on {previewPaintParity.mismatches.length}{' '}
+                                          node
+                                          {previewPaintParity.mismatches.length === 1 ? '' : 's'}.
+                                        </Text>
+                                      </div>
+                                    ) : null}
                                     {!showEmbedBlocked && (
                                       <iframe
-                                        key={`visual-preview-iframe-${safeVisualIndex}-${iframeSrc}-${visualPreviewRetryKey}`}
+                                        key={`visual-preview-iframe-${safeVisualIndex}-${visualEditorPreviewSurface}-${previewVariantSignature}-${iframeSrc}-${visualPreviewRetryKey}`}
                                         title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
                                         src={iframeSrc}
                                         className="variant-visual-editor-preview-iframe"
@@ -17953,6 +18104,12 @@ function TestWizard({
     const wizardCheckoutReadinessHighlights = Array.isArray(wizardCheckoutReadiness?.highlights)
       ? wizardCheckoutReadiness.highlights.slice(0, 3)
       : [];
+    const reviewStorefrontReadiness = isPriceReview
+      ? buildPriceSurfaceRegistryStatus(
+          normalizePriceSurfaceMappingsForEditor(reviewSegments.price_surface_mappings || []),
+          reviewShopPriceSurfaceMappings
+        )
+      : null;
     const checkoutExperienceSummary = checkoutExperienceDiagnostics?.summary || null;
     const canExecuteShippingFromReview = canShowShippingExecution({
       mode,
@@ -18200,6 +18357,29 @@ function TestWizard({
             </p>
           </div>
         </div>
+
+        {isPriceReview && reviewStorefrontReadiness?.actionableGapCount > 0 ? (
+          <div className={stepStyles.reviewSection} style={{ marginBottom: '1rem' }}>
+            <Banner
+              tone={reviewStorefrontReadiness.highSeverityGapCount > 0 ? 'warning' : 'info'}
+              title="Storefront price mapping"
+            >
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm">
+                  {reviewStorefrontReadiness.hint}
+                </Text>
+                {reviewStorefrontReadiness.gaps
+                  ?.filter(gap => gap.severity === 'high' || gap.severity === 'medium')
+                  .slice(0, 3)
+                  .map(gap => (
+                    <Text key={`${gap.surface}-${gap.role}`} as="p" variant="bodySm" tone="subdued">
+                      • {gap.message}
+                    </Text>
+                  ))}
+              </BlockStack>
+            </Banner>
+          </div>
+        ) : null}
 
         {isPriceReview && (
           <div className={stepStyles.reviewSection} style={{ marginBottom: '1rem' }}>

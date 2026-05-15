@@ -38,6 +38,19 @@ const PRICE_PRODUCT_BINDINGS = Object.freeze([
 
 const PRICE_MAPPING_SOURCES = Object.freeze(['visual', 'theme_pack', 'heuristic', 'merchant']);
 
+const PRICE_SURFACE_READINESS_TARGETS = Object.freeze([
+  { surface: 'pdp', role: 'regular', severity: 'high' },
+  { surface: 'plp', role: 'regular', severity: 'medium' },
+  { surface: 'cart', role: 'regular', severity: 'medium' },
+  { surface: 'search', role: 'regular', severity: 'medium' },
+  { surface: 'home', role: 'regular', severity: 'low' },
+  { surface: 'recommendation', role: 'regular', severity: 'low' },
+  { surface: 'quickview', role: 'regular', severity: 'low' },
+  { surface: 'pdp', role: 'compare_at', severity: 'low' },
+  { surface: 'plp', role: 'compare_at', severity: 'low' },
+  { surface: 'cart', role: 'cart_line', severity: 'low' },
+]);
+
 function normalizePriceSurface(value, fallback = 'global') {
   const key = String(value || '')
     .trim()
@@ -138,15 +151,59 @@ function resolvePriceSurfaceSelectors(surface, role, options = {}) {
   return selectors;
 }
 
+function analyzePriceSurfaceRegistryGaps(testMappings, shopMappings) {
+  return PRICE_SURFACE_READINESS_TARGETS.filter(target => {
+    const selectors = resolvePriceSurfaceSelectors(target.surface, target.role, {
+      testMappings,
+      shopMappings,
+    });
+    return selectors.length === 0;
+  }).map(target => ({
+    surface: target.surface,
+    role: target.role,
+    severity: target.severity,
+    message: `No ${target.surface.toUpperCase()} ${target.role.replace(/_/g, ' ')} selector is configured.`,
+  }));
+}
+
+function buildPriceSurfaceReadinessSummary(testMappings, shopMappings) {
+  const testRows = normalizePriceSurfaceMappings(testMappings);
+  const shopRows = normalizePriceSurfaceMappings(shopMappings);
+  const gaps = analyzePriceSurfaceRegistryGaps(testRows, shopRows);
+  const configuredTest = testRows.filter(row => row.selector).length;
+  const configuredShop = shopRows.filter(row => row.selector).length;
+  const highSeverityGaps = gaps.filter(gap => gap.severity === 'high');
+  const actionableGaps = gaps.filter(gap => gap.severity === 'high' || gap.severity === 'medium');
+  let status = 'ready';
+  if (highSeverityGaps.length > 0 && configuredTest === 0 && configuredShop === 0) {
+    status = 'blocked';
+  } else if (actionableGaps.length > 0) {
+    status = 'needs_attention';
+  }
+  return {
+    status,
+    configuredTest,
+    configuredShop,
+    gapCount: gaps.length,
+    highSeverityGapCount: highSeverityGaps.length,
+    actionableGapCount: actionableGaps.length,
+    gaps,
+    nextAction: actionableGaps[0]?.message || null,
+  };
+}
+
 module.exports = {
   PRICE_SURFACES,
   PRICE_SURFACE_ROLES,
   PRICE_MATCH_STRATEGIES,
   PRICE_PRODUCT_BINDINGS,
   PRICE_MAPPING_SOURCES,
+  PRICE_SURFACE_READINESS_TARGETS,
   normalizePriceSurface,
   normalizePriceSurfaceRole,
   normalizePriceSurfaceMapping,
   normalizePriceSurfaceMappings,
   resolvePriceSurfaceSelectors,
+  analyzePriceSurfaceRegistryGaps,
+  buildPriceSurfaceReadinessSummary,
 };

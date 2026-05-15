@@ -12,7 +12,7 @@ import {
 } from '@shopify/polaris';
 import { ChevronDownIcon } from '@shopify/polaris-icons';
 import { Icon } from '@shopify/polaris';
-import { apiGet, apiPut } from '../../services/api';
+import { apiGet, apiPut, unwrapData } from '../../services/api';
 import { TooltipWrapper } from '../Shared';
 import {
   MAX_PRICE_SURFACE_MAPPINGS,
@@ -141,6 +141,7 @@ export default function PriceSurfaceMappingsPanel({
   pickTarget = null,
   onBeginVisualPick,
   onCancelVisualPick,
+  onPrepareVisualPick,
   onRegisterShopPickHandler,
   onTestMappingsChange,
   onStatusChange,
@@ -170,7 +171,8 @@ export default function PriceSurfaceMappingsPanel({
     setError('');
     try {
       const response = await apiGet('/settings/price-surfaces');
-      setShopMappings(normalizePriceSurfaceMappingsForEditor(response?.mappings));
+      const data = unwrapData(response);
+      setShopMappings(normalizePriceSurfaceMappingsForEditor(data?.mappings));
     } catch (loadError) {
       setError(loadError?.message || 'Could not load shop price surface mappings.');
     } finally {
@@ -277,7 +279,8 @@ export default function PriceSurfaceMappingsPanel({
       const response = await apiPut('/settings/price-surfaces', {
         mappings: normalizePriceSurfaceMappings(shopMappings),
       });
-      setShopMappings(normalizePriceSurfaceMappingsForEditor(response?.mappings));
+      const data = unwrapData(response);
+      setShopMappings(normalizePriceSurfaceMappingsForEditor(data?.mappings));
       setNotice('Shop defaults saved.');
     } catch (saveError) {
       setError(saveError?.message || 'Could not save shop price surface mappings.');
@@ -286,7 +289,7 @@ export default function PriceSurfaceMappingsPanel({
     }
   };
 
-  const beginVisualPick = (scope, index) => {
+  const beginVisualPick = async (scope, index) => {
     if (!onBeginVisualPick) {
       return;
     }
@@ -295,6 +298,12 @@ export default function PriceSurfaceMappingsPanel({
     const launchUrl = resolvePickerLaunchUrl(row?.surface || 'pdp');
     if (!launchUrl) {
       return;
+    }
+    if (onPrepareVisualPick) {
+      const ready = await onPrepareVisualPick();
+      if (!ready) {
+        return;
+      }
     }
     onBeginVisualPick({ scope, index });
     window.open(launchUrl, 'ripxPriceSurfacePicker');
@@ -347,11 +356,11 @@ export default function PriceSurfaceMappingsPanel({
     onStatusChange?.(registryStatus);
   }, [onStatusChange, registryStatus]);
 
-  const startQuickPick = (scope, surface) => {
+  const startQuickPick = async (scope, surface) => {
     const rows = scope === 'test' ? testRows : shopRows;
     const emptyIndex = rows.findIndex(row => !String(row.selector || '').trim());
     if (emptyIndex >= 0) {
-      beginVisualPick(scope, emptyIndex);
+      await beginVisualPick(scope, emptyIndex);
       return;
     }
     if (rows.length >= MAX_PRICE_SURFACE_MAPPINGS) {
@@ -364,6 +373,12 @@ export default function PriceSurfaceMappingsPanel({
       onTestMappingsChange([...rows, created]);
     } else {
       setShopMappings([...rows, created]);
+    }
+    if (onPrepareVisualPick) {
+      const ready = await onPrepareVisualPick();
+      if (!ready) {
+        return;
+      }
     }
     if (onBeginVisualPick) {
       onBeginVisualPick({ scope, index: nextIndex });
@@ -512,6 +527,21 @@ export default function PriceSurfaceMappingsPanel({
               ))}
             </div>
           ) : null}
+          {registryStatus.coverageMatrix?.length > 0 ? (
+            <div className={styles.priceSurfaceChipRow}>
+              {registryStatus.coverageMatrix
+                .filter(row => row.severity === 'high' || row.severity === 'medium')
+                .map(row => (
+                  <Badge
+                    key={`readiness-${row.surface}-${row.role}`}
+                    size="small"
+                    tone={row.configured ? 'success' : 'warning'}
+                  >
+                    {row.surface.toUpperCase()} {row.role.replace(/_/g, ' ')}
+                  </Badge>
+                ))}
+            </div>
+          ) : null}
 
           <div className={styles.priceSurfaceTabRow}>
             <button
@@ -595,6 +625,22 @@ export default function PriceSurfaceMappingsPanel({
                   onClick={() => startQuickPick('test', 'plp')}
                 >
                   Pick PLP
+                </Button>
+                <Button
+                  size="slim"
+                  variant="plain"
+                  disabled={!defaultPickerReady}
+                  onClick={() => startQuickPick('test', 'cart')}
+                >
+                  Pick cart
+                </Button>
+                <Button
+                  size="slim"
+                  variant="plain"
+                  disabled={!defaultPickerReady}
+                  onClick={() => startQuickPick('test', 'search')}
+                >
+                  Pick search
                 </Button>
                 {visualSelector ? (
                   <Button size="slim" variant="plain" onClick={addVisualEditorSelector}>
