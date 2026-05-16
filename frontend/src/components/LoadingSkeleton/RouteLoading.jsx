@@ -8,10 +8,40 @@
 import React from 'react';
 import styles from './RouteLoading.module.css';
 
-export function RouteLoading({ message = 'Loading…', fullScreen = false }) {
+export function RouteLoading({
+  message = 'Loading…',
+  fullScreen = false,
+  contentOverlay = false,
+  variant,
+}) {
+  const resolvedVariant =
+    variant || (fullScreen ? 'fullScreen' : contentOverlay ? 'contentOverlay' : 'inline');
+  const className = [
+    styles.wrapper,
+    resolvedVariant === 'fullScreen' && styles.fullScreen,
+    resolvedVariant === 'contentOverlay' && styles.contentOverlay,
+    resolvedVariant === 'topBar' && styles.topBar,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  if (resolvedVariant === 'topBar') {
+    return (
+      <div
+        className={className}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label={message}
+      >
+        <div className={styles.progressBar} aria-hidden="true" />
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`${styles.wrapper} ${fullScreen ? styles.fullScreen : ''}`}
+      className={className}
       role="status"
       aria-live="polite"
       aria-busy="true"

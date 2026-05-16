@@ -4,7 +4,7 @@
  * Premium collapsible sidebar with enhanced UI
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, startTransition } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BlockStack, Text, Icon } from '@shopify/polaris';
 import {
@@ -20,10 +20,22 @@ import {
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
 import { useTests } from '../../hooks';
-import { apiGet } from '../../services';
+import { apiGet, getNavigateToWithEmbed } from '../../services';
 import { prefetchOnHover } from '../../utils/prefetch';
 import { getAppDomainFromPath } from '../../utils/breadcrumb';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
+import { useNavigationLoading } from '../../contexts/NavigationLoadingContext';
+
+function navigateSidebarPath(navigate, beginNavigation, path) {
+  const raw = String(path || '');
+  const q = raw.indexOf('?');
+  const pathname = q >= 0 ? raw.slice(0, q) : raw;
+  const extraParams = q >= 0 ? Object.fromEntries(new URLSearchParams(raw.slice(q + 1))) : null;
+  beginNavigation();
+  startTransition(() => {
+    navigate(getNavigateToWithEmbed(pathname, extraParams));
+  });
+}
 
 const baseNavigationGroups = (domain = null) => {
   const dash = domain ? ROUTES.appDashboard(domain) : ROUTES.DASHBOARD;
@@ -78,6 +90,11 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
   const [hoverDrawer, setHoverDrawer] = useState(null); // { label, top, height }
   const navigate = useNavigate();
   const location = useLocation();
+  const { beginNavigation } = useNavigationLoading();
+  const goTo = useCallback(
+    path => navigateSidebarPath(navigate, beginNavigation, path),
+    [navigate, beginNavigation]
+  );
   const { data: tests = [] } = useTests();
   const appDomain = getAppDomainFromPath(location.pathname);
   const isAccountContext =
@@ -210,11 +227,11 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
             }}
           >
             <div
-              onClick={() => navigate(homePath)}
+              onClick={() => goTo(homePath)}
               className="sidebar-brand"
               role="button"
               tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && navigate(homePath)}
+              onKeyDown={e => e.key === 'Enter' && goTo(homePath)}
               aria-label={appDomain ? 'Go to Dashboard' : 'Go to Home'}
               style={{
                 display: 'flex',
@@ -297,11 +314,11 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
           >
             {/* Icon - Hidden when collapse button is shown */}
             <div
-              onClick={() => navigate(homePath)}
+              onClick={() => goTo(homePath)}
               className="sidebar-brand sidebar-brand-icon"
               role="button"
               tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && navigate(homePath)}
+              onKeyDown={e => e.key === 'Enter' && goTo(homePath)}
               aria-label={appDomain ? 'Go to Dashboard' : 'Go to Home'}
               style={{
                 opacity: showCollapseButton ? 0 : 1,
@@ -451,7 +468,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                   <button
                     key={item.path}
                     onClick={() => {
-                      navigate(item.path);
+                      goTo(item.path);
                       if (onMobileClose) onMobileClose();
                     }}
                     onMouseEnter={() => prefetchOnHover(item.path)}

@@ -378,6 +378,22 @@ function TestWizard({
   };
 
   useEffect(() => {
+    return () => {
+      if (typeof document === 'undefined') return;
+      const modalClasses = [
+        'ripx-price-product-modal-open',
+        'ripx-goal-event-modal-open',
+        'ripx-checkout-variant-modal-open',
+      ];
+      modalClasses.forEach(className => {
+        document.body.classList.remove(className);
+        document.documentElement.classList.remove(className);
+      });
+      document.getElementById('ripx-price-product-modal-overlay')?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!variantDropdownOpen) return;
     const handleClickOutside = e => {
       if (variantDropdownRef.current && !variantDropdownRef.current.contains(e.target)) {

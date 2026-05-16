@@ -46,6 +46,7 @@ import { RipxAssistantWidget } from './components/Assistant';
 import AuthGuard from './components/Connect/AuthGuard';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import { RouteLoading } from './components/LoadingSkeleton/RouteLoading';
+import { NavigationLoadingProvider } from './contexts/NavigationLoadingContext';
 import {
   ROUTES,
   ROUTE_PATTERNS,
@@ -274,6 +275,7 @@ function PromoLinksWrapper() {
 
 /** Auth check status: we validate session once before showing protected app content to avoid flash of app then redirect. */
 const AUTH_CHECK = { IDLE: 'idle', LOADING: 'loading', DONE: 'done' };
+const APP_ROUTE_SUSPENSE_FALLBACK = <RouteLoading message="Loading page…" contentOverlay />;
 const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
 const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
@@ -1208,7 +1210,9 @@ function AppContent() {
                 <Route
                   index
                   element={
-                    <Suspense fallback={<RouteLoading message="Loading dashboard…" />}>
+                    <Suspense
+                      fallback={<RouteLoading message="Loading dashboard…" contentOverlay />}
+                    >
                       <Dashboard />
                     </Suspense>
                   }
@@ -1216,7 +1220,7 @@ function AppContent() {
                 <Route
                   path="tests"
                   element={
-                    <Suspense fallback={<RouteLoading message="Loading…" />}>
+                    <Suspense fallback={APP_ROUTE_SUSPENSE_FALLBACK}>
                       <TestList />
                     </Suspense>
                   }
@@ -1224,7 +1228,7 @@ function AppContent() {
                 <Route
                   path="tests/new"
                   element={
-                    <Suspense fallback={<RouteLoading message="Loading…" />}>
+                    <Suspense fallback={APP_ROUTE_SUSPENSE_FALLBACK}>
                       <TestCreator />
                     </Suspense>
                   }
@@ -1232,7 +1236,7 @@ function AppContent() {
                 <Route
                   path="tests/:id"
                   element={
-                    <Suspense fallback={<RouteLoading />}>
+                    <Suspense fallback={APP_ROUTE_SUSPENSE_FALLBACK}>
                       <TestDetail />
                     </Suspense>
                   }
@@ -1272,7 +1276,9 @@ function AppContent() {
                 <Route
                   path="analytics"
                   element={
-                    <Suspense fallback={<RouteLoading message="Loading analytics…" />}>
+                    <Suspense
+                      fallback={<RouteLoading message="Loading analytics…" contentOverlay />}
+                    >
                       <AnalyticsOverview />
                     </Suspense>
                   }
@@ -1280,7 +1286,11 @@ function AppContent() {
                 <Route
                   path="goals-metrics"
                   element={
-                    <Suspense fallback={<RouteLoading message="Loading goals and metrics…" />}>
+                    <Suspense
+                      fallback={
+                        <RouteLoading message="Loading goals and metrics…" contentOverlay />
+                      }
+                    >
                       <GoalsMetrics />
                     </Suspense>
                   }
@@ -1431,7 +1441,9 @@ function App() {
             v7_relativeSplatPath: true,
           }}
         >
-          <AppContent />
+          <NavigationLoadingProvider>
+            <AppContent />
+          </NavigationLoadingProvider>
         </BrowserRouter>
       </AppProvider>
     </QueryClientProvider>

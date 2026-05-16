@@ -23,6 +23,42 @@
   background: var(--bg-primary);
 }
 
+/* Slim bar across the viewport while route transition is in flight */
+.wrapper.topBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10002;
+  min-height: 0;
+  height: 3px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.wrapper.topBar .progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+/* Covers main content only (sidebar stays interactive) while lazy route chunks load */
+.wrapper.contentOverlay {
+  position: fixed;
+  top: 56px;
+  left: var(--ripx-app-sidebar-width, 0px);
+  right: 0;
+  bottom: 0;
+  z-index: 998;
+  min-height: 0;
+  background: var(--bg-primary);
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Top progress bar – indeterminate */
 .progressBar {
   position: absolute;

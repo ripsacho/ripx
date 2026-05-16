@@ -26,6 +26,7 @@ import ShopifyConnectionBanner from './ShopifyConnectionBanner';
 import ConnectStoreGate from './ConnectStoreGate';
 import Toast from '../Toast/Toast';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
+import { prefetchRoute } from '../../utils/prefetch';
 
 /** OAuth start URL to connect a Shopify store */
 function getShopifyConnectUrl(shopDomain) {
@@ -83,6 +84,18 @@ function AppDomainLayout() {
       setCurrentStore(domain);
       setStoreSynced(true);
     }
+  }, [domain, validDomain]);
+
+  useEffect(() => {
+    if (!validDomain || !domain) return;
+    prefetchRoute(ROUTES.appDashboard(domain));
+    prefetchRoute(ROUTES.appTests(domain));
+    prefetchRoute(ROUTES.appAnalytics(domain));
+    prefetchRoute(ROUTES.appCreateTest(domain));
+    if (ROUTES.appGoalsMetrics) {
+      prefetchRoute(ROUTES.appGoalsMetrics(domain));
+    }
+    prefetchRoute(`${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`);
   }, [domain, validDomain]);
 
   const {
