@@ -8,6 +8,8 @@ import {
   buildVisualPickerLaunchUrl,
   ensureShopifyPreviewBootstrapUrl,
   isShopifyPreviewUrl,
+  loadPersistedStorefrontPassword,
+  persistStorefrontPassword,
   stripPreviewDocumentSecretParams,
 } from '../previewUrl';
 
@@ -181,6 +183,31 @@ describe('previewUrl', () => {
 
     const url = new URL(result, 'https://app.example.com');
     expect(url.searchParams.get('storefront_password')).toBe('secret-password');
+  });
+
+  it('persists storefront password in sessionStorage per shop host', () => {
+    const store = new Map();
+    const previousWindow = global.window;
+    global.window = {
+      sessionStorage: {
+        getItem: key => (store.has(key) ? store.get(key) : null),
+        setItem: (key, value) => {
+          store.set(key, value);
+        },
+        removeItem: key => {
+          store.delete(key);
+        },
+      },
+    };
+    try {
+      const domain = 'splitter-plus.myshopify.com';
+      persistStorefrontPassword(domain, 'sp');
+      expect(loadPersistedStorefrontPassword(domain)).toBe('sp');
+      persistStorefrontPassword(domain, '');
+      expect(loadPersistedStorefrontPassword(domain)).toBe('');
+    } finally {
+      global.window = previousWindow;
+    }
   });
 
   it('strips storefront password from copied preview-document links', () => {

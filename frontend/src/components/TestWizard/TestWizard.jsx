@@ -80,6 +80,8 @@ import {
   buildShopifyPreviewBootstrapUrl,
   buildVisualPickerLaunchUrl,
   isShopifyPreviewUrl,
+  loadPersistedStorefrontPassword,
+  persistStorefrontPassword,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
@@ -1190,6 +1192,38 @@ function TestWizard({
   useEffect(() => {
     setPreviewPaintParity(null);
   }, [visualPreviewRetryKey, visualPreviewVariantIndex, visualEditorPreviewSurface]);
+
+  useEffect(() => {
+    const domain =
+      scopedShopDomain ||
+      normalizeTextValue(initialData?.shop_domain) ||
+      normalizeTextValue(getShopDomain()) ||
+      '';
+    if (!domain) return;
+    const persisted = loadPersistedStorefrontPassword(domain);
+    if (!persisted) return;
+    setVisualEditorStorefrontPassword(prev => (prev.trim() ? prev : persisted));
+  }, [scopedShopDomain, initialData?.shop_domain]);
+
+  const handleVisualEditorStorefrontPasswordChange = useCallback(
+    value => {
+      const domain =
+        scopedShopDomain ||
+        normalizeTextValue(initialData?.shop_domain) ||
+        normalizeTextValue(getShopDomain()) ||
+        '';
+      setVisualEditorStorefrontPassword(value);
+      persistStorefrontPassword(domain, value);
+      const trimmed = String(value || '').trim();
+      if (trimmed) {
+        setVisualPreviewLoadState('loading');
+        setVisualPreviewRetryKey(k => k + 1);
+      } else {
+        setVisualPreviewLoadState('idle');
+      }
+    },
+    [scopedShopDomain, initialData?.shop_domain]
+  );
 
   useEffect(() => {
     if (!wizardUiStateKey || didRestoreWizardUiStateRef.current) return;
@@ -3269,6 +3303,10 @@ function TestWizard({
         if (event.data?.type === 'ripx-preview-error') {
           if (!allowedPreviewMessageOrigins.includes(event.origin)) return;
           setVisualPreviewLoadState('error');
+          const errMsg = typeof event.data?.message === 'string' ? event.data.message.trim() : '';
+          if (errMsg) {
+            setVisualPreviewToast({ message: errMsg, type: 'critical' });
+          }
           return;
         }
         if (event.data?.type === 'ripx-price-paint-parity') {
@@ -16637,12 +16675,9 @@ function TestWizard({
                               label="Storefront password"
                               type="password"
                               value={visualEditorStorefrontPassword}
-                              onChange={value => {
-                                setVisualEditorStorefrontPassword(value);
-                                setVisualPreviewLoadState('idle');
-                              }}
+                              onChange={handleVisualEditorStorefrontPasswordChange}
                               autoComplete="off"
-                              helpText="For password-protected Shopify dev stores. Leave empty for public stores."
+                              helpText="For password-protected Shopify dev stores (e.g. dev storefront password). Saved for this browser session only; reloads preview when you enter it."
                             />
                           )}
                           {isPriceTestType &&

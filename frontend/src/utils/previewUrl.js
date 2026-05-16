@@ -497,6 +497,53 @@ export function isShopifyPreviewUrl(previewUrl) {
   }
 }
 
+const STOREFRONT_PASSWORD_STORAGE_PREFIX = 'ripx_storefront_password:';
+
+/**
+ * Session-scoped storage key for a Shopify storefront password (never sent to clipboard helpers).
+ * @param {string} domain
+ * @returns {string}
+ */
+export function storefrontPasswordStorageKey(domain) {
+  const host = normalizePreviewHostname(domain);
+  return host ? `${STOREFRONT_PASSWORD_STORAGE_PREFIX}${host}` : '';
+}
+
+/**
+ * @param {string} domain
+ * @returns {string}
+ */
+export function loadPersistedStorefrontPassword(domain) {
+  if (typeof window === 'undefined' || !window.sessionStorage) return '';
+  const key = storefrontPasswordStorageKey(domain);
+  if (!key) return '';
+  try {
+    return String(window.sessionStorage.getItem(key) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * @param {string} domain
+ * @param {string} password
+ */
+export function persistStorefrontPassword(domain, password) {
+  if (typeof window === 'undefined' || !window.sessionStorage) return;
+  const key = storefrontPasswordStorageKey(domain);
+  if (!key) return;
+  const trimmed = typeof password === 'string' ? password.trim() : '';
+  try {
+    if (trimmed) {
+      window.sessionStorage.setItem(key, trimmed);
+    } else {
+      window.sessionStorage.removeItem(key);
+    }
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export function stripPreviewDocumentSecretParams(previewDocumentUrl) {
   const raw = typeof previewDocumentUrl === 'string' ? previewDocumentUrl.trim() : '';
   if (!raw) return '';
