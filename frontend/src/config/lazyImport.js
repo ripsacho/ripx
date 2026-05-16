@@ -1,14 +1,7 @@
 import { lazy } from 'react';
+import { attemptChunkLoadRecovery, isChunkLoadError } from '../utils/chunkLoadRecovery';
 
-function isChunkLoadError(error) {
-  const message = String(error?.message || error || '');
-  return (
-    message.includes('Failed to fetch dynamically imported module') ||
-    message.includes('Importing a module script failed') ||
-    message.includes('Loading chunk') ||
-    message.includes('ChunkLoadError')
-  );
-}
+export { isChunkLoadError };
 
 function wait(ms) {
   return new Promise(resolve => {
@@ -17,7 +10,8 @@ function wait(ms) {
 }
 
 export function lazyWithRetry(importFn, options = {}) {
-  const retries = Number.isFinite(options.retries) ? options.retries : 1;
+  const defaultRetries = import.meta.env.PROD ? 3 : 1;
+  const retries = Number.isFinite(options.retries) ? options.retries : defaultRetries;
   const delayMs = Number.isFinite(options.delayMs) ? options.delayMs : 300;
 
   return lazy(async () => {
@@ -30,6 +24,7 @@ export function lazyWithRetry(importFn, options = {}) {
         return module;
       } catch (error) {
         if (!isChunkLoadError(error) || attempt >= retries) {
+          attemptChunkLoadRecovery(error);
           throw error;
         }
         attempt += 1;

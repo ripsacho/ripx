@@ -1437,7 +1437,8 @@ function App() {
         <BrowserRouter
           basename={embeddedBasePath || undefined}
           future={{
-            v7_startTransition: true,
+            // Disabled: defers swapping route UI until lazy chunks load, so URL can change
+            // while Test Detail (heavy wizard) stays visible — especially on production CDN/cache.
             v7_relativeSplatPath: true,
           }}
         >

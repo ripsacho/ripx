@@ -4,7 +4,7 @@
  * Premium collapsible sidebar with enhanced UI
  */
 
-import React, { useState, useCallback, useMemo, useEffect, startTransition } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BlockStack, Text, Icon } from '@shopify/polaris';
 import {
@@ -32,9 +32,7 @@ function navigateSidebarPath(navigate, beginNavigation, path) {
   const pathname = q >= 0 ? raw.slice(0, q) : raw;
   const extraParams = q >= 0 ? Object.fromEntries(new URLSearchParams(raw.slice(q + 1))) : null;
   beginNavigation();
-  startTransition(() => {
-    navigate(getNavigateToWithEmbed(pathname, extraParams));
-  });
+  navigate(getNavigateToWithEmbed(pathname, extraParams));
 }
 
 const baseNavigationGroups = (domain = null) => {

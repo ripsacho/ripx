@@ -7,7 +7,9 @@ import { RouteLoading } from '../components/LoadingSkeleton/RouteLoading';
 
 const NavigationLoadingContext = createContext(null);
 
-const MIN_VISIBLE_MS = 320;
+/** Keep overlay visible long enough for lazy chunks on slow networks / after deploy. */
+const MIN_VISIBLE_MS = 400;
+const POST_PATHNAME_SETTLE_MS = 1200;
 
 export function NavigationLoadingProvider({ children }) {
   const location = useLocation();
@@ -25,13 +27,13 @@ export function NavigationLoadingProvider({ children }) {
     locationKeyRef.current = location.key;
 
     const elapsed = navigatingSinceRef.current ? Date.now() - navigatingSinceRef.current : 0;
-    const delay = Math.max(0, MIN_VISIBLE_MS - elapsed);
+    const delay = Math.max(POST_PATHNAME_SETTLE_MS, MIN_VISIBLE_MS - elapsed);
     const timer = window.setTimeout(() => {
       setIsNavigating(false);
       navigatingSinceRef.current = 0;
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [location.key]);
+  }, [location.key, location.pathname]);
 
   useEffect(() => {
     if (!isNavigating) return undefined;
@@ -45,7 +47,12 @@ export function NavigationLoadingProvider({ children }) {
   return (
     <NavigationLoadingContext.Provider value={{ beginNavigation, isNavigating }}>
       {children}
-      {isNavigating ? <RouteLoading message="Loading page…" variant="topBar" /> : null}
+      {isNavigating ? (
+        <>
+          <RouteLoading message="Loading page…" variant="topBar" />
+          <RouteLoading message="Loading page…" contentOverlay />
+        </>
+      ) : null}
     </NavigationLoadingContext.Provider>
   );
 }

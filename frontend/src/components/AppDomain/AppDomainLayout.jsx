@@ -7,6 +7,21 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useLocation, Navigate, Outlet } from 'react-router-dom';
+
+const RIPX_MODAL_BODY_CLASSES = [
+  'ripx-price-product-modal-open',
+  'ripx-goal-event-modal-open',
+  'ripx-checkout-variant-modal-open',
+];
+
+function clearWizardModalArtifacts() {
+  if (typeof document === 'undefined') return;
+  RIPX_MODAL_BODY_CLASSES.forEach(className => {
+    document.body.classList.remove(className);
+    document.documentElement.classList.remove(className);
+  });
+  document.getElementById('ripx-price-product-modal-overlay')?.remove();
+}
 import { BlockStack } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
 import { ROUTES, STORAGE_KEYS, RIPX_STORE_SWITCHED_EVENT } from '../../constants';
@@ -85,6 +100,10 @@ function AppDomainLayout() {
       setStoreSynced(true);
     }
   }, [domain, validDomain]);
+
+  useEffect(() => {
+    clearWizardModalArtifacts();
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!validDomain || !domain) return;
@@ -329,7 +348,7 @@ function AppDomainLayout() {
       {storeSwitchToastEl}
       <BlockStack gap="400">
         {isShopify && <ShopifyConnectionBanner />}
-        <Outlet />
+        <Outlet key={location.pathname} />
       </BlockStack>
     </>
   );

@@ -8,7 +8,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
+import { installChunkLoadRecovery } from './utils/chunkLoadRecovery';
 import './index.css';
+
+installChunkLoadRecovery();
 
 function showFallback(message) {
   const root = document.getElementById('root');
