@@ -1950,7 +1950,10 @@
 
   function getEmbeddedPreviewVariant(testId) {
     if (!EMBEDDED_PREVIEW_VARIANT || String(testId) !== String(PREVIEW_TEST_ID)) return null;
-    if (PREVIEW_VARIANT_ID && !previewQueryMatchesVariantLabel(PREVIEW_VARIANT_ID, EMBEDDED_PREVIEW_VARIANT)) {
+    if (
+      PREVIEW_VARIANT_ID &&
+      !previewQueryMatchesVariantLabel(PREVIEW_VARIANT_ID, EMBEDDED_PREVIEW_VARIANT)
+    ) {
       return null;
     }
     if (
@@ -4683,7 +4686,9 @@
     var target = Number(targetUnit);
     var shown = Number(displayedAmount);
     var tol =
-      tolerance != null && isFinite(Number(tolerance)) ? Number(tolerance) : RIPX_PAINT_PARITY_TOLERANCE;
+      tolerance != null && isFinite(Number(tolerance))
+        ? Number(tolerance)
+        : RIPX_PAINT_PARITY_TOLERANCE;
     if (!isFinite(target) || !isFinite(shown)) {
       return { ok: false, reason: 'missing_amount' };
     }
@@ -4743,7 +4748,9 @@
         if (!targetStr && el.closest) {
           var holder = el.closest('[data-product-id]');
           if (holder) {
-            targetStr = getRememberedRipxTargetUnitForProductId(holder.getAttribute('data-product-id'));
+            targetStr = getRememberedRipxTargetUnitForProductId(
+              holder.getAttribute('data-product-id')
+            );
           }
         }
         if (!targetStr) return;
@@ -6808,8 +6815,7 @@
       }
     }
     var tids =
-      test.targetIds ||
-      (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
     var curProductId = getCurrentProductId();
     var pdpProductMatch =
       productScope &&
@@ -6832,10 +6838,7 @@
     if (!(tids.length || tt === 'all-products' || tt === 'all_products')) return;
     if (tt === 'product' && isProductListingSurface()) {
       applyPriceTestToProductCards(test.id, variant, tids);
-    } else if (
-      (tt === 'all-products' || tt === 'all_products') &&
-      isProductListingSurface()
-    ) {
+    } else if ((tt === 'all-products' || tt === 'all_products') && isProductListingSurface()) {
       applyPriceTestToCollectionListingCards(test.id, variant);
     } else if (tt === 'collection' && matched && isProductListingSurface()) {
       applyPriceTestToCollectionListingCards(test.id, variant);
@@ -6907,14 +6910,7 @@
       registryCartSelectors.forEach(function (sel) {
         try {
           row.querySelectorAll(sel).forEach(function (el) {
-            paintPriceNode(
-              el,
-              rowDisplay,
-              testId,
-              variantIdForCart,
-              'cart',
-              rowTargetUnit
-            );
+            paintPriceNode(el, rowDisplay, testId, variantIdForCart, 'cart', rowTargetUnit);
           });
         } catch (_eRegistryCart) {}
       });
