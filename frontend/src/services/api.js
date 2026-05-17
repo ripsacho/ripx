@@ -893,6 +893,7 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const canUseEmailSessionForEndpoint =
     endpoint.startsWith('/admin/') ||
     endpoint.startsWith('/me/') ||
+    endpoint === '/me/domains/link-shopify' ||
     endpoint.startsWith('/auth/start') ||
     endpoint.startsWith('/auth/install-link') ||
     endpoint.startsWith('/shopify/connection-status') ||

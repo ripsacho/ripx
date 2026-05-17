@@ -32,7 +32,17 @@ export function shouldOpenShopifyApp(status) {
   const code = String(status.connection?.code || status.raw?.connection?.code || '')
     .trim()
     .toUpperCase();
-  return status.tokenHealth?.valid === true && code === 'SCOPES_STALE';
+  if (status.tokenHealth?.valid === true && code === 'SCOPES_STALE') {
+    return true;
+  }
+  if (code === 'SESSION_OK' && status.connected) {
+    return true;
+  }
+  return false;
+}
+
+export function isShopifyStoreOpenableState(state) {
+  return ['connected', 'scopes_stale'].includes(String(state || '').toLowerCase());
 }
 
 export function getShopifyConnectionUiState(status, errorMeta = null) {

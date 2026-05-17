@@ -87,15 +87,24 @@ function verifyHMAC(data, hmacHeader) {
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
+function isShopifyConnectionStatusRequest(req) {
+  return req.method === 'GET' && String(req.path || '').endsWith('/connection-status');
+}
+
 async function authenticateShopify(req, res, next) {
   try {
     // Get requested shop domain from query or headers.
     const requestedShop = getRequestedStore(req);
+    const connectionStatusProbe = isShopifyConnectionStatusRequest(req);
 
     // If caller has an email session, resolve and enforce store access before loading Shopify token.
     const hasEmailSession = await tryEmailSessionToken(req);
     if (hasEmailSession) {
       await attachEmailSessionStoreContext(req);
+      if (!req.shopDomain && connectionStatusProbe && requestedShop) {
+        req.shopDomain = requestedShop.trim().toLowerCase();
+        req.allowUnlinkedShopifyProbe = true;
+      }
       if (!req.shopDomain) {
         const requestedTenant = requestedShop ? await getTenantByDomain(requestedShop) : null;
         logger.warn('Authentication failed: Email user has no access to requested Shopify store', {
@@ -223,7 +232,7 @@ async function authenticateShopify(req, res, next) {
     // Require tenant to be linked to an email user for app UI (shop-authenticated) routes.
     // Webhooks (/api/webhooks) do not use this middleware, so they are not affected.
     const tenant = await getTenantByDomain(normalizedShop);
-    if (tenant && tenant.account_id === null) {
+    if (tenant && tenant.account_id === null && !req.allowUnlinkedShopifyProbe) {
       logger.warn('Authentication rejected: store not linked to a user', {
         shop: normalizedShop,
         path: req.path,

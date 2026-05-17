@@ -415,7 +415,10 @@ describe('authenticateShopify email access enforcement', () => {
   }
 
   it('rejects when email session user has no access to requested store', async () => {
-    const req = makeReq({ query: { shop: 'blocked-store.myshopify.com' } });
+    const req = makeReq({
+      query: { shop: 'blocked-store.myshopify.com' },
+      path: '/api/shopify/products/1',
+    });
     const res = makeRes();
     const next = jest.fn();
 

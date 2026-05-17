@@ -25,6 +25,57 @@ const logger = require('../utils/logger');
 const validators = require('../utils/validators');
 const { isShopifyDomain } = require('../models/tenant');
 const { isUserStatusAllowedForSession } = require('../constants');
+const { linkShopifyStoreToUserAccount } = require('../services/shopifyStoreLinkService');
+
+/**
+ * POST /api/me/domains/link-shopify
+ * After Shopify OAuth, attach the store to the current user's account when a session token exists.
+ */
+router.post(
+  '/domains/link-shopify',
+  asyncHandler(async (req, res) => {
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
+    if (!email) {
+      return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
+    }
+
+    const rawShop = req.body?.shop || req.body?.domain || '';
+    const shop = String(rawShop).trim().toLowerCase();
+    if (!shop || !isShopifyDomain(shop)) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Valid Shopify shop domain required');
+    }
+
+    const result = await linkShopifyStoreToUserAccount({ shopDomain: shop, email });
+    if (result.storeLinkedToAnother) {
+      return sendError(
+        res,
+        HTTP_STATUS.CONFLICT,
+        'This store is already linked to another RipX account.',
+        { code: 'STORE_LINKED_TO_ANOTHER' }
+      );
+    }
+    if (!result.linked) {
+      const message =
+        result.reason === 'no_shopify_session'
+          ? 'Complete Shopify install first, then try again.'
+          : 'Could not link this store to your account.';
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, message, {
+        code: result.reason || 'LINK_FAILED',
+      });
+    }
+
+    auditLogService.logAuthAction(req, {
+      action: 'shopify_connect_linked',
+      actorId: email,
+      entityId: null,
+      changes: { domain: shop, source: 'me_link_shopify' },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, { linked: true, shop });
+  })
+);
 
 /**
  * GET /api/me/domains

@@ -22,6 +22,7 @@ import { ROUTES, STORAGE_KEYS } from '../../constants';
 import {
   apiMeGet,
   apiGet,
+  apiPost,
   getAccountApiKey,
   getDomainKeys,
   setCurrentStore,
@@ -175,6 +176,13 @@ function UserPanel() {
       }
       connectVerifyLocksRef.current.set(normalized, true);
       try {
+        if (getEmailToken()) {
+          try {
+            await apiPost('/me/domains/link-shopify', { shop: normalized });
+          } catch {
+            // Link may fail before OAuth completes; connection-status will reflect state.
+          }
+        }
         const status = await fetchShopifyConnectionStatus(normalized);
         const connected = shouldOpenShopifyApp(status);
         if (connected) {
@@ -233,6 +241,9 @@ function UserPanel() {
       if (hookState === 'verify_unavailable') {
         return 'needs_install';
       }
+      if (hookState === 'scopes_stale') {
+        return 'scopes_stale';
+      }
       return hookState;
     },
     [openingDomain, pendingShopifyConnect, getShopifyInstallStateFromHook]
@@ -242,7 +253,8 @@ function UserPanel() {
   );
   const connectedShopifyCount = shopifyDomains.filter(domainRow => {
     const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
-    return getShopifyInstallState(domain) === 'connected';
+    const state = getShopifyInstallState(domain);
+    return state === 'connected' || state === 'scopes_stale';
   }).length;
   const needsAttentionCount = shopifyDomains.filter(domainRow => {
     const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
@@ -772,20 +784,22 @@ function UserPanel() {
                     const statusLabel = isShopify
                       ? installState === 'connected'
                         ? 'Connected'
-                        : installState === 'needs_install'
-                          ? 'Needs install'
-                          : installState === 'needs_link'
-                            ? 'Needs link'
-                            : installState === 'restricted'
-                              ? 'Restricted'
-                              : installState === 'checking'
-                                ? 'Checking…'
-                                : 'Status unknown'
+                        : installState === 'scopes_stale'
+                          ? 'Update permissions'
+                          : installState === 'needs_install'
+                            ? 'Needs install'
+                            : installState === 'needs_link'
+                              ? 'Needs link'
+                              : installState === 'restricted'
+                                ? 'Restricted'
+                                : installState === 'checking'
+                                  ? 'Checking…'
+                                  : 'Status unknown'
                       : canOpen
                         ? 'Connected'
                         : 'Connect with API key';
                     const statusClass = isShopify
-                      ? installState === 'connected'
+                      ? installState === 'connected' || installState === 'scopes_stale'
                         ? styles.domainTileStatusConnected
                         : styles.domainTileStatusDisconnected
                       : canOpen
