@@ -45,6 +45,19 @@ let shippingBatchUrl = (process.env.RIPX_SHIPPING_RESOLVE_BATCH_URL || '').trim(
 if (!shippingBatchUrl && appUrl) {
   shippingBatchUrl = `${appUrl}/api/track/shipping-resolve-batch`;
 }
+// Stale dev tunnels in RIPX_*_BATCH_URL override APP_URL — prefer stable APP_URL when set.
+if (appUrl && isEphemeralTunnelUrl(batchUrl) && !isEphemeralTunnelUrl(appUrl)) {
+  console.warn(
+    '[write-ripx-checkout-config] RIPX_PRICE_RESOLVE_BATCH_URL is an ephemeral tunnel; using APP_URL instead.'
+  );
+  batchUrl = `${appUrl}/api/track/price-resolve-batch`;
+}
+if (appUrl && isEphemeralTunnelUrl(shippingBatchUrl) && !isEphemeralTunnelUrl(appUrl)) {
+  console.warn(
+    '[write-ripx-checkout-config] RIPX_SHIPPING_RESOLVE_BATCH_URL is an ephemeral tunnel; using APP_URL instead.'
+  );
+  shippingBatchUrl = `${appUrl}/api/track/shipping-resolve-batch`;
+}
 const secret = (process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
 let checkoutAssignmentUrl = (process.env.RIPX_CHECKOUT_ASSIGNMENT_URL || '').trim();
 let checkoutConversionUrl = (process.env.RIPX_CHECKOUT_CONVERSION_URL || '').trim();
