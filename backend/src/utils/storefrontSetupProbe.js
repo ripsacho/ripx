@@ -33,6 +33,11 @@ function computeStorefrontRuntimeReady(proxyStatus, embedStatus) {
     proxyStatus?.scriptDetected === true ||
     (proxyStatus?.ok === true && proxyStatus?.scriptDetected !== false);
   const embedReady = embedStatus?.detected === true;
+  // App Proxy serving RipX script is sufficient when theme HTML scan did not find the embed
+  // (common on password-protected stores or themes without /apps/ripx in homepage HTML).
+  if (proxyReady && embedStatus?.via === 'app_proxy') {
+    return true;
+  }
   return Boolean(proxyReady && embedReady);
 }
 

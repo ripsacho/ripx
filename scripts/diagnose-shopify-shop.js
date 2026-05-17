@@ -259,8 +259,39 @@ async function main() {
     }
   }
 
+  const { getSignatureSecret } = require('../backend/src/utils/priceAssignmentSignature');
+  const { runStorefrontSetupProbe } = require('../backend/src/services/storefrontSetupService');
+  report.priceAssignmentSecretConfigured = Boolean(getSignatureSecret());
+  report.checkoutPriceSecretConfigured = Boolean(
+    String(process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim()
+  );
+  try {
+    const storefront = await runStorefrontSetupProbe(shop);
+    report.storefrontRuntimeReady = storefront.storefrontRuntimeReady === true;
+    report.appProxyScriptDetected = storefront.proxyStatus?.scriptDetected === true;
+    report.storefrontEmbedVia = storefront.embedStatus?.via || null;
+  } catch (probeErr) {
+    report.storefrontRuntimeReady = false;
+    report.storefrontProbeError = probeErr?.message || String(probeErr);
+  }
+
   report.recommendations = recommendation(report);
+  if (report.apiOk && !report.priceAssignmentSecretConfigured) {
+    report.recommendations.unshift(
+      'Set RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET or RIPX_CHECKOUT_PRICE_SECRET in production .env (e.g. openssl rand -hex 32), then pm2 restart ripx — required to start price tests.'
+    );
+  }
+  if (report.apiOk && report.storefrontRuntimeReady === false) {
+    report.recommendations.push(
+      'Storefront/App Proxy not ready for price test preflight. In RipX open Settings → Installation; verify https://' +
+        shop +
+        '/apps/ripx/script.js loads.'
+    );
+  }
+
   output(report);
+  const { closeDatabase } = require('../backend/src/utils/database');
+  await closeDatabase();
   const exitCode =
     report.apiOk && report.missingScopes.length === 0 && report.ripxCartTransformInstalled ? 0 : 1;
   process.exit(exitCode);
@@ -298,6 +329,16 @@ function output(report) {
   console.log(`Admin API:         ${report.apiOk ? 'OK' : `FAILED — ${report.apiError}`}`);
   if (report.tokenInvalid) {
     console.log('Token status:      INVALID (401) — install buttons cannot work until re-auth');
+  }
+  if (report.hasSession) {
+    console.log(
+      `Price signing secret: ${report.priceAssignmentSecretConfigured ? 'configured' : 'MISSING (blocks start)'}`
+    );
+    if (report.storefrontRuntimeReady !== undefined) {
+      console.log(
+        `Storefront runtime:  ${report.storefrontRuntimeReady ? 'ready' : 'not ready'} (proxy script=${report.appProxyScriptDetected ? 'yes' : 'no'}${report.storefrontEmbedVia ? `, via=${report.storefrontEmbedVia}` : ''})`
+      );
+    }
   }
   if (report.apiOk) {
     console.log(

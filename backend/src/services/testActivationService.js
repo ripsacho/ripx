@@ -481,6 +481,18 @@ async function runActivationPreflight(test, shopDomain) {
           }
         : undefined,
     });
+    const missingScopes = Array.isArray(oauthHealth.tokenHealth?.missingScopes)
+      ? oauthHealth.tokenHealth.missingScopes
+      : [];
+    if (missingScopes.length > 0 && oauthHealth.tokenHealth?.valid === true) {
+      addCheck(preflight, {
+        id: 'shopify_oauth_scopes',
+        ok: false,
+        severity: 'warning',
+        message: `Shop token is missing ${missingScopes.length} scope(s): ${missingScopes.join(', ')}. Re-authorize from My domains (incognito install link) after \`npm run shopify:deploy:production:safe\` and releasing the app version.`,
+        meta: { missing_scopes: missingScopes },
+      });
+    }
   }
 
   if (shopDomain && requiresStorefrontRuntimeForTest(test)) {
@@ -494,11 +506,14 @@ async function runActivationPreflight(test, shopDomain) {
         testType === 'pricing' ||
         testType === 'offer' ||
         testType === 'shipping';
+      const proxyScriptReady = storefrontProbe.proxyStatus?.scriptDetected === true;
+      const runtimeOk =
+        runtimeReady || (proxyScriptReady && storefrontProbe.embedStatus?.via === 'app_proxy');
       addCheck(preflight, {
         id: 'storefront_runtime_ready',
-        ok: runtimeReady,
-        severity: runtimeReady ? 'ok' : strictStorefront ? 'error' : 'warning',
-        message: runtimeReady
+        ok: runtimeOk,
+        severity: runtimeOk ? 'ok' : strictStorefront ? 'error' : 'warning',
+        message: runtimeOk
           ? storefrontProbe.embedStatus?.via === 'app_proxy'
             ? embedNote || 'Storefront runtime is ready (App Proxy script verified).'
             : 'Storefront runtime is ready (App Proxy and theme embed verified).'
