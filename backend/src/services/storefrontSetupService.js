@@ -44,7 +44,7 @@ async function checkAppProxyStatus(shopDomain) {
     status.ok = status.scriptDetected;
     if (status.passwordProtected && !status.scriptDetected) {
       status.note =
-        'Storefront is password-protected, so RipX cannot verify /apps/ripx/script.js from the server. App Proxy may still work for visitors who have unlocked the store. Disable the password under Online Store → Preferences to auto-verify, or open the script URL in a browser while logged into the store.';
+        'Your store uses a password page, so RipX could not verify the tracking script automatically. Remove the storefront password, or open /apps/ripx/script.js in a browser while logged into the store.';
     }
   } catch (error) {
     status.error = error.message;

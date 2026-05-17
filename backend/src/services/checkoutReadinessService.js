@@ -572,27 +572,32 @@ async function buildPricingOrOfferReadiness({
       }
     }
     const surfaceReadiness = buildPriceSurfaceReadinessSummary(testMappings, shopMappings);
+    const surfaceReady = surfaceReadiness.status === 'ready';
+    let surfaceMessage = 'Theme price selectors cover the pages this test needs.';
+    if (!surfaceReady) {
+      if (surfaceReadiness.actionableGapCount > 0) {
+        const gapHint =
+          surfaceReadiness.gaps?.length > 0
+            ? surfaceReadiness.gaps
+                .slice(0, 2)
+                .map(gap => gap.message)
+                .join(' ')
+            : '';
+        surfaceMessage = `Set up theme price selectors in Settings → Installation (${surfaceReadiness.actionableGapCount} mapping${surfaceReadiness.actionableGapCount === 1 ? '' : 's'} still needed).${gapHint ? ` ${gapHint}` : ''}`;
+      } else {
+        surfaceMessage =
+          surfaceReadiness.nextAction ||
+          'Map theme price selectors in Settings → Installation before relying on live price display.';
+      }
+    }
     checklist.push(
       buildCheck(
         'pricing_storefront_surface_mapping',
-        surfaceReadiness.status === 'ready',
-        surfaceReadiness.status === 'ready' ? 'ok' : 'warning',
-        surfaceReadiness.status === 'ready'
-          ? 'Theme price selectors cover the storefront surfaces RipX expects for this test.'
-          : surfaceReadiness.nextAction ||
-              'Map theme price selectors for PDP and listing surfaces before relying on preview paint.'
+        surfaceReady,
+        surfaceReady ? 'ok' : 'warning',
+        surfaceMessage
       )
     );
-    if (surfaceReadiness.actionableGapCount > 0) {
-      checklist.push(
-        buildCheck(
-          'pricing_storefront_surface_coverage',
-          false,
-          'warning',
-          `${surfaceReadiness.actionableGapCount} storefront price surface${surfaceReadiness.actionableGapCount === 1 ? '' : 's'} still need theme selectors (${surfaceReadiness.configuredTest} test · ${surfaceReadiness.configuredShop} shop).`
-        )
-      );
-    }
   }
 
   checklist.push(

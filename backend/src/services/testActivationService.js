@@ -310,13 +310,24 @@ function applyActivationStartOptionsToTest(test, options = {}) {
 
 function addCheck(preflight, check) {
   preflight.checks.push(check);
-  if (!check.ok) {
-    if (check.severity === 'error') {
-      preflight.errors.push(check);
-    } else if (check.severity === 'warning') {
-      preflight.warnings.push(check);
-    }
+  const severity = String(check.severity || (check.ok ? 'ok' : 'error')).toLowerCase();
+  if (severity === 'error') {
+    preflight.errors.push(check);
+  } else if (severity === 'warning') {
+    preflight.warnings.push(check);
   }
+}
+
+function formatMissingScopesMessage(missingScopes) {
+  const scopes = Array.isArray(missingScopes) ? missingScopes.filter(Boolean) : [];
+  if (scopes.length === 0) {
+    return 'RipX needs updated Shopify permissions. Open My domains, copy the install link, and approve the app again in a private browser window.';
+  }
+  const preview =
+    scopes.length > 3
+      ? `${scopes.slice(0, 3).join(', ')} (+${scopes.length - 3} more)`
+      : scopes.join(', ');
+  return `RipX needs updated Shopify permissions (${preview}). Open My domains, copy the install link, and approve the app again in a private browser window.`;
 }
 
 function extractThemeConfigParts(config = {}, fallbackMode = 'asset_flag') {
@@ -455,7 +466,7 @@ async function runActivationPreflight(test, shopDomain) {
     severity: guardrailEnabled ? 'ok' : 'warning',
     message: guardrailEnabled
       ? 'Guardrail auto-stop is enabled.'
-      : 'Guardrail is disabled. Consider enabling auto-stop before launch.',
+      : 'Auto-stop is off. Enable guardrails in test settings if you want RipX to pause the test when metrics drop.',
   });
 
   if (shopDomain) {
@@ -465,34 +476,31 @@ async function runActivationPreflight(test, shopDomain) {
       accessToken: oauthSession?.access_token || null,
       sessionScope: oauthSession?.scope || null,
     });
-    addCheck(preflight, {
-      id: 'shopify_oauth_health',
-      ok: oauthHealth.connected,
-      severity: oauthHealth.connected ? 'ok' : 'error',
-      message:
-        oauthHealth.connection?.message ||
-        (oauthHealth.connected
-          ? 'Shopify OAuth session is valid.'
-          : 'Shopify OAuth session is not valid for this store.'),
-      meta: oauthHealth.tokenHealth
-        ? {
-            code: oauthHealth.connection?.code,
-            missing_scopes: oauthHealth.tokenHealth.missingScopes,
-          }
-        : undefined,
-    });
     const missingScopes = Array.isArray(oauthHealth.tokenHealth?.missingScopes)
       ? oauthHealth.tokenHealth.missingScopes
       : [];
-    if (missingScopes.length > 0 && oauthHealth.tokenHealth?.valid === true) {
-      addCheck(preflight, {
-        id: 'shopify_oauth_scopes',
-        ok: false,
-        severity: 'warning',
-        message: `Shop token is missing ${missingScopes.length} scope(s): ${missingScopes.join(', ')}. Re-authorize from My domains (incognito install link) after \`npm run shopify:deploy:production:safe\` and releasing the app version.`,
-        meta: { missing_scopes: missingScopes },
-      });
-    }
+    const scopesStale =
+      missingScopes.length > 0 ||
+      oauthHealth.connection?.code === 'SCOPES_STALE' ||
+      oauthHealth.connection?.state === 'scopes_stale';
+    const oauthConnected = oauthHealth.connected === true && !scopesStale;
+    addCheck(preflight, {
+      id: 'shopify_oauth_health',
+      ok: oauthConnected,
+      severity: !oauthHealth.connected ? 'error' : scopesStale ? 'warning' : 'ok',
+      message: scopesStale
+        ? formatMissingScopesMessage(missingScopes)
+        : oauthHealth.connection?.message ||
+          (oauthHealth.connected
+            ? 'Shopify connection looks good.'
+            : 'This store is not connected to RipX. Install or reconnect from My domains.'),
+      meta: oauthHealth.tokenHealth
+        ? {
+            code: oauthHealth.connection?.code,
+            missing_scopes: missingScopes,
+          }
+        : undefined,
+    });
   }
 
   if (shopDomain && requiresStorefrontRuntimeForTest(test)) {
@@ -516,7 +524,7 @@ async function runActivationPreflight(test, shopDomain) {
       const passwordGatedOnly = passwordGated && !proxyScriptReady && !runtimeOk;
       addCheck(preflight, {
         id: 'storefront_runtime_ready',
-        ok: runtimeOk || passwordGatedOnly,
+        ok: runtimeOk,
         severity: runtimeOk
           ? 'ok'
           : passwordGatedOnly
@@ -526,14 +534,13 @@ async function runActivationPreflight(test, shopDomain) {
               : 'warning',
         message: runtimeOk
           ? storefrontProbe.embedStatus?.via === 'app_proxy'
-            ? embedNote || 'Storefront runtime is ready (App Proxy script verified).'
-            : 'Storefront runtime is ready (App Proxy and theme embed verified).'
+            ? embedNote || 'Storefront script is reachable.'
+            : 'Storefront script and theme embed look ready.'
           : passwordGatedOnly
-            ? storefrontProbe.proxyStatus?.note ||
-              'Storefront is password-protected; RipX could not verify App Proxy from the server. Unlock the store or disable the password to confirm script delivery before launch.'
+            ? 'Your store uses a password page, so RipX could not verify the tracking script automatically. Remove the storefront password, or open /apps/ripx/script.js in a browser while logged into the store.'
             : storefrontProbe.proxyStatus?.scriptDetected === false
-              ? 'App Proxy script is not reachable at /apps/ripx/script.js. Open Settings → Installation to fix App Proxy and theme embed before relying on live assignment.'
-              : 'Theme app embed was not detected on the storefront homepage. Enable RipX under Online Store → Themes → Customize → App embeds, or confirm App Proxy is configured in Settings → Installation.',
+              ? 'RipX could not load the storefront script. Check Settings → Installation (App Proxy and theme embed).'
+              : 'Theme app embed was not detected. Enable RipX under Online Store → Themes → Customize → App embeds.',
         meta: {
           storefront_runtime_ready: runtimeReady,
           embed_via: storefrontProbe.embedStatus?.via || null,

@@ -1,0 +1,29 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.technicalBox {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--p-color-border-subdued);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.preflightCheckRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.preflightCheckLabel {
+  flex: 0 0 auto;
+  min-width: 3.5rem;
+}
+
+.preflightCheckText {
+  flex: 1 1 auto;
+  min-width: 0;
+}

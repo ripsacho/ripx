@@ -162,7 +162,7 @@ function analyzePriceSurfaceRegistryGaps(testMappings, shopMappings) {
     surface: target.surface,
     role: target.role,
     severity: target.severity,
-    message: `No ${target.surface.toUpperCase()} ${target.role.replace(/_/g, ' ')} selector is configured.`,
+    message: `Theme price selector missing for ${target.surface} (${target.role.replace(/_/g, ' ')}).`,
   }));
 }
 

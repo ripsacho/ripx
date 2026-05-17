@@ -11,7 +11,6 @@ import {
   Card,
   Button,
   Badge,
-  Banner,
   Checkbox,
   EmptyState,
   Layout,
@@ -55,47 +54,8 @@ import {
   getCelebrationColorThemePreference,
   getCelebrationStylePreference,
 } from '../../utils/preferences';
-import { formatPreflightCheckMessage } from '../../utils/preflightHints';
+import LaunchPreflightPanel from '../LaunchPreflight/LaunchPreflightPanel';
 import styles from './TestList.module.css';
-
-const PREFLIGHT_FILTERS_STORAGE_KEY = 'ripx.launchPreflightFilters.v1';
-const DEFAULT_PREFLIGHT_FILTERS = {
-  showErrors: true,
-  showWarnings: true,
-  showPassed: false,
-};
-
-function readStoredPreflightFilters() {
-  if (typeof window === 'undefined') {
-    return DEFAULT_PREFLIGHT_FILTERS;
-  }
-  try {
-    const raw = window.localStorage.getItem(PREFLIGHT_FILTERS_STORAGE_KEY);
-    if (!raw) {
-      return DEFAULT_PREFLIGHT_FILTERS;
-    }
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') {
-      return DEFAULT_PREFLIGHT_FILTERS;
-    }
-    return {
-      showErrors:
-        typeof parsed.showErrors === 'boolean'
-          ? parsed.showErrors
-          : DEFAULT_PREFLIGHT_FILTERS.showErrors,
-      showWarnings:
-        typeof parsed.showWarnings === 'boolean'
-          ? parsed.showWarnings
-          : DEFAULT_PREFLIGHT_FILTERS.showWarnings,
-      showPassed:
-        typeof parsed.showPassed === 'boolean'
-          ? parsed.showPassed
-          : DEFAULT_PREFLIGHT_FILTERS.showPassed,
-    };
-  } catch {
-    return DEFAULT_PREFLIGHT_FILTERS;
-  }
-}
 
 function TestList() {
   const PREFLIGHT_BADGE_FETCH_LIMIT = 20;
@@ -121,15 +81,6 @@ function TestList() {
   const [launchVisualQaRequired, setLaunchVisualQaRequired] = useState(false);
   const [launchVisualQaBaselineId, setLaunchVisualQaBaselineId] = useState('');
   const [launchVisualQaCheckedAt, setLaunchVisualQaCheckedAt] = useState('');
-  const [launchShowErrorPreflightChecks, setLaunchShowErrorPreflightChecks] = useState(
-    () => readStoredPreflightFilters().showErrors
-  );
-  const [launchShowWarningPreflightChecks, setLaunchShowWarningPreflightChecks] = useState(
-    () => readStoredPreflightFilters().showWarnings
-  );
-  const [launchShowPassedPreflightChecks, setLaunchShowPassedPreflightChecks] = useState(
-    () => readStoredPreflightFilters().showPassed
-  );
   const [launchActionLoading, setLaunchActionLoading] = useState(false);
   const [preflightStatusById, setPreflightStatusById] = useState({});
   const preflightRequestedRef = useRef(new Set());
@@ -156,28 +107,6 @@ function TestList() {
   const startMutation = useStartTest();
   const stopMutation = useStopTest();
   const deleteMutation = useDeleteTest();
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      window.localStorage.setItem(
-        PREFLIGHT_FILTERS_STORAGE_KEY,
-        JSON.stringify({
-          showErrors: launchShowErrorPreflightChecks,
-          showWarnings: launchShowWarningPreflightChecks,
-          showPassed: launchShowPassedPreflightChecks,
-        })
-      );
-    } catch {
-      // Ignore storage errors in private mode or restricted contexts.
-    }
-  }, [
-    launchShowErrorPreflightChecks,
-    launchShowWarningPreflightChecks,
-    launchShowPassedPreflightChecks,
-  ]);
-
   const summarizePreflight = useCallback(preflight => {
     if (!preflight || typeof preflight !== 'object') {
       return { checks: 0, errors: 0, warnings: 0 };
@@ -999,25 +928,9 @@ function TestList() {
     searchQuery ||
     (statusFilter.length > 0 && !statusFilter.includes('all')) ||
     viewFilter !== 'all';
-  const launchPreflightSummary = summarizePreflight(launchPreflightResult);
   const forceReasonRequired = launchForceStart && String(launchForceReason || '').trim().length < 8;
   const visualQaRequiredButMissing =
     launchVisualQaRequired && String(launchVisualQaBaselineId || '').trim().length < 2;
-  const launchGroupedPreflightChecks = useMemo(() => {
-    const checks = Array.isArray(launchPreflightResult?.checks) ? launchPreflightResult.checks : [];
-    const grouped = { errors: [], warnings: [], ok: [] };
-    checks.forEach(check => {
-      const severity = String(check?.severity || 'ok').toLowerCase();
-      if (severity === 'error') grouped.errors.push(check);
-      else if (severity === 'warning') grouped.warnings.push(check);
-      else grouped.ok.push(check);
-    });
-    return grouped;
-  }, [launchPreflightResult]);
-  const launchVisiblePreflightCheckCount =
-    (launchShowErrorPreflightChecks ? launchGroupedPreflightChecks.errors.length : 0) +
-    (launchShowWarningPreflightChecks ? launchGroupedPreflightChecks.warnings.length : 0) +
-    (launchShowPassedPreflightChecks ? launchGroupedPreflightChecks.ok.length : 0);
 
   const sortOptions = [
     { label: 'Newest First', value: 'created_desc' },
@@ -1471,159 +1384,7 @@ function TestList() {
         >
           <Modal.Section>
             <BlockStack gap="300">
-              <Text variant="bodyMd" color="subdued" as="p">
-                Run preflight before launching. You can optionally set launch-only canary overrides.
-              </Text>
-              {launchPreflightResult && (
-                <Banner
-                  tone={
-                    launchPreflightSummary.errors > 0
-                      ? 'critical'
-                      : launchPreflightSummary.warnings > 0
-                        ? 'warning'
-                        : 'success'
-                  }
-                  title={
-                    launchPreflightSummary.errors > 0
-                      ? `Preflight blocked (${launchPreflightSummary.errors} error${launchPreflightSummary.errors > 1 ? 's' : ''})`
-                      : launchPreflightSummary.warnings > 0
-                        ? `Preflight passed with ${launchPreflightSummary.warnings} warning${launchPreflightSummary.warnings > 1 ? 's' : ''}`
-                        : 'Preflight passed'
-                  }
-                >
-                  <Text as="p" variant="bodySm">
-                    {launchPreflightSummary.checks} checks evaluated.
-                  </Text>
-                </Banner>
-              )}
-              {launchPreflightResult &&
-                Array.isArray(launchPreflightResult.checks) &&
-                launchPreflightResult.checks.length > 0 && (
-                  <div
-                    style={{
-                      maxHeight: 180,
-                      overflowY: 'auto',
-                      border: '1px solid var(--p-color-border-subdued)',
-                      borderRadius: 8,
-                      padding: 10,
-                    }}
-                  >
-                    <BlockStack gap="200">
-                      <BlockStack gap="100">
-                        <Checkbox
-                          label={`Show blocking errors (${launchGroupedPreflightChecks.errors.length})`}
-                          checked={launchShowErrorPreflightChecks}
-                          onChange={setLaunchShowErrorPreflightChecks}
-                        />
-                        <Checkbox
-                          label={`Show warnings (${launchGroupedPreflightChecks.warnings.length})`}
-                          checked={launchShowWarningPreflightChecks}
-                          onChange={setLaunchShowWarningPreflightChecks}
-                        />
-                        <Checkbox
-                          label={`Show passed checks (${launchGroupedPreflightChecks.ok.length})`}
-                          checked={launchShowPassedPreflightChecks}
-                          onChange={setLaunchShowPassedPreflightChecks}
-                        />
-                      </BlockStack>
-                      {launchShowErrorPreflightChecks &&
-                        launchGroupedPreflightChecks.errors.length > 0 && (
-                          <BlockStack gap="100">
-                            <Text as="p" variant="bodySm" fontWeight="semibold" tone="critical">
-                              Blocking errors ({launchGroupedPreflightChecks.errors.length})
-                            </Text>
-                            {launchGroupedPreflightChecks.errors.map(check => (
-                              <div
-                                key={check.id || check.message}
-                                className={styles.preflightCheckRow}
-                              >
-                                <Text
-                                  as="span"
-                                  variant="bodySm"
-                                  fontWeight="semibold"
-                                  tone="critical"
-                                  className={styles.preflightCheckLabel}
-                                >
-                                  Error
-                                </Text>
-                                <Text
-                                  as="span"
-                                  variant="bodySm"
-                                  className={styles.preflightCheckText}
-                                >
-                                  {formatPreflightCheckMessage(check)}
-                                </Text>
-                              </div>
-                            ))}
-                          </BlockStack>
-                        )}
-                      {launchShowWarningPreflightChecks &&
-                        launchGroupedPreflightChecks.warnings.length > 0 && (
-                          <BlockStack gap="100">
-                            <Text as="p" variant="bodySm" fontWeight="semibold" tone="warning">
-                              Warnings ({launchGroupedPreflightChecks.warnings.length})
-                            </Text>
-                            {launchGroupedPreflightChecks.warnings.map(check => (
-                              <div
-                                key={check.id || check.message}
-                                className={styles.preflightCheckRow}
-                              >
-                                <Text
-                                  as="span"
-                                  variant="bodySm"
-                                  fontWeight="semibold"
-                                  tone="warning"
-                                  className={styles.preflightCheckLabel}
-                                >
-                                  Warn
-                                </Text>
-                                <Text
-                                  as="span"
-                                  variant="bodySm"
-                                  className={styles.preflightCheckText}
-                                >
-                                  {formatPreflightCheckMessage(check)}
-                                </Text>
-                              </div>
-                            ))}
-                          </BlockStack>
-                        )}
-                      {launchShowPassedPreflightChecks &&
-                        launchGroupedPreflightChecks.ok.length > 0 && (
-                          <BlockStack gap="100">
-                            {launchGroupedPreflightChecks.ok.map(check => (
-                              <div
-                                key={check.id || check.message}
-                                className={styles.preflightCheckRow}
-                              >
-                                <Text
-                                  as="span"
-                                  variant="bodySm"
-                                  fontWeight="semibold"
-                                  tone="success"
-                                  className={styles.preflightCheckLabel}
-                                >
-                                  OK
-                                </Text>
-                                <Text
-                                  as="span"
-                                  variant="bodySm"
-                                  className={styles.preflightCheckText}
-                                >
-                                  {formatPreflightCheckMessage(check)}
-                                </Text>
-                              </div>
-                            ))}
-                          </BlockStack>
-                        )}
-                      {launchVisiblePreflightCheckCount === 0 && (
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          No checks match the current filters.
-                        </Text>
-                      )}
-                    </BlockStack>
-                  </div>
-                )}
+              <LaunchPreflightPanel preflightResult={launchPreflightResult} />
               <BlockStack gap="200">
                 <TextField
                   label="Canary percent override (optional)"
