@@ -34,7 +34,9 @@ import {
   openCenteredPopup,
   fetchShopifyConnectionStatus,
   getShopifyConnectionErrorMeta,
+  getConnectUrl,
 } from '../../services';
+import { resolveShopifyOAuthUrl } from '../../utils/shopifyOAuthFlow';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
 import ShopifyConnectionBanner from './ShopifyConnectionBanner';
@@ -157,11 +159,26 @@ function AppDomainLayout() {
     isFetched &&
     (isNeedsInstall || (connectionData?.connected !== undefined && !connected));
 
-  const openConnectPopup = useCallback(() => {
+  const openConnectPopup = useCallback(async () => {
     if (!domain) return;
-    const connectUrl = getShopifyConnectUrl(domain);
-    const popup = openCenteredPopup(connectUrl);
+    const normalized = normalizeShopifyDomain(domain);
     setConnectRequested(true);
+    let connectUrl = getShopifyConnectUrl(domain);
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const oauth = await resolveShopifyOAuthUrl(normalized, { callbackBase: origin });
+      if (oauth.url) {
+        connectUrl = oauth.url;
+      } else if (oauth.signInRequired) {
+        connectUrl = getConnectUrl({
+          shop: normalized,
+          reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+        });
+      }
+    } catch {
+      // fallback to /api/auth?shop=
+    }
+    const popup = openCenteredPopup(connectUrl);
     if (!popup) {
       setConnectPopupBlocked(true);
       setConnectPopupOpen(false);

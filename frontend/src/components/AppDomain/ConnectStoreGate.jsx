@@ -8,10 +8,11 @@ import { Link } from 'react-router-dom';
 import { Page, Card, BlockStack, Text, Button, InlineStack, Banner } from '@shopify/polaris';
 import { ROUTES } from '../../constants';
 import { normalizeShopifyDomain } from '../../utils/shopifyAdmin';
-import { isEmbeddedInIframe } from '../../services';
+import { isEmbeddedInIframe, getConnectUrl } from '../../services';
+import { resolveShopifyOAuthUrl } from '../../utils/shopifyOAuthFlow';
 import styles from './ConnectStoreGate.module.css';
 
-function getShopifyConnectUrl(shopDomain) {
+function getShopifyConnectUrlFallback(shopDomain) {
   const normalized = normalizeShopifyDomain(shopDomain);
   if (!normalized) return ROUTES.CONNECT;
   return `${typeof window !== 'undefined' ? window.location.origin : ''}/api/auth?shop=${encodeURIComponent(normalized)}`;
@@ -26,14 +27,40 @@ export default function ConnectStoreGate({
   requiresLink = false,
 }) {
   const normalized = normalizeShopifyDomain(domain || '');
-  const connectUrl = getShopifyConnectUrl(domain);
-  const handleConnect = () => {
+  const [connectLoading, setConnectLoading] = React.useState(false);
+
+  const resolveConnectUrl = React.useCallback(async () => {
+    let connectUrl = getShopifyConnectUrlFallback(domain);
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const oauth = await resolveShopifyOAuthUrl(normalized, { callbackBase: origin });
+      if (oauth.url) {
+        connectUrl = oauth.url;
+      } else if (oauth.signInRequired) {
+        connectUrl = getConnectUrl({
+          shop: normalized,
+          reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+        });
+      }
+    } catch {
+      // use fallback
+    }
+    return connectUrl;
+  }, [domain, normalized]);
+
+  const handleConnect = async () => {
     if (typeof onConnect === 'function') {
       onConnect();
       return;
     }
-    if (isEmbeddedInIframe()) window.open(connectUrl, '_blank', 'noopener,noreferrer');
-    else window.location.href = connectUrl;
+    setConnectLoading(true);
+    try {
+      const connectUrl = await resolveConnectUrl();
+      if (isEmbeddedInIframe()) window.open(connectUrl, '_blank', 'noopener,noreferrer');
+      else window.location.href = connectUrl;
+    } finally {
+      setConnectLoading(false);
+    }
   };
 
   return (
@@ -59,7 +86,12 @@ export default function ConnectStoreGate({
                 )}
               </Text>
               <InlineStack gap="300" blockAlign="start">
-                <Button variant="primary" size="large" onClick={handleConnect} loading={connecting}>
+                <Button
+                  variant="primary"
+                  size="large"
+                  onClick={handleConnect}
+                  loading={connecting || connectLoading}
+                >
                   {connecting
                     ? 'Connecting…'
                     : requiresLink
@@ -68,8 +100,13 @@ export default function ConnectStoreGate({
                 </Button>
                 <Button
                   variant="plain"
-                  onClick={() => {
-                    window.location.href = connectUrl;
+                  onClick={async () => {
+                    setConnectLoading(true);
+                    try {
+                      window.location.href = await resolveConnectUrl();
+                    } finally {
+                      setConnectLoading(false);
+                    }
                   }}
                 >
                   Open full page

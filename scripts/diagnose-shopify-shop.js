@@ -92,6 +92,19 @@ async function main() {
   const scopeList = parseScopes(session?.scope);
   const missingScopes = missingShopifyScopes(session?.scope, requiredScopes);
 
+  let tenantRow = null;
+  try {
+    const { getTenantByDomain } = require('../backend/src/models/tenant');
+    tenantRow = await getTenantByDomain(shop);
+  } catch {
+    tenantRow = null;
+  }
+
+  const oauthBase = String(process.env.RIPX_OAUTH_REDIRECT_BASE || process.env.APP_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const oauthRedirectUri = oauthBase ? `${oauthBase}/api/auth/callback` : null;
+
   const report = {
     shop,
     generatedAt: new Date().toISOString(),
@@ -120,12 +133,26 @@ async function main() {
     cartTransforms: [],
     ripxCartTransformInstalled: false,
     cartTransformBlockedByOtherApp: false,
+    tenantExists: Boolean(tenantRow),
+    tenantAccountId: tenantRow?.account_id ?? null,
+    oauthRedirectUri,
     recommendations: [],
   };
 
   if (!session) {
-    report.recommendations = recommendation(report);
+    report.recommendations = [
+      'No OAuth session in DB — Shopify approval did not reach RipX (or used wrong API host).',
+      `Log into your RipX app URL → My domains → connect ${shop} → use "Copy link for incognito".`,
+      'Complete Step 1 (store admin + Back) then Step 2 (Continue to Shopify). You must see Shopify permission screen.',
+      `After Allow, browser must land on /connect/oauth-success?shop=${shop} — if not, OAuth failed.`,
+      oauthRedirectUri
+        ? `Partner Dashboard → Allowed redirection URL must include: ${oauthRedirectUri}`
+        : 'Set RIPX_OAUTH_REDIRECT_BASE or APP_URL and match Partner Dashboard redirect URL.',
+      'Then re-run: node scripts/diagnose-shopify-shop.js --shop=splitter-plus.myshopify.com',
+    ];
     output(report);
+    const { closeDatabase } = require('../backend/src/utils/database');
+    await closeDatabase();
     process.exit(2);
   }
 
@@ -239,6 +266,14 @@ function output(report) {
   console.log('\nRipX Shopify store install diagnostic\n');
   console.log(`Shop:              ${report.shop}`);
   console.log(`Session in DB:     ${report.hasSession ? 'yes' : 'no'}`);
+  if (!report.hasSession) {
+    console.log(
+      `Tenant row:        ${report.tenantExists ? 'yes (orphan — OAuth never saved token)' : 'no'}`
+    );
+    if (report.oauthRedirectUri) {
+      console.log(`OAuth redirect_uri: ${report.oauthRedirectUri}`);
+    }
+  }
   if (report.hasSession) {
     console.log(`Token present:     ${report.hasToken ? report.tokenPrefix : 'no'}`);
     console.log(`Session updated:   ${report.updatedAt || '—'}`);
