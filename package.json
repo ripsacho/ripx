@@ -76,6 +76,7 @@
     "verify:price-go-no-go": "node scripts/verify-price-go-no-go.js",
     "verify:price-go-no-go:strict": "node scripts/verify-price-go-no-go.js --strict",
     "diagnose:shop": "node scripts/diagnose-shopify-shop.js",
+    "reset:shop-session": "node scripts/reset-shopify-shop-session.js",
     "audit": "npm audit && npm --prefix frontend audit && npm run audit:extensions",
     "audit:extensions": "npm --prefix extensions/ripx-checkout-discount audit && npm --prefix extensions/ripx-cart-transform audit && npm --prefix extensions/ripx-checkout-ui audit && npm --prefix extensions/ripx-payment-customization audit && npm --prefix extensions/ripx-delivery-customization audit",
     "presentation": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html --allow-local-files",

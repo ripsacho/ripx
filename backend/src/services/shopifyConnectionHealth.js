@@ -106,7 +106,7 @@ function evaluateShopifyConnectionHealthQuick({ shopDomain, accessToken, session
       action: 'install',
       code: 'SCOPES_STALE',
       message: `Reconnect RipX to grant updated permissions (${preview}).`,
-      tokenValid: true,
+      tokenValid: null,
       missingScopes: scopeMissing,
     });
   }
@@ -117,7 +117,7 @@ function evaluateShopifyConnectionHealthQuick({ shopDomain, accessToken, session
     state: 'connected',
     action: 'none',
     code: 'SESSION_OK',
-    message: 'Store session is present',
+    message: 'Store session is present (token not verified with Shopify in quick mode).',
     tokenValid: null,
     missingScopes: [],
   });

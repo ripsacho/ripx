@@ -15,6 +15,18 @@ describe('evaluateShopifyConnectionHealth', () => {
     process.env.SHOPIFY_SCOPES = 'read_products,write_products';
   });
 
+  it('quick mode does not claim token is live-valid when scopes are stale', async () => {
+    const result = await evaluateShopifyConnectionHealth({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'shpca_test',
+      sessionScope: 'read_products',
+      quick: true,
+    });
+    expect(result.connection.code).toBe('SCOPES_STALE');
+    expect(result.tokenHealth.valid).toBeNull();
+    expect(shopifyService.requestAdminGraphql).not.toHaveBeenCalled();
+  });
+
   it('quick mode skips Shopify GraphQL when session token and scopes are present', async () => {
     const result = await evaluateShopifyConnectionHealth({
       shopDomain: 'demo.myshopify.com',
