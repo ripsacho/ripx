@@ -15,7 +15,7 @@ describe('evaluateShopifyConnectionHealth', () => {
     process.env.SHOPIFY_SCOPES = 'read_products,write_products';
   });
 
-  it('quick mode does not claim token is live-valid when scopes are stale', async () => {
+  it('quick mode treats stale scopes as openable with reauthorize', async () => {
     const result = await evaluateShopifyConnectionHealth({
       shopDomain: 'demo.myshopify.com',
       accessToken: 'shpca_test',
@@ -23,7 +23,10 @@ describe('evaluateShopifyConnectionHealth', () => {
       quick: true,
     });
     expect(result.connection.code).toBe('SCOPES_STALE');
-    expect(result.tokenHealth.valid).toBeNull();
+    expect(result.connected).toBe(true);
+    expect(result.connection.state).toBe('scopes_stale');
+    expect(result.connection.action).toBe('reauthorize');
+    expect(result.tokenHealth.valid).toBe(true);
     expect(shopifyService.requestAdminGraphql).not.toHaveBeenCalled();
   });
 
@@ -65,7 +68,7 @@ describe('evaluateShopifyConnectionHealth', () => {
     expect(result.tokenHealth.shopName).toBe('Demo Shop');
   });
 
-  it('returns needs_install when required scopes are missing', async () => {
+  it('returns scopes_stale when token works but required scopes are missing', async () => {
     shopifyService.requestAdminGraphql.mockResolvedValue({
       data: { shop: { name: 'Demo Shop' } },
     });
@@ -74,8 +77,10 @@ describe('evaluateShopifyConnectionHealth', () => {
       accessToken: 'shpca_test',
       sessionScope: 'read_products',
     });
-    expect(result.connected).toBe(false);
-    expect(result.connection.state).toBe('needs_install');
+    expect(result.connected).toBe(true);
+    expect(result.connection.state).toBe('scopes_stale');
+    expect(result.connection.action).toBe('reauthorize');
+    expect(result.tokenHealth.valid).toBe(true);
     expect(result.tokenHealth.missingScopes).toContain('write_products');
   });
 

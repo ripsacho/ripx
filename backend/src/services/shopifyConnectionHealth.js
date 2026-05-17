@@ -101,12 +101,12 @@ function evaluateShopifyConnectionHealthQuick({ shopDomain, accessToken, session
         : scopeMissing.join(', ');
     return buildConnectionPayload({
       shopDomain: normalizedShop,
-      connected: false,
-      state: 'needs_install',
-      action: 'install',
+      connected: true,
+      state: 'scopes_stale',
+      action: 'reauthorize',
       code: 'SCOPES_STALE',
-      message: `Reconnect RipX to grant updated permissions (${preview}).`,
-      tokenValid: null,
+      message: `Update RipX permissions to grant: ${preview}.`,
+      tokenValid: true,
       missingScopes: scopeMissing,
     });
   }
@@ -183,11 +183,11 @@ async function evaluateShopifyConnectionHealth({
           : scopeMissing.join(', ');
       const payload = buildConnectionPayload({
         shopDomain: normalizedShop,
-        connected: false,
-        state: 'needs_install',
-        action: 'install',
+        connected: true,
+        state: 'scopes_stale',
+        action: 'reauthorize',
         code: 'SCOPES_STALE',
-        message: `Reconnect RipX to grant updated permissions (${preview}).`,
+        message: `Update RipX permissions to grant: ${preview}.`,
         tokenValid: true,
         missingScopes: scopeMissing,
         shopName,

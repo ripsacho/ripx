@@ -43,8 +43,16 @@ function recommendation(report) {
   }
   if (report.missingScopes.length > 0) {
     steps.push(
-      `Re-authorize the app so these scopes are granted: ${report.missingScopes.join(', ')}. Open RipX from Shopify Admin and accept updated permissions, or uninstall/reinstall.`
+      `Token works but ${report.missingScopes.length} scope(s) missing: ${report.missingScopes.join(', ')}.`
     );
+    steps.push(
+      'On your dev machine run: npm run shopify:deploy:production:safe (pushes scope list to Partner Dashboard), release the app version, then My domains → incognito install link → approve all permissions.'
+    );
+    if (report.apiOk) {
+      steps.push(
+        'Until scopes are updated, RipX may show "Update permissions" but the store should still open (Admin API OK).'
+      );
+    }
   }
   if (report.apiOk && report.functionCount === 0) {
     steps.push(

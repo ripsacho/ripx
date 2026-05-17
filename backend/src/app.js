@@ -799,6 +799,8 @@ app.use('/api/track', trackRoutes); // Public endpoint for tracking
 app.use('/api/proxy', proxyRoutes); // App proxy endpoints (no auth, uses signature)
 app.use('/api/feature-flags', featureFlagRoutes); // Public read-only feature flag evaluation
 app.use('/api/webhooks', webhookRoutes); // Webhook endpoints (no auth, uses HMAC)
+// Partner app application_url may be .../home; Shopify can register webhooks under /home/api/...
+app.use('/home/api/webhooks', webhookRoutes);
 app.use('/api/promo-links', authenticate, promoLinkRoutes);
 app.use('/api/profile', authenticate, profileRoutes);
 app.use('/api/settings', authenticate, settingsRoutes);

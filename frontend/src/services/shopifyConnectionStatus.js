@@ -82,10 +82,14 @@ function normalizeInstallDetail(status) {
   }
   const code = status.connection?.code || null;
   const checkFailed = status.tokenHealth?.checkFailed === true || code === 'VERIFY_UNAVAILABLE';
-  const tokenValid = status.tokenHealth?.valid === true;
+  const connectionState = String(status.connection?.state || '')
+    .trim()
+    .toLowerCase();
   let state = status.connected ? 'connected' : 'needs_install';
-  if (!status.connected && code === 'SCOPES_STALE' && tokenValid) {
+  if (code === 'SCOPES_STALE' || connectionState === 'scopes_stale') {
     state = 'scopes_stale';
+  } else if (connectionState && connectionState !== 'unknown') {
+    state = connectionState;
   }
   if (checkFailed) {
     state = 'verify_unavailable';

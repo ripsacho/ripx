@@ -858,13 +858,15 @@ function UserPanel() {
                                     normalizeShopifyDomain(pendingShopifyConnect) ===
                                       normalizeShopifyDomain(domain))
                                     ? 'Connecting…'
-                                    : isShopify && installState === 'needs_install'
-                                      ? 'Install app'
-                                      : isShopify && installState === 'needs_link'
-                                        ? 'Link app'
-                                        : isShopify && installState === 'restricted'
-                                          ? 'Review access'
-                                          : 'Open A/B tests'}
+                                    : isShopify && installState === 'scopes_stale'
+                                      ? 'Update permissions'
+                                      : isShopify && installState === 'needs_install'
+                                        ? 'Install app'
+                                        : isShopify && installState === 'needs_link'
+                                          ? 'Link app'
+                                          : isShopify && installState === 'restricted'
+                                            ? 'Review access'
+                                            : 'Open A/B tests'}
                                 </Button>
                               ) : (
                                 <Button
