@@ -37,6 +37,7 @@ import {
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { shouldOpenShopifyApp } from '../../utils/shopifyConnectionHealth';
 import { invalidateShopifyConnectionQueries } from '../../utils/shopifyQueryInvalidation';
+import { resolveShopifyOAuthUrl } from '../../utils/shopifyOAuthFlow';
 import { useAdminMe, useShopifyInstallStatus } from '../../hooks';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import styles from './UserPanel.module.css';
@@ -178,6 +179,7 @@ function UserPanel() {
         const connected = shouldOpenShopifyApp(status);
         if (connected) {
           invalidateShopifyConnectionQueries(queryClient, normalized);
+          queryClient.invalidateQueries({ queryKey: ['me', 'panel', 'domains'] });
           setPendingShopifyConnect(null);
           try {
             if (typeof window !== 'undefined') {
@@ -438,21 +440,19 @@ function UserPanel() {
         }
         try {
           const origin = typeof window !== 'undefined' ? window.location.origin : '';
-          try {
-            const startRes = await apiGet('/auth/start', {
-              shop: normalized,
-              callback_base: origin || undefined,
-            });
-            const url = unwrapData(startRes)?.redirectUrl;
-            if (url) {
-              openShopifyConnectPopup(url, normalized, gesturePopup);
-              return;
-            }
-          } catch {
-            /* fallback to same-origin OAuth (cookie may be set) */
+          const oauth = await resolveShopifyOAuthUrl(normalized, { callbackBase: origin });
+          if (oauth.url) {
+            openShopifyConnectPopup(oauth.url, normalized, gesturePopup);
+            return;
           }
-          const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalized)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-          openShopifyConnectPopup(fallbackUrl, normalized, gesturePopup);
+          if (oauth.signInRequired) {
+            const connectUrl = getConnectUrl({
+              shop: normalized,
+              reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+            });
+            openShopifyConnectPopup(connectUrl, normalized, gesturePopup);
+            return;
+          }
         } catch (err) {
           if (err?.response?.status === 401) {
             const connectUrl = getConnectUrl({
@@ -460,6 +460,7 @@ function UserPanel() {
               reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
             });
             openShopifyConnectPopup(connectUrl, normalized, gesturePopup);
+            return;
           } else {
             if (gesturePopup && !gesturePopup.closed) {
               try {

@@ -24,6 +24,7 @@ export default function OAuthSuccess() {
   const shop = (searchParams.get('shop') || '').trim().toLowerCase();
   const requestedShop = (searchParams.get('requested_shop') || '').trim().toLowerCase();
   const launchIntent = (searchParams.get('launch') || '').trim().toLowerCase();
+  const linkPending = searchParams.get('link_pending') === '1';
   const isDiscountLaunch = launchIntent === 'discount_setup';
   const [notified, setNotified] = useState(false);
 
@@ -188,6 +189,17 @@ export default function OAuthSuccess() {
                   <Text as="h1" variant="headingLg">
                     Store connected
                   </Text>
+                  {linkPending ? (
+                    <Text as="p" variant="bodyMd" tone="subdued">
+                      Shopify approved access for <strong>{shop}</strong>, but RipX could not finish
+                      linking it to your account automatically. Open{' '}
+                      <Link to={ROUTES.DOMAINS} style={{ fontWeight: 600 }}>
+                        My domains
+                      </Link>{' '}
+                      and use the install link for this store again while signed in, or contact
+                      support if the store is already linked to another account.
+                    </Text>
+                  ) : null}
                   {requestedShop && requestedShop !== shop ? (
                     <BlockStack gap="200">
                       <Text as="p" variant="bodyMd" tone="subdued">

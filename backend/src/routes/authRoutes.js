@@ -1002,6 +1002,22 @@ router.get(
           `${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}`
         )
       );
+    } else if (
+      stateEmail &&
+      emailVerificationService.isValidEmail(stateEmail) &&
+      !storeLinkedToAnother
+    ) {
+      // Token is saved but account link did not complete (e.g. user status). Avoid sending
+      // signed-in users to "sign in to link" after they just approved Shopify OAuth.
+      logger.warn('Shopify OAuth: token saved but store not linked to user account', {
+        shop: normalizedShop,
+        email: stateEmail,
+      });
+      res.redirect(
+        appendCallbackContext(
+          `${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}&link_pending=1`
+        )
+      );
     } else if (requestedShopFromCookie) {
       // Wrong store was approved: send user to My domains so they can use "Copy link for incognito" for the store they wanted (no login page).
       res.redirect(

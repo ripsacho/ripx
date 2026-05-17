@@ -894,6 +894,7 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     endpoint.startsWith('/admin/') ||
     endpoint.startsWith('/me/') ||
     endpoint.startsWith('/auth/start') ||
+    endpoint.startsWith('/auth/install-link') ||
     endpoint.startsWith('/shopify/connection-status') ||
     endpoint.startsWith('/account/stores') ||
     endpoint.startsWith('/support/') ||
