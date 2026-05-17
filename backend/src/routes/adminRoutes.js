@@ -2113,6 +2113,8 @@ router.delete(
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
+    const { clearConnectionHealthCache } = require('../services/shopifyConnectionHealth');
+    clearConnectionHealthCache(shopDomain);
     await auditLogService.logAdminAction(req, {
       entityType: 'shop_session',
       entityId: shopDomain,

@@ -9,86 +9,26 @@ const router = express.Router();
 const { asyncHandler } = require('../middleware/asyncHandler');
 const shopifyService = require('../services/shopifyService');
 const logger = require('../utils/logger');
-const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 const validators = require('../utils/validators');
-
-async function checkAppProxyStatus(shopDomain) {
-  const url = `https://${shopDomain}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
-  const status = {
-    url,
-    ok: false,
-    statusCode: null,
-    contentType: null,
-    error: null,
-  };
-
-  try {
-    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-    status.statusCode = response.status;
-    status.ok = response.ok;
-    status.contentType = response.headers.get('content-type');
-  } catch (error) {
-    status.error = error.message;
-  }
-
-  return status;
-}
-
-async function checkEmbedStatus(shopDomain) {
-  const url = `https://${shopDomain}`;
-  const status = {
-    url,
-    detected: false,
-    confidence: 'low',
-    passwordProtected: false,
-    statusCode: null,
-    error: null,
-  };
-
-  try {
-    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-    status.statusCode = response.status;
-
-    if (!response.ok) {
-      return status;
-    }
-
-    const html = await response.text();
-    const lowerHtml = String(html || '').toLowerCase();
-    const passwordMarkers = [
-      'this store is password protected',
-      '/password',
-      'enter store password',
-    ];
-    status.passwordProtected = passwordMarkers.some(marker => lowerHtml.includes(marker));
-    status.detected = lowerHtml.includes('/apps/ripx/script.js');
-    status.confidence = status.passwordProtected ? 'low' : 'high';
-  } catch (error) {
-    status.error = error.message;
-  }
-
-  return status;
-}
+const { getShopSession } = require('../models/shopSession');
+const { evaluateShopifyConnectionHealth } = require('../services/shopifyConnectionHealth');
+const { runStorefrontSetupProbe } = require('../services/storefrontSetupService');
 
 /**
  * GET /api/shopify/connection-status
- * Lightweight check that the current shop has a valid session (used by frontend to show "store not connected" banner).
- * Returns 200 with { connected, shop }; 401 from auth middleware when store is not connected.
+ * Validates OAuth session against Shopify (not just DB row presence).
+ * Returns 200 with { connected, shop, connection }; 401 from auth middleware when no session row exists.
  */
 router.get(
   '/connection-status',
-  asyncHandler((req, res) => {
-    res.json({
-      connected: true,
-      shop: req.shopDomain,
-      connection: {
-        connected: true,
-        shop: req.shopDomain,
-        state: 'connected',
-        action: 'none',
-        message: 'Store is connected',
-      },
+  asyncHandler(async (req, res) => {
+    const session = await getShopSession(req.shopDomain);
+    const payload = await evaluateShopifyConnectionHealth({
+      shopDomain: req.shopDomain,
+      accessToken: req.shopifyAccessToken,
+      sessionScope: session?.scope || null,
     });
+    res.json(payload);
   })
 );
 
@@ -328,18 +268,16 @@ router.get(
     const appUrl = process.env.APP_URL || null;
     const proxyTargetUrl = appUrl ? `${appUrl}/api/proxy` : null;
 
-    const [proxyStatus, embedStatus] = await Promise.all([
-      checkAppProxyStatus(shopDomain),
-      checkEmbedStatus(shopDomain),
-    ]);
+    const probe = await runStorefrontSetupProbe(shopDomain);
 
     res.json({
       success: true,
       shopDomain,
       appUrl,
       proxyTargetUrl,
-      proxyStatus,
-      embedStatus,
+      proxyStatus: probe.proxyStatus,
+      embedStatus: probe.embedStatus,
+      storefrontRuntimeReady: probe.storefrontRuntimeReady,
     });
   })
 );

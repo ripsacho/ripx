@@ -3,8 +3,12 @@ import { normalizeShopifyDomain } from '../utils/shopifyAdmin';
 
 export function mapShopifyConnectionErrorToInstallState(error) {
   const meta = getShopifyConnectionErrorMeta(error);
-  if (meta.state === 'needs_install' || meta.state === 'needs_link') {
-    return meta.state;
+  if (
+    meta.state === 'needs_install' ||
+    meta.state === 'needs_link' ||
+    meta.state === 'verify_unavailable'
+  ) {
+    return meta.state === 'verify_unavailable' ? 'needs_install' : meta.state;
   }
   if (meta.state === 'restricted') {
     return 'restricted';
@@ -29,7 +33,7 @@ export function getShopifyConnectionErrorMeta(error) {
         .toLowerCase() || 'retry';
     const message = String(connectionPayload.message || payload?.error || '').trim() || null;
     const shop = normalizeShopifyDomain(connectionPayload.shop || '') || null;
-    return { state, status, code, action, message, shop };
+    return { state, status, code: connectionPayload.code || code, action, message, shop };
   }
 
   if (status === 403 && code === 'STORE_NOT_LINKED') {
@@ -55,6 +59,42 @@ export function getShopifyConnectionErrorMeta(error) {
     return { state: 'unknown', status, code, action: 'retry', message: null, shop: null };
   }
   return { state: 'unknown', status, code, action: 'retry', message: null, shop: null };
+}
+
+function normalizeInstallDetail(status) {
+  if (!status || typeof status !== 'object') {
+    return {
+      state: 'unknown',
+      message: null,
+      code: null,
+      missingScopes: [],
+      checkFailed: false,
+    };
+  }
+  if (typeof status.state === 'string') {
+    return {
+      state: status.state,
+      message: status.message || null,
+      code: status.code || null,
+      missingScopes: Array.isArray(status.missingScopes) ? status.missingScopes : [],
+      checkFailed: Boolean(status.checkFailed),
+    };
+  }
+  const code = status.connection?.code || null;
+  const checkFailed = status.tokenHealth?.checkFailed === true || code === 'VERIFY_UNAVAILABLE';
+  let state = status.connected ? 'connected' : 'needs_install';
+  if (checkFailed) {
+    state = 'verify_unavailable';
+  } else if (status.connection?.state) {
+    state = String(status.connection.state).toLowerCase();
+  }
+  return {
+    state,
+    message: status.connection?.message || null,
+    code,
+    missingScopes: status.tokenHealth?.missingScopes || [],
+    checkFailed,
+  };
 }
 
 export async function fetchShopifyConnectionStatus(shop) {
@@ -86,6 +126,7 @@ export async function fetchShopifyConnectionStatus(shop) {
               .trim()
               .toLowerCase() || 'none',
           message: String(connectionPayload.message || '').trim() || null,
+          code: connectionPayload.code || null,
         }
       : {
           connected: Boolean(payload.connected),
@@ -93,17 +134,34 @@ export async function fetchShopifyConnectionStatus(shop) {
           state: payload.connected ? 'connected' : 'unknown',
           action: payload.connected ? 'none' : 'retry',
           message: null,
+          code: null,
         },
+    tokenHealth: payload.tokenHealth || null,
     raw: payload,
   };
 }
 
 export async function fetchShopifyInstallState(shop) {
+  const detail = await fetchShopifyInstallDetail(shop);
+  return detail.state;
+}
+
+export async function fetchShopifyInstallDetail(shop) {
   try {
     const status = await fetchShopifyConnectionStatus(shop);
-    return status.connected ? 'connected' : 'needs_install';
+    return normalizeInstallDetail({
+      connected: status.connected,
+      connection: status.connection,
+      tokenHealth: status.tokenHealth,
+    });
   } catch (error) {
-    return mapShopifyConnectionErrorToInstallState(error) || 'unknown';
+    const meta = getShopifyConnectionErrorMeta(error);
+    return {
+      state: mapShopifyConnectionErrorToInstallState(error) || 'unknown',
+      message: meta.message,
+      code: meta.code,
+      missingScopes: [],
+    };
   }
 }
 
@@ -119,7 +177,7 @@ export async function fetchShopifyInstallStates(shops) {
     return {};
   }
   const pairs = await Promise.all(
-    normalizedShops.map(async shop => [shop, await fetchShopifyInstallState(shop)])
+    normalizedShops.map(async shop => [shop, await fetchShopifyInstallDetail(shop)])
   );
   return Object.fromEntries(pairs);
 }

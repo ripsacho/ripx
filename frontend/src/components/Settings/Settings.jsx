@@ -44,6 +44,7 @@ import { CONTENT_GAP, ROUTES, APP_META } from '../../constants';
 import styles from './Settings.module.css';
 import { apiGet, apiPut, apiPost, apiDelete, isStandaloneMode, unwrapData } from '../../services';
 import { buildPreviewUrl, ensureShopifyPreviewBootstrapUrl } from '../../utils/previewUrl';
+import { isStorefrontRuntimeReady } from '../../utils/storefrontSetupStatus';
 import {
   getCheckoutExperienceTestInventory,
   summarizeCheckoutExperienceInventory,
@@ -681,7 +682,7 @@ function Settings() {
               ...data,
               liveSetupStatus,
               scriptVerified:
-                data.scriptVerified === true || liveSetupStatus?.embedStatus?.detected === true,
+                data.scriptVerified === true || isStorefrontRuntimeReady(liveSetupStatus),
             }
           : null
       );
@@ -1432,9 +1433,10 @@ function Settings() {
 
   const storeHealth = useMemo(() => {
     const checks = [];
+    const liveRuntimeReady = isStorefrontRuntimeReady(installation?.liveSetupStatus);
     const liveEmbedDetected = installation?.liveSetupStatus?.embedStatus?.detected === true;
     const liveProxyOk = installation?.liveSetupStatus?.proxyStatus?.ok === true;
-    const scriptDetected = installation?.scriptVerified === true;
+    const scriptDetected = installation?.scriptVerified === true || liveRuntimeReady;
     checks.push({
       key: 'script_detected',
       ok: scriptDetected && liveProxyOk !== false,

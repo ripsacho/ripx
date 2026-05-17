@@ -15,10 +15,24 @@ jest.mock('../checkoutReadinessService', () => ({
   supportsCheckoutReadiness: jest.fn(),
 }));
 
+jest.mock('../shopifyConnectionHealth', () => ({
+  evaluateShopifyConnectionHealth: jest.fn(),
+}));
+
+jest.mock('../storefrontSetupService', () => ({
+  runStorefrontSetupProbe: jest.fn(),
+  requiresStorefrontRuntimeForTest: jest.fn(),
+}));
+
 const { getShopSession } = require('../../models/shopSession');
 const { getTestsByShop } = require('../../models/test');
 const conflictDetectionService = require('../conflictDetectionService');
 const checkoutReadinessService = require('../checkoutReadinessService');
+const { evaluateShopifyConnectionHealth } = require('../shopifyConnectionHealth');
+const {
+  runStorefrontSetupProbe,
+  requiresStorefrontRuntimeForTest,
+} = require('../storefrontSetupService');
 const {
   parseActivationStartOptions,
   applyActivationStartOptionsToTest,
@@ -35,6 +49,17 @@ describe('testActivationService', () => {
     checkoutReadinessService.buildTestCheckoutReadiness.mockResolvedValue({
       summary: { status: 'ready', headline: 'Checkout readiness looks good for this test.' },
       checks: [],
+    });
+    evaluateShopifyConnectionHealth.mockResolvedValue({
+      connected: true,
+      connection: { message: 'Store is connected', code: 'CONNECTED' },
+      tokenHealth: { missingScopes: [] },
+    });
+    requiresStorefrontRuntimeForTest.mockReturnValue(false);
+    runStorefrontSetupProbe.mockResolvedValue({
+      storefrontRuntimeReady: true,
+      proxyStatus: { scriptDetected: true },
+      embedStatus: { detected: true, via: 'theme_html' },
     });
   });
 
@@ -158,7 +183,9 @@ describe('testActivationService', () => {
       );
 
       expect(preflight.ok).toBe(false);
-      expect(preflight.errors.some(item => item.id === 'checkout_launch_readiness')).toBe(true);
+      expect(
+        preflight.errors.some(item => item.id === 'payment_method_customization_applied')
+      ).toBe(true);
     });
 
     it('allows price launch when checkout readiness only reports warnings', async () => {
@@ -194,7 +221,9 @@ describe('testActivationService', () => {
 
       expect(preflight.ok).toBe(true);
       expect(preflight.errors).toHaveLength(0);
-      expect(preflight.warnings.some(item => item.id === 'checkout_launch_readiness')).toBe(true);
+      expect(
+        preflight.warnings.some(item => item.id === 'pricing_direct_price_override_ready')
+      ).toBe(true);
     });
 
     it('fails theme preflight when non-control template switch variant has no template handle', async () => {

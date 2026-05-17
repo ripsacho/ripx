@@ -33,6 +33,19 @@ const { HTTP_STATUS } = require('../constants');
 const { getTestTypeControlSnapshot } = require('../services/testTypeControlService');
 const { buildCheckoutExperienceStoreDiagnostics } = require('../services/checkoutReadinessService');
 
+function clearShopInstallStateCaches(shopDomain) {
+  const normalized = String(shopDomain || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  const { clearConnectionHealthCache } = require('../services/shopifyConnectionHealth');
+  const { clearShopCapabilityCache } = require('../services/priceTestCheckoutResolve');
+  clearConnectionHealthCache(normalized);
+  clearShopCapabilityCache(normalized);
+}
+
 const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Offer Checkout Function';
 const ALLOWED_DISCOUNT_CLASSES = new Set(['PRODUCT', 'ORDER', 'SHIPPING']);
 
@@ -1417,6 +1430,7 @@ router.post(
         node => String(node?.functionId || '').trim() === chosenFunctionId
       );
       if (alreadyInstalled) {
+        clearShopInstallStateCaches(shopDomain);
         return res.json({
           success: true,
           created: false,
@@ -1520,6 +1534,7 @@ router.post(
         cartTransformsLookupUnavailableReason &&
         /already|one cart transform|max/i.test(firstUserErrorMessage)
       ) {
+        clearShopInstallStateCaches(shopDomain);
         return res.json({
           success: true,
           created: false,
@@ -1568,6 +1583,7 @@ router.post(
       });
     }
 
+    clearShopInstallStateCaches(shopDomain);
     return res.json({
       success: true,
       created: true,

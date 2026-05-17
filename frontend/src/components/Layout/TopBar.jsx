@@ -31,6 +31,10 @@ import {
   fetchShopifyConnectionStatus,
   getShopifyConnectionErrorMeta,
 } from '../../services';
+import {
+  getShopifyConnectionUiState,
+  isShopifyConnectionHealthy,
+} from '../../utils/shopifyConnectionHealth';
 import { ROUTES } from '../../constants';
 import { useAdminMe } from '../../hooks';
 import { getBreadcrumb, getAppDomainFromPath } from '../../utils/breadcrumb';
@@ -124,14 +128,14 @@ function TopBar({
     staleTime: 2 * 60 * 1000,
     enabled: isShopifyStore,
   });
-  const shopifyConnected = connectionFetched && !connectionError && connectionData?.connected;
+  const shopifyConnected =
+    connectionFetched && !connectionError && isShopifyConnectionHealthy(connectionData);
   const shopifyNotConnected =
-    isShopifyStore && connectionFetched && (connectionError || !connectionData?.connected);
+    isShopifyStore && connectionFetched && (connectionError || !shopifyConnected);
   const connectionErrorMeta = connectionError
     ? getShopifyConnectionErrorMeta(connectionError)
     : null;
-  const connectionState =
-    connectionErrorMeta?.state || (shopifyConnected ? 'connected' : 'unknown');
+  const connectionState = getShopifyConnectionUiState(connectionData, connectionErrorMeta);
   const shopifyStoreHandle = isShopifyStore && appDomain ? getShopifyStoreHandle(appDomain) : '';
   const connectionLabel =
     connectionState === 'needs_install'
@@ -140,9 +144,13 @@ function TopBar({
         ? `${shopifyStoreHandle} isn't linked`
         : connectionState === 'restricted'
           ? `${shopifyStoreHandle} access is restricted`
-          : `${shopifyStoreHandle} isn't linked`;
+          : connectionState === 'verify_unavailable'
+            ? `${shopifyStoreHandle} could not be verified`
+            : connectionState === 'connected'
+              ? `${shopifyStoreHandle} is connected`
+              : `Couldn't verify ${shopifyStoreHandle}`;
   const connectActionLabel =
-    connectionState === 'needs_install'
+    connectionState === 'needs_install' || connectionState === 'verify_unavailable'
       ? 'Install in Shopify'
       : connectionState === 'needs_link'
         ? 'Link with Shopify'

@@ -896,6 +896,8 @@ router.get(
       accessToken: tokenData.access_token,
       scope: tokenData.scope,
     });
+    const { clearConnectionHealthCache } = require('../services/shopifyConnectionHealth');
+    clearConnectionHealthCache(normalizedShop);
 
     await upsertShopifyTenant(normalizedShop);
 

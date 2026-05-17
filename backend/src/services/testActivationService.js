@@ -5,6 +5,11 @@ const {
   buildTestCheckoutReadiness,
   supportsCheckoutReadiness,
 } = require('./checkoutReadinessService');
+const { evaluateShopifyConnectionHealth } = require('./shopifyConnectionHealth');
+const {
+  runStorefrontSetupProbe,
+  requiresStorefrontRuntimeForTest,
+} = require('./storefrontSetupService');
 
 const MAX_CANARY_DAYS = 30;
 const DEFAULT_CANARY_DAYS = 7;
@@ -453,6 +458,69 @@ async function runActivationPreflight(test, shopDomain) {
       : 'Guardrail is disabled. Consider enabling auto-stop before launch.',
   });
 
+  if (shopDomain) {
+    const oauthSession = await getShopSession(shopDomain).catch(() => null);
+    const oauthHealth = await evaluateShopifyConnectionHealth({
+      shopDomain,
+      accessToken: oauthSession?.access_token || null,
+      sessionScope: oauthSession?.scope || null,
+    });
+    addCheck(preflight, {
+      id: 'shopify_oauth_health',
+      ok: oauthHealth.connected,
+      severity: oauthHealth.connected ? 'ok' : 'error',
+      message:
+        oauthHealth.connection?.message ||
+        (oauthHealth.connected
+          ? 'Shopify OAuth session is valid.'
+          : 'Shopify OAuth session is not valid for this store.'),
+      meta: oauthHealth.tokenHealth
+        ? {
+            code: oauthHealth.connection?.code,
+            missing_scopes: oauthHealth.tokenHealth.missingScopes,
+          }
+        : undefined,
+    });
+  }
+
+  if (shopDomain && requiresStorefrontRuntimeForTest(test)) {
+    try {
+      const storefrontProbe = await runStorefrontSetupProbe(shopDomain);
+      const runtimeReady = storefrontProbe.storefrontRuntimeReady === true;
+      const embedNote = storefrontProbe.embedStatus?.note;
+      const testType = toLower(test?.type);
+      const strictStorefront =
+        testType === 'price' ||
+        testType === 'pricing' ||
+        testType === 'offer' ||
+        testType === 'shipping';
+      addCheck(preflight, {
+        id: 'storefront_runtime_ready',
+        ok: runtimeReady,
+        severity: runtimeReady ? 'ok' : strictStorefront ? 'error' : 'warning',
+        message: runtimeReady
+          ? storefrontProbe.embedStatus?.via === 'app_proxy'
+            ? embedNote || 'Storefront runtime is ready (App Proxy script verified).'
+            : 'Storefront runtime is ready (App Proxy and theme embed verified).'
+          : storefrontProbe.proxyStatus?.scriptDetected === false
+            ? 'App Proxy script is not reachable at /apps/ripx/script.js. Open Settings → Installation to fix App Proxy and theme embed before relying on live assignment.'
+            : 'Theme app embed was not detected on the storefront homepage. Enable RipX under Online Store → Themes → Customize → App embeds, or confirm App Proxy is configured in Settings → Installation.',
+        meta: {
+          storefront_runtime_ready: runtimeReady,
+          embed_via: storefrontProbe.embedStatus?.via || null,
+          password_protected: Boolean(storefrontProbe.embedStatus?.passwordProtected),
+        },
+      });
+    } catch (error) {
+      addCheck(preflight, {
+        id: 'storefront_runtime_ready',
+        ok: false,
+        severity: 'warning',
+        message: `Could not verify storefront runtime (${String(error?.message || error)}).`,
+      });
+    }
+  }
+
   if (isThemeFamilyTest(test)) {
     const templateKey = toLower(test?.goal?.template_key);
     const fallbackMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
@@ -807,26 +875,25 @@ async function runActivationPreflight(test, shopDomain) {
     const failedReadinessChecks = Array.isArray(readiness?.checks)
       ? readiness.checks.filter(item => item?.ok === false)
       : [];
-    addCheck(preflight, {
-      id: 'checkout_launch_readiness',
-      ok: failedReadinessChecks.length === 0,
-      severity: failedReadinessChecks.some(item => item?.severity === 'error')
-        ? 'error'
-        : 'warning',
-      message:
-        readiness?.summary?.headline ||
-        (failedReadinessChecks.length === 0
-          ? 'Checkout launch readiness checks passed.'
-          : 'Checkout launch readiness needs attention.'),
-      meta: {
-        status: readiness?.summary?.status || 'unknown',
-        failed_checks: failedReadinessChecks.map(item => ({
-          id: item.id,
-          severity: item.severity,
+    if (failedReadinessChecks.length === 0) {
+      addCheck(preflight, {
+        id: 'checkout_launch_readiness',
+        ok: true,
+        severity: 'ok',
+        message: readiness?.summary?.headline || 'Checkout launch readiness checks passed.',
+        meta: { status: readiness?.summary?.status || 'ready' },
+      });
+    } else {
+      failedReadinessChecks.forEach(item => {
+        addCheck(preflight, {
+          id: item.id || 'checkout_readiness_item',
+          ok: false,
+          severity: item.severity === 'error' ? 'error' : 'warning',
           message: item.message,
-        })),
-      },
-    });
+          meta: item.action_path ? { action_path: item.action_path } : undefined,
+        });
+      });
+    }
   }
 
   const experimentGroup = getExperimentGroupKey(test);

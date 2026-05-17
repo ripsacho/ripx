@@ -55,6 +55,7 @@ import {
   getCelebrationColorThemePreference,
   getCelebrationStylePreference,
 } from '../../utils/preferences';
+import { formatPreflightCheckMessage } from '../../utils/preflightHints';
 import styles from './TestList.module.css';
 
 const PREFLIGHT_FILTERS_STORAGE_KEY = 'ripx.launchPreflightFilters.v1';
@@ -1550,7 +1551,7 @@ function TestList() {
                                   variant="bodySm"
                                   className={styles.preflightCheckText}
                                 >
-                                  {check.message}
+                                  {formatPreflightCheckMessage(check)}
                                 </Text>
                               </div>
                             ))}
@@ -1581,7 +1582,7 @@ function TestList() {
                                   variant="bodySm"
                                   className={styles.preflightCheckText}
                                 >
-                                  {check.message}
+                                  {formatPreflightCheckMessage(check)}
                                 </Text>
                               </div>
                             ))}
@@ -1609,7 +1610,7 @@ function TestList() {
                                   variant="bodySm"
                                   className={styles.preflightCheckText}
                                 >
-                                  {check.message}
+                                  {formatPreflightCheckMessage(check)}
                                 </Text>
                               </div>
                             ))}

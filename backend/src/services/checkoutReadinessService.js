@@ -26,6 +26,7 @@ const {
   normalizePriceSurfaceMappings,
 } = require('../utils/priceSurfaceRegistry');
 const { getShopPriceSurfaceMappings } = require('./priceSurfaceRegistryService');
+const { enrichCheckoutReadinessCheck } = require('../utils/checkoutReadinessHints');
 
 const CHECKOUT_UI_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-ui/src/ripxConfig.generated.js';
 const SUPPORTED_TEMPLATE_KEYS = new Set(['pricing', 'offer', 'checkout', 'shipping']);
@@ -543,6 +544,24 @@ async function buildPricingOrOfferReadiness({
       )
     );
 
+    const plusOrDevStore =
+      methodCapabilities?.shopifyPlus === true || methodCapabilities?.partnerDevelopment === true;
+    const planKnown =
+      methodCapabilities?.shopifyPlus !== undefined ||
+      methodCapabilities?.partnerDevelopment !== undefined;
+    if (planKnown) {
+      checklist.push(
+        buildCheck(
+          'pricing_shopify_plus_required',
+          plusOrDevStore,
+          plusOrDevStore ? 'ok' : 'error',
+          plusOrDevStore
+            ? 'Shop plan supports Direct Price Override (Shopify Plus or partner development store).'
+            : `Direct Price Override requires Shopify Plus or a partner development store (current plan: ${methodCapabilities?.shopPlanDisplayName || 'standard'}).`
+        )
+      );
+    }
+
     const testMappings = normalizePriceSurfaceMappings(test?.segments?.price_surface_mappings);
     let shopMappings = [];
     if (shopDomain) {
@@ -587,15 +606,18 @@ async function buildPricingOrOfferReadiness({
     )
   );
 
+  const enrichedChecks = checklist.map(enrichCheckoutReadinessCheck);
+
   return {
-    summary: summarizeChecks(checklist, getTypeLabel(templateKey)),
-    checks: checklist,
-    highlights: checklist
+    summary: summarizeChecks(enrichedChecks, getTypeLabel(templateKey)),
+    checks: enrichedChecks,
+    highlights: enrichedChecks
       .filter(item => item && item.ok === false)
       .map(item => ({
         id: item.id,
         message: item.message,
         severity: item.severity,
+        action_path: item.action_path,
       })),
     capabilities: {
       checkout_alignment: priceDiagnostics?.support?.checkout_alignment || null,

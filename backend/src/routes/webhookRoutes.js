@@ -269,6 +269,8 @@ router.post(
     }
 
     await deleteShopSession(shopDomain);
+    const { clearConnectionHealthCache } = require('../services/shopifyConnectionHealth');
+    clearConnectionHealthCache(shopDomain);
 
     // Purge orphaned webhook_events and test_assignments for this shop (async, idempotent)
     setImmediate(() => {

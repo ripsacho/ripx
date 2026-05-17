@@ -24,6 +24,7 @@ import { apiGet, getNavigateToWithEmbed } from '../../services';
 import { prefetchOnHover } from '../../utils/prefetch';
 import { getAppDomainFromPath } from '../../utils/breadcrumb';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
+import { isStorefrontRuntimeReady } from '../../utils/storefrontSetupStatus';
 import { useNavigationLoading } from '../../contexts/NavigationLoadingContext';
 
 function navigateSidebarPath(navigate, beginNavigation, path) {
@@ -134,10 +135,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
         if (cancelled) return;
         const data = response?.data || {};
         const ready =
-          Boolean(data?.appUrl) &&
-          Boolean(data?.proxyTargetUrl) &&
-          Boolean(data?.embedStatus?.detected) &&
-          Boolean(data?.proxyStatus?.ok);
+          Boolean(data?.appUrl) && Boolean(data?.proxyTargetUrl) && isStorefrontRuntimeReady(data);
         setSetupHealth({ loading: false, ready });
       })
       .catch(() => {

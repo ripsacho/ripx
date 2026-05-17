@@ -90,6 +90,13 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
     try {
       const query = `
         query ripxShopifyFunctions {
+          shop {
+            plan {
+              displayName
+              shopifyPlus
+              partnerDevelopment
+            }
+          }
           shopifyFunctions(first: 50) {
             nodes {
               id
@@ -104,6 +111,10 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
         accessToken,
         query
       );
+      const shopPlan = response?.data?.shop || {};
+      const planMeta = shopPlan?.plan || {};
+      const shopifyPlus = Boolean(planMeta.shopifyPlus);
+      const partnerDevelopment = Boolean(planMeta.partnerDevelopment);
       const functionNodes = response?.data?.shopifyFunctions?.nodes || [];
       const cartTransformFunctionAvailable = hasCartTransformFunction(functionNodes);
       const chosenCartTransform = pickCartTransformFunction(functionNodes);
@@ -149,6 +160,9 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
         cartTransformFunctionAvailable,
         cartTransformInstalled,
         cartTransformInstallCheckStatus: installCheckStatus,
+        shopifyPlus,
+        partnerDevelopment,
+        shopPlanDisplayName: planMeta.displayName || null,
         source: 'shopify_admin',
       };
     } catch (error) {
@@ -173,6 +187,15 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
     value: resolved,
   });
   return resolved;
+}
+
+function clearShopCapabilityCache(domain) {
+  const normalized = normalizeCapabilityDomain(domain);
+  if (normalized) {
+    shopCapabilityCache.delete(normalized);
+    return;
+  }
+  shopCapabilityCache.clear();
 }
 
 function isPriceTestRowType(type) {
@@ -1213,6 +1236,7 @@ module.exports = {
   resolvePriceTestLineDiscount,
   resolveCheckoutPriceBatchForDomain,
   getCheckoutMethodCapabilitiesForDomain,
+  clearShopCapabilityCache,
   toNumericProductId,
   getEffectivePriceConfig,
   isPriceTestRowType,

@@ -18,6 +18,7 @@ import {
 } from '../../services';
 import { ROUTES } from '../../constants';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
+import { isShopifyConnectionHealthy } from '../../utils/shopifyConnectionHealth';
 
 /** When disconnected, poll so a completed OAuth in another tab clears the banner without full reload. */
 const RECHECK_WHEN_DISCONNECTED_MS = 90 * 1000;
@@ -40,14 +41,18 @@ function ShopifyConnectionBanner() {
     retry: false,
     staleTime: CONNECTION_STATUS_STALE_MS,
     // Poll only while the banner would show; when connected, rely on staleTime + refetchOnWindowFocus (default).
-    refetchInterval: query => (query.state.data?.connected ? false : RECHECK_WHEN_DISCONNECTED_MS),
+    refetchInterval: query =>
+      isShopifyConnectionHealthy(query.state.data) ? false : RECHECK_WHEN_DISCONNECTED_MS,
     refetchIntervalInBackground: false,
     enabled: Boolean(domain && isShopify),
   });
 
   if (!domain || !isShopify) return null;
   if (!isFetched) return null;
-  if (!isError && data?.connected) return null;
+  if (!isError && isShopifyConnectionHealthy(data)) return null;
+
+  const disconnectedMessage =
+    !isError && data?.connection?.message ? data.connection.message : null;
 
   const normalizedShop = normalizeShopifyDomain(domain);
   const connectUrl = getConnectUrl({
@@ -79,13 +84,14 @@ function ShopifyConnectionBanner() {
       }}
     >
       <p>
-        {errorMeta?.message
-          ? errorMeta.message
-          : errorMeta?.state === 'needs_link'
-            ? `This Shopify store (${domain}) is installed but not linked to your RipX account.`
-            : errorMeta?.state === 'restricted'
-              ? `This Shopify store (${domain}) is connected, but your account access is restricted.`
-              : `This Shopify store (${domain}) is not connected to RipX or the connection is invalid.`}
+        {disconnectedMessage ||
+          (errorMeta?.message
+            ? errorMeta.message
+            : errorMeta?.state === 'needs_link'
+              ? `This Shopify store (${domain}) is installed but not linked to your RipX account.`
+              : errorMeta?.state === 'restricted'
+                ? `This Shopify store (${domain}) is connected, but your account access is restricted.`
+                : `This Shopify store (${domain}) is not connected to RipX or the connection is invalid.`)}
         {statusCode === 401 &&
           ' Sign in and install/connect this store to load data and use the app.'}
         {isError &&

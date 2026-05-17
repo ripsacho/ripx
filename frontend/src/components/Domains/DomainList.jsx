@@ -152,6 +152,10 @@ import {
   fetchShopifyConnectionStatus,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
+import {
+  invalidateShopifyConnectionQueries,
+  invalidateShopifyDomainListQueries,
+} from '../../utils/shopifyQueryInvalidation';
 
 /** postMessage type from OAuth success tab when store connected from embed */
 const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
@@ -355,9 +359,11 @@ function DomainList() {
           event?.data?.type === OAUTH_SUCCESS_MESSAGE_TYPE &&
           event.origin === window.location.origin
         ) {
-          queryClient.invalidateQueries({ queryKey: ['me', 'domains'] });
-          queryClient.invalidateQueries({ queryKey: ['account', 'stores'] });
-          queryClient.invalidateQueries({ queryKey: ['domains', 'shopify-install-status'] });
+          const shop = normalizeShopifyDomain(event?.data?.shop || '');
+          invalidateShopifyDomainListQueries(queryClient);
+          if (shop) {
+            invalidateShopifyConnectionQueries(queryClient, shop);
+          }
         }
       } catch (_) {
         // Ignore malformed or cross-origin messages
@@ -459,7 +465,8 @@ function DomainList() {
   const isLoading = useEmailDomains ? meLoading : accountStoresLoading;
   const error = useEmailDomains ? meError : accountStoresError;
   const domains = React.useMemo(() => data?.domains ?? [], [data]);
-  const { statusByShop: shopifyInstallStatus } = useShopifyInstallStatus(domains, 'domains-list');
+  const { getState: getShopifyInstallStateFromHook, getMessage: getShopifyInstallMessage } =
+    useShopifyInstallStatus(domains, 'domains-list');
 
   // Smart resume: if Shopify connect session completed, open that store automatically.
   useEffect(() => {
@@ -486,7 +493,7 @@ function DomainList() {
     if (!isShopifyStoreDomain(domainValue)) return null;
     const normalized = normalizeShopifyDomain(domainValue);
     if (openingDomain === normalized) return 'checking';
-    return shopifyInstallStatus?.[normalized] || 'unknown';
+    return getShopifyInstallStateFromHook(domainValue) || 'unknown';
   };
 
   const getShopifyInstallBadge = domainValue => {
@@ -500,18 +507,19 @@ function DomainList() {
       checking: 'Checking…',
       unknown: 'Status unknown',
     };
+    const detailMessage = getShopifyInstallMessage(domainValue);
+    const defaultTitle =
+      status === 'needs_install'
+        ? 'RipX app is not installed or connected for this Shopify store'
+        : status === 'needs_link'
+          ? 'RipX app is installed but this store is not linked to your account yet'
+          : status === 'restricted'
+            ? 'This store is connected but your account access is currently restricted'
+            : labels[status];
     return (
       <span
         className={`${styles.shopifyInstallBadge} ${styles[`shopifyInstallBadge_${status}`]}`}
-        title={
-          status === 'needs_install'
-            ? 'RipX app is not installed or connected for this Shopify store'
-            : status === 'needs_link'
-              ? 'RipX app is installed but this store is not linked to your account yet'
-              : status === 'restricted'
-                ? 'This store is connected but your account access is currently restricted'
-                : labels[status]
-        }
+        title={detailMessage || defaultTitle}
       >
         {labels[status]}
       </span>

@@ -26,6 +26,7 @@ import {
 import { SettingsIcon, CodeIcon } from '@shopify/polaris-icons';
 import { apiGet, getShopDomain, isStandaloneMode } from '../../services';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
+import { isStorefrontRuntimeReady } from '../../utils/storefrontSetupStatus';
 import { PageShell } from '../Shared';
 import { ROUTES } from '../../constants';
 import { RIPX_STOREFRONT_SCRIPT_VERSION } from '../../constants/app';
@@ -93,6 +94,7 @@ function SetupWizard() {
   const proxyStatusCode = setupStatus?.proxyStatus?.statusCode;
   const embedDetected = setupStatus?.embedStatus?.detected;
   const embedStatusCode = setupStatus?.embedStatus?.statusCode;
+  const storefrontRuntimeReady = isStorefrontRuntimeReady(setupStatus);
 
   const fetchInstallation = useCallback(async () => {
     setInstallationLoading(true);
@@ -132,16 +134,20 @@ function SetupWizard() {
   const completedSteps = [
     Boolean(appUrl),
     Boolean(proxyTargetUrl),
-    Boolean(embedDetected),
-    Boolean(proxyOk),
+    Boolean(embedDetected || setupStatus?.embedStatus?.via === 'app_proxy'),
+    Boolean(storefrontRuntimeReady || proxyOk),
   ].filter(Boolean).length;
   const progress = Math.round((completedSteps / totalSteps) * 100);
-  const allComplete = progress === 100;
+  const allComplete = storefrontRuntimeReady || progress === 100;
   const stepItems = [
     { id: 1, label: 'Confirm App URL', done: Boolean(appUrl) },
     { id: 2, label: 'Configure App Proxy', done: Boolean(proxyTargetUrl) },
-    { id: 3, label: 'Enable App Embed', done: Boolean(embedDetected) },
-    { id: 4, label: 'Verify Script URL', done: Boolean(proxyOk) },
+    {
+      id: 3,
+      label: 'Enable App Embed',
+      done: Boolean(embedDetected || setupStatus?.embedStatus?.via === 'app_proxy'),
+    },
+    { id: 4, label: 'Verify Script URL', done: Boolean(storefrontRuntimeReady || proxyOk) },
   ];
 
   /** Auto-refresh status every 30s when setup is incomplete (Shopify only) */

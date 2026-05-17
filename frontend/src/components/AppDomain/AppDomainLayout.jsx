@@ -23,7 +23,7 @@ function clearWizardModalArtifacts() {
   document.getElementById('ripx-price-product-modal-overlay')?.remove();
 }
 import { BlockStack } from '@shopify/polaris';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROUTES, STORAGE_KEYS, RIPX_STORE_SWITCHED_EVENT } from '../../constants';
 import {
   setCurrentStore,
@@ -42,6 +42,7 @@ import ConnectStoreGate from './ConnectStoreGate';
 import Toast from '../Toast/Toast';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import { prefetchRoute } from '../../utils/prefetch';
+import { invalidateShopifyConnectionQueries } from '../../utils/shopifyQueryInvalidation';
 
 /** OAuth start URL to connect a Shopify store */
 function getShopifyConnectUrl(shopDomain) {
@@ -61,6 +62,7 @@ function isValidDomainParam(domain) {
 function AppDomainLayout() {
   const { domain } = useParams();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [storeSynced, setStoreSynced] = useState(false);
   const [storeSwitchToast, setStoreSwitchToast] = useState(null);
   const connectPopupRef = useRef(null);
@@ -142,7 +144,7 @@ function AppDomainLayout() {
   const isNeedsInstall = connectionErrorMeta?.state === 'needs_install';
   const isAccountRestricted = connectionErrorMeta?.state === 'restricted';
   const needsEmailStoreLink = hasEmailAuth && connectionErrorMeta?.state === 'needs_link';
-  const connected = Boolean(connectionData?.connected);
+  const connected = Boolean(connectionData?.connected && !connectionData?.tokenHealth?.checkFailed);
   const connectionCheckFailed =
     needsShopifySessionCheck &&
     isFetched &&
@@ -183,11 +185,12 @@ function AppDomainLayout() {
       setConnectPopupOpen(false);
       setConnectPopupBlocked(false);
       setConnectStatusMessage('Store connected. Syncing now…');
+      invalidateShopifyConnectionQueries(queryClient, connectedShop);
       refetch();
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [domain, refetch]);
+  }, [domain, refetch, queryClient]);
 
   useEffect(() => {
     if (!connectPopupOpen) return undefined;

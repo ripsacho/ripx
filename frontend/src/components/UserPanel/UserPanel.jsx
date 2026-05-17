@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Icon, Spinner, Banner } from '@shopify/polaris';
 import {
   GlobeIcon,
@@ -35,6 +35,8 @@ import {
   fetchShopifyConnectionStatus,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
+import { isShopifyConnectionHealthy } from '../../utils/shopifyConnectionHealth';
+import { invalidateShopifyConnectionQueries } from '../../utils/shopifyQueryInvalidation';
 import { useAdminMe, useShopifyInstallStatus } from '../../hooks';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import styles from './UserPanel.module.css';
@@ -93,6 +95,7 @@ const ACCOUNT_TILES = [
 
 function UserPanel() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const useEmailDomains = !!getEmailToken();
   const { data: meData, isLoading: meLoading, isError: meError, isAdmin } = useAdminMe();
 
@@ -127,7 +130,8 @@ function UserPanel() {
     () => (Array.isArray(domainsData?.domains) ? domainsData.domains : []),
     [domainsData]
   );
-  const { statusByShop: shopifyInstallStatus } = useShopifyInstallStatus(domains, 'user-panel');
+  const { getState: getShopifyInstallStateFromHook, getMessage: getShopifyInstallMessage } =
+    useShopifyInstallStatus(domains, 'user-panel');
   const greeting = getTimeGreeting();
   const userEmail = !meError && (meData?.email || meData?.user?.email);
   const domainCount = domains.length;
@@ -165,8 +169,9 @@ function UserPanel() {
       connectVerifyLockRef.current = true;
       try {
         const status = await fetchShopifyConnectionStatus(normalized);
-        const connected = Boolean(status?.connected);
+        const connected = isShopifyConnectionHealthy(status);
         if (connected) {
+          invalidateShopifyConnectionQueries(queryClient, normalized);
           setPendingShopifyConnect(null);
           try {
             if (typeof window !== 'undefined') {
@@ -201,7 +206,7 @@ function UserPanel() {
         connectVerifyLockRef.current = false;
       }
     },
-    [openDomainApp]
+    [openDomainApp, queryClient]
   );
 
   const getShopifyInstallState = useCallback(
@@ -209,9 +214,9 @@ function UserPanel() {
       if (!isShopifyStoreDomain(domainValue)) return null;
       const normalized = normalizeShopifyDomain(domainValue);
       if (openingDomain === domainValue || openingDomain === normalized) return 'checking';
-      return shopifyInstallStatus?.[normalized] || 'unknown';
+      return getShopifyInstallStateFromHook(domainValue) || 'unknown';
     },
-    [openingDomain, shopifyInstallStatus]
+    [openingDomain, getShopifyInstallStateFromHook]
   );
   const shopifyDomains = domains.filter(domainRow =>
     isShopifyStoreDomain(typeof domainRow === 'string' ? domainRow : domainRow?.domain)
@@ -745,7 +750,16 @@ function UserPanel() {
                                 <span className={styles.domainTileBadge}>{platform}</span>
                               )}
                             </div>
-                            <span className={statusClass}>{statusLabel}</span>
+                            <span
+                              className={statusClass}
+                              title={
+                                isShopify && installState !== 'connected'
+                                  ? getShopifyInstallMessage(domain) || undefined
+                                  : undefined
+                              }
+                            >
+                              {statusLabel}
+                            </span>
                             <div className={styles.domainTileActions}>
                               {canOpen ? (
                                 <Button

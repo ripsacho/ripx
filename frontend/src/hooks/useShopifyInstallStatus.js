@@ -28,16 +28,32 @@ export function useShopifyInstallStatus(domains, queryScope = 'shared') {
 
   const statusByShop = data || {};
 
-  const getState = domainValue => {
+  const getDetail = domainValue => {
     if (!isShopifyStoreDomain(domainValue)) return null;
     const normalized = normalizeShopifyDomain(domainValue);
-    return statusByShop?.[normalized] || 'unknown';
+    return (
+      statusByShop?.[normalized] || {
+        state: 'unknown',
+        message: null,
+        code: null,
+        missingScopes: [],
+      }
+    );
+  };
+
+  const getState = domainValue => getDetail(domainValue)?.state || 'unknown';
+
+  const getMessage = domainValue => {
+    const message = getDetail(domainValue)?.message;
+    return message ? String(message).trim() : null;
   };
 
   return {
     shopifyDomains,
     statusByShop,
     getState,
+    getDetail,
+    getMessage,
     ...query,
   };
 }

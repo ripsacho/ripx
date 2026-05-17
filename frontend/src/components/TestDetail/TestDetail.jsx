@@ -52,6 +52,11 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
 import {
+  isStorefrontRuntimeReady,
+  storefrontRuntimeReviewMessage,
+} from '../../utils/storefrontSetupStatus';
+import { formatPreflightCheckMessage } from '../../utils/preflightHints';
+import {
   consumeFirstStartUltraCelebrationFlag,
   getCelebrationAnimationPreference,
   getCelebrationColorThemePreference,
@@ -351,9 +356,8 @@ function TestDetail() {
     String(test?.type || '').toLowerCase() === 'theme' ||
     String(test?.type || '').toLowerCase() === 'content' ||
     String(test?.type || '').toLowerCase() === 'url';
-  const storefrontRuntimeReady =
-    storefrontSetupStatus?.proxyStatus?.ok === true &&
-    storefrontSetupStatus?.embedStatus?.detected === true;
+  const storefrontRuntimeReady = isStorefrontRuntimeReady(storefrontSetupStatus);
+  const storefrontRuntimeReviewDetail = storefrontRuntimeReviewMessage(storefrontSetupStatus);
   const storefrontRuntimeNeedsReview =
     preLaunchOpen &&
     requiresStorefrontRuntime &&
@@ -1419,7 +1423,8 @@ function TestDetail() {
               >
                 <Text as="p" variant="bodySm">
                   {storefrontRuntimeNeedsReview
-                    ? 'RipX could not confirm the theme app embed from this probe. You can still start the test if the embed is enabled in Shopify; use Settings > Installation checklist to re-check after launch.'
+                    ? storefrontRuntimeReviewDetail ||
+                      'RipX could not confirm the theme app embed from this probe. You can still start the test if the embed is enabled in Shopify; use Settings → Installation to re-check after launch.'
                     : storefrontSetupError ||
                       (storefrontSetupLoading
                         ? 'Checking the App Proxy and theme embed on the active storefront.'
@@ -1496,7 +1501,7 @@ function TestDetail() {
                               Error
                             </Text>
                             <Text as="span" variant="bodySm" className={styles.preflightCheckText}>
-                              {check.message}
+                              {formatPreflightCheckMessage(check)}
                             </Text>
                           </div>
                         ))}
@@ -1519,7 +1524,7 @@ function TestDetail() {
                               Warn
                             </Text>
                             <Text as="span" variant="bodySm" className={styles.preflightCheckText}>
-                              {check.message}
+                              {formatPreflightCheckMessage(check)}
                             </Text>
                           </div>
                         ))}
@@ -1539,7 +1544,7 @@ function TestDetail() {
                               OK
                             </Text>
                             <Text as="span" variant="bodySm" className={styles.preflightCheckText}>
-                              {check.message}
+                              {formatPreflightCheckMessage(check)}
                             </Text>
                           </div>
                         ))}
@@ -2322,7 +2327,10 @@ function TestDetail() {
                                       : styles.checkoutReadinessCheckWarning
                                   }`}
                                 >
-                                  {item.message}
+                                  {formatPreflightCheckMessage({
+                                    message: item.message,
+                                    action_path: item.action_path,
+                                  })}
                                 </div>
                               ))}
                             </div>

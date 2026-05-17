@@ -10,7 +10,6 @@
  */
 
 const path = require('path');
-const fs = require('fs');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -23,29 +22,11 @@ const shop = String(argShop || process.env.RIPX_VERIFY_SHOP || '')
 
 const PRODUCTION_CLIENT_ID = '475a569769b25edb8df85288e1be9637';
 
-function parseScopes(raw) {
-  return String(raw || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .sort();
-}
-
-function loadRequiredScopes() {
-  const fromEnv = process.env.SHOPIFY_SCOPES;
-  if (fromEnv) {
-    return parseScopes(fromEnv);
-  }
-  const tomlPath = path.join(__dirname, '../shopify.app.production.toml');
-  if (fs.existsSync(tomlPath)) {
-    const raw = fs.readFileSync(tomlPath, 'utf8');
-    const match = raw.match(/^\s*scopes\s*=\s*"([^"]+)"/m);
-    if (match) {
-      return parseScopes(match[1]);
-    }
-  }
-  return [];
-}
+const {
+  parseShopifyScopes: parseScopes,
+  loadRequiredShopifyScopes: loadRequiredScopes,
+  missingShopifyScopes,
+} = require('../backend/src/utils/shopifyScopes');
 
 function recommendation(report) {
   const steps = [];
@@ -109,7 +90,7 @@ async function main() {
   const session = await getShopSession(shop);
   const token = session?.access_token || '';
   const scopeList = parseScopes(session?.scope);
-  const missingScopes = requiredScopes.filter(s => !scopeList.includes(s));
+  const missingScopes = missingShopifyScopes(session?.scope, requiredScopes);
 
   const report = {
     shop,
