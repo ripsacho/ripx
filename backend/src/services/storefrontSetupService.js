@@ -21,8 +21,11 @@ async function checkAppProxyStatus(shopDomain) {
     url,
     ok: false,
     scriptDetected: false,
+    passwordProtected: false,
     statusCode: null,
     contentType: null,
+    finalUrl: null,
+    note: null,
     error: null,
   };
 
@@ -34,9 +37,15 @@ async function checkAppProxyStatus(shopDomain) {
     });
     status.statusCode = response.status;
     status.contentType = response.headers.get('content-type');
-    const body = response.ok ? await response.text() : '';
+    status.finalUrl = response.url || url;
+    const body = await response.text();
+    status.passwordProtected = isLikelyShopifyPasswordPage(body, status.finalUrl);
     status.scriptDetected = response.ok && isLikelyRipXStorefrontScript(body);
     status.ok = status.scriptDetected;
+    if (status.passwordProtected && !status.scriptDetected) {
+      status.note =
+        'Storefront is password-protected, so RipX cannot verify /apps/ripx/script.js from the server. App Proxy may still work for visitors who have unlocked the store. Disable the password under Online Store → Preferences to auto-verify, or open the script URL in a browser while logged into the store.';
+    }
   } catch (error) {
     status.error = error.message;
   }

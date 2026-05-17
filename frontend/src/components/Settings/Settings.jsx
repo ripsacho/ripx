@@ -1435,20 +1435,35 @@ function Settings() {
     const checks = [];
     const liveRuntimeReady = isStorefrontRuntimeReady(installation?.liveSetupStatus);
     const liveEmbedDetected = installation?.liveSetupStatus?.embedStatus?.detected === true;
-    const liveProxyOk = installation?.liveSetupStatus?.proxyStatus?.ok === true;
+    const proxyStatus = installation?.liveSetupStatus?.proxyStatus || {};
+    const embedStatus = installation?.liveSetupStatus?.embedStatus || {};
+    const liveProxyOk = proxyStatus.ok === true;
+    const proxyScriptReachable = proxyStatus.scriptDetected === true;
+    const storefrontPasswordGated = Boolean(
+      proxyStatus.passwordProtected || embedStatus.passwordProtected
+    );
     const scriptDetected = installation?.scriptVerified === true || liveRuntimeReady;
+    const scriptVerifiedLive =
+      (scriptDetected && liveProxyOk !== false) ||
+      (storefrontPasswordGated && !proxyScriptReachable);
+    const scriptPasswordAdvisory = storefrontPasswordGated && !proxyScriptReachable;
     checks.push({
       key: 'script_detected',
-      ok: scriptDetected && liveProxyOk !== false,
+      ok: scriptVerifiedLive,
       required: true,
+      advisory: scriptPasswordAdvisory,
       message:
-        scriptDetected && liveProxyOk !== false
+        scriptVerifiedLive && !scriptPasswordAdvisory
           ? liveEmbedDetected
             ? 'RipX app embed detected on the live theme.'
             : 'Storefront script detected on store theme.'
-          : liveProxyOk === false
-            ? 'RipX App Proxy script is not reachable from this storefront.'
-            : 'RipX app embed/snippet is not detected. Enable the theme app embed before launching live storefront tests.',
+          : scriptPasswordAdvisory
+            ? proxyStatus.note ||
+              embedStatus.note ||
+              'Storefront is password-protected; RipX could not verify App Proxy from the server. Disable the store password or open /apps/ripx/script.js in a browser while logged in to confirm.'
+            : liveProxyOk === false
+              ? 'RipX App Proxy script is not reachable from this storefront.'
+              : 'RipX app embed/snippet is not detected. Enable the theme app embed before launching live storefront tests.',
     });
 
     const failedChecklist = Array.isArray(checkoutDiag?.checklist)

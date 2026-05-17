@@ -25,6 +25,13 @@ export function storefrontRuntimeReviewMessage(setupStatus) {
   }
   const proxy = setupStatus.proxyStatus || {};
   const embed = setupStatus.embedStatus || {};
+  const passwordGated = Boolean(proxy.passwordProtected || embed.passwordProtected);
+  if (passwordGated && proxy.scriptDetected !== true) {
+    return (
+      proxy.note ||
+      'Storefront is password-protected; RipX cannot auto-verify App Proxy. Disable the password or confirm /apps/ripx/script.js in a logged-in browser session.'
+    );
+  }
   if (proxy.scriptDetected !== true && proxy.ok !== true) {
     return 'App Proxy script is not reachable at /apps/ripx/script.js. Check Settings → Installation and your Shopify app proxy configuration.';
   }

@@ -507,23 +507,38 @@ async function runActivationPreflight(test, shopDomain) {
         testType === 'offer' ||
         testType === 'shipping';
       const proxyScriptReady = storefrontProbe.proxyStatus?.scriptDetected === true;
+      const passwordGated = Boolean(
+        storefrontProbe.proxyStatus?.passwordProtected ||
+        storefrontProbe.embedStatus?.passwordProtected
+      );
       const runtimeOk =
         runtimeReady || (proxyScriptReady && storefrontProbe.embedStatus?.via === 'app_proxy');
+      const passwordGatedOnly = passwordGated && !proxyScriptReady && !runtimeOk;
       addCheck(preflight, {
         id: 'storefront_runtime_ready',
-        ok: runtimeOk,
-        severity: runtimeOk ? 'ok' : strictStorefront ? 'error' : 'warning',
+        ok: runtimeOk || passwordGatedOnly,
+        severity: runtimeOk
+          ? 'ok'
+          : passwordGatedOnly
+            ? 'warning'
+            : strictStorefront
+              ? 'error'
+              : 'warning',
         message: runtimeOk
           ? storefrontProbe.embedStatus?.via === 'app_proxy'
             ? embedNote || 'Storefront runtime is ready (App Proxy script verified).'
             : 'Storefront runtime is ready (App Proxy and theme embed verified).'
-          : storefrontProbe.proxyStatus?.scriptDetected === false
-            ? 'App Proxy script is not reachable at /apps/ripx/script.js. Open Settings → Installation to fix App Proxy and theme embed before relying on live assignment.'
-            : 'Theme app embed was not detected on the storefront homepage. Enable RipX under Online Store → Themes → Customize → App embeds, or confirm App Proxy is configured in Settings → Installation.',
+          : passwordGatedOnly
+            ? storefrontProbe.proxyStatus?.note ||
+              'Storefront is password-protected; RipX could not verify App Proxy from the server. Unlock the store or disable the password to confirm script delivery before launch.'
+            : storefrontProbe.proxyStatus?.scriptDetected === false
+              ? 'App Proxy script is not reachable at /apps/ripx/script.js. Open Settings → Installation to fix App Proxy and theme embed before relying on live assignment.'
+              : 'Theme app embed was not detected on the storefront homepage. Enable RipX under Online Store → Themes → Customize → App embeds, or confirm App Proxy is configured in Settings → Installation.',
         meta: {
           storefront_runtime_ready: runtimeReady,
           embed_via: storefrontProbe.embedStatus?.via || null,
-          password_protected: Boolean(storefrontProbe.embedStatus?.passwordProtected),
+          password_protected: passwordGated,
+          proxy_password_protected: Boolean(storefrontProbe.proxyStatus?.passwordProtected),
         },
       });
     } catch (error) {
