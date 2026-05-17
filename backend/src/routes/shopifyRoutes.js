@@ -23,10 +23,13 @@ router.get(
   '/connection-status',
   asyncHandler(async (req, res) => {
     const session = await getShopSession(req.shopDomain);
+    const quick =
+      req.query.quick === '1' || req.query.quick === 'true' || req.query.quick === 'yes';
     const payload = await evaluateShopifyConnectionHealth({
       shopDomain: req.shopDomain,
       accessToken: req.shopifyAccessToken,
       sessionScope: session?.scope || null,
+      quick,
     });
     res.json(payload);
   })

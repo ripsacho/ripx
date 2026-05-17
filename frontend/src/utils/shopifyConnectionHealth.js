@@ -18,6 +18,23 @@ export function isShopifyConnectionHealthy(status) {
   return Boolean(status.connected);
 }
 
+/**
+ * Whether the user can open the RipX app for this store after OAuth or from home.
+ * Allows a live token with stale scopes so the in-app banner can prompt reconnect.
+ */
+export function shouldOpenShopifyApp(status) {
+  if (!status || typeof status !== 'object') {
+    return false;
+  }
+  if (isShopifyConnectionHealthy(status)) {
+    return true;
+  }
+  const code = String(status.connection?.code || status.raw?.connection?.code || '')
+    .trim()
+    .toUpperCase();
+  return status.tokenHealth?.valid === true && code === 'SCOPES_STALE';
+}
+
 export function getShopifyConnectionUiState(status, errorMeta = null) {
   if (errorMeta?.state && errorMeta.state !== 'unknown') {
     return errorMeta.state;

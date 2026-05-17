@@ -35,7 +35,7 @@ import {
   fetchShopifyConnectionStatus,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
-import { isShopifyConnectionHealthy } from '../../utils/shopifyConnectionHealth';
+import { shouldOpenShopifyApp } from '../../utils/shopifyConnectionHealth';
 import { invalidateShopifyConnectionQueries } from '../../utils/shopifyQueryInvalidation';
 import { useAdminMe, useShopifyInstallStatus } from '../../hooks';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
@@ -45,6 +45,8 @@ const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-clos
 const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
 const SHOPIFY_CONNECT_POPUP_SESSION_KEY = 'ripx-shopify-connect-popup-session';
 const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
+const OPEN_DOMAIN_TIMEOUT_MS = 20000;
+const PENDING_CONNECT_MAX_MS = 120000;
 
 function markShopifyConnectPopupWindow(popupWindow, shop) {
   if (!popupWindow || popupWindow.closed || !shop) return;
@@ -140,7 +142,8 @@ function UserPanel() {
   const domainKeys = getDomainKeys();
   const [openingDomain, setOpeningDomain] = useState(null);
   const connectPopupRef = useRef(null);
-  const connectVerifyLockRef = useRef(false);
+  const connectVerifyLocksRef = useRef(new Map());
+  const pendingConnectStartedRef = useRef(0);
   const [pendingShopifyConnect, setPendingShopifyConnect] = useState(null);
 
   const openDomainApp = useCallback(
@@ -163,13 +166,16 @@ function UserPanel() {
   const verifyConnectedAndOpen = useCallback(
     async targetShop => {
       const normalized = normalizeShopifyDomain(targetShop || '');
-      if (!normalized || connectVerifyLockRef.current) {
+      if (!normalized) {
         return false;
       }
-      connectVerifyLockRef.current = true;
+      if (connectVerifyLocksRef.current.get(normalized)) {
+        return false;
+      }
+      connectVerifyLocksRef.current.set(normalized, true);
       try {
         const status = await fetchShopifyConnectionStatus(normalized);
-        const connected = isShopifyConnectionHealthy(status);
+        const connected = shouldOpenShopifyApp(status);
         if (connected) {
           invalidateShopifyConnectionQueries(queryClient, normalized);
           setPendingShopifyConnect(null);
@@ -203,7 +209,7 @@ function UserPanel() {
       } catch {
         return false;
       } finally {
-        connectVerifyLockRef.current = false;
+        connectVerifyLocksRef.current.delete(normalized);
       }
     },
     [openDomainApp, queryClient]
@@ -213,10 +219,21 @@ function UserPanel() {
     domainValue => {
       if (!isShopifyStoreDomain(domainValue)) return null;
       const normalized = normalizeShopifyDomain(domainValue);
-      if (openingDomain === domainValue || openingDomain === normalized) return 'checking';
-      return getShopifyInstallStateFromHook(domainValue) || 'unknown';
+      if (
+        openingDomain === domainValue ||
+        openingDomain === normalized ||
+        (pendingShopifyConnect &&
+          (pendingShopifyConnect === domainValue || pendingShopifyConnect === normalized))
+      ) {
+        return 'checking';
+      }
+      const hookState = getShopifyInstallStateFromHook(domainValue) || 'unknown';
+      if (hookState === 'verify_unavailable') {
+        return 'needs_install';
+      }
+      return hookState;
     },
-    [openingDomain, getShopifyInstallStateFromHook]
+    [openingDomain, pendingShopifyConnect, getShopifyInstallStateFromHook]
   );
   const shopifyDomains = domains.filter(domainRow =>
     isShopifyStoreDomain(typeof domainRow === 'string' ? domainRow : domainRow?.domain)
@@ -295,6 +312,13 @@ function UserPanel() {
     const handler = event => {
       try {
         if (event?.data?.type !== OAUTH_SUCCESS_MESSAGE_TYPE) return;
+        if (
+          event.origin &&
+          event.origin !== window.location.origin &&
+          !String(event.origin).includes('shopify.com')
+        ) {
+          return;
+        }
         const shop = normalizeShopifyDomain(event?.data?.shop || '');
         if (!shop) return;
         if (pendingShopifyConnect && shop !== normalizeShopifyDomain(pendingShopifyConnect)) {
@@ -310,29 +334,58 @@ function UserPanel() {
   }, [pendingShopifyConnect, verifyConnectedAndOpen]);
 
   useEffect(() => {
-    if (!pendingShopifyConnect) return undefined;
+    if (!pendingShopifyConnect) {
+      pendingConnectStartedRef.current = 0;
+      return undefined;
+    }
+    if (!pendingConnectStartedRef.current) {
+      pendingConnectStartedRef.current = Date.now();
+    }
+    const clearPendingConnect = () => {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(
+            `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${pendingShopifyConnect}`
+          );
+        }
+      } catch {
+        // ignore storage errors
+      }
+      pendingConnectStartedRef.current = 0;
+      setPendingShopifyConnect(null);
+    };
     const tick = async () => {
+      if (
+        pendingConnectStartedRef.current &&
+        Date.now() - pendingConnectStartedRef.current > PENDING_CONNECT_MAX_MS
+      ) {
+        clearPendingConnect();
+        return;
+      }
       const done = await verifyConnectedAndOpen(pendingShopifyConnect);
       if (done) return;
       if (connectPopupRef.current && connectPopupRef.current.closed) {
         const retried = await verifyConnectedAndOpen(pendingShopifyConnect);
         if (!retried) {
-          try {
-            if (typeof window !== 'undefined') {
-              window.localStorage.removeItem(
-                `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${pendingShopifyConnect}`
-              );
-            }
-          } catch {
-            // ignore storage errors
-          }
-          setPendingShopifyConnect(null);
+          clearPendingConnect();
         }
       }
     };
     tick();
     const timer = window.setInterval(tick, 1800);
     return () => window.clearInterval(timer);
+  }, [pendingShopifyConnect, verifyConnectedAndOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !pendingShopifyConnect) return undefined;
+    const normalized = normalizeShopifyDomain(pendingShopifyConnect);
+    const closeSignalKey = `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${normalized}`;
+    const onStorage = event => {
+      if (event.key !== closeSignalKey || !event.newValue) return;
+      verifyConnectedAndOpen(normalized);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [pendingShopifyConnect, verifyConnectedAndOpen]);
 
   useEffect(
@@ -352,6 +405,9 @@ function UserPanel() {
     const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
     if (!domain || openingDomain) return;
     setOpeningDomain(domain);
+    const openingTimeout = window.setTimeout(() => {
+      setOpeningDomain(current => (current === domain ? null : current));
+    }, OPEN_DOMAIN_TIMEOUT_MS);
     const isShopify = isShopifyStoreDomain(domain);
     const normalized = isShopify ? normalizeShopifyDomain(domain) : domain;
     const key = accountKey || (domainKeys && (domainKeys[domain] || domainKeys[normalized]));
@@ -438,6 +494,7 @@ function UserPanel() {
         // ignore localStorage errors
       }
     } finally {
+      window.clearTimeout(openingTimeout);
       setOpeningDomain(null);
     }
   };
@@ -768,10 +825,23 @@ function UserPanel() {
                                   icon={ExternalIcon}
                                   onClick={() => handleOpenApp({ domain })}
                                   className={styles.domainTileCta}
-                                  loading={openingDomain === domain}
-                                  disabled={!!openingDomain}
+                                  loading={
+                                    openingDomain === domain ||
+                                    (pendingShopifyConnect &&
+                                      normalizeShopifyDomain(pendingShopifyConnect) ===
+                                        normalizeShopifyDomain(domain))
+                                  }
+                                  disabled={
+                                    !!openingDomain &&
+                                    openingDomain !== domain &&
+                                    normalizeShopifyDomain(openingDomain) !==
+                                      normalizeShopifyDomain(domain)
+                                  }
                                 >
-                                  {openingDomain === domain
+                                  {openingDomain === domain ||
+                                  (pendingShopifyConnect &&
+                                    normalizeShopifyDomain(pendingShopifyConnect) ===
+                                      normalizeShopifyDomain(domain))
                                     ? 'Connecting…'
                                     : isShopify && installState === 'needs_install'
                                       ? 'Install app'

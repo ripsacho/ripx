@@ -15,6 +15,18 @@ describe('evaluateShopifyConnectionHealth', () => {
     process.env.SHOPIFY_SCOPES = 'read_products,write_products';
   });
 
+  it('quick mode skips Shopify GraphQL when session token and scopes are present', async () => {
+    const result = await evaluateShopifyConnectionHealth({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'shpca_test',
+      sessionScope: 'read_products,write_products',
+      quick: true,
+    });
+    expect(result.connected).toBe(true);
+    expect(result.connection.code).toBe('SESSION_OK');
+    expect(shopifyService.requestAdminGraphql).not.toHaveBeenCalled();
+  });
+
   it('returns needs_install when access token is missing', async () => {
     const result = await evaluateShopifyConnectionHealth({
       shopDomain: 'demo.myshopify.com',

@@ -97,12 +97,16 @@ function normalizeInstallDetail(status) {
   };
 }
 
-export async function fetchShopifyConnectionStatus(shop) {
+export async function fetchShopifyConnectionStatus(shop, { quick = false } = {}) {
   const normalizedShop = normalizeShopifyDomain(shop || '');
   if (!normalizedShop) {
     throw new Error('Invalid Shopify shop domain');
   }
-  const res = await apiGet('/shopify/connection-status', { shop: normalizedShop });
+  const params = { shop: normalizedShop };
+  if (quick) {
+    params.quick = '1';
+  }
+  const res = await apiGet('/shopify/connection-status', params);
   const payload = unwrapData(res) || {};
   const connectionPayload =
     payload?.connection && typeof payload.connection === 'object' ? payload.connection : null;
@@ -146,9 +150,9 @@ export async function fetchShopifyInstallState(shop) {
   return detail.state;
 }
 
-export async function fetchShopifyInstallDetail(shop) {
+export async function fetchShopifyInstallDetail(shop, { quick = false } = {}) {
   try {
-    const status = await fetchShopifyConnectionStatus(shop);
+    const status = await fetchShopifyConnectionStatus(shop, { quick });
     return normalizeInstallDetail({
       connected: status.connected,
       connection: status.connection,
@@ -177,7 +181,10 @@ export async function fetchShopifyInstallStates(shops) {
     return {};
   }
   const pairs = await Promise.all(
-    normalizedShops.map(async shop => [shop, await fetchShopifyInstallDetail(shop)])
+    normalizedShops.map(async shop => [
+      shop,
+      await fetchShopifyInstallDetail(shop, { quick: true }),
+    ])
   );
   return Object.fromEntries(pairs);
 }

@@ -1,6 +1,7 @@
 import {
   getShopifyConnectionUiState,
   isShopifyConnectionHealthy,
+  shouldOpenShopifyApp,
 } from '../shopifyConnectionHealth';
 
 describe('shopifyConnectionHealth (frontend)', () => {
@@ -12,6 +13,16 @@ describe('shopifyConnectionHealth (frontend)', () => {
         tokenHealth: { checkFailed: true },
       })
     ).toBe(false);
+  });
+
+  it('opens app when token is valid but scopes are stale', () => {
+    expect(
+      shouldOpenShopifyApp({
+        connected: false,
+        connection: { code: 'SCOPES_STALE' },
+        tokenHealth: { valid: true },
+      })
+    ).toBe(true);
   });
 
   it('maps verify failures to verify_unavailable UI state', () => {

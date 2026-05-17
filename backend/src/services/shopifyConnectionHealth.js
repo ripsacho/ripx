@@ -70,11 +70,65 @@ function setCachedConnectionHealth(shopDomain, value) {
 /**
  * @param {{ shopDomain: string, accessToken?: string|null, sessionScope?: string|null }} input
  */
+/**
+ * DB/session-only check (no Shopify API). Used for home domain lists to avoid N slow GraphQL calls.
+ */
+function evaluateShopifyConnectionHealthQuick({ shopDomain, accessToken, sessionScope = null }) {
+  const normalizedShop = String(shopDomain || '')
+    .trim()
+    .toLowerCase();
+  const token = String(accessToken || '').trim();
+  const scopeMissing = missingShopifyScopes(sessionScope);
+
+  if (!token) {
+    return buildConnectionPayload({
+      shopDomain: normalizedShop,
+      connected: false,
+      state: 'needs_install',
+      action: 'install',
+      code: 'NO_TOKEN',
+      message:
+        'This store is not connected to RipX. Install the app using your Domains install link or open it from Shopify Admin.',
+      tokenValid: false,
+      missingScopes: scopeMissing,
+    });
+  }
+
+  if (scopeMissing.length > 0) {
+    const preview =
+      scopeMissing.length > 4
+        ? `${scopeMissing.slice(0, 4).join(', ')} (+${scopeMissing.length - 4} more)`
+        : scopeMissing.join(', ');
+    return buildConnectionPayload({
+      shopDomain: normalizedShop,
+      connected: false,
+      state: 'needs_install',
+      action: 'install',
+      code: 'SCOPES_STALE',
+      message: `Reconnect RipX to grant updated permissions (${preview}).`,
+      tokenValid: true,
+      missingScopes: scopeMissing,
+    });
+  }
+
+  return buildConnectionPayload({
+    shopDomain: normalizedShop,
+    connected: true,
+    state: 'connected',
+    action: 'none',
+    code: 'SESSION_OK',
+    message: 'Store session is present',
+    tokenValid: null,
+    missingScopes: [],
+  });
+}
+
 async function evaluateShopifyConnectionHealth({
   shopDomain,
   accessToken,
   sessionScope = null,
   skipCache = false,
+  quick = false,
 }) {
   const normalizedShop = String(shopDomain || '')
     .trim()
@@ -87,6 +141,16 @@ async function evaluateShopifyConnectionHealth({
   }
   const token = String(accessToken || '').trim();
   const scopeMissing = missingShopifyScopes(sessionScope);
+
+  if (quick) {
+    const payload = evaluateShopifyConnectionHealthQuick({
+      shopDomain: normalizedShop,
+      accessToken: token,
+      sessionScope,
+    });
+    setCachedConnectionHealth(normalizedShop, payload);
+    return payload;
+  }
 
   if (!token) {
     const payload = buildConnectionPayload({
@@ -199,6 +263,7 @@ function clearConnectionHealthCache(shopDomain) {
 
 module.exports = {
   evaluateShopifyConnectionHealth,
+  evaluateShopifyConnectionHealthQuick,
   buildConnectionPayload,
   clearConnectionHealthCache,
 };

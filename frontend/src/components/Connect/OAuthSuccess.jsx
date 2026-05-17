@@ -67,16 +67,27 @@ export default function OAuthSuccess() {
       // also rely on polling in the main window.
       const ourOrigin = window.location.origin;
       try {
-        if (window.opener) {
-          window.opener.postMessage(payload, 'https://admin.shopify.com');
-        }
+        window.localStorage.setItem(
+          `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${shop}`,
+          String(Date.now())
+        );
+        window.localStorage.removeItem(`${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${shop}`);
       } catch {
-        try {
-          if (window.opener) {
-            window.opener.postMessage(payload, ourOrigin);
+        // ignore storage errors
+      }
+      if (window.opener) {
+        const targetOrigins = [ourOrigin, 'https://admin.shopify.com'];
+        for (const origin of targetOrigins) {
+          try {
+            window.opener.postMessage(payload, origin);
+          } catch {
+            // ignore cross-origin postMessage failures
           }
+        }
+        try {
+          window.opener.postMessage(payload, '*');
         } catch {
-          // Opener is other origin; ignore.
+          // ignore
         }
       }
       setNotified(true);
