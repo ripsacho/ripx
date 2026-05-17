@@ -1,7 +1,7 @@
 /**
  * Test Detail (shared wizard edit view)
  */
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Page,
   Layout,
@@ -51,10 +51,6 @@ import {
 } from '../../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
-import {
-  isStorefrontRuntimeReady,
-  storefrontRuntimeReviewMessage,
-} from '../../utils/storefrontSetupStatus';
 import { formatPreflightCheckMessage } from '../../utils/preflightHints';
 import {
   buildLaunchPreflightView,
@@ -165,9 +161,6 @@ function TestDetail() {
     tracking: false,
     staging: false,
   });
-  const [storefrontSetupStatus, setStorefrontSetupStatus] = useState(null);
-  const [storefrontSetupLoading, setStorefrontSetupLoading] = useState(false);
-  const [storefrontSetupError, setStorefrontSetupError] = useState(null);
   const actionsMenuRef = useRef(null);
 
   const queryClient = useQueryClient();
@@ -289,62 +282,6 @@ function TestDetail() {
   const supportsCheckoutReadiness =
     isPriceLikeTest || isOfferTest || isCheckoutTest || isShippingTest;
   const checkoutReadinessLabel = isCheckoutTest ? 'Checkout readiness' : 'Launch readiness';
-  const requiresStorefrontRuntime =
-    isPriceLikeTest ||
-    isOfferTest ||
-    isShippingTest ||
-    String(test?.type || '').toLowerCase() === 'theme' ||
-    String(test?.type || '').toLowerCase() === 'content' ||
-    String(test?.type || '').toLowerCase() === 'url';
-  const storefrontRuntimeReady = isStorefrontRuntimeReady(storefrontSetupStatus);
-  const storefrontRuntimeReviewDetail = storefrontRuntimeReviewMessage(storefrontSetupStatus);
-  const launchPreflightView = useMemo(
-    () => buildLaunchPreflightView(preflightResult),
-    [preflightResult]
-  );
-  const preflightCoversStorefront = launchPreflightView.issues.some(
-    check => check?.id === 'storefront_runtime_ready'
-  );
-  const storefrontRuntimeNeedsReview =
-    preLaunchOpen &&
-    requiresStorefrontRuntime &&
-    !preflightCoversStorefront &&
-    storefrontSetupStatus &&
-    storefrontRuntimeReady === false;
-
-  useEffect(() => {
-    if (!preLaunchOpen || !requiresStorefrontRuntime) return undefined;
-    let cancelled = false;
-    const loadStorefrontSetupStatus = async () => {
-      setStorefrontSetupLoading(true);
-      setStorefrontSetupError(null);
-      try {
-        const shopDomain = getShopDomain();
-        const status = await apiGet(
-          '/shopify/setup/status',
-          shopDomain ? { domain: shopDomain } : {}
-        );
-        if (!cancelled) {
-          setStorefrontSetupStatus(status?.data || status || null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setStorefrontSetupError(
-            err?.response?.data?.error || err?.message || 'Could not check storefront app embed'
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setStorefrontSetupLoading(false);
-        }
-      }
-    };
-    loadStorefrontSetupStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [preLaunchOpen, requiresStorefrontRuntime]);
-
   const toDateInputValue = useCallback(value => {
     if (!value) return '';
     const parsed = new Date(value);
@@ -1313,39 +1250,7 @@ function TestDetail() {
       >
         <Modal.Section>
           <BlockStack gap="300">
-            {requiresStorefrontRuntime && (
-              <Banner
-                tone={
-                  storefrontRuntimeNeedsReview
-                    ? 'warning'
-                    : storefrontSetupError
-                      ? 'warning'
-                      : storefrontRuntimeReady
-                        ? 'success'
-                        : 'info'
-                }
-                title={
-                  storefrontRuntimeNeedsReview
-                    ? 'Storefront runtime check needs review'
-                    : storefrontSetupError
-                      ? 'Could not verify the app embed'
-                      : storefrontRuntimeReady
-                        ? 'Storefront runtime is ready'
-                        : 'Checking storefront runtime...'
-                }
-              >
-                <Text as="p" variant="bodySm">
-                  {storefrontRuntimeNeedsReview
-                    ? storefrontRuntimeReviewDetail ||
-                      'RipX could not confirm the theme app embed from this probe. You can still start the test if the embed is enabled in Shopify; use Settings → Installation to re-check after launch.'
-                    : storefrontSetupError ||
-                      (storefrontSetupLoading
-                        ? 'Checking the App Proxy and theme embed on the active storefront.'
-                        : 'RipX will use the App Proxy script and theme embed for live visitor assignment.')}
-                </Text>
-              </Banner>
-            )}
-            <LaunchPreflightPanel preflightResult={preflightResult} />
+            <LaunchPreflightPanel preflightResult={preflightResult} loading={preflightLoading} />
             <details className={styles.launchAdvancedOptions}>
               <summary>Advanced launch options</summary>
               <BlockStack gap="200">
@@ -1423,33 +1328,36 @@ function TestDetail() {
                 )}
               </BlockStack>
             </details>
-            <BlockStack gap="200">
-              <Checkbox
-                label="Hypothesis or goal is documented"
-                checked={preLaunchChecked.hypothesis}
-                onChange={v => setPreLaunchChecked(c => ({ ...c, hypothesis: v }))}
-              />
-              <Checkbox
-                label="Primary goal and metrics are set"
-                checked={preLaunchChecked.goal}
-                onChange={v => setPreLaunchChecked(c => ({ ...c, goal: v }))}
-              />
-              <Checkbox
-                label="Audience or targeting is configured"
-                checked={preLaunchChecked.audience}
-                onChange={v => setPreLaunchChecked(c => ({ ...c, audience: v }))}
-              />
-              <Checkbox
-                label="Tracking and conversion events are verified"
-                checked={preLaunchChecked.tracking}
-                onChange={v => setPreLaunchChecked(c => ({ ...c, tracking: v }))}
-              />
-              <Checkbox
-                label="Staging or QA run completed (e.g. force variation)"
-                checked={preLaunchChecked.staging}
-                onChange={v => setPreLaunchChecked(c => ({ ...c, staging: v }))}
-              />
-            </BlockStack>
+            <details className={styles.launchChecklist}>
+              <summary>Pre-launch checklist (optional)</summary>
+              <BlockStack gap="200">
+                <Checkbox
+                  label="Hypothesis or goal is documented"
+                  checked={preLaunchChecked.hypothesis}
+                  onChange={v => setPreLaunchChecked(c => ({ ...c, hypothesis: v }))}
+                />
+                <Checkbox
+                  label="Primary goal and metrics are set"
+                  checked={preLaunchChecked.goal}
+                  onChange={v => setPreLaunchChecked(c => ({ ...c, goal: v }))}
+                />
+                <Checkbox
+                  label="Audience or targeting is configured"
+                  checked={preLaunchChecked.audience}
+                  onChange={v => setPreLaunchChecked(c => ({ ...c, audience: v }))}
+                />
+                <Checkbox
+                  label="Tracking and conversion events are verified"
+                  checked={preLaunchChecked.tracking}
+                  onChange={v => setPreLaunchChecked(c => ({ ...c, tracking: v }))}
+                />
+                <Checkbox
+                  label="Staging or QA run completed (e.g. force variation)"
+                  checked={preLaunchChecked.staging}
+                  onChange={v => setPreLaunchChecked(c => ({ ...c, staging: v }))}
+                />
+              </BlockStack>
+            </details>
           </BlockStack>
         </Modal.Section>
       </Modal>

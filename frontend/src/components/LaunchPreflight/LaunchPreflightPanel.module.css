@@ -4,6 +4,23 @@
   gap: 12px;
 }
 
+.issueRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.technicalDetails {
+  margin-top: 4px;
+}
+
+.technicalDetails > summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--p-color-text-secondary);
+  user-select: none;
+}
+
 .technicalBox {
   max-height: 180px;
   overflow-y: auto;

@@ -74,6 +74,24 @@
   margin-bottom: 0.75rem;
 }
 
+.launchChecklist {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  padding: 0.65rem 0.9rem;
+}
+
+.launchChecklist summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--p-color-text-secondary);
+  list-style-position: inside;
+}
+
+.launchChecklist[open] summary {
+  margin-bottom: 0.65rem;
+}
+
 .detailLayout {
   display: flex;
   flex-direction: column;

@@ -1384,7 +1384,10 @@ function TestList() {
         >
           <Modal.Section>
             <BlockStack gap="300">
-              <LaunchPreflightPanel preflightResult={launchPreflightResult} />
+              <LaunchPreflightPanel
+                preflightResult={launchPreflightResult}
+                loading={launchPreflightLoading}
+              />
               <BlockStack gap="200">
                 <TextField
                   label="Canary percent override (optional)"

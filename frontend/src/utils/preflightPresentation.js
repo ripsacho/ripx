@@ -32,7 +32,8 @@ const HIDDEN_OK_IDS = new Set([
 /** Shown in technical list only unless nothing else is wrong. */
 const ADVISORY_ONLY_IDS = new Set(['guardrail_enabled']);
 
-const PRIMARY_ISSUE_CAP = 4;
+const PRIMARY_ISSUE_CAP = 3;
+const SUMMARY_MAX_LEN = 140;
 
 /** Lower rank = higher in the summary list. */
 const ISSUE_RANK = {
@@ -102,15 +103,105 @@ export function dedupePreflightChecks(checks) {
 }
 
 export function formatPreflightIssueLine(check) {
-  const title = preflightCheckTitle(check);
-  const detail = formatPreflightCheckMessage(check);
-  if (!detail) {
+  const { title, summary } = formatPreflightIssueSummary(check);
+  if (!summary) {
     return title;
   }
-  if (detail.toLowerCase().startsWith(title.toLowerCase())) {
-    return detail;
+  return `${title}: ${summary}`;
+}
+
+/**
+ * One-line merchant summary (full message stays in technical checks).
+ */
+export function formatPreflightIssueSummary(check) {
+  const id = String(check?.id || '').trim();
+  const title = preflightCheckTitle(check);
+  const meta = check?.meta && typeof check.meta === 'object' ? check.meta : {};
+  const raw = formatPreflightCheckMessage(check);
+
+  if (id === 'shopify_oauth_health' || id === 'shopify_oauth_scopes') {
+    const missing = Array.isArray(meta.missing_scopes) ? meta.missing_scopes : [];
+    if (missing.length > 0) {
+      return {
+        title,
+        summary: `Re-approve the app from My domains (install link, private browser). ${missing.length} permission${missing.length === 1 ? '' : 's'} still missing.`,
+      };
+    }
+    return {
+      title,
+      summary: 'Reconnect or re-install the app from My domains.',
+    };
   }
-  return `${title}: ${detail}`;
+
+  if (id === 'storefront_runtime_ready') {
+    if (meta.password_protected || meta.proxy_password_protected) {
+      return {
+        title,
+        summary:
+          'Store password blocks auto-check. Remove the password or open /apps/ripx/script.js while logged in.',
+      };
+    }
+    return {
+      title,
+      summary: 'Complete storefront setup in Settings → Installation (App Proxy and theme embed).',
+    };
+  }
+
+  if (id === 'pricing_storefront_surface_mapping' || id === 'pricing_storefront_surface_coverage') {
+    const mappingMatch = raw.match(/(\d+)\s+mappings?\s+still\s+needed/i);
+    const gapMatch = raw.match(/missing for\s+([^.]+)/i);
+    if (mappingMatch) {
+      return {
+        title,
+        summary: `Map ${mappingMatch[1]} price selector${mappingMatch[1] === '1' ? '' : 's'} under Settings → Installation.`,
+      };
+    }
+    if (gapMatch) {
+      return {
+        title,
+        summary: `Map missing selectors in Settings → Installation (${gapMatch[1].trim()}).`,
+      };
+    }
+    return {
+      title,
+      summary: 'Map theme price selectors in Settings → Installation.',
+    };
+  }
+
+  if (id === 'checkout_launch_readiness') {
+    return {
+      title,
+      summary: truncateSummary(
+        raw.replace(/^checkout setup[:\s]*/i, '').trim() ||
+          'Finish checkout extension setup in Settings.'
+      ),
+    };
+  }
+
+  if (id === 'guardrail_enabled') {
+    return {
+      title,
+      summary: 'Optional: enable auto-stop guardrails in test settings.',
+    };
+  }
+
+  let summary = raw;
+  if (summary.toLowerCase().startsWith(title.toLowerCase())) {
+    summary =
+      summary
+        .slice(title.length)
+        .replace(/^[\s:–-]+/, '')
+        .trim() || summary;
+  }
+  return { title, summary: truncateSummary(summary) };
+}
+
+function truncateSummary(text) {
+  const value = String(text || '').trim();
+  if (value.length <= SUMMARY_MAX_LEN) {
+    return value;
+  }
+  return `${value.slice(0, SUMMARY_MAX_LEN - 1).trim()}…`;
 }
 
 function issueSortRank(check) {
@@ -144,11 +235,16 @@ function pickPrimaryIssues(issues) {
       !ADVISORY_ONLY_IDS.has(String(check?.id || ''))
   );
   const advisory = sorted.filter(check => ADVISORY_ONLY_IDS.has(String(check?.id || '')));
-  const ordered = [...blocking, ...recommendations, ...advisory];
+  const core = [...blocking, ...recommendations];
+  const ordered = core.length > 0 ? core : advisory.length > 0 ? [advisory[0]] : [];
   const primaryIssues = ordered.slice(0, PRIMARY_ISSUE_CAP);
+  const overflowFromCore = Math.max(0, core.length - primaryIssues.length);
+  const advisoryHidden =
+    core.length > 0 ? advisory.length : Math.max(0, advisory.length - primaryIssues.length);
   return {
     primaryIssues,
-    overflowIssueCount: Math.max(0, ordered.length - primaryIssues.length),
+    overflowIssueCount: overflowFromCore + advisoryHidden,
+    hiddenAdvisoryCount: advisoryHidden,
   };
 }
 
@@ -169,23 +265,47 @@ export function buildLaunchPreflightView(preflight) {
   const checks = Array.isArray(preflight?.checks) ? preflight.checks : [];
   const grouped = groupPreflightChecksBySeverity(checks);
   const issues = dedupePreflightChecks([...grouped.errors, ...grouped.warnings]);
-  const { primaryIssues, overflowIssueCount } = pickPrimaryIssues(issues);
+  const { primaryIssues, overflowIssueCount, hiddenAdvisoryCount } = pickPrimaryIssues(issues);
   const errorCount = grouped.errors.length;
-  const warningCount = dedupePreflightChecks(grouped.warnings).length;
+  const dedupedWarnings = dedupePreflightChecks(grouped.warnings);
+  const warningCount = dedupedWarnings.length;
+  const actionableWarningCount = dedupedWarnings.filter(
+    check => !ADVISORY_ONLY_IDS.has(String(check?.id || ''))
+  ).length;
 
   return {
     blocked: errorCount > 0,
     errorCount,
     warningCount,
+    actionableWarningCount,
     totalChecks: checks.length,
     issues,
     primaryIssues,
     overflowIssueCount,
+    hiddenAdvisoryCount,
     grouped: {
       ...grouped,
       ok: grouped.ok.filter(check => !HIDDEN_OK_IDS.has(String(check?.id || ''))),
     },
   };
+}
+
+export function launchPreflightBannerTitle(view) {
+  if (!view) {
+    return null;
+  }
+  if (view.blocked) {
+    return view.errorCount === 1
+      ? 'Fix before launch'
+      : `Fix ${view.errorCount} issues before launch`;
+  }
+  if (view.primaryIssues.length > 0) {
+    const n = view.primaryIssues.length + (view.overflowIssueCount > 0 ? 1 : 0);
+    return view.actionableWarningCount > 0 || view.blocked
+      ? `Review ${n} item${n === 1 ? '' : 's'} — you can still launch`
+      : 'Ready to launch';
+  }
+  return 'Ready to launch';
 }
 
 export function launchPreflightHeadline(view) {
@@ -197,10 +317,8 @@ export function launchPreflightHeadline(view) {
       ? 'Fix 1 blocking issue before launch.'
       : `Fix ${view.errorCount} blocking issues before launch.`;
   }
-  if (view.warningCount > 0) {
-    return view.warningCount === 1
-      ? 'Ready to launch with 1 recommendation.'
-      : `Ready to launch with ${view.warningCount} recommendations.`;
+  if (view.primaryIssues.length > 0) {
+    return 'Review the items below, then start the test when you are ready.';
   }
   return 'Ready to launch.';
 }
