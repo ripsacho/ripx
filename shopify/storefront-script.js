@@ -1155,6 +1155,19 @@
       return raw;
     }
   }
+  function withVisualPickerQueryParams(urlValue) {
+    var raw = withPreviewQueryParams(urlValue);
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw, window.location.origin);
+      if (AB_VISUAL_EDITOR || VISUAL_PICKER_MODE) parsed.searchParams.set('ab_visual_editor', '1');
+      if (VISUAL_PICKER_MODE) parsed.searchParams.set('ab_visual_picker', '1');
+      if (PRICE_SURFACE_PICK_MODE) parsed.searchParams.set('ab_price_surface_pick', '1');
+      return parsed.toString();
+    } catch (_ePickerParams) {
+      return raw;
+    }
+  }
   const PRICE_PREVIEW_FRAME = !!window.__RIPX_PRICE_PREVIEW_FRAME__;
   function getPricePreviewTargetPath() {
     if (!PRICE_PREVIEW_FRAME) return '';
@@ -1239,8 +1252,26 @@
     }
   })();
   const VISUAL_EDITOR_EMBED = AB_VISUAL_EDITOR && IN_IFRAME;
-  /** Visual picker runs in the editor iframe or a picker tab opened by RipX; never on normal live visits. */
-  const VISUAL_PICKER_ACTIVE = VISUAL_PICKER_MODE && (IN_IFRAME || HAS_VISUAL_PICKER_OPENER);
+  const PREVIEW_DOCUMENT_PROXY = (function () {
+    try {
+      var path = String(window.location.pathname || '').toLowerCase();
+      if (path.indexOf('/track/preview-document') !== -1) return true;
+      var nestedTarget = URL_PARAMS.get('url') || '';
+      if (!nestedTarget) return false;
+      var shopHost = String(CONFIG.shopDomain || PREVIEW_TENANT_DOMAIN || '')
+        .trim()
+        .toLowerCase();
+      var currentHost = String(window.location.hostname || '')
+        .trim()
+        .toLowerCase();
+      return !!(shopHost && currentHost && currentHost !== shopHost);
+    } catch (_eProxy) {
+      return false;
+    }
+  })();
+  /** Visual picker runs in the editor iframe, a picker tab, or preview-document proxy tabs. */
+  const VISUAL_PICKER_ACTIVE =
+    VISUAL_PICKER_MODE && (IN_IFRAME || HAS_VISUAL_PICKER_OPENER || PREVIEW_DOCUMENT_PROXY);
 
   /**
    * Generate or retrieve user ID
@@ -7610,8 +7641,78 @@
     } catch (_eParentPost) {}
   }
 
+  function toPreviewDocumentProxyUrl(storeUrl) {
+    var apiBase =
+      CONFIG && CONFIG.previewDocumentApiUrl ? String(CONFIG.previewDocumentApiUrl).trim() : '';
+    if (!apiBase) return '';
+    var shopUrl = withVisualPickerQueryParams(storeUrl);
+    if (!shopUrl) return '';
+    try {
+      var doc = new URL(apiBase, window.location.origin);
+      doc.searchParams.set('url', shopUrl);
+      var launcher =
+        CONFIG && CONFIG.previewLauncherParams && typeof CONFIG.previewLauncherParams === 'object'
+          ? CONFIG.previewLauncherParams
+          : {};
+      Object.keys(launcher).forEach(function (key) {
+        var value = launcher[key];
+        if (value !== null && value !== undefined && String(value).trim() !== '') {
+          doc.searchParams.set(key, String(value).trim());
+        }
+      });
+      if (!doc.searchParams.get('parent_origin')) {
+        try {
+          var parentOrigin = getPreviewParam('parent_origin');
+          if (parentOrigin) doc.searchParams.set('parent_origin', parentOrigin);
+        } catch (_eParentOrigin) {}
+      }
+      return doc.toString();
+    } catch (_eDoc) {
+      return '';
+    }
+  }
+
+  function installPreviewDocumentProxyNavigation() {
+    if (!PREVIEW_DOCUMENT_PROXY) return;
+    if (!VISUAL_PICKER_MODE && !PRICE_SURFACE_PICK_MODE) return;
+    if (window.__RIPX_PREVIEW_DOCUMENT_NAV__) return;
+    window.__RIPX_PREVIEW_DOCUMENT_NAV__ = true;
+    var shopHost = String(CONFIG.shopDomain || PREVIEW_TENANT_DOMAIN || '')
+      .trim()
+      .toLowerCase();
+    document.addEventListener(
+      'click',
+      function (e) {
+        if (e.defaultPrevented) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!anchor) return;
+        var bar = document.getElementById('ripx-visual-picker-bar');
+        if (bar && bar.contains(e.target)) return;
+        var rawHref = anchor.getAttribute('href');
+        if (!rawHref || rawHref.charAt(0) === '#') return;
+        var lowered = String(rawHref).trim().toLowerCase();
+        if (lowered.indexOf('javascript:') === 0 || lowered.indexOf('mailto:') === 0) return;
+        try {
+          var resolved = new URL(rawHref, document.baseURI || window.location.href);
+          if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return;
+          var targetHost = String(resolved.hostname || '').toLowerCase();
+          if (shopHost && targetHost !== shopHost && targetHost.indexOf('.myshopify.com') === -1) {
+            return;
+          }
+          var proxied = toPreviewDocumentProxyUrl(resolved.toString());
+          if (!proxied || proxied === window.location.href) return;
+          e.preventDefault();
+          e.stopPropagation();
+          window.location.assign(proxied);
+        } catch (_eNav) {}
+      },
+      true
+    );
+  }
+
   function initVisualPicker() {
-    if (!IN_IFRAME && !HAS_VISUAL_PICKER_OPENER) return;
+    if (!IN_IFRAME && !HAS_VISUAL_PICKER_OPENER && !PREVIEW_DOCUMENT_PROXY) return;
     if (!document.body) {
       setTimeout(initVisualPicker, 50);
       return;
@@ -7769,7 +7870,10 @@
     document.body.appendChild(overlay);
     document.body.appendChild(box);
     document.body.appendChild(bar);
-    postVisualEditorStatus('ripx-visual-picker-ready', { mode: IN_IFRAME ? 'iframe' : 'opener' });
+    installPreviewDocumentProxyNavigation();
+    postVisualEditorStatus('ripx-visual-picker-ready', {
+      mode: IN_IFRAME ? 'iframe' : PREVIEW_DOCUMENT_PROXY ? 'preview-document' : 'opener',
+    });
 
     var barHeight = bar.offsetHeight;
 

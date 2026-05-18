@@ -1269,6 +1269,37 @@ router.get(
       html = html.replace(/url\s*\(\s*["']?\/(?!\/)/g, () => `url(${originForReplace}/`);
       html = html.replace(/url\s*\(\s*["']?\/\//g, () => 'url(https://');
 
+      const pickLauncherParam = value => {
+        if (value === null || value === undefined) {
+          return '';
+        }
+        return String(value).trim();
+      };
+      const previewLauncherParams = {};
+      const setLauncherParam = (key, value) => {
+        const trimmed = pickLauncherParam(value);
+        if (trimmed) {
+          previewLauncherParams[key] = trimmed;
+        }
+      };
+      [
+        'ab_preview',
+        'ab_preview_test',
+        'ab_preview_variant',
+        'ab_preview_variant_name',
+        'ab_preview_domain',
+        'ab_preview_session',
+        'ab_preview_reset',
+        'ab_visual_editor',
+        'ab_visual_picker',
+        'ab_price_surface_pick',
+        'parent_origin',
+      ].forEach(key => {
+        setLauncherParam(key, req.query[key] || parsed.searchParams.get(key));
+      });
+      if (storefrontPassword) {
+        previewLauncherParams.storefront_password = storefrontPassword;
+      }
       const runtimeConfig = {
         apiUrl: `${appUrl.replace(/\/+$/, '')}/api`,
         shopDomain: hostname,
@@ -1281,6 +1312,8 @@ router.get(
         previewVariantName: req.query.ab_preview_variant_name || null,
         previewTenantDomain: req.query.ab_preview_domain || null,
         previewMode: req.query.ab_preview === '1' || !!req.query.ab_preview_test,
+        previewDocumentApiUrl: `${appUrl.replace(/\/+$/, '')}/api/track/preview-document`,
+        previewLauncherParams,
         priceSurfaceRegistry: {
           version: 1,
           shopMappings: [],
