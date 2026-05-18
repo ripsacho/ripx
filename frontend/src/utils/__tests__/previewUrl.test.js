@@ -10,6 +10,7 @@ import {
   isShopifyPreviewUrl,
   loadPersistedStorefrontPassword,
   persistStorefrontPassword,
+  resolveStorefrontPasswordForPreview,
   stripPreviewDocumentSecretParams,
 } from '../previewUrl';
 
@@ -183,6 +184,36 @@ describe('previewUrl', () => {
 
     const url = new URL(result, 'https://app.example.com');
     expect(url.searchParams.get('storefront_password')).toBe('secret-password');
+  });
+
+  it('resolveStorefrontPasswordForPreview prefers explicit password then sessionStorage', () => {
+    const store = new Map();
+    const previousWindow = global.window;
+    global.window = {
+      sessionStorage: {
+        getItem: key => (store.has(key) ? store.get(key) : null),
+        setItem: (key, value) => {
+          store.set(key, value);
+        },
+        removeItem: key => {
+          store.delete(key);
+        },
+      },
+    };
+    try {
+      persistStorefrontPassword('splitter-plus.myshopify.com', 'from-session');
+      expect(resolveStorefrontPasswordForPreview('splitter-plus.myshopify.com', '')).toBe(
+        'from-session'
+      );
+      expect(resolveStorefrontPasswordForPreview('splitter-plus.myshopify.com', 'typed')).toBe(
+        'typed'
+      );
+      expect(resolveStorefrontPasswordForPreview('', '', ['splitter-plus.myshopify.com'])).toBe(
+        'from-session'
+      );
+    } finally {
+      global.window = previousWindow;
+    }
   });
 
   it('persists storefront password in sessionStorage per shop host', () => {

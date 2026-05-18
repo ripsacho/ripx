@@ -544,6 +544,42 @@ export function persistStorefrontPassword(domain, password) {
   }
 }
 
+/**
+ * Resolve storefront password for preview-document URLs: explicit value first, then sessionStorage per host.
+ *
+ * @param {string} domain - Shop host used for persistence lookup
+ * @param {string} [explicitPassword] - In-memory password from wizard state
+ * @param {string[]} [fallbackDomains] - Alternate hosts (e.g. route vs shop_domain) when keys differ
+ * @returns {string}
+ */
+export function resolveStorefrontPasswordForPreview(
+  domain,
+  explicitPassword,
+  fallbackDomains = []
+) {
+  const explicit =
+    explicitPassword !== null && explicitPassword !== undefined
+      ? String(explicitPassword).trim()
+      : '';
+  if (explicit) {
+    return explicit;
+  }
+  const seen = new Set();
+  const candidates = [domain, ...(Array.isArray(fallbackDomains) ? fallbackDomains : [])];
+  for (const candidate of candidates) {
+    const host = normalizePreviewHostname(candidate);
+    if (!host || seen.has(host)) {
+      continue;
+    }
+    seen.add(host);
+    const loaded = loadPersistedStorefrontPassword(host);
+    if (loaded) {
+      return loaded;
+    }
+  }
+  return '';
+}
+
 export function stripPreviewDocumentSecretParams(previewDocumentUrl) {
   const raw = typeof previewDocumentUrl === 'string' ? previewDocumentUrl.trim() : '';
   if (!raw) return '';

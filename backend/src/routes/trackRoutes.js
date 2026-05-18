@@ -1058,21 +1058,52 @@ async function getShopifyStorefrontPasswordCookie(parsedUrl, password, controlle
   body.set('form_type', 'storefront_password');
   body.set('utf8', '✓');
   body.set('password', rawPassword);
+  const userAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  const baseHeaders = {
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent': userAgent,
+  };
 
   try {
+    const collectedCookies = [];
     const response = await fetch(passwordUrl.toString(), {
       method: 'POST',
       redirect: 'manual',
       signal: controller.signal,
       headers: {
+        ...baseHeaders,
         'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
       body,
     });
-    return cookieHeaderFromSetCookie(collectSetCookieHeaders(response.headers));
+    collectedCookies.push(...collectSetCookieHeaders(response.headers));
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (location) {
+        const redirectUrl = new URL(location, passwordUrl);
+        const cookieHeader = cookieHeaderFromSetCookie(collectedCookies);
+        const followRes = await fetch(redirectUrl.toString(), {
+          method: 'GET',
+          redirect: 'manual',
+          signal: controller.signal,
+          headers: {
+            ...baseHeaders,
+            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          },
+        });
+        collectedCookies.push(...collectSetCookieHeaders(followRes.headers));
+      }
+    }
+
+    const merged = cookieHeaderFromSetCookie(collectedCookies);
+    if (merged && !/storefront_digest=/i.test(merged)) {
+      logger.warn('Preview document: password submit did not return storefront_digest', {
+        shop: parsedUrl.hostname,
+      });
+    }
+    return merged;
   } catch (error) {
     logger.warn('Preview document: storefront password submit failed', {
       shop: parsedUrl.hostname,
@@ -1250,11 +1281,15 @@ router.get(
       }
       let html = await fetchRes.text();
       if (isLikelyShopifyPasswordPage(html, fetchRes.url || rawUrl)) {
+        const priceSurfacePick =
+          req.query.ab_price_surface_pick === '1' ||
+          parsed.searchParams.get('ab_price_surface_pick') === '1';
+        const passwordHint = priceSurfacePick ? 'Theme price mapping' : 'the visual editor';
         sendPreviewFallback(
           res,
           storefrontPassword
             ? 'Storefront password was not accepted. Check the password and try again.'
-            : 'This Shopify store is password protected. Enter the storefront password in the visual editor and reload preview.'
+            : `This Shopify store is password protected. Enter the storefront password under ${passwordHint}, then pick or reload preview.`
         );
         return;
       }

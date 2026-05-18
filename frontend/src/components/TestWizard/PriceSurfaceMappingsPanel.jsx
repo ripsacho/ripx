@@ -31,6 +31,8 @@ import {
   PRICE_SURFACE_THEME_PACKS,
   mergeThemePackMappings,
 } from '../../utils/priceSurfaceThemePacks';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
+import { resolveStorefrontPasswordForPreview } from '../../utils/previewUrl';
 
 function buildSurfaceOptions() {
   return PRICE_SURFACES.map(value => ({ label: value.toUpperCase(), value }));
@@ -136,6 +138,9 @@ export default function PriceSurfaceMappingsPanel({
   styles,
   testMappings,
   visualEditorSelector = '',
+  shopDomain = '',
+  storefrontPassword = '',
+  onStorefrontPasswordChange,
   pickerLaunchUrl = '',
   getPickerLaunchUrl,
   pickTarget = null,
@@ -155,6 +160,7 @@ export default function PriceSurfaceMappingsPanel({
   const [notice, setNotice] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [activeScopeTab, setActiveScopeTab] = useState('test');
+  const [previewPickError, setPreviewPickError] = useState('');
 
   const resolvePickerLaunchUrl = useCallback(
     surface => {
@@ -210,6 +216,28 @@ export default function PriceSurfaceMappingsPanel({
       setExpanded(true);
     }
   }, [expandRequestToken]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+    const onMessage = event => {
+      const data = event?.data;
+      if (!data || data.type !== 'ripx-preview-error' || data.source !== 'ripx-preview-document') {
+        return;
+      }
+      const message = String(data.message || '').trim();
+      if (!message) {
+        return;
+      }
+      if (/password/i.test(message)) {
+        setPreviewPickError(message);
+        setExpanded(true);
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   const updateTestMapping = (index, patch) => {
     const next = normalizePriceSurfaceMappingsForEditor(testMappings).map((entry, idx) => {
@@ -348,6 +376,14 @@ export default function PriceSurfaceMappingsPanel({
 
   const visualSelector = String(visualEditorSelector || '').trim();
   const defaultPickerReady = Boolean(resolvePickerLaunchUrl('pdp'));
+  const shopHost = String(shopDomain || '').trim();
+  const showStorefrontPasswordField = shopHost ? isShopifyStoreDomain(shopHost) : false;
+  const resolvedStorefrontPassword = resolveStorefrontPasswordForPreview(
+    shopHost,
+    storefrontPassword
+  );
+  const needsStorefrontPassword =
+    showStorefrontPasswordField && defaultPickerReady && !resolvedStorefrontPassword;
   const hasIssues = Boolean(error || coverageGaps.length > 0 || validationWarnings.length > 0);
   const activeRows = activeScopeTab === 'test' ? testRows : shopRows;
   const settingsLink = String(settingsHref || '').trim();
@@ -357,6 +393,13 @@ export default function PriceSurfaceMappingsPanel({
   }, [onStatusChange, registryStatus]);
 
   const startQuickPick = async (scope, surface) => {
+    if (needsStorefrontPassword) {
+      setPreviewPickError(
+        'Enter your Shopify storefront password below, then pick again. It is stored for this browser session only.'
+      );
+      setExpanded(true);
+      return;
+    }
     const rows = scope === 'test' ? testRows : shopRows;
     const emptyIndex = rows.findIndex(row => !String(row.selector || '').trim());
     if (emptyIndex >= 0) {
@@ -501,6 +544,32 @@ export default function PriceSurfaceMappingsPanel({
             <Text as="p" variant="bodySm" tone="subdued">
               Connect a shop or set a preview URL to use the visual picker.
             </Text>
+          ) : null}
+          {showStorefrontPasswordField && onStorefrontPasswordChange ? (
+            <TextField
+              label="Storefront password"
+              type="password"
+              value={storefrontPassword}
+              onChange={value => {
+                setPreviewPickError('');
+                onStorefrontPasswordChange(value);
+              }}
+              autoComplete="off"
+              helpText="Required for password-protected Shopify stores before Pick PDP/PLP opens preview. Saved for this browser session only."
+            />
+          ) : null}
+          {needsStorefrontPassword ? (
+            <Banner tone="warning" title="Storefront password required">
+              <p>
+                This shop is behind Shopify&apos;s storefront password. Enter it above, then use
+                Pick PDP or Pick PLP again.
+              </p>
+            </Banner>
+          ) : null}
+          {previewPickError && !needsStorefrontPassword ? (
+            <Banner tone="critical" title="Preview could not load">
+              <p>{previewPickError}</p>
+            </Banner>
           ) : null}
           {error ? (
             <Banner tone="critical" title="Price surfaces">

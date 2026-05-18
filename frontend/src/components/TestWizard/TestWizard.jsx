@@ -82,6 +82,7 @@ import {
   isShopifyPreviewUrl,
   loadPersistedStorefrontPassword,
   persistStorefrontPassword,
+  resolveStorefrontPasswordForPreview,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
@@ -3130,10 +3131,16 @@ function TestWizard({
   const getPriceSurfacePickerLaunchUrl = useCallback(
     (surface = 'pdp') => {
       const domainForPreview =
+        scopedShopDomain ||
         routeDomain ||
         getPreviewDomain() ||
         getShopDomain() ||
         (initialData?.shop_domain && String(initialData.shop_domain).trim());
+      const storefrontPassword = resolveStorefrontPasswordForPreview(
+        domainForPreview,
+        visualEditorStorefrontPassword,
+        [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
+      );
       const baseUrl = resolvePreviewBaseUrl({
         variantUrl: null,
         overrideUrl: normalizeTextValue(formData.segments?.visual_editor_preview_url) || null,
@@ -3159,7 +3166,7 @@ function TestWizard({
           variantName: previewVariant?.name || (previewVariant ? 'Variant 1' : ''),
           tenantDomain: normalizeTextValue(initialData?.shop_domain) || null,
           apiBaseUrl: getApiBaseUrl(),
-          storefrontPassword: visualEditorStorefrontPassword,
+          storefrontPassword,
           parentOrigin:
             typeof window !== 'undefined' && window.location?.origin
               ? window.location.origin
@@ -3172,6 +3179,7 @@ function TestWizard({
       );
     },
     [
+      scopedShopDomain,
       routeDomain,
       formData.segments?.visual_editor_preview_url,
       formData.variants,
@@ -10447,6 +10455,16 @@ function TestWizard({
               styles={styles}
               testMappings={formData.segments?.price_surface_mappings || []}
               visualEditorSelector={formData.segments?.visual_editor_selector || ''}
+              shopDomain={
+                scopedShopDomain ||
+                routeDomain ||
+                getPreviewDomain() ||
+                getShopDomain() ||
+                initialData?.shop_domain ||
+                ''
+              }
+              storefrontPassword={visualEditorStorefrontPassword}
+              onStorefrontPasswordChange={handleVisualEditorStorefrontPasswordChange}
               pickerLaunchUrl={getPriceSurfacePickerLaunchUrl('pdp')}
               getPickerLaunchUrl={getPriceSurfacePickerLaunchUrl}
               pickTarget={priceSurfacePickTarget}
@@ -16778,6 +16796,13 @@ function TestWizard({
                                   })
                                 : null;
                             const directPreviewUrl = fullPreviewUrl || baseUrl || '';
+                            const previewStorefrontPassword = resolveStorefrontPasswordForPreview(
+                              scopedShopDomain || domainForPreview,
+                              visualEditorStorefrontPassword,
+                              [routeDomain, initialData?.shop_domain, getShopDomain()].filter(
+                                Boolean
+                              )
+                            );
                             let iframeSrc = '';
                             if (directPreviewUrl) {
                               iframeSrc =
@@ -16785,7 +16810,7 @@ function TestWizard({
                                   apiBaseUrl: getApiBaseUrl(),
                                   previewUrl: fullPreviewUrl || directPreviewUrl,
                                   visualEditor: true,
-                                  storefrontPassword: visualEditorStorefrontPassword,
+                                  storefrontPassword: previewStorefrontPassword,
                                   parentOrigin:
                                     typeof window !== 'undefined' && window.location?.origin
                                       ? window.location.origin
