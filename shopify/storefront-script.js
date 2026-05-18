@@ -5999,6 +5999,9 @@
       );
     }
 
+    var pdpPaintRoot = mainProductRoot();
+    var pdpPaintScope = pdpPaintRoot || document.querySelector('main') || document.body;
+
     function paint() {
       var seen = new WeakSet();
       function paintEl(el) {
@@ -6042,11 +6045,8 @@
       }
       specificSelectors.forEach(function (sel) {
         try {
-          document.querySelectorAll(sel).forEach(function (el) {
-            var pinfo = el.closest('product-info[data-product-id]');
-            if (pinfo && toNumericProductId(pinfo.getAttribute('data-product-id')) !== pid) return;
-            var ps = el.closest('.product-single[data-product-id]');
-            if (ps && toNumericProductId(ps.getAttribute('data-product-id')) !== pid) return;
+          pdpPaintScope.querySelectorAll(sel).forEach(function (el) {
+            if (pdpPaintRoot && !pdpPaintRoot.contains(el)) return;
             if (
               el.closest &&
               el.closest(
@@ -6058,13 +6058,12 @@
           });
         } catch (e) {}
       });
-      var root = mainProductRoot();
-      var broadRoot = root || document.querySelector('main') || document.body;
+      var broadRoot = pdpPaintScope;
       broadSelectors.forEach(function (sel) {
         try {
           broadRoot.querySelectorAll(sel).forEach(function (el) {
-            if (root && !root.contains(el)) return;
-            if (!root) {
+            if (pdpPaintRoot && !pdpPaintRoot.contains(el)) return;
+            if (!pdpPaintRoot) {
               var holder = el.closest('[data-product-id]');
               if (
                 holder &&
@@ -6089,7 +6088,7 @@
     paint();
 
     var root =
-      mainProductRoot() ||
+      pdpPaintRoot ||
       document.querySelector(
         'product-info, [data-section-type="product-template"], main .product'
       ) ||
