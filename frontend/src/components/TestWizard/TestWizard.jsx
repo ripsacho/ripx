@@ -82,6 +82,7 @@ import {
   isShopifyPreviewUrl,
   loadPersistedStorefrontPassword,
   persistStorefrontPassword,
+  getDevStorefrontPasswordDefault,
   resolveStorefrontPasswordForPreview,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
@@ -423,7 +424,9 @@ function TestWizard({
   const [visualPreviewLoadingSlow, setVisualPreviewLoadingSlow] = useState(false); // true after 3s in loading
   const [visualPreviewVariantIndex, setVisualPreviewVariantIndex] = useState(0);
   const [visualEditorPreviewSurface, setVisualEditorPreviewSurface] = useState('pdp');
-  const [visualEditorStorefrontPassword, setVisualEditorStorefrontPassword] = useState('');
+  const [visualEditorStorefrontPassword, setVisualEditorStorefrontPassword] = useState(() =>
+    getDevStorefrontPasswordDefault()
+  );
   const [visualPreviewToast, setVisualPreviewToast] = useState(null);
   const [previewPaintParity, setPreviewPaintParity] = useState(null);
   const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
@@ -1218,8 +1221,13 @@ function TestWizard({
       '';
     if (!domain) return;
     const persisted = loadPersistedStorefrontPassword(domain);
-    if (!persisted) return;
-    setVisualEditorStorefrontPassword(prev => (prev.trim() ? prev : persisted));
+    const devDefault = getDevStorefrontPasswordDefault();
+    const resolved = persisted || devDefault;
+    if (!resolved) return;
+    setVisualEditorStorefrontPassword(prev => (prev.trim() ? prev : resolved));
+    if (resolved && !persisted) {
+      persistStorefrontPassword(domain, resolved);
+    }
   }, [scopedShopDomain, initialData?.shop_domain]);
 
   const handleVisualEditorStorefrontPasswordChange = useCallback(

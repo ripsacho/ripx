@@ -10,6 +10,7 @@ import {
   isShopifyPreviewUrl,
   loadPersistedStorefrontPassword,
   persistStorefrontPassword,
+  getDevStorefrontPasswordDefault,
   resolveStorefrontPasswordForPreview,
   stripPreviewDocumentSecretParams,
 } from '../previewUrl';
@@ -184,6 +185,18 @@ describe('previewUrl', () => {
 
     const url = new URL(result, 'https://app.example.com');
     expect(url.searchParams.get('storefront_password')).toBe('secret-password');
+  });
+
+  it('getDevStorefrontPasswordDefault returns sp on echologyx app host', () => {
+    const previousWindow = global.window;
+    global.window = {
+      location: { hostname: 'splitter.echologyx.com', origin: 'https://splitter.echologyx.com' },
+    };
+    try {
+      expect(getDevStorefrontPasswordDefault()).toBe('sp');
+    } finally {
+      global.window = previousWindow;
+    }
   });
 
   it('resolveStorefrontPasswordForPreview prefers explicit password then sessionStorage', () => {

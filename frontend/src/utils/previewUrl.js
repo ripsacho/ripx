@@ -499,6 +499,33 @@ export function isShopifyPreviewUrl(previewUrl) {
 
 const STOREFRONT_PASSWORD_STORAGE_PREFIX = 'ripx_storefront_password:';
 
+/** Temporary default for password-protected dev stores (not used on public live shops). */
+export const DEV_STOREFRONT_PASSWORD_FALLBACK = 'sp';
+
+/**
+ * Default storefront password for internal/dev preview hosts only (localhost, *.echologyx.com).
+ * Live merchant installs do not use this fallback.
+ *
+ * @returns {string}
+ */
+export function getDevStorefrontPasswordDefault() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  const host = String(window.location?.hostname || '')
+    .trim()
+    .toLowerCase();
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('echologyx.com')
+  ) {
+    return DEV_STOREFRONT_PASSWORD_FALLBACK;
+  }
+  return '';
+}
+
 /**
  * Session-scoped storage key for a Shopify storefront password (never sent to clipboard helpers).
  * @param {string} domain
@@ -577,7 +604,7 @@ export function resolveStorefrontPasswordForPreview(
       return loaded;
     }
   }
-  return '';
+  return getDevStorefrontPasswordDefault();
 }
 
 export function stripPreviewDocumentSecretParams(previewDocumentUrl) {
