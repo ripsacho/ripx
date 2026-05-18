@@ -128,6 +128,7 @@ describe('previewUrl', () => {
     });
     const withPricePickUrl = new URL(withPricePick, 'https://app.example.com');
     expect(withPricePickUrl.searchParams.get(PREVIEW_PARAMS.PRICE_SURFACE_PICK)).toBe('1');
+    expect(withPricePickUrl.searchParams.get(PREVIEW_PARAMS.VISUAL_EDITOR)).toBeNull();
 
     const withoutTest = buildVisualPickerLaunchUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
@@ -147,6 +148,7 @@ describe('previewUrl', () => {
     const url = new URL(launchUrl, 'https://app.example.com');
     expect(url.searchParams.get(PREVIEW_PARAMS.PRICE_SURFACE_PICK)).toBe('1');
     expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_EDITOR)).toBeNull();
   });
 
   it('preserves simple preview mode through preview-document URLs', () => {

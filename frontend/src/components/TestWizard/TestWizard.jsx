@@ -3083,7 +3083,19 @@ function TestWizard({
         const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
         if (r?.handle) return `/pages/${encodeURIComponent(r.handle)}`;
       }
-      return getPreviewPathForTarget(urlPattern, targetType);
+      const fallbackPath = getPreviewPathForTarget(urlPattern, targetType);
+      if (isPriceScope && (fallbackPath === '/' || !fallbackPath)) {
+        const productResource = resources.find(resource => {
+          const type = String(resource?.type || resource?.resourceType || '')
+            .trim()
+            .toLowerCase();
+          return resource?.handle && type === 'product';
+        });
+        if (productResource?.handle) {
+          return `/products/${encodeURIComponent(productResource.handle)}`;
+        }
+      }
+      return fallbackPath;
     },
     [
       formData.target_type,

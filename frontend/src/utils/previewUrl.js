@@ -314,6 +314,7 @@ export function buildVisualPickerLaunchUrl({
 
   let directPreviewUrl = '';
   const tid = testId !== null && testId !== undefined && testId !== '' ? String(testId).trim() : '';
+  const includeVisualEditor = !priceSurfacePick;
   if (tid) {
     directPreviewUrl =
       buildPreviewUrl({
@@ -322,7 +323,7 @@ export function buildVisualPickerLaunchUrl({
         variantId,
         variantName,
         tenantDomain,
-        visualEditor: true,
+        visualEditor: includeVisualEditor,
         visualPicker: true,
         resetPreviewSession,
         previewSessionId,
@@ -330,7 +331,9 @@ export function buildVisualPickerLaunchUrl({
   } else {
     try {
       const url = new URL(normalized);
-      url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
+      if (includeVisualEditor) {
+        url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
+      }
       url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
       directPreviewUrl = url.toString();
     } catch {
@@ -356,7 +359,7 @@ export function buildVisualPickerLaunchUrl({
     buildPreviewDocumentUrl({
       apiBaseUrl,
       previewUrl: directPreviewUrl,
-      visualEditor: true,
+      visualEditor: includeVisualEditor,
       visualPicker: true,
       priceSurfacePick,
       storefrontPassword,

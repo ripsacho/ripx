@@ -6,6 +6,7 @@ import {
   Checkbox,
   Collapsible,
   InlineStack,
+  Modal,
   Select,
   Text,
   TextField,
@@ -161,6 +162,8 @@ export default function PriceSurfaceMappingsPanel({
   const [expanded, setExpanded] = useState(false);
   const [activeScopeTab, setActiveScopeTab] = useState('test');
   const [previewPickError, setPreviewPickError] = useState('');
+  const [pickerModalOpen, setPickerModalOpen] = useState(false);
+  const [pickerModalUrl, setPickerModalUrl] = useState('');
 
   const resolvePickerLaunchUrl = useCallback(
     surface => {
@@ -216,6 +219,34 @@ export default function PriceSurfaceMappingsPanel({
       setExpanded(true);
     }
   }, [expandRequestToken]);
+
+  const closePickerModal = useCallback(() => {
+    setPickerModalOpen(false);
+    setPickerModalUrl('');
+  }, []);
+
+  useEffect(() => {
+    if (!pickTarget && pickerModalOpen) {
+      closePickerModal();
+    }
+  }, [pickTarget, pickerModalOpen, closePickerModal]);
+
+  useEffect(() => {
+    if (!pickerModalOpen || typeof window === 'undefined') {
+      return undefined;
+    }
+    const onMessage = event => {
+      const data = event?.data;
+      if (!data || data.type !== 'ripx-visual-selector') {
+        return;
+      }
+      if (typeof data.selector === 'string' && data.selector.trim()) {
+        closePickerModal();
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [pickerModalOpen, closePickerModal]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -334,7 +365,8 @@ export default function PriceSurfaceMappingsPanel({
       }
     }
     onBeginVisualPick({ scope, index });
-    window.open(launchUrl, 'ripxPriceSurfacePicker');
+    setPickerModalUrl(launchUrl);
+    setPickerModalOpen(true);
   };
 
   const testRows = normalizePriceSurfaceMappingsForEditor(testMappings);
@@ -428,7 +460,8 @@ export default function PriceSurfaceMappingsPanel({
     }
     const launchUrl = resolvePickerLaunchUrl(surface);
     if (launchUrl) {
-      window.open(launchUrl, 'ripxPriceSurfacePicker');
+      setPickerModalUrl(launchUrl);
+      setPickerModalOpen(true);
     }
     setExpanded(true);
   };
@@ -531,7 +564,7 @@ export default function PriceSurfaceMappingsPanel({
           {pickTarget ? (
             <div className={styles.priceSurfaceInlineStatus}>
               <Text as="span" variant="bodySm">
-                Click a price node in the storefront tab.
+                Click a price in the preview panel below.
               </Text>
               {onCancelVisualPick ? (
                 <Button variant="plain" size="slim" onClick={onCancelVisualPick}>
@@ -745,6 +778,36 @@ export default function PriceSurfaceMappingsPanel({
           </InlineStack>
         </div>
       </Collapsible>
+      <Modal
+        open={pickerModalOpen}
+        onClose={() => {
+          closePickerModal();
+          onCancelVisualPick?.();
+        }}
+        title="Pick a price on your storefront"
+        size="large"
+      >
+        <Modal.Section>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Click a price in the preview below. The selector is sent back to Theme price mapping
+            automatically.
+          </Text>
+          {pickerModalUrl ? (
+            <iframe
+              title="RipX price surface picker"
+              src={pickerModalUrl}
+              style={{
+                width: '100%',
+                height: 'min(78vh, 900px)',
+                border: 0,
+                display: 'block',
+                marginTop: '12px',
+                background: '#fff',
+              }}
+            />
+          ) : null}
+        </Modal.Section>
+      </Modal>
     </div>
   );
 }

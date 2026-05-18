@@ -1155,19 +1155,6 @@
       return raw;
     }
   }
-  function withVisualPickerQueryParams(urlValue) {
-    var raw = withPreviewQueryParams(urlValue);
-    if (!raw) return '';
-    try {
-      var parsed = new URL(raw, window.location.origin);
-      if (AB_VISUAL_EDITOR || VISUAL_PICKER_MODE) parsed.searchParams.set('ab_visual_editor', '1');
-      if (VISUAL_PICKER_MODE) parsed.searchParams.set('ab_visual_picker', '1');
-      if (PRICE_SURFACE_PICK_MODE) parsed.searchParams.set('ab_price_surface_pick', '1');
-      return parsed.toString();
-    } catch (_ePickerParams) {
-      return raw;
-    }
-  }
   const PRICE_PREVIEW_FRAME = !!window.__RIPX_PRICE_PREVIEW_FRAME__;
   function getPricePreviewTargetPath() {
     if (!PRICE_PREVIEW_FRAME) return '';
@@ -1269,9 +1256,34 @@
       return false;
     }
   })();
-  /** Visual picker runs in the editor iframe, a picker tab, or preview-document proxy tabs. */
+  function withVisualPickerQueryParams(urlValue) {
+    var raw = withPreviewQueryParams(urlValue);
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw, window.location.origin);
+      if (AB_VISUAL_EDITOR || VISUAL_PICKER_MODE) parsed.searchParams.set('ab_visual_editor', '1');
+      if (VISUAL_PICKER_MODE) parsed.searchParams.set('ab_visual_picker', '1');
+      if (PRICE_SURFACE_PICK_MODE) parsed.searchParams.set('ab_price_surface_pick', '1');
+      return parsed.toString();
+    } catch (_ePickerParams) {
+      return raw;
+    }
+  }
+  function resolvePreviewDocumentApiUrl() {
+    var configured =
+      CONFIG && CONFIG.previewDocumentApiUrl ? String(CONFIG.previewDocumentApiUrl).trim() : '';
+    if (configured) return configured;
+    var apiUrl = CONFIG && CONFIG.apiUrl ? String(CONFIG.apiUrl).trim().replace(/\/+$/, '') : '';
+    if (!apiUrl) return '';
+    return apiUrl + '/track/preview-document';
+  }
+  /** Visual picker runs in the editor iframe, picker modal, or preview-document proxy tabs. */
   const VISUAL_PICKER_ACTIVE =
-    VISUAL_PICKER_MODE && (IN_IFRAME || HAS_VISUAL_PICKER_OPENER || PREVIEW_DOCUMENT_PROXY);
+    VISUAL_PICKER_MODE &&
+    (IN_IFRAME ||
+      HAS_VISUAL_PICKER_OPENER ||
+      PREVIEW_DOCUMENT_PROXY ||
+      !!window.__RIPX_FORCE_PICKER__);
 
   /**
    * Generate or retrieve user ID
@@ -7642,8 +7654,7 @@
   }
 
   function toPreviewDocumentProxyUrl(storeUrl) {
-    var apiBase =
-      CONFIG && CONFIG.previewDocumentApiUrl ? String(CONFIG.previewDocumentApiUrl).trim() : '';
+    var apiBase = resolvePreviewDocumentApiUrl();
     if (!apiBase) return '';
     var shopUrl = withVisualPickerQueryParams(storeUrl);
     if (!shopUrl) return '';
@@ -7712,7 +7723,14 @@
   }
 
   function initVisualPicker() {
-    if (!IN_IFRAME && !HAS_VISUAL_PICKER_OPENER && !PREVIEW_DOCUMENT_PROXY) return;
+    if (
+      !IN_IFRAME &&
+      !HAS_VISUAL_PICKER_OPENER &&
+      !PREVIEW_DOCUMENT_PROXY &&
+      !window.__RIPX_FORCE_PICKER__
+    ) {
+      return;
+    }
     if (!document.body) {
       setTimeout(initVisualPicker, 50);
       return;
@@ -7870,6 +7888,14 @@
     document.body.appendChild(overlay);
     document.body.appendChild(box);
     document.body.appendChild(bar);
+    try {
+      var pickerPad = bar.offsetHeight || 56;
+      document.documentElement.style.setProperty('--ripx-picker-bar-height', pickerPad + 'px');
+      if (document.body) {
+        document.body.style.paddingTop = pickerPad + 'px';
+        document.body.setAttribute('data-ripx-picker-active', '1');
+      }
+    } catch (_ePickerPad) {}
     installPreviewDocumentProxyNavigation();
     postVisualEditorStatus('ripx-visual-picker-ready', {
       mode: IN_IFRAME ? 'iframe' : PREVIEW_DOCUMENT_PROXY ? 'preview-document' : 'opener',

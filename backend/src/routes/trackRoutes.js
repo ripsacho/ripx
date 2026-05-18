@@ -1306,7 +1306,7 @@ router.get(
         version: SCRIPT_VERSION,
         consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
         activeTests: [],
-        visualEditor: true, // preview-document is only used for visual editor iframe
+        visualEditor: req.query.ab_visual_editor === '1',
         previewTestId: req.query.ab_preview_test || null,
         previewVariantId: req.query.ab_preview_variant || null,
         previewVariantName: req.query.ab_preview_variant_name || null,
@@ -1350,7 +1350,13 @@ router.get(
         sendPreviewFallback(res);
         return;
       }
+      const forcePickerBoot =
+        req.query.ab_visual_picker === '1' || req.query.ab_price_surface_pick === '1';
+      const pickerBootScript = forcePickerBoot
+        ? '<script>window.__RIPX_FORCE_PICKER__=true;</script>'
+        : '';
       const injectScript =
+        pickerBootScript +
         `<script>window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};</script>` +
         (scriptContent ? `<script>${scriptContent}</script>` : '');
 
