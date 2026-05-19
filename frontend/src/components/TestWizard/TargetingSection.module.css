@@ -2857,6 +2857,74 @@
   color: var(--text-primary);
 }
 
+.priceSurfacePickerModal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  height: min(92vh, 960px);
+  min-height: min(720px, calc(100vh - 120px));
+  overflow: hidden;
+}
+
+.priceSurfacePickerIframe {
+  width: 100%;
+  height: 100%;
+  min-height: min(680px, calc(100vh - 160px));
+  border: 0;
+  display: block;
+  background: #fff;
+}
+
+:global(body.ripx-price-surface-picker-modal-open .Polaris-Modal-DialogContainer),
+:global(body.ripx-price-surface-picker-modal-open div[class*='Modal-DialogContainer']) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.5vh 0.5vw !important;
+  box-sizing: border-box !important;
+}
+
+:global(body.ripx-price-surface-picker-modal-open .Polaris-Modal-Dialog),
+:global(body.ripx-price-surface-picker-modal-open div[class*='Modal-Dialog']) {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+:global(body.ripx-price-surface-picker-modal-open .Polaris-Modal-Dialog__Modal),
+:global(body.ripx-price-surface-picker-modal-open div[class*='Modal-Dialog__Modal']),
+:global(.Polaris-Modal-Dialog__Modal:has([data-price-surface-picker-modal])),
+:global(div[class*='Modal-Dialog__Modal']:has([data-price-surface-picker-modal])) {
+  display: flex !important;
+  flex-direction: column !important;
+  width: min(99.5vw, 1920px) !important;
+  max-width: min(99.5vw, 1920px) !important;
+  min-width: min(98vw, 1400px) !important;
+  height: min(96vh, 1080px) !important;
+  max-height: min(96vh, 1080px) !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 1280px) {
+  :global(body.ripx-price-surface-picker-modal-open .Polaris-Modal-Dialog__Modal),
+  :global(body.ripx-price-surface-picker-modal-open div[class*='Modal-Dialog__Modal']),
+  :global(.Polaris-Modal-Dialog__Modal:has([data-price-surface-picker-modal])),
+  :global(div[class*='Modal-Dialog__Modal']:has([data-price-surface-picker-modal])) {
+    width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 12px) !important;
+    min-width: 0 !important;
+  }
+}
+
+:global(body.ripx-price-surface-picker-modal-open .Polaris-Modal__Body),
+:global(body.ripx-price-surface-picker-modal-open div[class*='Modal__Body']),
+:global(.Polaris-Modal-Dialog__Modal:has([data-price-surface-picker-modal]) .Polaris-Modal__Body),
+:global(div[class*='Modal-Dialog__Modal']:has([data-price-surface-picker-modal]) .Polaris-Modal__Body) {
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+  padding-top: 8px !important;
+}
+
 .goalEventModal {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

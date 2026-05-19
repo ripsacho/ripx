@@ -232,12 +232,32 @@ export default function PriceSurfaceMappingsPanel({
   }, [pickTarget, pickerModalOpen, closePickerModal]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+    if (pickerModalOpen) {
+      document.body.classList.add('ripx-price-surface-picker-modal-open');
+    } else {
+      document.body.classList.remove('ripx-price-surface-picker-modal-open');
+    }
+    return () => document.body.classList.remove('ripx-price-surface-picker-modal-open');
+  }, [pickerModalOpen]);
+
+  useEffect(() => {
     if (!pickerModalOpen || typeof window === 'undefined') {
       return undefined;
     }
     const onMessage = event => {
       const data = event?.data;
-      if (!data || data.type !== 'ripx-visual-selector') {
+      if (!data) {
+        return;
+      }
+      if (data.type === 'ripx-close-price-picker') {
+        closePickerModal();
+        onCancelVisualPick?.();
+        return;
+      }
+      if (data.type !== 'ripx-visual-selector') {
         return;
       }
       if (typeof data.selector === 'string' && data.selector.trim()) {
@@ -246,7 +266,7 @@ export default function PriceSurfaceMappingsPanel({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [pickerModalOpen, closePickerModal]);
+  }, [pickerModalOpen, closePickerModal, onCancelVisualPick]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -787,26 +807,19 @@ export default function PriceSurfaceMappingsPanel({
         title="Pick a price on your storefront"
         size="large"
       >
-        <Modal.Section>
+        <div data-price-surface-picker-modal className={styles.priceSurfacePickerModal}>
           <Text as="p" variant="bodySm" tone="subdued">
-            Click a price in the preview below. The selector is sent back to Theme price mapping
-            automatically.
+            Click a price in the preview. The selector is sent back to Theme price mapping
+            automatically. Store links stay inside this preview so picking does not break.
           </Text>
           {pickerModalUrl ? (
             <iframe
               title="RipX price surface picker"
               src={pickerModalUrl}
-              style={{
-                width: '100%',
-                height: 'min(78vh, 900px)',
-                border: 0,
-                display: 'block',
-                marginTop: '12px',
-                background: '#fff',
-              }}
+              className={styles.priceSurfacePickerIframe}
             />
           ) : null}
-        </Modal.Section>
+        </div>
       </Modal>
     </div>
   );

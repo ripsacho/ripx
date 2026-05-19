@@ -7683,6 +7683,45 @@
     }
   }
 
+  function shouldProxyStorefrontNavigationUrl(resolvedUrl, shopHost) {
+    if (!resolvedUrl) return false;
+    if (resolvedUrl.protocol !== 'http:' && resolvedUrl.protocol !== 'https:') return false;
+    var targetHost = String(resolvedUrl.hostname || '').toLowerCase();
+    if (shopHost && targetHost !== shopHost && targetHost.indexOf('.myshopify.com') === -1) {
+      return false;
+    }
+    return true;
+  }
+
+  function rewriteAnchorHrefsForPreviewProxy(root) {
+    if (!PREVIEW_DOCUMENT_PROXY) return;
+    if (!resolvePreviewDocumentApiUrl()) return;
+    var shopHost = String(CONFIG.shopDomain || PREVIEW_TENANT_DOMAIN || '')
+      .trim()
+      .toLowerCase();
+    var scope = root && root.querySelectorAll ? root : document;
+    try {
+      scope.querySelectorAll('a[href]').forEach(function (anchor) {
+        var rawHref = anchor.getAttribute('href');
+        if (!rawHref || rawHref.charAt(0) === '#') return;
+        var lowered = String(rawHref).trim().toLowerCase();
+        if (
+          lowered.indexOf('javascript:') === 0 ||
+          lowered.indexOf('mailto:') === 0 ||
+          lowered.indexOf('tel:') === 0
+        ) {
+          return;
+        }
+        try {
+          var resolved = new URL(rawHref, document.baseURI || window.location.href);
+          if (!shouldProxyStorefrontNavigationUrl(resolved, shopHost)) return;
+          var proxied = toPreviewDocumentProxyUrl(resolved.toString());
+          if (proxied) anchor.setAttribute('href', proxied);
+        } catch (_eRewrite) {}
+      });
+    } catch (_eScope) {}
+  }
+
   function installPreviewDocumentProxyNavigation() {
     if (!PREVIEW_DOCUMENT_PROXY) return;
     if (!VISUAL_PICKER_MODE && !PRICE_SURFACE_PICK_MODE) return;
@@ -7691,9 +7730,25 @@
     var shopHost = String(CONFIG.shopDomain || PREVIEW_TENANT_DOMAIN || '')
       .trim()
       .toLowerCase();
+    rewriteAnchorHrefsForPreviewProxy(document);
+    try {
+      var rewriteTimer = null;
+      var observer = new MutationObserver(function () {
+        if (rewriteTimer) clearTimeout(rewriteTimer);
+        rewriteTimer = setTimeout(function () {
+          rewriteAnchorHrefsForPreviewProxy(document);
+        }, 120);
+      });
+      if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (_eObserver) {}
     document.addEventListener(
       'click',
       function (e) {
+        if (document.body && document.body.getAttribute('data-ripx-picker-active') === '1') {
+          return;
+        }
         if (e.defaultPrevented) return;
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
@@ -7706,11 +7761,7 @@
         if (lowered.indexOf('javascript:') === 0 || lowered.indexOf('mailto:') === 0) return;
         try {
           var resolved = new URL(rawHref, document.baseURI || window.location.href);
-          if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return;
-          var targetHost = String(resolved.hostname || '').toLowerCase();
-          if (shopHost && targetHost !== shopHost && targetHost.indexOf('.myshopify.com') === -1) {
-            return;
-          }
+          if (!shouldProxyStorefrontNavigationUrl(resolved, shopHost)) return;
           var proxied = toPreviewDocumentProxyUrl(resolved.toString());
           if (!proxied || proxied === window.location.href) return;
           e.preventDefault();
@@ -7741,19 +7792,22 @@
     }
     var overlay = document.createElement('div');
     overlay.id = 'ripx-visual-picker-overlay';
-    overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;');
+    overlay.setAttribute(
+      'style',
+      'position:fixed;inset:0;z-index:2147483646;pointer-events:auto;cursor:crosshair;background:transparent;'
+    );
     var box = document.createElement('div');
     box.id = 'ripx-visual-picker-highlight';
     box.setAttribute(
       'style',
       'position:fixed;border:2px solid #06b6d4;background:rgba(6,182,212,0.15);pointer-events:none;' +
-        'border-radius:4px;box-sizing:border-box;transition:top 0.05s,left 0.05s,width 0.05s,height 0.05s;'
+        'border-radius:4px;box-sizing:border-box;transition:top 0.05s,left 0.05s,width 0.05s,height 0.05s;z-index:2147483647;'
     );
     var bar = document.createElement('div');
     bar.id = 'ripx-visual-picker-bar';
     bar.setAttribute(
       'style',
-      'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:auto;' +
+      'position:fixed;top:0;left:0;right:0;z-index:2147483648;pointer-events:auto;' +
         'background:#1a1a1a;color:#fff;padding:10px 16px;font-family:system-ui,sans-serif;' +
         'font-size:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);'
     );
@@ -7875,10 +7929,13 @@
       'background:#444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;'
     );
     closeBtn.onclick = function () {
-      if (window.opener && !window.opener.closed)
-        try {
+      try {
+        if (IN_IFRAME && window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'ripx-close-price-picker', source: 'ripx-picker' }, '*');
+        } else if (window.opener && !window.opener.closed) {
           window.close();
-        } catch (e) {}
+        }
+      } catch (_eClose) {}
     };
     bar.appendChild(label);
     bar.appendChild(selectorInput);
@@ -7917,30 +7974,36 @@
 
     function onSelectorChosen(selector, el) {
       selectorInput.value = selector;
-      try {
-        if (window.opener && !window.opener.closed) {
-          postVisualSelector(selector, el);
-          label.textContent = 'Selector sent to editor! You can close this tab or copy below.';
-          label.setAttribute('style', 'flex:1;min-width:120px;color:#34d399;');
-        } else {
-          label.textContent = 'Copy the selector below and paste it in the editor.';
-          label.setAttribute('style', 'flex:1;min-width:120px;color:#fbbf24;');
-        }
-      } catch (e) {
+      postVisualSelector(selector, el);
+      if (IN_IFRAME || (window.opener && !window.opener.closed)) {
+        label.textContent = 'Selector sent to RipX. You can pick another element or close.';
+        label.setAttribute('style', 'flex:1;min-width:120px;color:#34d399;');
+      } else {
         label.textContent = 'Copy the selector below and paste it in the editor.';
         label.setAttribute('style', 'flex:1;min-width:120px;color:#fbbf24;');
       }
     }
 
-    document.addEventListener(
+    function pickTargetElementAt(clientX, clientY) {
+      overlay.style.pointerEvents = 'none';
+      var el = document.elementFromPoint(clientX, clientY);
+      overlay.style.pointerEvents = 'auto';
+      if (!el || el === overlay || el === box || el === bar || bar.contains(el)) {
+        return null;
+      }
+      return el;
+    }
+
+    overlay.addEventListener(
       'mousemove',
       function (e) {
-        var el = document.elementFromPoint(e.clientX, e.clientY);
-        if (!el || el === overlay || el === box || el === bar || bar.contains(el)) {
+        var el = pickTargetElementAt(e.clientX, e.clientY);
+        if (!el) {
           setHighlight(null);
           if (!selectorInput.value) {
-            label.textContent =
-              'Click an element to select it. Selector will be sent to the editor or copy below.';
+            label.textContent = PRICE_SURFACE_PICK_MODE
+              ? 'Click a price node to map it for RipX price surfaces. The selector will be sent back to the wizard.'
+              : 'Click an element to select it. Selector will be sent to the editor or copy below.';
             label.setAttribute('style', 'flex:1;min-width:120px;');
           }
           return;
@@ -7956,16 +8019,24 @@
       { passive: true }
     );
 
-    document.addEventListener(
+    overlay.addEventListener(
       'click',
       function (e) {
-        if (bar.contains(e.target)) return;
         e.preventDefault();
         e.stopPropagation();
-        var el = document.elementFromPoint(e.clientX, e.clientY);
-        if (!el || el === overlay || el === box || el === bar) return;
+        var el = pickTargetElementAt(e.clientX, e.clientY);
+        if (!el) return;
         var selector = getSelectorForElement(el);
         if (selector) onSelectorChosen(selector, el);
+      },
+      true
+    );
+    overlay.addEventListener(
+      'mousedown',
+      function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
       },
       true
     );
