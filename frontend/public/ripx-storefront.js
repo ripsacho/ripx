@@ -7997,6 +7997,26 @@
       return el;
     }
 
+    function stopPickerEvent(e) {
+      if (!e) return;
+      if (bar && bar.contains(e.target)) return;
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      } catch (_eStopPicker) {}
+    }
+
+    function handlePickerPointer(e, choose) {
+      if (bar && bar.contains(e.target)) return;
+      stopPickerEvent(e);
+      if (!choose) return;
+      var el = pickTargetElementAt(e.clientX, e.clientY);
+      if (!el) return;
+      var selector = getSelectorForElement(el);
+      if (selector) onSelectorChosen(selector, el);
+    }
+
     overlay.addEventListener(
       'mousemove',
       function (e) {
@@ -8025,12 +8045,7 @@
     overlay.addEventListener(
       'click',
       function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var el = pickTargetElementAt(e.clientX, e.clientY);
-        if (!el) return;
-        var selector = getSelectorForElement(el);
-        if (selector) onSelectorChosen(selector, el);
+        handlePickerPointer(e, true);
       },
       true
     );
@@ -8038,8 +8053,38 @@
       'mousedown',
       function (e) {
         if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
+        handlePickerPointer(e, false);
+      },
+      true
+    );
+    overlay.addEventListener(
+      'pointerdown',
+      function (e) {
+        if (e.button !== 0) return;
+        handlePickerPointer(e, false);
+      },
+      true
+    );
+    document.addEventListener(
+      'pointerdown',
+      function (e) {
+        if (e.button !== 0) return;
+        handlePickerPointer(e, false);
+      },
+      true
+    );
+    document.addEventListener(
+      'mousedown',
+      function (e) {
+        if (e.button !== 0) return;
+        handlePickerPointer(e, false);
+      },
+      true
+    );
+    document.addEventListener(
+      'click',
+      function (e) {
+        handlePickerPointer(e, true);
       },
       true
     );
