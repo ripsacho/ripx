@@ -6336,22 +6336,27 @@
   }
 
   /**
-   * All-products fallback painter for amount/percent price tests.
-   * Some themes don't include data-product-id on listing cards or cart rows, which breaks per-product matching.
-   * For all-products tests with global delta/percent config (no byProduct overrides), we can still compute from
-   * the visible catalog number and repaint.
+   * All-products fallback painter for listing/cart surfaces without product ids.
+   * Some themes don't include data-product-id on home/listing cards, which breaks per-product matching.
+   * For all-products tests without byProduct overrides, we can still repaint explicit/manual selectors:
+   * - fixed mode paints the configured fixed target price
+   * - amount/percent computes from the visible catalog number
    */
   function canUseAllProductsGlobalFallback(cfg) {
     if (!cfg || typeof cfg !== 'object') return false;
     if (cfg.byProduct && typeof cfg.byProduct === 'object' && Object.keys(cfg.byProduct).length > 0)
       return false;
     var pm = String(cfg.priceMode || '').toLowerCase();
-    return pm === 'amount' || pm === 'percent';
+    return pm === 'fixed' || pm === 'amount' || pm === 'percent';
   }
 
   function computeAllProductsAdjustedPrice(catalog, cfg) {
-    if (catalog == null || !isFinite(catalog)) return null;
     var pm = String(cfg.priceMode || '').toLowerCase();
+    if (pm === 'fixed') {
+      var fixed = parseFloat(cfg.price, 10);
+      return !isNaN(fixed) && isFinite(fixed) ? Math.max(0, Math.round(fixed * 100) / 100) : null;
+    }
+    if (catalog == null || !isFinite(catalog)) return null;
     if (pm === 'amount') {
       var d = parseFloat(cfg.priceDelta, 10);
       if (isNaN(d)) return null;
@@ -6482,8 +6487,8 @@
           if (tgn === 'S' || tgn === 'DEL' || tgn === 'STRIKE') return;
           if (!isLeafPricePaintNode(el)) return;
           if (scope === 'listing' && inCartUi(el)) return;
-          var catalog = getStableCatalogPriceForElement(el);
-          if (catalog == null) return;
+          var catalog = pm === 'fixed' ? 0 : getStableCatalogPriceForElement(el);
+          if (pm !== 'fixed' && catalog == null) return;
           var adjusted = computeAllProductsAdjustedPrice(catalog, cfg);
           if (adjusted == null) return;
           var roundToVal = parseRoundTo(cfg.roundTo);
@@ -6840,8 +6845,9 @@
     });
     applyRipxStateToCartForms(null);
 
-    // If the theme lacks data-product-id entirely, try a safe all-products fallback for amount/percent.
-    // (fixed mode cannot be inferred without knowing which product it belongs to).
+    // If the theme lacks data-product-id entirely, try a safe all-products fallback.
+    // Fixed all-products tests can paint every configured price selector to the same target price.
+    // Amount/percent tests compute from each visible catalog number.
     // Skip global fallback when excluded products are configured, because fallback cannot filter rows safely.
     if (!excludedProductIds.length) {
       schedulePaintAllProductsGlobalPrices(testId, variant, 'listing');
