@@ -1833,7 +1833,7 @@ router.get(
     }
     const { getShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
     const mappings = await getShopPriceSurfaceMappings(shopDomain);
-    return sendSuccess(res, { mappings });
+    return sendSuccess(res, HTTP_STATUS.OK, { mappings });
   })
 );
 
@@ -1850,7 +1850,7 @@ router.put(
     }
     const { saveShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
     const mappings = await saveShopPriceSurfaceMappings(shopDomain, req.body?.mappings);
-    return sendSuccess(res, { mappings });
+    return sendSuccess(res, HTTP_STATUS.OK, { mappings });
   })
 );
 

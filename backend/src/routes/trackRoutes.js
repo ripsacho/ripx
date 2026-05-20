@@ -1365,9 +1365,9 @@ router.get(
         html = html.replace(/(<head\s*[^>]*>)/i, `$1\n${baseTag}\n${referrerMeta}`);
       }
       if (html.includes('</head>')) {
-        html = html.replace('</head>', `${injectScript}\n</head>`);
+        html = html.replace('</head>', () => `${injectScript}\n</head>`);
       } else if (html.includes('<body')) {
-        html = html.replace(/(<body[^>]*>)/i, `$1\n${baseTag}\n${injectScript}\n`);
+        html = html.replace(/(<body[^>]*>)/i, match => `${match}\n${baseTag}\n${injectScript}\n`);
       } else {
         html = baseTag + '\n' + injectScript + '\n' + html;
       }
