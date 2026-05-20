@@ -175,11 +175,18 @@ export default function PriceSurfaceMappingsPanel({
     [getPickerLaunchUrl, pickerLaunchUrl]
   );
 
+  const priceSurfaceSettingsPath = useCallback(() => {
+    const host = String(shopDomain || '').trim();
+    return host
+      ? `/settings/price-surfaces?domain=${encodeURIComponent(host)}`
+      : '/settings/price-surfaces';
+  }, [shopDomain]);
+
   const loadShopMappings = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await apiGet('/settings/price-surfaces');
+      const response = await apiGet(priceSurfaceSettingsPath());
       const data = unwrapData(response);
       setShopMappings(normalizePriceSurfaceMappingsForEditor(data?.mappings));
     } catch (loadError) {
@@ -187,7 +194,7 @@ export default function PriceSurfaceMappingsPanel({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [priceSurfaceSettingsPath]);
 
   useEffect(() => {
     loadShopMappings();
@@ -355,7 +362,7 @@ export default function PriceSurfaceMappingsPanel({
     setError('');
     setNotice('');
     try {
-      const response = await apiPut('/settings/price-surfaces', {
+      const response = await apiPut(priceSurfaceSettingsPath(), {
         mappings: normalizePriceSurfaceMappings(shopMappings),
       });
       const data = unwrapData(response);

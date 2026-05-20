@@ -6443,6 +6443,16 @@
     // Prefer qualified selectors; include Dawn leaves (.price-item__regular) when themes have no .money.
     var sel =
       '.price .money, .product-price .money, [data-product-price], .money, .price-item--regular .price-item__regular, .price-item--regular .price, .price-item__regular, .price-item--regular, .price-item, [data-price], .line-item__price .money, [data-line-item-price], .cart-item__price .money, .cart-item__price';
+    var configuredSelectors = [];
+    appendConfiguredRegistrySelectorsForSurfaces(
+      configuredSelectors,
+      scope === 'cart' ? ['cart', 'global'] : getListingPriceSurfaceKeys(),
+      scope === 'cart' ? ['regular', 'cart_line'] : ['regular', 'compare_at'],
+      getActiveTestById(testId)
+    );
+    if (configuredSelectors.length) {
+      sel += ', ' + configuredSelectors.join(', ');
+    }
     if (scope === 'cart') {
       sel +=
         ', .cart-item__price, .cart-item__final-price, td.cart-item__price, .cart__item .price, .cart-item .price-item--regular, .cart-item__totals .price, .cart-item__price-wrapper .price, .cart-item__price-wrapper .price--end, .cart-item__details .product-option, .totals__subtotal-value, .totals__footer .totals__value, [data-cart-item-regular-price], [data-cart-item-price]';
@@ -7989,12 +7999,119 @@
 
     function pickTargetElementAt(clientX, clientY) {
       overlay.style.pointerEvents = 'none';
-      var el = document.elementFromPoint(clientX, clientY);
+      var el = pickPriceAwareElementAt(clientX, clientY) || document.elementFromPoint(clientX, clientY);
       overlay.style.pointerEvents = 'auto';
       if (!el || el === overlay || el === box || el === bar || bar.contains(el)) {
         return null;
       }
       return el;
+    }
+
+    function elementLooksLikePriceNode(node) {
+      if (!node || node.nodeType !== 1 || !node.tagName) return false;
+      if (node === overlay || node === box || node === bar || bar.contains(node)) return false;
+      var tagName = String(node.tagName || '').toLowerCase();
+      if (tagName === 'a' || tagName === 'button') return false;
+      var classes =
+        node.className && typeof node.className === 'string' ? node.className.toLowerCase() : '';
+      var attrs = '';
+      try {
+        attrs = Array.prototype.slice
+          .call(node.attributes || [])
+          .map(function (attr) {
+            return String(attr.name || '') + '=' + String(attr.value || '');
+          })
+          .join(' ')
+          .toLowerCase();
+      } catch (_eAttrs) {}
+      var text = String(node.textContent || '').trim();
+      var hasPriceText =
+        /(?:[$€£¥₹৳]|usd|eur|gbp|cad|aud|sale|from)\s*[-+]?\d/i.test(text) ||
+        /[-+]?\d[\d,]*(?:\.\d{2})?\s*(?:[$€£¥₹৳]|usd|eur|gbp|cad|aud)/i.test(text);
+      var hasPriceHint =
+        /(price|money|amount|compare|sale|regular|unit-price|was-price|cost)/i.test(
+          classes + ' ' + attrs
+        );
+      if (!hasPriceText && !hasPriceHint) return false;
+      if (!isLeafPricePaintNode(node)) return false;
+      return true;
+    }
+
+    function getPricePickerCandidateSelectors() {
+      var selectors = [
+        '.price .money',
+        '.product-price .money',
+        '[data-product-price]',
+        '.money',
+        '.price-item--regular .price-item__regular',
+        '.price-item--regular .price',
+        '.price-item__regular',
+        '.price-item--regular',
+        '.price-item',
+        '[data-price]',
+      ];
+      try {
+        appendConfiguredRegistrySelectorsForSurfaces(
+          selectors,
+          getListingPriceSurfaceKeys(),
+          ['regular', 'compare_at', 'unit', 'installment', 'savings'],
+          getActiveTestById(PREVIEW_TEST_ID)
+        );
+      } catch (_eRegistrySelectors) {}
+      return selectors.filter(function (selector, index) {
+        return selector && selectors.indexOf(selector) === index;
+      });
+    }
+
+    function findPriceCandidateNearPoint(clientX, clientY) {
+      var selectors = getPricePickerCandidateSelectors().join(',');
+      if (!selectors) return null;
+      var best = null;
+      var bestScore = Infinity;
+      try {
+        document.querySelectorAll(selectors).forEach(function (node) {
+          if (!elementLooksLikePriceNode(node)) return;
+          var rect = node.getBoundingClientRect();
+          if (!rect || rect.width <= 0 || rect.height <= 0) return;
+          var contains =
+            clientX >= rect.left &&
+            clientX <= rect.right &&
+            clientY >= rect.top &&
+            clientY <= rect.bottom;
+          var dx = contains
+            ? 0
+            : Math.max(rect.left - clientX, 0, clientX - rect.right);
+          var dy = contains
+            ? 0
+            : Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+          var distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance > 24) return;
+          var area = Math.max(1, rect.width * rect.height);
+          var score = distance * 100000 + area;
+          if (score < bestScore) {
+            best = node;
+            bestScore = score;
+          }
+        });
+      } catch (_eFindPrice) {}
+      return best;
+    }
+
+    function pickPriceAwareElementAt(clientX, clientY) {
+      if (!PRICE_SURFACE_PICK_MODE) return null;
+      var stacked = [];
+      try {
+        stacked = document.elementsFromPoint ? document.elementsFromPoint(clientX, clientY) : [];
+      } catch (_eStacked) {}
+      for (var i = 0; i < stacked.length; i += 1) {
+        var node = stacked[i];
+        if (elementLooksLikePriceNode(node)) return node;
+        try {
+          var nested = node && node.querySelector ? node.querySelector(getPricePickerCandidateSelectors().join(',')) : null;
+          if (elementLooksLikePriceNode(nested)) return nested;
+        } catch (_eNestedPrice) {}
+      }
+      return findPriceCandidateNearPoint(clientX, clientY);
     }
 
     function stopPickerEvent(e) {
