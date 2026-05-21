@@ -4715,13 +4715,31 @@ function TestWizard({
     let finalPreviewUrl = directPreviewUrl;
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
-        // Price preview always uses the dedicated bootstrap so RipX can inject before theme cart
-        // scripts. Simple/customer links hide the debug chrome and clean the address bar, but still
-        // need this bootstrap because some stores do not load the app embed on raw product URLs.
-        finalPreviewUrl =
-          buildShopifyPricePreviewBootstrapUrl({
-            previewUrl: directPreviewUrl,
-          }) || directPreviewUrl;
+        const storefrontPassword = resolveStorefrontPasswordForPreview(
+          scopedShopDomain || domain,
+          visualEditorStorefrontPassword,
+          [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
+        );
+        if (storefrontPassword) {
+          finalPreviewUrl =
+            buildPreviewDocumentUrl({
+              apiBaseUrl: getApiBaseUrl(),
+              previewUrl: directPreviewUrl,
+              storefrontPassword,
+              parentOrigin:
+                typeof window !== 'undefined' && window.location?.origin
+                  ? window.location.origin
+                  : undefined,
+            }) || directPreviewUrl;
+        } else {
+          // Price preview uses the dedicated bootstrap when the store is public so RipX can inject
+          // before theme cart scripts. Password-protected stores must use preview-document above,
+          // because Shopify serves the password page before app-proxy bootstrap routes run.
+          finalPreviewUrl =
+            buildShopifyPricePreviewBootstrapUrl({
+              previewUrl: directPreviewUrl,
+            }) || directPreviewUrl;
+        }
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
