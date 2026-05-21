@@ -4740,28 +4740,28 @@ function TestWizard({
     let finalPreviewUrl = directPreviewUrl;
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
-        const storefrontPassword = resolveStorefrontPasswordForPreview(
-          scopedShopDomain || domain,
-          visualEditorStorefrontPassword,
-          [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
-        );
-        if (storefrontPassword) {
-          finalPreviewUrl =
-            buildPreviewDocumentUrl({
-              apiBaseUrl: getApiBaseUrl(),
-              previewUrl: directPreviewUrl,
-              storefrontPassword,
-              parentOrigin:
-                typeof window !== 'undefined' && window.location?.origin
-                  ? window.location.origin
-                  : undefined,
-            }) || directPreviewUrl;
+        // Customer-facing simple previews should use the real storefront URL. The first URL seeds
+        // preview context; subsequent same-origin page navigations keep it in sessionStorage/window.name.
+        // Password-protected dev stores must be unlocked in the browser first.
+        if (options.simplePreview) {
+          finalPreviewUrl = directPreviewUrl;
         } else {
-          // Customer-facing simple previews should use the real storefront URL on public stores.
-          // The first URL seeds preview context; subsequent same-origin page navigations keep it
-          // in sessionStorage/window.name via the storefront runtime.
-          if (options.simplePreview) {
-            finalPreviewUrl = directPreviewUrl;
+          const storefrontPassword = resolveStorefrontPasswordForPreview(
+            scopedShopDomain || domain,
+            visualEditorStorefrontPassword,
+            [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
+          );
+          if (storefrontPassword) {
+            finalPreviewUrl =
+              buildPreviewDocumentUrl({
+                apiBaseUrl: getApiBaseUrl(),
+                previewUrl: directPreviewUrl,
+                storefrontPassword,
+                parentOrigin:
+                  typeof window !== 'undefined' && window.location?.origin
+                    ? window.location.origin
+                    : undefined,
+              }) || directPreviewUrl;
           } else {
             // Debug/editor price preview uses the dedicated bootstrap when the store is public so
             // RipX can inject before theme cart scripts. Password-protected stores must use
