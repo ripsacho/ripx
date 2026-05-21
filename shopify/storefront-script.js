@@ -6294,8 +6294,11 @@
     if (!raw) return '';
     var gidMatch = raw.match(/Product\/(\d{6,})/i);
     if (gidMatch && gidMatch[1]) return gidMatch[1];
-    var suffixMatch = raw.match(/(?:^|[-_:])(\d{6,})(?:$|[-_:])/);
-    if (suffixMatch && suffixMatch[1]) return suffixMatch[1];
+    // Dawn-style IDs often contain both a section/template id and the product id:
+    // CardLink-template--21010091114685__featured_collection-8276578566333.
+    // The product id is the final long numeric token, not the first one.
+    var matches = raw.match(/\d{6,}/g);
+    if (matches && matches.length) return matches[matches.length - 1];
     return '';
   }
 
