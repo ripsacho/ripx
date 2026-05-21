@@ -20,6 +20,7 @@
  *   SEED_REVENUE_MAX - Max order value USD (default: 250)
  *   SEED_HEATMAP_SCREENSHOTS - Store real screenshot URLs for heatmap pages (default: true)
  *   SEED_SCREENSHOT_SERVICE - Screenshot URL template. Use {url} for encoded page URL.
+ *   SEED_ONLY_SCREENSHOTS - Only repair/store heatmap screenshot URLs, no analytics rows.
  */
 /* eslint-disable no-console */
 
@@ -27,7 +28,11 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 
 const { getClient, closeDatabase } = require('../src/utils/database');
 const { getTestsByShop } = require('../src/models/test');
-const { insertHeatmapEventsBatch, setHeatmapScreenshotUrl } = require('../src/models/heatmap');
+const {
+  insertHeatmapEventsBatch,
+  normalizeHeatmapPageKey,
+  setHeatmapScreenshotUrl,
+} = require('../src/models/heatmap');
 
 const DEVICES = ['desktop', 'mobile', 'tablet'];
 const COUNTRIES = ['US', 'CA', 'GB', 'DE', 'AU', 'FR', 'IN', 'JP', 'BR', 'MX'];
@@ -98,7 +103,7 @@ function buildSeedScreenshotUrl(pageUrl) {
   const explicitTemplate = String(process.env.SEED_SCREENSHOT_SERVICE || '').trim();
   const template =
     explicitTemplate || 'https://image.thum.io/get/width/1440/crop/5000/noanimate/{url}';
-  return template.replace('{url}', encodeURIComponent(pageUrl));
+  return template.replace('{encodedUrl}', encodeURIComponent(pageUrl)).replace('{url}', pageUrl);
 }
 
 async function seedHeatmapScreenshots(shopDomain, pages) {
@@ -108,9 +113,13 @@ async function seedHeatmapScreenshots(shopDomain, pages) {
   let saved = 0;
   for (const pageUrl of pages) {
     const screenshotUrl = buildSeedScreenshotUrl(pageUrl);
-    const result = await setHeatmapScreenshotUrl(shopDomain, pageUrl, screenshotUrl);
-    if (result && result.ok) {
-      saved += 1;
+    const pageKey = normalizeHeatmapPageKey(pageUrl);
+    const aliases = [...new Set([pageUrl, pageKey].filter(Boolean))];
+    for (const alias of aliases) {
+      const result = await setHeatmapScreenshotUrl(shopDomain, alias, screenshotUrl);
+      if (result && result.ok) {
+        saved += 1;
+      }
     }
   }
   return saved;
@@ -182,6 +191,7 @@ async function seedDummyData(shopDomain, options = {}) {
     revenueMax = 250,
     includeSegments = true,
     testStatus = null,
+    onlyScreenshots = false,
     storefrontPassword = process.env.STOREFRONT_PASSWORD ||
       process.env.SEED_STOREFRONT_PASSWORD ||
       '',
@@ -191,6 +201,19 @@ async function seedDummyData(shopDomain, options = {}) {
   const testsWithVariants = tests.filter(t => t.variants && t.variants.length > 0);
   const heatmapPages = buildHeatmapPages(shopDomain);
   const screenshotCount = await seedHeatmapScreenshots(shopDomain, heatmapPages);
+
+  if (onlyScreenshots) {
+    console.log(
+      `Stored ${screenshotCount} heatmap screenshot URL(s) for ${heatmapPages.length} page(s).`
+    );
+    return {
+      tests: testsWithVariants.length,
+      assignments: 0,
+      events: 0,
+      heatmap: 0,
+      screenshots: screenshotCount,
+    };
+  }
 
   if (testsWithVariants.length === 0) {
     console.log(
@@ -476,6 +499,7 @@ async function main() {
       includeSegments: process.env.SEED_INCLUDE_SEGMENTS !== 'false',
       testStatus:
         process.env.SEED_TEST_STATUS || (process.env.SEED_LIVE_ONLY === 'true' ? 'running' : null),
+      onlyScreenshots: process.env.SEED_ONLY_SCREENSHOTS === 'true',
       storefrontPassword:
         process.env.STOREFRONT_PASSWORD || process.env.SEED_STOREFRONT_PASSWORD || '',
     };

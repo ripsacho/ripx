@@ -808,13 +808,30 @@ function parseScreenshotValue(v) {
  * Value can be a plain URL string or JSON like {"url": "https://..."}.
  */
 async function getHeatmapScreenshotUrl(shopDomain, pageUrl) {
-  const key1 = heatmapScreenshotKey(shopDomain, pageUrl);
-  const key2 = heatmapScreenshotKeyAlt(shopDomain, pageUrl);
-  if (!key1 && !key2) {
+  const lookupValues = [];
+  const pushLookupValue = value => {
+    const normalized = String(value || '').trim();
+    if (normalized && !lookupValues.includes(normalized)) {
+      lookupValues.push(normalized);
+    }
+  };
+  pushLookupValue(pageUrl);
+  const pageKey = normalizeHeatmapPageKey(pageUrl);
+  pushLookupValue(pageKey);
+  if (pageKey && pageKey.startsWith('/') && shopDomain) {
+    pushLookupValue(`https://${normalizeHeatmapShopDomain(shopDomain)}${pageKey}`);
+  }
+  const keys = lookupValues
+    .flatMap(value => [
+      heatmapScreenshotKey(shopDomain, value),
+      heatmapScreenshotKeyAlt(shopDomain, value),
+    ])
+    .filter(Boolean);
+  if (keys.length === 0) {
     return null;
   }
   try {
-    for (const key of [key1, key2].filter(Boolean)) {
+    for (const key of [...new Set(keys)]) {
       const result = await query('SELECT value FROM key_value_store WHERE key = $1', [key]);
       const v = result.rows[0]?.value;
       const url = parseScreenshotValue(v);
