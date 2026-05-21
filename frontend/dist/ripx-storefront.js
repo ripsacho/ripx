@@ -6767,7 +6767,14 @@
           );
           priceEls.forEach(function (el) {
             if (!el || inCartUi(el)) return;
-            paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards', cardPriceNum);
+            paintPriceNode(
+              el,
+              cardDisplay,
+              testId,
+              variantIdForCart,
+              'listing_cards',
+              cardPriceNum
+            );
           });
         } else if (!registrySelectors.length) {
           persistRipxLiveDiagnostics('price_surface_mapping_skip', {
@@ -7034,7 +7041,14 @@
         );
         priceEls.forEach(function (el) {
           if (!el || inCartUi(el)) return;
-          paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'collection_cards', cardPriceNum);
+          paintPriceNode(
+            el,
+            cardDisplay,
+            testId,
+            variantIdForCart,
+            'collection_cards',
+            cardPriceNum
+          );
         });
       } else if (!registrySelectors.length) {
         persistRipxLiveDiagnostics('price_surface_mapping_skip', {

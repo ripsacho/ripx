@@ -43,6 +43,39 @@ function buildRoleOptions() {
   return PRICE_SURFACE_ROLES.map(value => ({ label: value.replace(/_/g, ' '), value }));
 }
 
+const PRICE_SURFACE_GUIDES = [
+  {
+    surface: 'pdp',
+    label: 'Product page',
+    shortLabel: 'PDP',
+    description: 'Main product price on the detail page.',
+  },
+  {
+    surface: 'home',
+    label: 'Homepage cards',
+    shortLabel: 'Home',
+    description: 'Featured product cards and landing sections.',
+  },
+  {
+    surface: 'plp',
+    label: 'Collection grid',
+    shortLabel: 'PLP',
+    description: 'Collection and product listing cards.',
+  },
+  {
+    surface: 'cart',
+    label: 'Cart',
+    shortLabel: 'Cart',
+    description: 'Cart drawer and cart page line prices.',
+  },
+  {
+    surface: 'search',
+    label: 'Search',
+    shortLabel: 'Search',
+    description: 'Search and predictive product results.',
+  },
+];
+
 function buildMappingKey(row) {
   return `${row.surface}:${row.role}:${row.selector}`;
 }
@@ -60,15 +93,26 @@ function PriceSurfaceMappingRows({
 }) {
   if (rows.length === 0) {
     return (
-      <Text as="p" variant="bodySm" tone="subdued">
-        No selectors yet. Use Pick PDP or Pick PLP, or add a row.
-      </Text>
+      <div className={styles.priceSurfaceEmptyState}>
+        <div className={styles.priceSurfaceEmptyIcon} aria-hidden>
+          $
+        </div>
+        <div>
+          <Text as="p" variant="bodySm" fontWeight="semibold">
+            No selectors mapped yet
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Start with a smart pick card below, or add a row and paste a CSS selector manually.
+          </Text>
+        </div>
+      </div>
     );
   }
 
   return (
     <div className={styles.priceSurfaceMappingTable}>
       <div className={styles.priceSurfaceMappingHeaderRow} aria-hidden>
+        <span></span>
         <span>Surface</span>
         <span>Role</span>
         <span>Selector</span>
@@ -84,6 +128,9 @@ function PriceSurfaceMappingRows({
             key={row.id || `${scope}-surface-${index}`}
             className={styles.priceSurfaceMappingGridRow}
           >
+            <div className={styles.priceSurfaceRowNumber} aria-hidden>
+              {index + 1}
+            </div>
             <Select
               label="Surface"
               labelHidden
@@ -110,6 +157,9 @@ function PriceSurfaceMappingRows({
               />
             </div>
             <InlineStack gap="100" wrap={false} blockAlign="center">
+              <Badge size="small" tone={row.enabled !== false ? 'success' : undefined}>
+                {row.enabled !== false ? 'Active' : 'Off'}
+              </Badge>
               <Checkbox
                 label="On"
                 labelHidden
@@ -432,6 +482,32 @@ export default function PriceSurfaceMappingsPanel({
     ],
     [testRows, shopRows]
   );
+  const surfaceGuideCards = useMemo(
+    () =>
+      PRICE_SURFACE_GUIDES.map(guide => {
+        const testCount = testRows.filter(
+          row =>
+            row.enabled !== false &&
+            row.surface === guide.surface &&
+            String(row.selector || '').trim()
+        ).length;
+        const shopCount = shopRows.filter(
+          row =>
+            row.enabled !== false &&
+            row.surface === guide.surface &&
+            String(row.selector || '').trim()
+        ).length;
+        const activeCount = activeScopeTab === 'test' ? testCount : shopCount;
+        return {
+          ...guide,
+          testCount,
+          shopCount,
+          activeCount,
+          configured: activeScopeTab === 'test' ? testCount > 0 || shopCount > 0 : shopCount > 0,
+        };
+      }),
+    [activeScopeTab, testRows, shopRows]
+  );
 
   const visualSelector = String(visualEditorSelector || '').trim();
   const defaultPickerReady = Boolean(resolvePickerLaunchUrl('pdp'));
@@ -671,6 +747,47 @@ export default function PriceSurfaceMappingsPanel({
                 ))}
             </div>
           ) : null}
+
+          <div className={styles.priceSurfaceGuidePanel}>
+            <div className={styles.priceSurfaceGuideHeader}>
+              <div>
+                <Text as="p" variant="bodySm" fontWeight="semibold">
+                  Smart selector coverage
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Pick only the surfaces you want RipX to paint. Missing surfaces stay untouched.
+                </Text>
+              </div>
+              <Badge tone={activeScopeTab === 'test' ? 'info' : undefined} size="small">
+                {activeScopeTab === 'test' ? 'Editing test overrides' : 'Editing shop defaults'}
+              </Badge>
+            </div>
+            <div className={styles.priceSurfaceGuideGrid}>
+              {surfaceGuideCards.map(card => (
+                <button
+                  key={card.surface}
+                  type="button"
+                  className={`${styles.priceSurfaceGuideCard} ${
+                    card.configured ? styles.priceSurfaceGuideCardConfigured : ''
+                  }`}
+                  disabled={!defaultPickerReady}
+                  onClick={() => startQuickPick(activeScopeTab, card.surface)}
+                >
+                  <span className={styles.priceSurfaceGuideTop}>
+                    <span className={styles.priceSurfaceGuideLabel}>{card.shortLabel}</span>
+                    <Badge size="small" tone={card.configured ? 'success' : 'warning'}>
+                      {card.configured ? 'Mapped' : 'Missing'}
+                    </Badge>
+                  </span>
+                  <span className={styles.priceSurfaceGuideTitle}>{card.label}</span>
+                  <span className={styles.priceSurfaceGuideDescription}>{card.description}</span>
+                  <span className={styles.priceSurfaceGuideMeta}>
+                    Test {card.testCount} · Shop {card.shopCount}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className={styles.priceSurfaceTabRow}>
             <button

@@ -12,11 +12,14 @@
  *
  * Options (env vars):
  *   SHOP_DOMAIN - Shop domain (required)
+ *   SEED_TEST_STATUS - Test status filter, e.g. running for live tests (default: all)
  *   SEED_VISITORS_MIN - Min visitors per test (default: 80)
  *   SEED_VISITORS_MAX - Max visitors per test (default: 400)
  *   SEED_CONVERSION_RATE - Conversion rate 0-1 (default: 0.03-0.07 random per test)
  *   SEED_REVENUE_MIN - Min order value USD (default: 15)
  *   SEED_REVENUE_MAX - Max order value USD (default: 250)
+ *   SEED_HEATMAP_SCREENSHOTS - Store real screenshot URLs for heatmap pages (default: true)
+ *   SEED_SCREENSHOT_SERVICE - Screenshot URL template. Use {url} for encoded page URL.
  */
 /* eslint-disable no-console */
 
@@ -24,7 +27,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 
 const { getClient, closeDatabase } = require('../src/utils/database');
 const { getTestsByShop } = require('../src/models/test');
-const { insertHeatmapEventsBatch } = require('../src/models/heatmap');
+const { insertHeatmapEventsBatch, setHeatmapScreenshotUrl } = require('../src/models/heatmap');
 
 const DEVICES = ['desktop', 'mobile', 'tablet'];
 const COUNTRIES = ['US', 'CA', 'GB', 'DE', 'AU', 'FR', 'IN', 'JP', 'BR', 'MX'];
@@ -89,6 +92,28 @@ function buildHeatmapPages(shopDomain) {
     const path = page.startsWith('/') ? page : `/${page}`;
     return baseUrl ? `${baseUrl}${path}` : path;
   });
+}
+
+function buildSeedScreenshotUrl(pageUrl) {
+  const explicitTemplate = String(process.env.SEED_SCREENSHOT_SERVICE || '').trim();
+  const template =
+    explicitTemplate || 'https://image.thum.io/get/width/1440/crop/5000/noanimate/{url}';
+  return template.replace('{url}', encodeURIComponent(pageUrl));
+}
+
+async function seedHeatmapScreenshots(shopDomain, pages) {
+  if (process.env.SEED_HEATMAP_SCREENSHOTS === 'false') {
+    return 0;
+  }
+  let saved = 0;
+  for (const pageUrl of pages) {
+    const screenshotUrl = buildSeedScreenshotUrl(pageUrl);
+    const result = await setHeatmapScreenshotUrl(shopDomain, pageUrl, screenshotUrl);
+    if (result && result.ok) {
+      saved += 1;
+    }
+  }
+  return saved;
 }
 
 function generateRealisticClick() {
@@ -156,21 +181,32 @@ async function seedDummyData(shopDomain, options = {}) {
     revenueMin = 15,
     revenueMax = 250,
     includeSegments = true,
+    testStatus = null,
     storefrontPassword = process.env.STOREFRONT_PASSWORD ||
       process.env.SEED_STOREFRONT_PASSWORD ||
       '',
   } = options;
 
-  const tests = await getTestsByShop(shopDomain, null);
+  const tests = await getTestsByShop(shopDomain, testStatus);
   const testsWithVariants = tests.filter(t => t.variants && t.variants.length > 0);
   const heatmapPages = buildHeatmapPages(shopDomain);
+  const screenshotCount = await seedHeatmapScreenshots(shopDomain, heatmapPages);
 
   if (testsWithVariants.length === 0) {
-    console.log('No tests with variants found. Create and run some tests first.');
-    return { tests: 0, assignments: 0, events: 0, heatmap: 0 };
+    console.log(
+      testStatus
+        ? `No ${testStatus} tests with variants found. Start a test or clear SEED_TEST_STATUS.`
+        : 'No tests with variants found. Create and run some tests first.'
+    );
+    return { tests: 0, assignments: 0, events: 0, heatmap: 0, screenshots: screenshotCount };
   }
 
-  console.log(`Seeding ${testsWithVariants.length} test(s) for shop: ${shopDomain}`);
+  console.log(
+    `Seeding ${testsWithVariants.length}${testStatus ? ` ${testStatus}` : ''} test(s) for shop: ${shopDomain}`
+  );
+  if (screenshotCount > 0) {
+    console.log(`Stored ${screenshotCount} heatmap screenshot URL(s) for real storefront pages.`);
+  }
 
   let totalAssignments = 0;
   let totalEvents = 0;
@@ -415,6 +451,7 @@ async function seedDummyData(shopDomain, options = {}) {
     assignments: totalAssignments,
     events: totalEvents,
     heatmap: totalHeatmapEvents,
+    screenshots: screenshotCount,
   };
 }
 
@@ -437,13 +474,15 @@ async function main() {
       revenueMin: parseFloat(process.env.SEED_REVENUE_MIN) || 15,
       revenueMax: parseFloat(process.env.SEED_REVENUE_MAX) || 250,
       includeSegments: process.env.SEED_INCLUDE_SEGMENTS !== 'false',
+      testStatus:
+        process.env.SEED_TEST_STATUS || (process.env.SEED_LIVE_ONLY === 'true' ? 'running' : null),
       storefrontPassword:
         process.env.STOREFRONT_PASSWORD || process.env.SEED_STOREFRONT_PASSWORD || '',
     };
 
     const result = await seedDummyData(shopDomain, options);
     console.log(
-      `\nDone! Seeded ${result.assignments} visitors, ${result.events} events${result.heatmap ? `, ${result.heatmap} heatmap events` : ''} across ${result.tests} tests.`
+      `\nDone! Seeded ${result.assignments} visitors, ${result.events} events${result.heatmap ? `, ${result.heatmap} heatmap events` : ''}${result.screenshots ? `, ${result.screenshots} heatmap screenshots` : ''} across ${result.tests} tests.`
     );
     console.log('Refresh your dashboard and analytics to see the data.');
   } catch (err) {
