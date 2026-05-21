@@ -20,6 +20,7 @@
  *   SEED_REVENUE_MAX - Max order value USD (default: 250)
  *   SEED_HEATMAP_SCREENSHOTS - Store real screenshot URLs for heatmap pages (default: true)
  *   SEED_SCREENSHOT_SERVICE - Screenshot URL template. Use {url} for encoded page URL.
+ *   SEED_SCREENSHOT_USE_PREVIEW_PROXY - Use /api/track/preview-document when password is set (default: true)
  *   SEED_ONLY_SCREENSHOTS - Only repair/store heatmap screenshot URLs, no analytics rows.
  */
 /* eslint-disable no-console */
@@ -83,6 +84,15 @@ function getSeedBaseUrl(shopDomain) {
   return String(raw || '').replace(/\/+$/, '');
 }
 
+function getSeedAppUrl() {
+  return String(
+    process.env.SEED_APP_URL ||
+      process.env.APP_URL ||
+      process.env.FRONTEND_URL ||
+      'https://splitter.echologyx.com'
+  ).replace(/\/+$/, '');
+}
+
 function buildHeatmapPages(shopDomain) {
   const configured = String(process.env.SEED_HEATMAP_PAGES || '')
     .split(',')
@@ -99,20 +109,36 @@ function buildHeatmapPages(shopDomain) {
   });
 }
 
-function buildSeedScreenshotUrl(pageUrl) {
+function buildPasswordPreviewDocumentUrl(pageUrl, storefrontPassword) {
+  const password = String(storefrontPassword || '').trim();
+  const useProxy = process.env.SEED_SCREENSHOT_USE_PREVIEW_PROXY !== 'false';
+  if (!password || !useProxy) {
+    return pageUrl;
+  }
+  const appUrl = getSeedAppUrl();
+  const params = new URLSearchParams();
+  params.set('url', pageUrl);
+  params.set('storefront_password', password);
+  return `${appUrl}/api/track/preview-document?${params.toString()}`;
+}
+
+function buildSeedScreenshotUrl(pageUrl, storefrontPassword) {
   const explicitTemplate = String(process.env.SEED_SCREENSHOT_SERVICE || '').trim();
   const template =
     explicitTemplate || 'https://image.thum.io/get/width/1440/crop/5000/noanimate/{url}';
-  return template.replace('{encodedUrl}', encodeURIComponent(pageUrl)).replace('{url}', pageUrl);
+  const captureUrl = buildPasswordPreviewDocumentUrl(pageUrl, storefrontPassword);
+  return template
+    .replace('{encodedUrl}', encodeURIComponent(captureUrl))
+    .replace('{url}', captureUrl);
 }
 
-async function seedHeatmapScreenshots(shopDomain, pages) {
+async function seedHeatmapScreenshots(shopDomain, pages, storefrontPassword = '') {
   if (process.env.SEED_HEATMAP_SCREENSHOTS === 'false') {
     return 0;
   }
   let saved = 0;
   for (const pageUrl of pages) {
-    const screenshotUrl = buildSeedScreenshotUrl(pageUrl);
+    const screenshotUrl = buildSeedScreenshotUrl(pageUrl, storefrontPassword);
     const pageKey = normalizeHeatmapPageKey(pageUrl);
     const aliases = [...new Set([pageUrl, pageKey].filter(Boolean))];
     for (const alias of aliases) {
@@ -200,7 +226,11 @@ async function seedDummyData(shopDomain, options = {}) {
   const tests = await getTestsByShop(shopDomain, testStatus);
   const testsWithVariants = tests.filter(t => t.variants && t.variants.length > 0);
   const heatmapPages = buildHeatmapPages(shopDomain);
-  const screenshotCount = await seedHeatmapScreenshots(shopDomain, heatmapPages);
+  const screenshotCount = await seedHeatmapScreenshots(
+    shopDomain,
+    heatmapPages,
+    storefrontPassword
+  );
 
   if (onlyScreenshots) {
     console.log(
