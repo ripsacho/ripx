@@ -487,6 +487,43 @@ describe('storefront script cart/add interceptors', () => {
     expect(windowObj.history.replaceState).not.toHaveBeenCalled();
   });
 
+  it('keeps preview-document navigation inside the proxy for customer previews', () => {
+    const anchor = {
+      getAttribute: jest.fn(name => (name === 'href' ? 'https://makripon.myshopify.com/' : null)),
+      setAttribute: jest.fn(),
+    };
+
+    bootStorefrontScriptHarness({
+      readyState: 'complete',
+      pathname: '/api/track/preview-document',
+      search:
+        '?url=https%3A%2F%2Fmakripon.myshopify.com%2Fproducts%2Fdemo%3Fab_preview%3D1%26ab_preview_simple%3D1%26ab_preview_test%3D66666666-6666-4666-8666-666666666666%26ab_preview_variant%3DVariant%2520F&storefront_password=sp',
+      documentQuerySelectorAll: selector => (selector === 'a[href]' ? [anchor] : []),
+      runtimeConfig: {
+        previewDocumentApiUrl: 'https://app.example.com/api/track/preview-document',
+        previewLauncherParams: {
+          ab_preview: '1',
+          ab_preview_simple: '1',
+          ab_preview_test: '66666666-6666-4666-8666-666666666666',
+          ab_preview_variant: 'Variant F',
+          storefront_password: 'sp',
+        },
+      },
+    });
+
+    expect(anchor.setAttribute).toHaveBeenCalled();
+    const proxiedHref = anchor.setAttribute.mock.calls.find(call => call[0] === 'href')?.[1];
+    const proxiedUrl = new URL(proxiedHref);
+    const nestedUrl = new URL(proxiedUrl.searchParams.get('url'));
+    expect(proxiedUrl.pathname).toBe('/api/track/preview-document');
+    expect(proxiedUrl.searchParams.get('storefront_password')).toBe('sp');
+    expect(nestedUrl.pathname).toBe('/');
+    expect(nestedUrl.searchParams.get('ab_preview_test')).toBe(
+      '66666666-6666-4666-8666-666666666666'
+    );
+    expect(nestedUrl.searchParams.get('ab_preview_variant')).toBe('Variant F');
+  });
+
   it('keeps persisted simple previews chrome-free after navigation drops query params', () => {
     const { hooks, windowObj } = bootStorefrontScriptHarness({
       search: '',

@@ -4664,14 +4664,38 @@ function TestWizard({
     }
   };
 
+  const getPricePreviewSurfaceFromMappings = useCallback(() => {
+    const preferredOrder = ['home', 'plp', 'search', 'cart', 'recommendation', 'quickview'];
+    const mappings = normalizePriceSurfaceMappingsForEditor(
+      formData.segments?.price_surface_mappings || []
+    ).filter(mapping => mapping.enabled !== false && String(mapping.selector || '').trim());
+    for (const surface of preferredOrder) {
+      if (mappings.some(mapping => mapping.surface === surface)) {
+        return surface;
+      }
+    }
+    return 'pdp';
+  }, [formData.segments?.price_surface_mappings]);
+
   const buildPreviewUrl = (variant, index, options = {}) => {
     if (mode !== 'edit' || !initialData?.id) return null;
     const domain = routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain;
     const previewTenantDomain = normalizeTextValue(initialData?.shop_domain) || null;
-    const pathForPreview = getFirstTargetPreviewPath(options.pricePreviewProduct || null);
     const isPricePreview = isPriceLikeTestType(
       formData.type || initialData?.type || selectedTemplate
     );
+    const pricePreviewSurface = isPricePreview
+      ? String(options.pricePreviewSurface || getPricePreviewSurfaceFromMappings() || 'pdp')
+          .trim()
+          .toLowerCase()
+      : 'pdp';
+    const pathForPreview =
+      isPricePreview && pricePreviewSurface && pricePreviewSurface !== 'pdp'
+        ? buildPriceSurfacePickerPath(pricePreviewSurface, {
+            productPath: getFirstTargetPreviewPath(options.pricePreviewProduct || null),
+            collectionPath: getCollectionPreviewPath(),
+          })
+        : getFirstTargetPreviewPath(options.pricePreviewProduct || null);
     const targetTypeForPreview = normalizePriceTargetTypeValue(
       formData.target_type || initialData?.target_type,
       formData.type || initialData?.type || selectedTemplate
@@ -4683,6 +4707,7 @@ function TestWizard({
     if (
       isPricePreview &&
       normalizedTargetTypeForPreview === 'all-products' &&
+      pricePreviewSurface === 'pdp' &&
       !String(pathForPreview || '').startsWith('/products/')
     ) {
       return null;
@@ -4732,13 +4757,21 @@ function TestWizard({
                   : undefined,
             }) || directPreviewUrl;
         } else {
-          // Price preview uses the dedicated bootstrap when the store is public so RipX can inject
-          // before theme cart scripts. Password-protected stores must use preview-document above,
-          // because Shopify serves the password page before app-proxy bootstrap routes run.
-          finalPreviewUrl =
-            buildShopifyPricePreviewBootstrapUrl({
-              previewUrl: directPreviewUrl,
-            }) || directPreviewUrl;
+          // Customer-facing simple previews should use the real storefront URL on public stores.
+          // The first URL seeds preview context; subsequent same-origin page navigations keep it
+          // in sessionStorage/window.name via the storefront runtime.
+          if (options.simplePreview) {
+            finalPreviewUrl = directPreviewUrl;
+          } else {
+            // Debug/editor price preview uses the dedicated bootstrap when the store is public so
+            // RipX can inject before theme cart scripts. Password-protected stores must use
+            // preview-document above, because Shopify serves the password page before app-proxy
+            // bootstrap routes run.
+            finalPreviewUrl =
+              buildShopifyPricePreviewBootstrapUrl({
+                previewUrl: directPreviewUrl,
+              }) || directPreviewUrl;
+          }
         }
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({

@@ -7791,7 +7791,6 @@
 
   function installPreviewDocumentProxyNavigation() {
     if (!PREVIEW_DOCUMENT_PROXY) return;
-    if (!VISUAL_PICKER_MODE && !PRICE_SURFACE_PICK_MODE) return;
     if (window.__RIPX_PREVIEW_DOCUMENT_NAV__) return;
     window.__RIPX_PREVIEW_DOCUMENT_NAV__ = true;
     var shopHost = String(CONFIG.shopDomain || PREVIEW_TENANT_DOMAIN || '')
@@ -10240,6 +10239,9 @@
   function init() {
     if (_ripxInitStarted) return;
     _ripxInitStarted = true;
+    if (PREVIEW_DOCUMENT_PROXY) {
+      installPreviewDocumentProxyNavigation();
+    }
     if (VISUAL_PICKER_ACTIVE) {
       initVisualPicker();
     }
