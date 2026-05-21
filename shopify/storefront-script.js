@@ -6367,6 +6367,13 @@
     });
   }
 
+  function hasAnyConfiguredPriceSurfaceMappings(test) {
+    return (
+      getConfiguredTestPriceSurfaceMappings(test).length > 0 ||
+      getConfiguredShopPriceSurfaceMappings().length > 0
+    );
+  }
+
   function resolveConfiguredPriceSurfaceSelectors(surface, role, options) {
     var surfaceKey = String(surface || 'global').toLowerCase();
     var roleKey = String(role || 'regular').toLowerCase();
@@ -6517,7 +6524,20 @@
       scope === 'cart' ? ['regular', 'cart_line'] : ['regular', 'compare_at'],
       getActiveTestById(testId)
     );
-    if (configuredSelectors.length) {
+    var priceSurfaceMappingsAuthoritative =
+      scope !== 'cart' && hasAnyConfiguredPriceSurfaceMappings(getActiveTestById(testId));
+    if (priceSurfaceMappingsAuthoritative) {
+      if (!configuredSelectors.length) {
+        persistRipxLiveDiagnostics('price_surface_mapping_skip', {
+          testId: testId,
+          scope: scope || null,
+          reason: 'no_configured_listing_selector',
+          surfaces: getListingPriceSurfaceKeys(),
+        });
+        return;
+      }
+      sel = configuredSelectors.join(', ');
+    } else if (configuredSelectors.length) {
       sel += ', ' + configuredSelectors.join(', ');
     }
     if (scope === 'cart') {
@@ -6718,9 +6738,6 @@
             rememberRipxPriceMethodForVariant(cardVariantId, checkoutMethodProof.applicationMethod);
           }
         }
-        var priceEls = card.querySelectorAll(
-          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
-        );
         var registrySelectors = [];
         appendConfiguredRegistrySelectorsForSurfaces(
           registrySelectors,
@@ -6728,6 +6745,7 @@
           ['regular', 'compare_at'],
           activeTest
         );
+        var priceSurfaceMappingsAuthoritative = hasAnyConfiguredPriceSurfaceMappings(activeTest);
         registrySelectors.forEach(function (sel) {
           try {
             card.querySelectorAll(sel).forEach(function (el) {
@@ -6743,10 +6761,30 @@
             });
           } catch (eRegistry) {}
         });
-        priceEls.forEach(function (el) {
-          if (!el || inCartUi(el)) return;
-          paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards', cardPriceNum);
-        });
+        if (!priceSurfaceMappingsAuthoritative) {
+          var priceEls = card.querySelectorAll(
+            '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+          );
+          priceEls.forEach(function (el) {
+            if (!el || inCartUi(el)) return;
+            paintPriceNode(
+              el,
+              cardDisplay,
+              testId,
+              variantIdForCart,
+              'listing_cards',
+              cardPriceNum
+            );
+          });
+        } else if (!registrySelectors.length) {
+          persistRipxLiveDiagnostics('price_surface_mapping_skip', {
+            testId: testId,
+            scope: 'listing_cards',
+            reason: 'no_configured_card_selector',
+            productId: pid,
+            surfaces: getListingPriceSurfaceKeys(),
+          });
+        }
       });
     });
     if (filteredTargetIds.length === 1) {
@@ -6904,6 +6942,7 @@
       '[data-product-id], .product-card, .grid-product__content, [data-product], .card--product, product-card, .product-card-wrapper, .product-item, .grid__item .card, .collection-list__product'
     );
     var activeTest = getActiveTestById(testId);
+    var priceSurfaceMappingsAuthoritative = hasAnyConfiguredPriceSurfaceMappings(activeTest);
     var excludedProductIds = getExcludedProductIdsForTest(activeTest);
     allWithProductId.forEach(function (card) {
       if (!card || inCartUi(card)) return;
@@ -6974,9 +7013,6 @@
           rememberRipxPriceMethodForVariant(cardVariantId, checkoutMethodProof.applicationMethod);
         }
       }
-      var priceEls = card.querySelectorAll(
-        '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
-      );
       var registrySelectors = [];
       appendConfiguredRegistrySelectorsForSurfaces(
         registrySelectors,
@@ -6999,10 +7035,30 @@
           });
         } catch (eRegistryCollection) {}
       });
-      priceEls.forEach(function (el) {
-        if (!el || inCartUi(el)) return;
-        paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'collection_cards', cardPriceNum);
-      });
+      if (!priceSurfaceMappingsAuthoritative) {
+        var priceEls = card.querySelectorAll(
+          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+        );
+        priceEls.forEach(function (el) {
+          if (!el || inCartUi(el)) return;
+          paintPriceNode(
+            el,
+            cardDisplay,
+            testId,
+            variantIdForCart,
+            'collection_cards',
+            cardPriceNum
+          );
+        });
+      } else if (!registrySelectors.length) {
+        persistRipxLiveDiagnostics('price_surface_mapping_skip', {
+          testId: testId,
+          scope: 'collection_cards',
+          reason: 'no_configured_card_selector',
+          productId: pid,
+          surfaces: getListingPriceSurfaceKeys(),
+        });
+      }
     });
     applyRipxStateToCartForms(null);
 

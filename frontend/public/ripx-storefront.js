@@ -6294,8 +6294,11 @@
     if (!raw) return '';
     var gidMatch = raw.match(/Product\/(\d{6,})/i);
     if (gidMatch && gidMatch[1]) return gidMatch[1];
-    var suffixMatch = raw.match(/(?:^|[-_:])(\d{6,})(?:$|[-_:])/);
-    if (suffixMatch && suffixMatch[1]) return suffixMatch[1];
+    // Dawn-style IDs often contain both a section/template id and the product id:
+    // CardLink-template--21010091114685__featured_collection-8276578566333.
+    // The product id is the final long numeric token, not the first one.
+    var matches = raw.match(/\d{6,}/g);
+    if (matches && matches.length) return matches[matches.length - 1];
     return '';
   }
 
@@ -6362,6 +6365,13 @@
         appendConfiguredRegistrySelectors(targetList, surface, role, test);
       });
     });
+  }
+
+  function hasAnyConfiguredPriceSurfaceMappings(test) {
+    return (
+      getConfiguredTestPriceSurfaceMappings(test).length > 0 ||
+      getConfiguredShopPriceSurfaceMappings().length > 0
+    );
   }
 
   function resolveConfiguredPriceSurfaceSelectors(surface, role, options) {
@@ -6514,7 +6524,20 @@
       scope === 'cart' ? ['regular', 'cart_line'] : ['regular', 'compare_at'],
       getActiveTestById(testId)
     );
-    if (configuredSelectors.length) {
+    var priceSurfaceMappingsAuthoritative =
+      scope !== 'cart' && hasAnyConfiguredPriceSurfaceMappings(getActiveTestById(testId));
+    if (priceSurfaceMappingsAuthoritative) {
+      if (!configuredSelectors.length) {
+        persistRipxLiveDiagnostics('price_surface_mapping_skip', {
+          testId: testId,
+          scope: scope || null,
+          reason: 'no_configured_listing_selector',
+          surfaces: getListingPriceSurfaceKeys(),
+        });
+        return;
+      }
+      sel = configuredSelectors.join(', ');
+    } else if (configuredSelectors.length) {
       sel += ', ' + configuredSelectors.join(', ');
     }
     if (scope === 'cart') {
@@ -6715,9 +6738,6 @@
             rememberRipxPriceMethodForVariant(cardVariantId, checkoutMethodProof.applicationMethod);
           }
         }
-        var priceEls = card.querySelectorAll(
-          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
-        );
         var registrySelectors = [];
         appendConfiguredRegistrySelectorsForSurfaces(
           registrySelectors,
@@ -6725,6 +6745,7 @@
           ['regular', 'compare_at'],
           activeTest
         );
+        var priceSurfaceMappingsAuthoritative = hasAnyConfiguredPriceSurfaceMappings(activeTest);
         registrySelectors.forEach(function (sel) {
           try {
             card.querySelectorAll(sel).forEach(function (el) {
@@ -6740,10 +6761,30 @@
             });
           } catch (eRegistry) {}
         });
-        priceEls.forEach(function (el) {
-          if (!el || inCartUi(el)) return;
-          paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards', cardPriceNum);
-        });
+        if (!priceSurfaceMappingsAuthoritative) {
+          var priceEls = card.querySelectorAll(
+            '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+          );
+          priceEls.forEach(function (el) {
+            if (!el || inCartUi(el)) return;
+            paintPriceNode(
+              el,
+              cardDisplay,
+              testId,
+              variantIdForCart,
+              'listing_cards',
+              cardPriceNum
+            );
+          });
+        } else if (!registrySelectors.length) {
+          persistRipxLiveDiagnostics('price_surface_mapping_skip', {
+            testId: testId,
+            scope: 'listing_cards',
+            reason: 'no_configured_card_selector',
+            productId: pid,
+            surfaces: getListingPriceSurfaceKeys(),
+          });
+        }
       });
     });
     if (filteredTargetIds.length === 1) {
@@ -6760,7 +6801,114 @@
         );
       }
     }
+    applyMappedPriceSelectorsByInferredProduct(testId, variant, filteredTargetIds, 'product_cards');
     applyRipxStateToCartForms(filteredTargetIds);
+  }
+
+  function findProductCardRootForPriceNode(node) {
+    if (!node || !node.closest) return null;
+    return (
+      node.closest(
+        '[data-product-id], [data-product], .product-card-wrapper, .product-card, product-card, .card-wrapper, .grid__item, .product-item, .collection-list__product, li'
+      ) || node.parentElement
+    );
+  }
+
+  function applyMappedPriceSelectorsByInferredProduct(testId, variant, targetIds, reason) {
+    if (!variant || !variant.config || !isProductListingSurface()) return;
+    var ids = (targetIds || []).filter(Boolean);
+    if (!ids.length) return;
+    var activeTest = getActiveTestById(testId);
+    var selectors = [];
+    appendConfiguredRegistrySelectorsForSurfaces(
+      selectors,
+      getListingPriceSurfaceKeys(),
+      ['regular'],
+      activeTest
+    );
+    if (!selectors.length) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var inspected = 0;
+    var matched = 0;
+    var painted = 0;
+    selectors.forEach(function (selector) {
+      var nodes = [];
+      try {
+        nodes = Array.prototype.slice.call(document.querySelectorAll(selector));
+      } catch (eSelector) {
+        return;
+      }
+      inspected += nodes.length;
+      nodes.forEach(function (node) {
+        var root = findProductCardRootForPriceNode(node);
+        var attr = getProductIdForListingCard(root) || getProductIdForListingCard(node);
+        if (!attr) return;
+        var targetId = null;
+        for (var i = 0; i < ids.length; i += 1) {
+          if (gidMatches(ids[i], attr) || toNumericProductId(ids[i]) === toNumericProductId(attr)) {
+            targetId = ids[i];
+            break;
+          }
+        }
+        if (!targetId) return;
+        matched += 1;
+        var cfg = getEffectivePriceConfig(variant.config, targetId, null);
+        var checkoutMethodProof = getConfiguredCheckoutMethodProof(cfg);
+        var priceMode = cfg && cfg.priceMode ? String(cfg.priceMode).toLowerCase() : 'fixed';
+        if (priceMode === 'control') return;
+        var priceNum = null;
+        if (priceMode === 'fixed') {
+          var raw = cfg.price;
+          if (raw === null || raw === undefined || raw === '') return;
+          priceNum = parseFloat(raw, 10);
+        } else if (priceMode === 'amount' || priceMode === 'percent') {
+          var catalog = getStableCatalogPriceForElement(node);
+          if (catalog == null) return;
+          if (priceMode === 'amount' && cfg.priceDelta != null) {
+            var delta = parseFloat(cfg.priceDelta, 10);
+            if (isNaN(delta)) return;
+            priceNum = catalog + delta;
+          } else if (priceMode === 'percent' && cfg.pricePercent != null) {
+            var pct = parseFloat(cfg.pricePercent, 10);
+            if (isNaN(pct)) return;
+            priceNum = catalog * (1 - pct / 100);
+          }
+        }
+        if (priceNum == null || isNaN(priceNum) || !isFinite(priceNum)) return;
+        priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+        var roundToVal = parseRoundTo(cfg.roundTo);
+        if (roundToVal > 0) {
+          priceNum = Math.round(priceNum / roundToVal) * roundToVal;
+          priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+        }
+        var display = formatShopPrice(priceNum);
+        if (!display) return;
+        var pid = toNumericProductId(targetId);
+        if (pid) rememberRipxTargetUnitForProduct(pid, priceNum);
+        if (checkoutMethodProof && checkoutMethodProof.applicationMethod && pid) {
+          rememberRipxPriceMethodForProduct(pid, checkoutMethodProof.applicationMethod);
+        }
+        paintPriceNode(
+          node,
+          display,
+          testId,
+          variantIdForCart,
+          'selector_inferred_listing',
+          priceNum
+        );
+        painted += 1;
+      });
+    });
+    if (inspected || matched || painted) {
+      persistRipxLiveDiagnostics('selector_inferred_listing', {
+        testId: testId,
+        reason: reason || null,
+        selectors: selectors,
+        inspected: inspected,
+        matched: matched,
+        painted: painted,
+      });
+    }
   }
 
   /**
@@ -6794,6 +6942,7 @@
       '[data-product-id], .product-card, .grid-product__content, [data-product], .card--product, product-card, .product-card-wrapper, .product-item, .grid__item .card, .collection-list__product'
     );
     var activeTest = getActiveTestById(testId);
+    var priceSurfaceMappingsAuthoritative = hasAnyConfiguredPriceSurfaceMappings(activeTest);
     var excludedProductIds = getExcludedProductIdsForTest(activeTest);
     allWithProductId.forEach(function (card) {
       if (!card || inCartUi(card)) return;
@@ -6864,9 +7013,6 @@
           rememberRipxPriceMethodForVariant(cardVariantId, checkoutMethodProof.applicationMethod);
         }
       }
-      var priceEls = card.querySelectorAll(
-        '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
-      );
       var registrySelectors = [];
       appendConfiguredRegistrySelectorsForSurfaces(
         registrySelectors,
@@ -6889,10 +7035,30 @@
           });
         } catch (eRegistryCollection) {}
       });
-      priceEls.forEach(function (el) {
-        if (!el || inCartUi(el)) return;
-        paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'collection_cards', cardPriceNum);
-      });
+      if (!priceSurfaceMappingsAuthoritative) {
+        var priceEls = card.querySelectorAll(
+          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+        );
+        priceEls.forEach(function (el) {
+          if (!el || inCartUi(el)) return;
+          paintPriceNode(
+            el,
+            cardDisplay,
+            testId,
+            variantIdForCart,
+            'collection_cards',
+            cardPriceNum
+          );
+        });
+      } else if (!registrySelectors.length) {
+        persistRipxLiveDiagnostics('price_surface_mapping_skip', {
+          testId: testId,
+          scope: 'collection_cards',
+          reason: 'no_configured_card_selector',
+          productId: pid,
+          surfaces: getListingPriceSurfaceKeys(),
+        });
+      }
     });
     applyRipxStateToCartForms(null);
 
@@ -10504,18 +10670,29 @@
                   test.targetIds ||
                   (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
                 if (testTypeIsPrice(test)) {
-                  if (
-                    deferPdpPriceApplyUntilProductId(
-                      test,
-                      variant,
-                      tt,
-                      tids,
-                      shouldTrackAntiFlicker
-                    )
-                  ) {
-                    antiFlickerDeferred = shouldTrackAntiFlicker;
+                  try {
+                    if (
+                      deferPdpPriceApplyUntilProductId(
+                        test,
+                        variant,
+                        tt,
+                        tids,
+                        shouldTrackAntiFlicker
+                      )
+                    ) {
+                      antiFlickerDeferred = shouldTrackAntiFlicker;
+                    }
+                    applyPriceTestOnAssignedVariant(test, variant);
+                  } catch (ePriceAssign) {
+                    persistRipxLiveDiagnostics('price_apply_error', {
+                      testId: test.id,
+                      phase: 'assigned_variant',
+                      message: ePriceAssign && (ePriceAssign.message || String(ePriceAssign)),
+                    });
+                    if (typeof console !== 'undefined' && console.warn) {
+                      console.warn('[RipX] price apply failed', ePriceAssign);
+                    }
                   }
-                  applyPriceTestOnAssignedVariant(test, variant);
                 }
               } finally {
                 if (shouldTrackAntiFlicker && !antiFlickerDeferred) markAntiFlickerDone();
@@ -10559,7 +10736,18 @@
               applyVisualEditorRules(PREVIEW_TEST_ID, variant);
               var previewTest = getActiveTestById(PREVIEW_TEST_ID);
               if (previewTest) {
-                applyPriceTestOnAssignedVariant(previewTest, variant);
+                try {
+                  applyPriceTestOnAssignedVariant(previewTest, variant);
+                } catch (ePreviewPrice) {
+                  persistRipxLiveDiagnostics('price_apply_error', {
+                    testId: PREVIEW_TEST_ID,
+                    phase: 'preview_focus',
+                    message: ePreviewPrice && (ePreviewPrice.message || String(ePreviewPrice)),
+                  });
+                  if (typeof console !== 'undefined' && console.warn) {
+                    console.warn('[RipX] preview price apply failed', ePreviewPrice);
+                  }
+                }
               }
             }
           });
@@ -10776,6 +10964,42 @@
       } catch (_eTimer) {}
     }
   }
+
+  // Export before init() runs. The init flow installs reapply hooks onto window.RipX; exporting
+  // after init meant those hooks could remain unavailable in customer preview sessions.
+  const api = {
+    getVariant,
+    trackConversion,
+    trackEvent,
+    trackRecommendationEvent,
+    evaluateFeatureFlags,
+    applyPriceTest,
+    reapplyPriceTests: null,
+    reapplyCartFormRipxProps: null,
+    setDebug: function (enabled, options) {
+      var persist = !(options && options.persist === false);
+      var next = setDebugEnabled(!!enabled, persist);
+      if (typeof console !== 'undefined' && console.info) {
+        console.info(
+          '[RipX] debug',
+          next ? 'enabled' : 'disabled',
+          persist ? '(persisted)' : '(session)'
+        );
+      }
+      return next;
+    },
+    debugCart: debugCartSnapshot,
+    debugStatus,
+    debugGoalMetrics,
+    testGoalMetricEvent,
+    liveDiagnostics,
+    qa: liveDiagnostics,
+    debugPaintStats: debugPaintStats,
+    debugThemeStats: debugThemeStats,
+    version: SCRIPT_VERSION,
+  };
+  window.ABTestTracker = api;
+  window.RipX = api;
 
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
@@ -11241,40 +11465,6 @@
     return snapshot;
   }
 
-  // Export for use in other scripts (version for support/debugging)
-  const api = {
-    getVariant,
-    trackConversion,
-    trackEvent,
-    trackRecommendationEvent,
-    evaluateFeatureFlags,
-    applyPriceTest,
-    reapplyPriceTests: null,
-    reapplyCartFormRipxProps: null,
-    setDebug: function (enabled, options) {
-      var persist = !(options && options.persist === false);
-      var next = setDebugEnabled(!!enabled, persist);
-      if (typeof console !== 'undefined' && console.info) {
-        console.info(
-          '[RipX] debug',
-          next ? 'enabled' : 'disabled',
-          persist ? '(persisted)' : '(session)'
-        );
-      }
-      return next;
-    },
-    debugCart: debugCartSnapshot,
-    debugStatus,
-    debugGoalMetrics,
-    testGoalMetricEvent,
-    liveDiagnostics,
-    qa: liveDiagnostics,
-    debugPaintStats: debugPaintStats,
-    debugThemeStats: debugThemeStats,
-    version: SCRIPT_VERSION,
-  };
-  window.ABTestTracker = api;
-  window.RipX = api;
   // Test-only hooks (enabled when host page predefines window.__RIPX_TEST_HOOKS__ object).
   if (window.__RIPX_TEST_HOOKS__ && typeof window.__RIPX_TEST_HOOKS__ === 'object') {
     window.__RIPX_TEST_HOOKS__.getRipxCartAttrsPayload = getRipxCartAttrsPayload;
