@@ -10,8 +10,9 @@
  * Shopify: Load via app proxy or GET /api/track/script.js?shop=xxx.myshopify.com
  * Standalone: Load via GET /api/track/script.js?site=example.com
  *
- * Best practices: Load in <head> with defer (Theme App Embed target: head). Deferred scripts run in order
- * after document parse, before DOMContentLoaded — earlier fetch than body-bottom tags reduces flicker.
+ * Best practices: Load the Shopify app embed in <head>. For tests that need anti-flicker, the
+ * primary app-proxy runtime should be parser-discovered early enough for its bootstrap to run
+ * before body paint.
  * Standalone preview: /track/preview and /track/preview-storefront-test use the same tenant param as ping
  * (shop_domain for .myshopify.com, else site=).
  * Graceful degradation: If the assignment API fails (network error, 5xx, or 503 maintenance),
@@ -68,6 +69,8 @@
   }
   const consentRequired = !!CONFIG.consentRequired;
   const SCRIPT_VERSION = (CONFIG.version && String(CONFIG.version)) || '1.0.0';
+  const RIPX_SCRIPT_STARTED_AT_MS = Date.now();
+  const RIPX_PRICE_AF_HINT_STORAGE_KEY = '__ripx_price_af_hint_v1__';
   const DEBUG_STORAGE_KEY = '__RIPX_DEBUG__';
   function coerceBooleanFlag(value) {
     if (value === true || value === false) return value;
@@ -109,6 +112,32 @@
   var _ripxNativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
   const ANTI_FLICKER_MAX_MS = 1400;
   const ANTI_FLICKER_PRICE_MAX_MS = 1200;
+  const LIVE_VARIANT_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+  var _ripxTiming = {
+    scriptStartMs: RIPX_SCRIPT_STARTED_AT_MS,
+    scriptStartIso: new Date(RIPX_SCRIPT_STARTED_AT_MS).toISOString(),
+    marks: {},
+  };
+  function markRipxTiming(name, detail) {
+    var key = String(name || '').trim();
+    if (!key) return;
+    var now = Date.now();
+    _ripxTiming.marks[key] = {
+      atMs: now,
+      atIso: new Date(now).toISOString(),
+      sinceScriptStartMs: Math.max(0, now - RIPX_SCRIPT_STARTED_AT_MS),
+      detail: detail || null,
+    };
+    try {
+      window.__RIPX_TIMING__ = JSON.parse(JSON.stringify(_ripxTiming));
+    } catch (_eTiming) {}
+  }
+  function markRipxTimingOnce(name, detail) {
+    var key = String(name || '').trim();
+    if (!key || (_ripxTiming.marks && _ripxTiming.marks[key])) return;
+    markRipxTiming(key, detail);
+  }
+  markRipxTiming('script_start');
   var antiFlickerState = {
     active: false,
     pending: 0,
@@ -213,6 +242,66 @@
     }
     return testTypeIsPrice(test) ? ANTI_FLICKER_PRICE_MAX_MS : ANTI_FLICKER_MAX_MS;
   }
+  function getAntiFlickerGuardModeForTests(tests) {
+    var hasStrict = false;
+    var hasPrice = false;
+    (tests || []).forEach(function (test) {
+      if (!shouldUseAntiFlickerForTest(test)) return;
+      if (getAntiFlickerModeForTest(test) === 'strict') hasStrict = true;
+      if (testTypeIsPrice(test)) hasPrice = true;
+    });
+    if (hasStrict) return 'strict';
+    if (hasPrice) return 'price';
+    return 'strict';
+  }
+  var DEFAULT_PRICE_ANTI_FLICKER_SELECTORS = [
+    '.price',
+    '.money',
+    '[data-product-price]',
+    '[data-price]',
+    '.price-item',
+    '.price-item--regular',
+    '.price-item__regular',
+    '.product-price',
+  ];
+  function sanitizeAntiFlickerSelector(selector) {
+    var value = String(selector || '').trim();
+    if (!value || value.length > 300) return '';
+    if (value.indexOf('{') !== -1 || value.indexOf('}') !== -1) return '';
+    for (var i = 0; i < value.length; i += 1) {
+      if (value.charCodeAt(i) < 32) return '';
+    }
+    return value;
+  }
+  function collectPriceAntiFlickerSelectors(tests) {
+    var seen = {};
+    var selectors = [];
+    function add(selector) {
+      var safe = sanitizeAntiFlickerSelector(selector);
+      if (!safe || seen[safe]) return;
+      seen[safe] = true;
+      selectors.push(safe);
+    }
+    DEFAULT_PRICE_ANTI_FLICKER_SELECTORS.forEach(add);
+    (tests || []).forEach(function (test) {
+      if (!testTypeIsPrice(test)) return;
+      (test.priceSurfaceMappings || []).forEach(function (mapping) {
+        if (mapping && mapping.enabled !== false) add(mapping.selector);
+      });
+    });
+    var registry = CONFIG.priceSurfaceRegistry || {};
+    (registry.shopMappings || []).forEach(function (mapping) {
+      if (mapping && mapping.enabled !== false) add(mapping.selector);
+    });
+    return selectors.slice(0, 80);
+  }
+  function buildPriceAntiFlickerCss(tests) {
+    return collectPriceAntiFlickerSelectors(tests)
+      .map(function (selector) {
+        return 'html[data-ripx-af="price"] ' + selector + '{opacity:0 !important;}';
+      })
+      .join('');
+  }
   function isPriceAntiFlickerSurface(test) {
     if (!testTypeIsPrice(test)) return false;
     try {
@@ -245,24 +334,57 @@
       return Math.max(max, getAntiFlickerTimeoutForTest(test));
     }, 0);
   }
-  function installAntiFlickerGuard(timeoutMs) {
+  function updatePriceAntiFlickerBootstrapHint(tests) {
+    try {
+      if (!window.sessionStorage) return;
+      var guardMode = getAntiFlickerGuardModeForTests(tests || []);
+      var hasPriceGuard = guardMode === 'price' && hasAntiFlickerEligibleTests(tests || []);
+      if (!hasPriceGuard) {
+        window.sessionStorage.removeItem(RIPX_PRICE_AF_HINT_STORAGE_KEY);
+        return;
+      }
+      window.sessionStorage.setItem(
+        RIPX_PRICE_AF_HINT_STORAGE_KEY,
+        JSON.stringify({
+          shopHost: String((window.location && window.location.hostname) || ''),
+          shopDomain: String(CONFIG.shopDomain || ''),
+          version: SCRIPT_VERSION,
+          expiresAtMs: Date.now() + 30 * 60 * 1000,
+          timeoutMs: getAntiFlickerTimeoutForTests(tests || []),
+          selectors: collectPriceAntiFlickerSelectors(tests || []),
+        })
+      );
+    } catch (_ePriceAfHint) {}
+  }
+  function installAntiFlickerGuard(timeoutMs, mode, tests) {
     if (antiFlickerState.active || typeof document === 'undefined') return;
     antiFlickerState.active = true;
     antiFlickerState.pending = 0;
     antiFlickerState.installedAt = Date.now();
     antiFlickerState.timeoutMs = timeoutMs || ANTI_FLICKER_MAX_MS;
+    antiFlickerState.mode = mode === 'price' ? 'price' : 'strict';
     antiFlickerState.lastReleaseReason = null;
     var styleId = 'ripx-anti-flicker-style';
-    if (!document.getElementById(styleId)) {
-      var styleEl = document.createElement('style');
+    var styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = document.createElement('style');
       styleEl.id = styleId;
-      styleEl.textContent = 'html[data-ripx-af="1"] body{opacity:0 !important;}';
       (document.head || document.documentElement || document.body).appendChild(styleEl);
     }
-    if (document.documentElement) document.documentElement.setAttribute('data-ripx-af', '1');
+    styleEl.textContent =
+      'html[data-ripx-af="strict"] body{opacity:0 !important;}' +
+      buildPriceAntiFlickerCss(tests || []);
+    if (document.documentElement) {
+      var existing = document.documentElement.getAttribute('data-ripx-af');
+      document.documentElement.setAttribute('data-ripx-af', existing || antiFlickerState.mode);
+    }
     antiFlickerState.timeoutId = setTimeout(function () {
       releaseAntiFlickerGuard('timeout');
     }, antiFlickerState.timeoutMs);
+    markRipxTiming('anti_flicker_installed', {
+      mode: antiFlickerState.mode,
+      timeoutMs: antiFlickerState.timeoutMs,
+    });
   }
   function getAntiFlickerDiagnostics() {
     return {
@@ -270,6 +392,7 @@
       pending: antiFlickerState.pending || 0,
       installedAt: antiFlickerState.installedAt || null,
       timeoutMs: antiFlickerState.timeoutMs || 0,
+      mode: antiFlickerState.mode || null,
       lastReleaseReason: antiFlickerState.lastReleaseReason || null,
       lastReleasedAt: antiFlickerState.lastReleasedAt || null,
       htmlHidden: !!(
@@ -298,6 +421,11 @@
       reason: releaseReason,
       pendingAtRelease: pendingAtRelease,
       timeoutMs: antiFlickerState.timeoutMs || 0,
+      durationMs: installedAt ? Date.now() - installedAt : null,
+    });
+    markRipxTiming('anti_flicker_released', {
+      reason: releaseReason,
+      pendingAtRelease: pendingAtRelease,
       durationMs: installedAt ? Date.now() - installedAt : null,
     });
   }
@@ -821,10 +949,18 @@
   function bootstrapAntiFlickerAndAssignment() {
     if (!hasValidConfig) return;
     var tests = getRuntimeActiveTestsForBootstrap();
-    if (!PREVIEW_MODE && tests.length === 0) return;
+    if (!PREVIEW_MODE && tests.length === 0) {
+      updatePriceAntiFlickerBootstrapHint([]);
+      return;
+    }
     if (consentRequired && !hasConsent() && !PREVIEW_MODE && !FORCE_LIVE_MODE) return;
+    updatePriceAntiFlickerBootstrapHint(tests);
     if (hasAntiFlickerEligibleTests(tests)) {
-      installAntiFlickerGuard(getAntiFlickerTimeoutForTests(tests));
+      installAntiFlickerGuard(
+        getAntiFlickerTimeoutForTests(tests),
+        getAntiFlickerGuardModeForTests(tests),
+        tests
+      );
     }
   }
 
@@ -859,6 +995,7 @@
         .filter(Boolean),
       consentRequired: consentRequired,
     },
+    timing: _ripxTiming,
     assignments: {},
     skips: {},
     events: [],
@@ -936,6 +1073,7 @@
       _ripxLiveDiagnostics.href = getSanitizedCurrentUrl() || _ripxLiveDiagnostics.href;
       _ripxLiveDiagnostics.pathname = window.location.pathname || '';
       _ripxLiveDiagnostics.updatedAt = new Date().toISOString();
+      _ripxLiveDiagnostics.timing = _ripxTiming;
       _ripxLiveDiagnostics.runtime.activeTestsCount = (CONFIG.activeTests || []).length;
       _ripxLiveDiagnostics.runtime.activeTestIds = (CONFIG.activeTests || [])
         .map(function (t) {
@@ -1576,6 +1714,68 @@
     } catch (_) {}
     return null;
   }
+  function getLiveVariantCacheStorageKey(testId) {
+    return (
+      'ripx_live_variant_cache_v1_' +
+      encodeURIComponent(String(getShopDomain() || '')) +
+      '__' +
+      encodeURIComponent(String(getUserId() || '')) +
+      '__' +
+      encodeURIComponent(String(SCRIPT_VERSION || '')) +
+      '__' +
+      encodeURIComponent(String(testId || ''))
+    );
+  }
+  function writeLiveVariantCache(testId, variant) {
+    var key = String(testId || '');
+    if (!key || !variant || typeof variant !== 'object') return;
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(
+        getLiveVariantCacheStorageKey(key),
+        JSON.stringify({
+          testId: key,
+          shopDomain: getShopDomain() || '',
+          userId: getUserId() || '',
+          scriptVersion: SCRIPT_VERSION,
+          variant: normalizeVariantForStorefront(variant),
+          persistedAtMs: Date.now(),
+        })
+      );
+    } catch (_eLiveWrite) {}
+  }
+  function writeLiveVariantCacheMap(variants) {
+    if (!variants || typeof variants !== 'object') return;
+    Object.keys(variants).forEach(function (testId) {
+      writeLiveVariantCache(testId, variants[testId]);
+    });
+  }
+  function readLiveVariantCache(testId) {
+    var key = String(testId || '');
+    if (!key || PREVIEW_MODE) return null;
+    try {
+      if (!window.sessionStorage) return null;
+      var raw = window.sessionStorage.getItem(getLiveVariantCacheStorageKey(key));
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      var persistedAtMs = Number(parsed && parsed.persistedAtMs);
+      if (!persistedAtMs || Date.now() - persistedAtMs > LIVE_VARIANT_CACHE_MAX_AGE_MS) {
+        window.sessionStorage.removeItem(getLiveVariantCacheStorageKey(key));
+        return null;
+      }
+      if (String((parsed && parsed.testId) || '') !== key) return null;
+      if (String((parsed && parsed.shopDomain) || '') !== String(getShopDomain() || ''))
+        return null;
+      if (String((parsed && parsed.userId) || '') !== String(getUserId() || '')) return null;
+      if (String((parsed && parsed.scriptVersion) || '') !== String(SCRIPT_VERSION || '')) {
+        return null;
+      }
+      if (!parsed.variant || typeof parsed.variant !== 'object') return null;
+      return normalizeVariantForStorefront(parsed.variant);
+    } catch (_eLiveRead) {
+      return null;
+    }
+  }
   /** Latest line-attribute payload to apply on theme AJAX cart/add requests. */
   var _ripxCartAttributeState = null;
   var _ripxCartFormTargetProductIds = null;
@@ -1786,6 +1986,10 @@
     }
     baseParams.set('ripx_diag', 'live_batch');
     var variantRequestStartedAt = Date.now();
+    markRipxTiming('variants_request_started', {
+      requestedTestIds: requestedTestIds,
+      chunkCount: Math.ceil(requestedTestIds.length / LIVE_VARIANT_BATCH_SIZE),
+    });
     var testIdChunks = [];
     for (
       var chunkStart = 0;
@@ -1873,6 +2077,7 @@
         Object.keys(safeVariants).forEach(function (testId) {
           recordRipxAssignment(testId, safeVariants[testId], 'live_batch');
         });
+        writeLiveVariantCacheMap(variants);
         persistRipxLiveDiagnostics('variants_response', {
           requestedTestIds: requestedTestIds,
           assignedTestIds: Object.keys(variants),
@@ -1884,6 +2089,10 @@
           latencyMs: Date.now() - variantRequestStartedAt,
           variants: safeVariants,
           backendDiagnostics: backendDiagnostics,
+        });
+        markRipxTiming('variants_response_received', {
+          assignedTestIds: Object.keys(variants),
+          latencyMs: Date.now() - variantRequestStartedAt,
         });
         return variants;
       })
@@ -2056,6 +2265,14 @@
     }
 
     const id = String(testId);
+
+    var cachedLiveVariant = readLiveVariantCache(id);
+    if (cachedLiveVariant) {
+      // Keep the network refresh in flight, but do not hold page painting on repeat navigation.
+      getVariantCachePromise();
+      recordRipxAssignment(id, cachedLiveVariant, 'live_session_cache');
+      return cachedLiveVariant;
+    }
 
     try {
       const cache = await getVariantCachePromise();
@@ -10522,7 +10739,12 @@
         }
         installGoalMetricCatalogTriggers(testsToRun);
         var guardEnabled = hasAntiFlickerEligibleTests(testsToRun);
-        if (guardEnabled) installAntiFlickerGuard(getAntiFlickerTimeoutForTests(testsToRun));
+        if (guardEnabled)
+          installAntiFlickerGuard(
+            getAntiFlickerTimeoutForTests(testsToRun),
+            getAntiFlickerGuardModeForTests(testsToRun),
+            testsToRun
+          );
         clearOfferCodeNotices();
 
         testsToRun.forEach(function (test) {
@@ -10694,6 +10916,12 @@
                     }
                   }
                 }
+                markRipxTimingOnce('first_variant_apply_completed', {
+                  testId: test.id || null,
+                  type: test.type || null,
+                  source: PREVIEW_MODE ? 'preview' : 'live',
+                  matched: !!matched,
+                });
               } finally {
                 if (shouldTrackAntiFlicker && !antiFlickerDeferred) markAntiFlickerDone();
               }

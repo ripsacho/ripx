@@ -343,7 +343,38 @@ describe('storefrontScriptRuntime', () => {
       { id: 't1', type: 'price', antiFlickerMode: 'balanced' },
     ]);
     expect(snippet).toContain('data-ripx-af');
+    expect(snippet).toContain('data-ripx-af","price"');
+    expect(snippet).toContain('.price');
+    expect(snippet).not.toContain('body{opacity:0');
     expect(snippet).toContain('opacity:0');
+
+    const strictSnippet = buildEarlyStorefrontAntiFlickerBootstrap([
+      { id: 't1', type: 'content', antiFlickerMode: 'strict' },
+    ]);
+    expect(strictSnippet).toContain('data-ripx-af","strict"');
+    expect(strictSnippet).toContain('body{opacity:0');
+  });
+
+  it('includes price surface mapping selectors in price anti-flicker CSS', () => {
+    const snippet = buildEarlyStorefrontAntiFlickerBootstrap(
+      [
+        {
+          id: 't-price',
+          type: 'price',
+          antiFlickerMode: 'balanced',
+          priceSurfaceMappings: [
+            { surface: 'home', role: 'regular', selector: '.featured-card .custom-price' },
+          ],
+        },
+      ],
+      {
+        shopMappings: [{ surface: 'pdp', role: 'regular', selector: '.shop-product-price' }],
+      }
+    );
+
+    expect(snippet).toContain('.featured-card .custom-price');
+    expect(snippet).toContain('.shop-product-price');
+    expect(snippet).not.toContain('body{opacity:0');
   });
 
   it('keeps theme app embed script version aligned with backend runtime version', () => {
@@ -363,6 +394,7 @@ describe('storefrontScriptRuntime', () => {
 
     expect(liquid).toContain(`"version": "${SCRIPT_VERSION}"`);
     expect(liquid).toContain(`var version = '${SCRIPT_VERSION}'`);
+    expect(liquid).toContain(`/apps/ripx/script.js?v=${SCRIPT_VERSION}`);
     expect(loader).toContain(`|| '${SCRIPT_VERSION}'`);
     expect(frontendConstants).toContain(`RIPX_STOREFRONT_SCRIPT_VERSION = '${SCRIPT_VERSION}'`);
   });

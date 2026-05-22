@@ -223,21 +223,96 @@ function shouldBootstrapAntiFlickerForTests(activeTests) {
   });
 }
 
+function getEarlyAntiFlickerMode(activeTests) {
+  let hasPrice = false;
+  for (const test of activeTests || []) {
+    if (!test || typeof test !== 'object') {
+      continue;
+    }
+    const mode = String(test.antiFlickerMode || '')
+      .toLowerCase()
+      .trim();
+    if (mode === 'strict') {
+      return 'strict';
+    }
+    if (normalizeTestTypeForStorefront(test.type) === 'price') {
+      hasPrice = true;
+    }
+  }
+  return hasPrice ? 'price' : 'strict';
+}
+
+const DEFAULT_PRICE_ANTI_FLICKER_SELECTORS = [
+  '.price',
+  '.money',
+  '[data-product-price]',
+  '[data-price]',
+  '.price-item',
+  '.price-item--regular',
+  '.price-item__regular',
+  '.product-price',
+];
+
+function sanitizeAntiFlickerSelector(selector) {
+  const value = String(selector || '').trim();
+  if (!value || value.length > 300) {
+    return '';
+  }
+  if (
+    value.includes('{') ||
+    value.includes('}') ||
+    Array.from(value).some(char => char.charCodeAt(0) < 32)
+  ) {
+    return '';
+  }
+  return value;
+}
+
+function collectPriceAntiFlickerSelectors(activeTests, priceSurfaceRegistry = {}) {
+  const selectors = new Set(DEFAULT_PRICE_ANTI_FLICKER_SELECTORS);
+  const addMappings = mappings => {
+    normalizePriceSurfaceMappings(mappings).forEach(mapping => {
+      const selector = sanitizeAntiFlickerSelector(mapping.selector);
+      if (selector) {
+        selectors.add(selector);
+      }
+    });
+  };
+  (activeTests || []).forEach(test => {
+    if (test && normalizeTestTypeForStorefront(test.type) === 'price') {
+      addMappings(test.priceSurfaceMappings);
+    }
+  });
+  addMappings(priceSurfaceRegistry.shopMappings);
+  return Array.from(selectors).slice(0, 80);
+}
+
+function buildPriceAntiFlickerCss(activeTests, priceSurfaceRegistry = {}) {
+  return collectPriceAntiFlickerSelectors(activeTests, priceSurfaceRegistry)
+    .map(selector => `html[data-ripx-af="price"] ${selector}{opacity:0 !important;}`)
+    .join('');
+}
+
 /**
  * Synchronous snippet injected before the main storefront script so anti-flicker can hide the page
  * before the deferred runtime executes.
  * @param {object[]} activeTests
  * @returns {string}
  */
-function buildEarlyStorefrontAntiFlickerBootstrap(activeTests) {
+function buildEarlyStorefrontAntiFlickerBootstrap(activeTests, priceSurfaceRegistry = {}) {
   if (!shouldBootstrapAntiFlickerForTests(activeTests)) {
     return '';
   }
+  const mode = getEarlyAntiFlickerMode(activeTests);
+  const css =
+    mode === 'price'
+      ? buildPriceAntiFlickerCss(activeTests, priceSurfaceRegistry)
+      : 'html[data-ripx-af="strict"] body{opacity:0 !important;}';
   return (
     ';(function(){try{var h=document.documentElement;if(!h||h.getAttribute("data-ripx-af"))return;' +
-    'h.setAttribute("data-ripx-af","1");var id="ripx-anti-flicker-style";' +
+    `h.setAttribute("data-ripx-af","${mode}");var id="ripx-anti-flicker-style";` +
     'if(!document.getElementById(id)){var s=document.createElement("style");s.id=id;' +
-    's.textContent=\'html[data-ripx-af="1"] body{opacity:0 !important;}\';' +
+    `s.textContent=${JSON.stringify(css)};` +
     '(document.head||h).appendChild(s);}}catch(_e){}})();\n'
   );
 }

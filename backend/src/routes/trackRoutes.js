@@ -951,7 +951,10 @@ router.get(
     res.set('Cache-Control', cacheControl);
     res.send(
       `window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n` +
-        buildEarlyStorefrontAntiFlickerBootstrap(runtimeConfig.activeTests) +
+        buildEarlyStorefrontAntiFlickerBootstrap(
+          runtimeConfig.activeTests,
+          runtimeConfig.priceSurfaceRegistry
+        ) +
         scriptContents
     );
   })

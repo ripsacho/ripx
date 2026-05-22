@@ -2,9 +2,76 @@
   RipX App Embed — primary load via Shopify App Proxy (/apps/ripx/script.js).
   Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
   This prevents local/dev stores from silently falling back to a different RipX environment.
-  target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
+  target: head — the primary runtime is parser-blocking so the server bootstrap can run before body paint.
   ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.46).
 {% endcomment %}
+
+<script>
+  (function () {
+    var storageKey = '__ripx_price_af_hint_v1__';
+    var shopHost = '{{ request.host }}';
+    var version = '1.0.46';
+    var styleId = 'ripx-anti-flicker-style';
+    function isSafeSelector(selector) {
+      var value = String(selector || '').trim();
+      if (!value || value.length > 300) return false;
+      if (value.indexOf('{') !== -1 || value.indexOf('}') !== -1) return false;
+      for (var i = 0; i < value.length; i += 1) {
+        if (value.charCodeAt(i) < 32) return false;
+      }
+      return true;
+    }
+    try {
+      if (!window.sessionStorage || !document.documentElement) return;
+      var raw = window.sessionStorage.getItem(storageKey);
+      if (!raw) return;
+      var hint = JSON.parse(raw);
+      if (!hint || hint.version !== version || hint.shopHost !== window.location.hostname) return;
+      if (!hint.expiresAtMs || Date.now() > Number(hint.expiresAtMs)) {
+        window.sessionStorage.removeItem(storageKey);
+        return;
+      }
+      var selectors = Array.isArray(hint.selectors) ? hint.selectors.filter(isSafeSelector) : [];
+      if (!selectors.length) return;
+      var styleEl = document.getElementById(styleId);
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        (document.head || document.documentElement).appendChild(styleEl);
+      }
+      styleEl.textContent = selectors
+        .slice(0, 80)
+        .map(function (selector) {
+          return 'html[data-ripx-af="price"] ' + selector + '{opacity:0 !important;}';
+        })
+        .join('');
+      document.documentElement.setAttribute('data-ripx-af', 'price');
+      window.__RIPX_INLINE_PRICE_AF__ = { active: true, at: Date.now(), selectors: selectors.length };
+      setTimeout(function () {
+        if (
+          window.__RIPX_INLINE_PRICE_AF__ &&
+          window.__RIPX_INLINE_PRICE_AF__.active &&
+          document.documentElement.getAttribute('data-ripx-af') === 'price' &&
+          !(window.RipX && window.RipX.version)
+        ) {
+          document.documentElement.removeAttribute('data-ripx-af');
+          window.__RIPX_INLINE_PRICE_AF__.active = false;
+          window.__RIPX_INLINE_PRICE_AF__.releasedBy = 'inline_timeout';
+        }
+      }, Math.max(300, Math.min(1200, Number(hint.timeoutMs) || 900)));
+    } catch (_e) {}
+  })();
+</script>
+
+{% # theme-check-disable RemoteAsset, ParserBlockingScript %}
+<link rel="preconnect" href="https://{{ request.host }}" crossorigin>
+<script
+  id="ripx-storefront-runtime"
+  src="https://{{ request.host }}/apps/ripx/script.js?v=1.0.46"
+  crossorigin="anonymous"
+  fetchpriority="high"
+></script>
+{% # theme-check-enable RemoteAsset, ParserBlockingScript %}
 
 <script id="ripx-app-embed-config" type="application/json">
   {

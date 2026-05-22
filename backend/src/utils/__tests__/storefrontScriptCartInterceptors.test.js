@@ -437,6 +437,120 @@ describe('storefront script cart/add interceptors', () => {
     expect(chunkSizes).toEqual([50, 1]);
   });
 
+  it('uses live session cache for first paint while refreshing assignment in background', async () => {
+    const form = createCartAddFormStub();
+    const testId = '51515151-5151-4151-8151-515151515151';
+    const userId = 'user-session-cache';
+    const cacheKey = `ripx_live_variant_cache_v1_makripon.myshopify.com__${userId}__1.0.46__${encodeURIComponent(
+      testId
+    )}`;
+    const { fetchCalls } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        version: '1.0.46',
+        activeTests: [
+          {
+            id: testId,
+            type: 'price',
+            targetType: 'all-products',
+            targetIds: null,
+          },
+        ],
+      },
+      sessionStorage: {
+        [cacheKey]: JSON.stringify({
+          testId,
+          shopDomain: 'makripon.myshopify.com',
+          userId,
+          scriptVersion: '1.0.46',
+          persistedAtMs: Date.now(),
+          variant: {
+            variantId: 'variant-session-cache',
+            variantName: 'Variant A',
+            assignment_sig: 's'.repeat(64),
+            assignment_ts: '1710000000000',
+            assignment_user: 'user-session-cache',
+            config: {
+              priceMode: 'fixed',
+              price: 55,
+              priceApplicationMethod: 'direct_price_override',
+            },
+          },
+        }),
+      },
+      localStorage: {
+        __ripx_live_user_id_v1__: userId,
+      },
+      documentQuerySelector: () => null,
+      documentQuerySelectorAll: selector =>
+        String(selector || '').includes('form[action*="cart/add"]') ? [form] : [],
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/variants$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ variants: {} }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      },
+    });
+
+    for (let i = 0; i < 8 && form.__hiddenInputs.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const hiddenByName = new Map(form.__hiddenInputs.map(input => [input.name, input.value]));
+    expect(hiddenByName.get('properties[_ripx_price_test]')).toBe(testId);
+    expect(hiddenByName.get('properties[_ripx_variant]')).toBe('variant-session-cache');
+    expect(hiddenByName.get('properties[_ripx_target_unit]')).toBe('55.00');
+    expect(hiddenByName.get('properties[_ripx_assignment_sig]')).toBe('s'.repeat(64));
+    expect(fetchCalls.some(call => /\/track\/variants\?/.test(getFetchInputUrl(call)))).toBe(true);
+  });
+
+  it('writes a short-lived inline price anti-flicker hint only for eligible price tests', () => {
+    const testId = '61616161-6161-4161-8161-616161616161';
+    const { sessionStore } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        version: '1.0.46',
+        activeTests: [
+          {
+            id: testId,
+            type: 'price',
+            targetType: 'all-products',
+            targetIds: null,
+            priceSurfaceMappings: [{ surface: 'pdp', role: 'regular', selector: '.custom-price' }],
+          },
+        ],
+      },
+    });
+
+    const raw = sessionStore.get('__ripx_price_af_hint_v1__');
+    expect(raw).toBeTruthy();
+    const hint = JSON.parse(raw);
+    expect(hint).toMatchObject({
+      shopHost: 'example.com',
+      shopDomain: 'makripon.myshopify.com',
+      version: '1.0.46',
+    });
+    expect(hint.expiresAtMs).toBeGreaterThan(Date.now());
+    expect(hint.selectors).toContain('.custom-price');
+
+    const noPrice = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        version: '1.0.46',
+        activeTests: [{ id: 'content-test', type: 'content', targetType: 'all', targetIds: null }],
+      },
+    });
+    expect(noPrice.sessionStore.get('__ripx_price_af_hint_v1__')).toBeUndefined();
+  });
+
   it('keeps preview flag inert without explicit preview test context', () => {
     const { hooks } = bootStorefrontScriptHarness({ search: '?ab_preview=1' });
     expect(hooks.previewMode).toBe(true);
