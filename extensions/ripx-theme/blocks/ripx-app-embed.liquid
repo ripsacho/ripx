@@ -34,8 +34,7 @@
           if (
             window.__RIPX_INLINE_PREVIEW_AF__ &&
             window.__RIPX_INLINE_PREVIEW_AF__.active &&
-            document.documentElement.getAttribute('data-ripx-af') === 'strict' &&
-            !(window.RipX && window.RipX.version)
+            document.documentElement.getAttribute('data-ripx-af') === 'strict'
           ) {
             document.documentElement.removeAttribute('data-ripx-af');
             window.__RIPX_INLINE_PREVIEW_AF__.active = false;

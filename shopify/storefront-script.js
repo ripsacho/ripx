@@ -417,6 +417,13 @@
       antiFlickerState.timeoutId = null;
     }
     if (document.documentElement) document.documentElement.removeAttribute('data-ripx-af');
+    try {
+      if (window.__RIPX_INLINE_PREVIEW_AF__ && window.__RIPX_INLINE_PREVIEW_AF__.active) {
+        window.__RIPX_INLINE_PREVIEW_AF__.active = false;
+        window.__RIPX_INLINE_PREVIEW_AF__.releasedBy = 'runtime_' + releaseReason;
+        window.__RIPX_INLINE_PREVIEW_AF__.releasedAt = Date.now();
+      }
+    } catch (_eInlinePreviewRelease) {}
     persistRipxLiveDiagnostics('anti_flicker_release', {
       reason: releaseReason,
       pendingAtRelease: pendingAtRelease,
