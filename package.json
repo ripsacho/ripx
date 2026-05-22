@@ -111,7 +111,7 @@
   },
   "dependencies": {
     "@google-cloud/bigquery": "^7.3.0",
-    "@shopify/shopify-api": "^9.0.0",
+    "@shopify/shopify-api": "^13.0.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "bcrypt": "^5.1.1",
     "body-parser": "^1.20.2",
