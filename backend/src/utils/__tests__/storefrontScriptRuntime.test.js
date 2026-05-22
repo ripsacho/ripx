@@ -395,6 +395,8 @@ describe('storefrontScriptRuntime', () => {
     expect(liquid).toContain(`"version": "${SCRIPT_VERSION}"`);
     expect(liquid).toContain(`var version = '${SCRIPT_VERSION}'`);
     expect(liquid).toContain(`/apps/ripx/script.js?v=${SCRIPT_VERSION}`);
+    expect(liquid).toContain('installPreviewGuardIfNeeded');
+    expect(liquid).toContain('html[data-ripx-af="strict"] body{opacity:0 !important;}');
     expect(loader).toContain(`|| '${SCRIPT_VERSION}'`);
     expect(frontendConstants).toContain(`RIPX_STOREFRONT_SCRIPT_VERSION = '${SCRIPT_VERSION}'`);
   });

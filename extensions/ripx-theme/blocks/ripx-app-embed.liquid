@@ -12,6 +12,41 @@
     var shopHost = '{{ request.host }}';
     var version = '1.0.46';
     var styleId = 'ripx-anti-flicker-style';
+    function installPreviewGuardIfNeeded() {
+      try {
+        if (!document.documentElement || !window.location) return false;
+        var params = new URLSearchParams(window.location.search || '');
+        var isPreview =
+          params.get('ab_preview') === '1' ||
+          !!params.get('ab_preview_test') ||
+          !!params.get('ab_preview_variant');
+        if (!isPreview) return false;
+        var styleEl = document.getElementById(styleId);
+        if (!styleEl) {
+          styleEl = document.createElement('style');
+          styleEl.id = styleId;
+          (document.head || document.documentElement).appendChild(styleEl);
+        }
+        styleEl.textContent = 'html[data-ripx-af="strict"] body{opacity:0 !important;}';
+        document.documentElement.setAttribute('data-ripx-af', 'strict');
+        window.__RIPX_INLINE_PREVIEW_AF__ = { active: true, at: Date.now() };
+        setTimeout(function () {
+          if (
+            window.__RIPX_INLINE_PREVIEW_AF__ &&
+            window.__RIPX_INLINE_PREVIEW_AF__.active &&
+            document.documentElement.getAttribute('data-ripx-af') === 'strict' &&
+            !(window.RipX && window.RipX.version)
+          ) {
+            document.documentElement.removeAttribute('data-ripx-af');
+            window.__RIPX_INLINE_PREVIEW_AF__.active = false;
+            window.__RIPX_INLINE_PREVIEW_AF__.releasedBy = 'inline_preview_timeout';
+          }
+        }, 1800);
+        return true;
+      } catch (_ePreviewAf) {
+        return false;
+      }
+    }
     function isSafeSelector(selector) {
       var value = String(selector || '').trim();
       if (!value || value.length > 300) return false;
@@ -22,6 +57,7 @@
       return true;
     }
     try {
+      if (installPreviewGuardIfNeeded()) return;
       if (!window.sessionStorage || !document.documentElement) return;
       var raw = window.sessionStorage.getItem(storageKey);
       if (!raw) return;
