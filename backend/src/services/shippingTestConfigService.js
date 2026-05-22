@@ -140,6 +140,16 @@ function normalizeShippingVariantConfig(config = {}) {
     label: toOptionalString(raw.label, 80),
     profile_id: toOptionalString(raw.profile_id || raw.profileId, 200),
     method_handles: toStringArray(raw.method_handles || raw.methodHandles),
+    delivery_method_names: toStringArray(
+      raw.delivery_method_names || raw.deliveryMethodNames || raw.method_names || raw.methodNames
+    ),
+    delivery_action: toLowerString(
+      raw.delivery_action || raw.deliveryAction || raw.action || 'hide'
+    ),
+    delivery_rename_to: toOptionalString(
+      raw.delivery_rename_to || raw.deliveryRenameTo || raw.rename_to,
+      120
+    ),
     zone_countries: toCountryCodes(raw.zone_countries || raw.zoneCountries),
     execution_hint: normalizeExecutionHint(raw.execution_hint || raw.executionHint),
     metadata: raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {},

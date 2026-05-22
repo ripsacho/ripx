@@ -1,4 +1,11 @@
 const shopifyService = require('./shopifyService');
+const fs = require('fs');
+const path = require('path');
+
+const CHECKOUT_DISCOUNT_EXTENSION_TOML = path.resolve(
+  __dirname,
+  '../../../extensions/ripx-checkout-discount/shopify.extension.toml'
+);
 
 function toLower(value) {
   return String(value || '')
@@ -16,6 +23,15 @@ function parseScopes() {
 function hasAnyScope(scopes = [], allowed = []) {
   const set = new Set((Array.isArray(scopes) ? scopes : []).map(scope => String(scope).trim()));
   return allowed.some(scope => set.has(scope));
+}
+
+function isCheckoutDiscountNetworkAccessEnabled() {
+  try {
+    const toml = fs.readFileSync(CHECKOUT_DISCOUNT_EXTENSION_TOML, 'utf8');
+    return /\[extensions\.capabilities\][\s\S]*?\bnetwork_access\s*=\s*true\b/i.test(toml);
+  } catch (_error) {
+    return false;
+  }
 }
 
 function derivePlanTier(plan = {}) {
@@ -95,7 +111,9 @@ function buildPlanCapabilities(planTier, scopes = []) {
     planTier === 'plus' || planTier === 'advanced' || planTier === 'development';
   const deliveryCustomizationAvailable = planTier === 'plus' || planTier === 'development';
   const discountFunctionAvailable = hasReadDiscounts || hasWriteDiscounts;
-  const networkAccessLikely = planTier === 'plus' || planTier === 'development';
+  const networkAccessEnabled = isCheckoutDiscountNetworkAccessEnabled();
+  const networkAccessLikely =
+    networkAccessEnabled && (planTier === 'plus' || planTier === 'development');
 
   const warnings = [];
   if (!hasReadShipping && !hasWriteShipping) {
@@ -103,6 +121,16 @@ function buildPlanCapabilities(planTier, scopes = []) {
   }
   if (!hasReadDiscounts && !hasWriteDiscounts) {
     warnings.push('SHOPIFY_SCOPES is missing read_discounts/write_discounts.');
+  }
+  if (discountFunctionAvailable && !networkAccessEnabled) {
+    warnings.push(
+      'Checkout discount extension network_access is disabled; shipping resolver fetch will not run.'
+    );
+  }
+  if (discountFunctionAvailable && networkAccessEnabled && !networkAccessLikely) {
+    warnings.push(
+      'Checkout discount network_access is enabled, but Shopify may restrict network fetch on this plan.'
+    );
   }
 
   return {
@@ -121,13 +149,20 @@ function buildPlanCapabilities(planTier, scopes = []) {
           : 'Delivery customizations are typically limited to Plus/dev stores.',
       },
       discount_function: {
-        available: discountFunctionAvailable,
+        available: discountFunctionAvailable && networkAccessLikely,
+        scopes_available: discountFunctionAvailable,
+        network_access_enabled: networkAccessEnabled,
         network_fetch_supported: networkAccessLikely,
-        reason: discountFunctionAvailable
-          ? networkAccessLikely
-            ? 'Discount function path with fetch should be available.'
-            : 'Discount function path is available, but network fetch may be restricted.'
-          : 'Discount scopes are not configured.',
+        reason:
+          discountFunctionAvailable && networkAccessLikely
+            ? networkAccessLikely
+              ? 'Discount function path with fetch should be available.'
+              : 'Discount function path is available, but network fetch may be restricted.'
+            : !discountFunctionAvailable
+              ? 'Discount scopes are not configured.'
+              : !networkAccessEnabled
+                ? 'Checkout discount extension network_access is disabled.'
+                : 'Discount function network fetch may be restricted on this plan.',
       },
       manual: {
         available: true,

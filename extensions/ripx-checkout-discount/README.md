@@ -20,7 +20,7 @@ RipX cannot click Shopify Admin for you. Work through this once per production a
  npm run shopify:checkout-discount:sync-config
 ```
 
-This writes `src/ripxConfig.js` from `APP_URL` (or `RIPX_PRICE_RESOLVE_BATCH_URL`) and `RIPX_CHECKOUT_PRICE_SECRET`.
+This writes `src/ripxConfig.js` from `APP_URL` (or `RIPX_PRICE_RESOLVE_BATCH_URL`) and `RIPX_CHECKOUT_PRICE_SECRET`. If Git shows this file modified after sync, treat it as a local/generated build artifact and do not commit the secret-bearing diff.
 
 3. **Build the WASM** — From repo root:
 
@@ -83,6 +83,7 @@ See also `**backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`\*\* for the long-term pr
 
 - `**npm run shopify:checkout-discount:sync-config`\*\* — generates `src/ripxConfig.js` from root `.env`:
   - `**RIPX_PRICE_RESOLVE_BATCH_URL**` if set, else `**APP_URL**` + `/api/track/price-resolve-batch`
+  - `**RIPX_SHIPPING_RESOLVE_BATCH_URL**` if set, else `**APP_URL**` + `/api/track/shipping-resolve-batch`
   - `**RIPX_CHECKOUT_PRICE_SECRET**` optional
 - `**npm run shopify:checkout-ui:sync-config`\*\* — generates ignored checkout UI config at `extensions/ripx-checkout-ui/src/ripxConfig.generated.js`.
 - Or edit `**src/ripxConfig.js**` manually and run `**npm run shopify:checkout-discount:build**` only.

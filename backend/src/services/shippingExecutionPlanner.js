@@ -28,7 +28,29 @@ function isAdapterAvailable(capabilityReport, adapter) {
   return Boolean(support?.available);
 }
 
-function resolveExecutionAdapter(strategy, executionHint = 'auto', capabilityReport = null) {
+function hasDeliveryCustomizationTargets(config = {}) {
+  const candidates = [
+    config.delivery_method_names,
+    config.deliveryMethodNames,
+    config.method_names,
+    config.methodNames,
+  ];
+  return candidates.some(value => {
+    if (Array.isArray(value)) {
+      return value.some(item => String(item || '').trim());
+    }
+    return String(value || '')
+      .split(/\n|,/)
+      .some(item => item.trim());
+  });
+}
+
+function resolveExecutionAdapter(
+  strategy,
+  executionHint = 'auto',
+  capabilityReport = null,
+  config = {}
+) {
   const hint = String(executionHint || 'auto')
     .trim()
     .toLowerCase();
@@ -45,11 +67,14 @@ function resolveExecutionAdapter(strategy, executionHint = 'auto', capabilityRep
     return 'delivery_customization';
   }
   if (hint === 'auto' && strategy === 'carrier_quote') {
-    if (isAdapterAvailable(capabilityReport, 'delivery_customization')) {
-      return 'delivery_customization';
-    }
     if (isAdapterAvailable(capabilityReport, 'carrier_service')) {
       return 'carrier_service';
+    }
+    if (
+      hasDeliveryCustomizationTargets(config) &&
+      isAdapterAvailable(capabilityReport, 'delivery_customization')
+    ) {
+      return 'delivery_customization';
     }
   }
   return requiredAdapterForStrategy(strategy);
@@ -63,14 +88,19 @@ function buildShippingExecutionPlan(test, capabilityReport) {
     const adapter = resolveExecutionAdapter(
       config.strategy,
       config.execution_hint,
-      capabilityReport
+      capabilityReport,
+      config
     );
     const actionable = isActionableShippingConfig(config);
     const adapterAvailable = adapter === 'manual' || isAdapterAvailable(capabilityReport, adapter);
+    const adapterConfigured =
+      adapter !== 'delivery_customization' || hasDeliveryCustomizationTargets(config);
     const status = actionable ? (adapterAvailable ? 'ready' : 'manual_required') : 'control';
+    const resolvedStatus =
+      actionable && status === 'ready' && !adapterConfigured ? 'manual_required' : status;
     const executionMode = !actionable
       ? 'control'
-      : status === 'manual_required' || adapter === 'manual'
+      : resolvedStatus === 'manual_required' || adapter === 'manual'
         ? 'manual'
         : adapter === 'discount_function'
           ? 'discount_only'
@@ -91,7 +121,7 @@ function buildShippingExecutionPlan(test, capabilityReport) {
               ? 'Manual'
               : 'Control',
       actionable,
-      status,
+      status: resolvedStatus,
       config,
     };
   });

@@ -17,6 +17,17 @@ describe('shippingCapabilityPlanner', () => {
     expect(caps.adapter_support.discount_function.available).toBe(false);
   });
 
+  it('requires network access support for discount function shipping fetch', () => {
+    const plusCaps = buildPlanCapabilities('plus', ['write_discounts']);
+    expect(plusCaps.adapter_support.discount_function.available).toBe(true);
+    expect(plusCaps.adapter_support.discount_function.network_access_enabled).toBe(true);
+
+    const advancedCaps = buildPlanCapabilities('advanced', ['write_discounts']);
+    expect(advancedCaps.adapter_support.discount_function.available).toBe(false);
+    expect(advancedCaps.adapter_support.discount_function.scopes_available).toBe(true);
+    expect(advancedCaps.warnings.join(' ')).toContain('network fetch');
+  });
+
   it('recommends carrier service when available', () => {
     const path = recommendExecutionPath({
       adapter_support: {

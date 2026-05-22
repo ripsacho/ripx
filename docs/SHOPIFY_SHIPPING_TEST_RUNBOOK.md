@@ -6,7 +6,7 @@ Use this runbook when rolling out RipX shipping tests on a Shopify store.
 
 - `discount_function` checkout runtime for `threshold_free_shipping`, `discount_percentage`, `discount_fixed`, and `free_shipping`
 - `carrier_service` runtime for `flat_rate` and provider-backed `carrier_quote`
-- `delivery_customization` auto-apply for Plus/dev stores when that adapter is the best fit
+- `delivery_customization` auto-apply for Plus/dev stores when a variant hides, renames, or reorders existing delivery methods
 - Cart-qualified product targeting for shipping tests: `all carts`, `carts with selected products`, and optional excluded products
 - Managed resource cleanup for RipX-created carrier services, automatic discounts, and delivery customizations
 
@@ -18,7 +18,8 @@ Use this runbook when rolling out RipX shipping tests on a Shopify store.
    - `RIPX_SHIPPING_RESOLVE_BATCH_URL`
    - `RIPX_SHIPPING_CARRIER_CALLBACK_URL`
 4. Set `RIPX_CHECKOUT_PRICE_SECRET` so checkout resolver endpoints are protected.
-5. Re-run `npm run shopify:checkout-discount:sync-config` before building the checkout discount extension.
+5. Keep `network_access = true` in `extensions/ripx-checkout-discount/shopify.extension.toml` for fetch-based shipping discounts.
+6. Re-run `npm run shopify:checkout-discount:sync-config` before building the checkout discount extension.
 
 ## Readiness Flow
 
@@ -38,12 +39,22 @@ Use this runbook when rolling out RipX shipping tests on a Shopify store.
 
 ## Carrier Quote Providers
 
-RipX now supports a provider-ready `carrier_quote` contract.
+RipX now supports a provider-ready `carrier_quote` contract through CarrierService.
 
 - `static_rate`: fixed quote amount for one fallback rate
 - `country_table`: destination-aware fallback rates like `US:5.00,CA:7.50,*:9.00`
 
 Provider configuration lives in variant metadata from the shipping wizard.
+
+## Delivery Customization Rules
+
+Delivery Customization does not generate shipping quote amounts. Use it only for existing checkout delivery options:
+
+- `hide`: remove targeted delivery method names.
+- `rename`: rename targeted delivery method names; requires `delivery_rename_to`.
+- `reorder`: move targeted delivery method names to the configured order.
+
+Variants using `execution_hint: delivery_customization` must include `delivery_method_names` or they remain `manual_required` in diagnostics.
 
 ## Cleanup Rules
 
@@ -54,5 +65,5 @@ Provider configuration lives in variant metadata from the shipping wizard.
 ## Known Rollout Limits
 
 - Live provider credentials and real carrier account behavior still need store-specific validation.
-- `carrier_quote` on Delivery Customization still depends on the store’s deployed function and runtime logic.
+- `carrier_quote` requires a configured quote provider before CarrierService auto-provisioning can return live rates.
 - Multi-profile or combined-rate shops still require explicit merchant QA.

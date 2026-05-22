@@ -57,8 +57,9 @@ If unset, anyone who discovers your batch URL could call `POST /api/track/price-
 3. From repo root on the server:  
    `npm run shopify:checkout-discount:sync-config`  
    (writes `extensions/ripx-checkout-discount/src/ripxConfig.js` from `.env`.)
-4. **Rebuild and deploy** the checkout discount extension (e.g. `shopify app deploy` or your CI) so Shopify runs the updated function.
-5. Restart the API if needed.
+4. If Git shows `extensions/ripx-checkout-discount/src/ripxConfig.js` modified after sync, treat it as a local/generated build artifact and do not commit the secret-bearing diff.
+5. **Rebuild and deploy** the checkout discount extension (e.g. `shopify app deploy` or your CI) so Shopify runs the updated function.
+6. Restart the API if needed.
 
 ---
 
@@ -128,7 +129,7 @@ Set when the **browser origin** for the UI differs from `APP_URL` (unusual for s
 
 ## 9. After `git pull` on the server (checkout extension config)
 
-If `extensions/ripx-checkout-discount/src/ripxConfig.js` is **generated** from `.env`, do not keep long-lived manual edits there.
+If `extensions/ripx-checkout-discount/src/ripxConfig.js` is **generated** from `.env`, do not keep long-lived manual edits or committed secret diffs there.
 
 1. `git restore extensions/ripx-checkout-discount/src/ripxConfig.js` (if Git blocks pull due to local changes).
 2. `git pull`

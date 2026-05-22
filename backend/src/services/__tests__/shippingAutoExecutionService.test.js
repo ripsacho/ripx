@@ -30,7 +30,13 @@ describe('shippingAutoExecutionService', () => {
     const spy = jest.spyOn(shopifyService, 'requestAdminGraphql');
     spy
       .mockResolvedValueOnce({
-        data: { shop: { id: 'shop-1', myshopifyDomain: 'demo.myshopify.com', plan: {} } },
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'demo.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
       })
       .mockResolvedValueOnce({
         data: {
@@ -74,7 +80,13 @@ describe('shippingAutoExecutionService', () => {
     const spy = jest.spyOn(shopifyService, 'requestAdminGraphql');
     spy
       .mockResolvedValueOnce({
-        data: { shop: { id: 'shop-1', myshopifyDomain: 'demo.myshopify.com', plan: {} } },
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'demo.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
       })
       .mockResolvedValueOnce({
         data: {
@@ -263,6 +275,20 @@ describe('shippingAutoExecutionService', () => {
             userErrors: [],
           },
         },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [
+              {
+                id: 'gid://shopify/Metafield/1',
+                namespace: 'delivery-customization',
+                key: 'function-configuration',
+              },
+            ],
+            userErrors: [],
+          },
+        },
       });
 
     const result = await executeShippingTestPlan({
@@ -279,6 +305,7 @@ describe('shippingAutoExecutionService', () => {
               strategy: 'carrier_quote',
               profile_id: 'gid://shopify/DeliveryProfile/123',
               execution_hint: 'delivery_customization',
+              delivery_method_names: ['Standard Shipping'],
             },
           },
         ],
@@ -294,50 +321,19 @@ describe('shippingAutoExecutionService', () => {
     expect(action.status).toBe('created');
     expect(action.details?.created).toBe(true);
     expect(action.details?.customization?.id).toContain('DeliveryCustomization');
+    expect(action.details?.config?.variant_rules[0]?.method_names).toEqual(['Standard Shipping']);
   });
 
-  it('auto-selects delivery customization for carrier_quote in apply mode on plus', async () => {
-    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
-    graphSpy
-      .mockResolvedValueOnce({
-        data: {
-          shop: {
-            id: 'shop-1',
-            myshopifyDomain: 'plus.myshopify.com',
-            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
-          },
+  it('auto-selects carrier service for carrier_quote and requires a quote provider', async () => {
+    jest.spyOn(shopifyService, 'requestAdminGraphql').mockResolvedValueOnce({
+      data: {
+        shop: {
+          id: 'shop-1',
+          myshopifyDomain: 'plus.myshopify.com',
+          plan: { displayName: 'Shopify Plus', shopifyPlus: true },
         },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          shopifyFunctions: {
-            nodes: [
-              {
-                id: 'fn-delivery-1',
-                title: 'RipX Shipping Delivery Customization',
-                apiType: 'DELIVERY_CUSTOMIZATION',
-              },
-            ],
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          deliveryCustomizations: { edges: [] },
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          deliveryCustomizationCreate: {
-            deliveryCustomization: {
-              id: 'gid://shopify/DeliveryCustomization/2',
-              title: 'RipX Shipping Delivery test-4 Variant Auto',
-              enabled: true,
-            },
-            userErrors: [],
-          },
-        },
-      });
+      },
+    });
 
     const result = await executeShippingTestPlan({
       test: {
@@ -363,9 +359,9 @@ describe('shippingAutoExecutionService', () => {
     });
 
     const action = result.execution_result.actions[0];
-    expect(action.execution_adapter).toBe('delivery_customization');
-    expect(action.status).toBe('created');
-    expect(action.details?.created).toBe(true);
+    expect(action.execution_adapter).toBe('carrier_service');
+    expect(action.status).toBe('manual_required');
+    expect(action.details?.message).toContain('quote provider');
   });
 
   it('creates carrier service for carrier_quote when a provider is configured', async () => {

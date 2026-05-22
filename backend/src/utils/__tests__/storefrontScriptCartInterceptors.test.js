@@ -658,6 +658,52 @@ describe('storefront script cart/add interceptors', () => {
     expect(windowObj.history.replaceState).not.toHaveBeenCalled();
   });
 
+  it('uses cached preview variant before refreshing preview assignment in background', async () => {
+    const testId = '77777777-7777-4777-8777-777777777777';
+    const scopeKey = encodeURIComponent(['variant-a', 'Variant A'].join('\u0001'));
+    const { windowObj, fetchCalls } = bootStorefrontScriptHarness({
+      search:
+        '?ab_preview=1&ab_preview_simple=1&ab_preview_test=77777777-7777-4777-8777-777777777777&ab_preview_variant=variant-a&ab_preview_variant_name=Variant%20A',
+      runtimeConfig: {
+        apiUrl: 'https://app.example.com/api',
+      },
+      sessionStorage: {
+        [`ripx_preview_variant_cache_v2_${testId}__${scopeKey}`]: JSON.stringify({
+          variant: {
+            variantId: 'variant-a',
+            variantName: 'Variant A',
+            config: { price: 9.99, priceMode: 'fixed' },
+          },
+          persistedAtMs: Date.now(),
+        }),
+      },
+      fetchImpl: () =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              variant: {
+                variantId: 'variant-a',
+                variantName: 'Variant A',
+                config: { price: 8.99, priceMode: 'fixed' },
+              },
+            }),
+        }),
+    });
+
+    const variant = await windowObj.RipX.getVariant(testId);
+
+    expect(variant).toMatchObject({
+      variantId: 'variant-a',
+      config: { price: 9.99, priceMode: 'fixed' },
+      isPreview: true,
+    });
+    expect(fetchCalls.some(call => String(call.input || '').includes('/track/preview?'))).toBe(
+      true
+    );
+  });
+
   it('resets stale preview state when customer view requests a new preview session', () => {
     const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
       search:

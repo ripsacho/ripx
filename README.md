@@ -78,8 +78,8 @@ Use this before enabling auto-applied shipping tests on a real shop:
 1. Add `read_shipping` and `write_shipping` to both `shopify.app.toml` and `SHOPIFY_SCOPES`, then reinstall/update app scopes on the shop.
 2. Set `RIPX_SHIPPING_CARRIER_CALLBACK_URL` when Shopify cannot reach `APP_URL`, or verify `APP_URL/api/track/shipping-carrier-rates` is publicly reachable.
 3. For `flat_rate`, confirm the shop plan supports carrier-calculated shipping before relying on `carrier_service` auto-apply.
-4. For `carrier_quote`, prefer `delivery_customization` on Plus shops when the delivery customization function is deployed; RipX now auto-selects this path in `auto` mode when available.
-5. Configure a quote provider for any `carrier_quote` variant that should auto-provision via CarrierService. RipX currently supports `static_rate` and `country_table` fallback providers in the shipping wizard.
+4. For `carrier_quote`, use CarrierService when RipX needs to return quote amounts. Configure a quote provider for any `carrier_quote` variant that should auto-provision via CarrierService; RipX currently supports `static_rate` and `country_table` fallback providers in the shipping wizard.
+5. Use `delivery_customization` only when the variant is meant to hide, rename, or reorder existing checkout delivery methods, and provide delivery method names for the target rates.
 6. Run `npm run verify:shipping-readiness`, then use `Shipping diagnostics` from the test review or detail screen before apply.
 7. Treat the diagnostics split as the source of truth:
    - `automatic`: Carrier Service or Delivery Customization can fully provision the variant.

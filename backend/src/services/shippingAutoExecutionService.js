@@ -33,6 +33,26 @@ function toSafeVariantTitle(value, fallback) {
   return raw.replace(/\s+/g, ' ').slice(0, 40);
 }
 
+function normalizeLower(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function toStringArray(input) {
+  if (Array.isArray(input)) {
+    return input
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 50);
+  }
+  return String(input || '')
+    .split(/\n|,/)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
 function buildShippingDiscountTitle(test, variant) {
   const testId =
     String(test?.id || '')
@@ -61,6 +81,44 @@ function buildShippingDeliveryCustomizationTitle(test, variant) {
   const variantLabel = toSafeVariantTitle(variant?.name, 'Variant');
   const joined = `${DEFAULT_SHIPPING_DELIVERY_TITLE_PREFIX} ${testId} ${variantLabel}`.trim();
   return joined.slice(0, 255);
+}
+
+function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
+  const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+  const methodNames = toStringArray(
+    cfg.delivery_method_names || cfg.deliveryMethodNames || cfg.method_names || cfg.methodNames
+  );
+  if (methodNames.length === 0) {
+    throw new Error(
+      'Delivery customization requires delivery_method_names/method_names because it can only hide, rename, or reorder existing checkout delivery methods.'
+    );
+  }
+  const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
+  const renameTo = String(
+    cfg.delivery_rename_to || cfg.deliveryRenameTo || cfg.rename_to || ''
+  ).trim();
+  if (action === 'rename' && !renameTo) {
+    throw new Error('Delivery customization rename action requires delivery_rename_to.');
+  }
+  const variantId = String(variant?.id || variant?.name || 'variant').trim();
+  return {
+    phase: 'delivery_method',
+    test_id: String(test?.id || '').trim() || null,
+    test_name: String(test?.name || '').trim() || null,
+    assignment_keys: {
+      test: '_ripx_price_test',
+      variant: '_ripx_variant',
+    },
+    variant_rules: [
+      {
+        variant_id: variantId,
+        variant_name: String(variant?.name || variantId || 'Variant').trim(),
+        action: ['hide', 'rename', 'reorder'].includes(action) ? action : 'hide',
+        method_names: methodNames,
+        rename_to: renameTo,
+      },
+    ],
+  };
 }
 
 function toFiniteNumber(value) {
@@ -392,6 +450,23 @@ async function ensureShippingDeliveryCustomization({
     };
   }
 
+  let functionConfig;
+  try {
+    functionConfig = buildShippingDeliveryCustomizationConfig(test, variant);
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'manual_required',
+      message: error?.message || 'Delivery customization requires delivery method targets.',
+      created: false,
+      existing: false,
+      customization: null,
+      function: null,
+      config: null,
+      dry_run: !apply,
+    };
+  }
+
   const functionNodes = await fetchShopifyFunctions(shopDomain, accessToken);
   const chosenFunction = pickDeliveryCustomizationFunction(functionNodes);
   if (!chosenFunction?.id) {
@@ -404,6 +479,7 @@ async function ensureShippingDeliveryCustomization({
       existing: false,
       customization: null,
       function: null,
+      config: functionConfig,
       dry_run: !apply,
     };
   }
@@ -417,10 +493,42 @@ async function ensureShippingDeliveryCustomization({
         .toLowerCase() === customizationTitle.toLowerCase()
   );
   if (existing?.id) {
+    if (apply) {
+      const metafieldResult = await setShippingDeliveryCustomizationMetafield(
+        shopDomain,
+        accessToken,
+        existing.id,
+        functionConfig
+      );
+      if (metafieldResult.user_errors.length > 0) {
+        return {
+          ok: false,
+          status: 'configure_failed',
+          message:
+            metafieldResult.user_errors[0]?.message ||
+            'Delivery customization exists, but config metafield could not be saved.',
+          created: false,
+          existing: true,
+          customization: existing,
+          function: {
+            id: chosenFunction.id,
+            title: chosenFunction.title || null,
+            apiType: chosenFunction.apiType || null,
+          },
+          config: functionConfig,
+          metafields: metafieldResult.metafields,
+          user_errors: metafieldResult.user_errors,
+          title: customizationTitle,
+          dry_run: false,
+        };
+      }
+    }
     return {
       ok: true,
-      status: 'already_exists',
-      message: 'Delivery customization already exists.',
+      status: apply ? 'configured' : 'already_exists',
+      message: apply
+        ? 'Delivery customization already exists and was configured.'
+        : 'Delivery customization already exists.',
       created: false,
       existing: true,
       customization: existing,
@@ -429,6 +537,7 @@ async function ensureShippingDeliveryCustomization({
         title: chosenFunction.title || null,
         apiType: chosenFunction.apiType || null,
       },
+      config: functionConfig,
       title: customizationTitle,
       dry_run: !apply,
     };
@@ -447,6 +556,7 @@ async function ensureShippingDeliveryCustomization({
         title: chosenFunction.title || null,
         apiType: chosenFunction.apiType || null,
       },
+      config: functionConfig,
       title: customizationTitle,
       dry_run: true,
     };
@@ -496,7 +606,37 @@ async function ensureShippingDeliveryCustomization({
         title: chosenFunction.title || null,
         apiType: chosenFunction.apiType || null,
       },
+      config: functionConfig,
       user_errors: userErrors,
+      title: customizationTitle,
+      dry_run: false,
+    };
+  }
+
+  const metafieldResult = await setShippingDeliveryCustomizationMetafield(
+    shopDomain,
+    accessToken,
+    createPayload.deliveryCustomization.id,
+    functionConfig
+  );
+  if (metafieldResult.user_errors.length > 0) {
+    return {
+      ok: false,
+      status: 'configure_failed',
+      message:
+        metafieldResult.user_errors[0]?.message ||
+        'Delivery customization was created, but config metafield could not be saved.',
+      created: true,
+      existing: false,
+      customization: createPayload.deliveryCustomization,
+      function: {
+        id: chosenFunction.id,
+        title: chosenFunction.title || null,
+        apiType: chosenFunction.apiType || null,
+      },
+      config: functionConfig,
+      metafields: metafieldResult.metafields,
+      user_errors: metafieldResult.user_errors,
       title: customizationTitle,
       dry_run: false,
     };
@@ -514,6 +654,8 @@ async function ensureShippingDeliveryCustomization({
       title: chosenFunction.title || null,
       apiType: chosenFunction.apiType || null,
     },
+    config: functionConfig,
+    metafields: metafieldResult.metafields,
     title: customizationTitle,
     dry_run: false,
   };
@@ -596,6 +738,52 @@ function toGraphqlUserErrors(userErrors = []) {
     message: err?.message || null,
     code: err?.code || null,
   }));
+}
+
+async function setShippingDeliveryCustomizationMetafield(
+  shopDomain,
+  accessToken,
+  customizationId,
+  config
+) {
+  const mutation = `
+    mutation ripxSetShippingDeliveryCustomizationMetafield($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields {
+          id
+          namespace
+          key
+        }
+        userErrors {
+          field
+          message
+          code
+        }
+      }
+    }
+  `;
+  const variables = {
+    metafields: [
+      {
+        ownerId: customizationId,
+        namespace: 'delivery-customization',
+        key: 'function-configuration',
+        type: 'json',
+        value: JSON.stringify(config),
+      },
+    ],
+  };
+  const response = await shopifyService.requestAdminGraphql(
+    shopDomain,
+    accessToken,
+    mutation,
+    variables
+  );
+  const payload = response?.data?.metafieldsSet || {};
+  return {
+    metafields: payload.metafields || [],
+    user_errors: toGraphqlUserErrors(payload.userErrors),
+  };
 }
 
 async function ensureShippingAutomaticDiscount({

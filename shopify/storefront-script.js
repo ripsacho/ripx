@@ -2234,17 +2234,18 @@
       if (embeddedPreviewVariant) {
         return embeddedPreviewVariant;
       }
+      var cachedPreviewVariant = readPreviewVariantCache(testId);
+      if (cachedPreviewVariant) {
+        getPreviewVariantSingleFlight(testId);
+        return normalizeVariantForStorefront({
+          ...cachedPreviewVariant,
+          isPreview: true,
+        });
+      }
       const previewVariant = await getPreviewVariantSingleFlight(testId);
       if (previewVariant) {
         return normalizeVariantForStorefront({
           ...previewVariant,
-          isPreview: true,
-        });
-      }
-      var cachedPreviewVariant = readPreviewVariantCache(testId);
-      if (cachedPreviewVariant) {
-        return normalizeVariantForStorefront({
-          ...cachedPreviewVariant,
           isPreview: true,
         });
       }
@@ -10916,12 +10917,22 @@
                     }
                   }
                 }
-                markRipxTimingOnce('first_variant_apply_completed', {
-                  testId: test.id || null,
-                  type: test.type || null,
-                  source: PREVIEW_MODE ? 'preview' : 'live',
-                  matched: !!matched,
-                });
+                var previewFocusAppliesLater =
+                  previewFocusTest &&
+                  !testTypeIsPrice(test) &&
+                  !(
+                    variant &&
+                    variant.config &&
+                    (testTypeIsThemeFamily(test) || variantConfigLooksTheme(variant.config))
+                  );
+                if (!previewFocusAppliesLater) {
+                  markRipxTimingOnce('first_variant_apply_completed', {
+                    testId: test.id || null,
+                    type: test.type || null,
+                    source: PREVIEW_MODE ? 'preview' : 'live',
+                    matched: !!matched,
+                  });
+                }
               } finally {
                 if (shouldTrackAntiFlicker && !antiFlickerDeferred) markAntiFlickerDone();
               }
@@ -10977,6 +10988,12 @@
                   }
                 }
               }
+              markRipxTimingOnce('first_variant_apply_completed', {
+                testId: PREVIEW_TEST_ID || null,
+                type: previewTest ? previewTest.type || null : null,
+                source: 'preview_focus',
+                matched: true,
+              });
             }
           });
         }

@@ -96,6 +96,45 @@ function verifyAppProxySignature(query) {
   return crypto.timingSafeEqual(signatureBuffer, digestBuffer);
 }
 
+function buildPreviewFlashGuardTag() {
+  return (
+    '<script>(function(){' +
+    'try{' +
+    'var root=document.documentElement;' +
+    'if(!root||window.__RIPX_PREVIEW_FLASH_GUARD__)return;' +
+    'window.__RIPX_PREVIEW_FLASH_GUARD__=true;' +
+    'root.setAttribute("data-ripx-preview-af","1");' +
+    'var style=document.getElementById("ripx-preview-flash-guard-style");' +
+    'if(!style){' +
+    'style=document.createElement("style");' +
+    'style.id="ripx-preview-flash-guard-style";' +
+    'style.textContent="html[data-ripx-preview-af=\\"1\\"] body{opacity:0!important;}";' +
+    '(document.head||root).appendChild(style);' +
+    '}' +
+    'var started=Date.now();' +
+    'var maxWait=2500;' +
+    'function applied(){try{' +
+    'var timing=window.__RIPX_TIMING__;' +
+    'if(timing&&timing.marks&&timing.marks.first_variant_apply_completed)return true;' +
+    'var diag=window.RipX&&window.RipX.debugStatus?window.RipX.debugStatus():null;' +
+    'return !!(diag&&diag.runtime&&diag.runtime.timing&&diag.runtime.timing.marks&&diag.runtime.timing.marks.first_variant_apply_completed);' +
+    '}catch(_e){return false;}}' +
+    'function release(reason){try{' +
+    'root.removeAttribute("data-ripx-preview-af");' +
+    'window.__RIPX_PREVIEW_FLASH_GUARD_RELEASE__={reason:reason||"unknown",at:Date.now(),durationMs:Date.now()-started};' +
+    '}catch(_e){}}' +
+    'function tick(){' +
+    'if(applied())return release("variant_applied");' +
+    'if(Date.now()-started>=maxWait)return release("timeout");' +
+    'setTimeout(tick,50);' +
+    '}' +
+    'setTimeout(tick,0);' +
+    '}catch(_e){}' +
+    '})();<' +
+    '/script>'
+  );
+}
+
 /**
  * Shared handler: serve storefront script (used for both /script.js and /script.js/script.js).
  * Shopify appends the path to the Proxy URL; if Partner Dashboard Proxy URL includes /script.js,
@@ -336,6 +375,7 @@ async function servePreviewBootstrap(req, res) {
         }
         function injectScriptTag(htmlText) {
           var tags =
+            ${JSON.stringify(buildPreviewFlashGuardTag())} +
             '<script>(function(){' +
             'try{' +
               'window.__RIPX_BOOTSTRAP_OK__={' +
@@ -728,6 +768,7 @@ async function servePreviewBootstrapLoader(req, res) {
   }
   function injectScriptTag(html) {
     var tags =
+      ${JSON.stringify(buildPreviewFlashGuardTag())} +
       '<script>(function(){' +
       'try{' +
         'window.__RIPX_BOOTSTRAP_OK__={' +

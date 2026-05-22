@@ -24,6 +24,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const childProcess = require('child_process');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -94,6 +95,22 @@ const allowEphemeralCheckoutConfig =
   String(process.env.RIPX_ALLOW_EPHEMERAL_CHECKOUT_CONFIG || '')
     .trim()
     .toLowerCase() === 'true';
+const requireIgnoredCheckoutConfig =
+  String(process.env.RIPX_REQUIRE_IGNORED_CHECKOUT_CONFIG || '')
+    .trim()
+    .toLowerCase() === 'true';
+
+function isGitTracked(filePath) {
+  try {
+    const result = childProcess.spawnSync('git', ['ls-files', '--error-unmatch', filePath], {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'ignore',
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
 
 if (shouldWriteDiscountConfig && (!batchUrl || !shippingBatchUrl)) {
   console.error(
@@ -141,6 +158,20 @@ if (ephemeralUrls.length > 0 && !allowEphemeralCheckoutConfig) {
 }
 
 const dest = path.join(__dirname, '../extensions/ripx-checkout-discount/src/ripxConfig.js');
+const relativeDiscountConfigPath = path.relative(path.join(__dirname, '..'), dest);
+if (shouldWriteDiscountConfig && secret && isGitTracked(relativeDiscountConfigPath)) {
+  const message =
+    `[write-ripx-checkout-config] ${relativeDiscountConfigPath} is git-tracked; ` +
+    'the generated secret is for this local/CI build only. Do not commit the generated diff.';
+  if (requireIgnoredCheckoutConfig) {
+    console.error(message);
+    console.error(
+      'Set RIPX_REQUIRE_IGNORED_CHECKOUT_CONFIG=false or remove the file from git tracking before syncing.'
+    );
+    process.exit(1);
+  }
+  console.warn(message);
+}
 const content = `/**
  * Synced from root .env via: npm run shopify:checkout-discount:sync-config
  * (or: node scripts/write-ripx-checkout-config.js)
