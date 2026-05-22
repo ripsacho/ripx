@@ -135,6 +135,10 @@ function buildPreviewFlashGuardTag() {
   );
 }
 
+function toInlineScriptStringLiteral(value) {
+  return JSON.stringify(String(value || '')).replace(/<\/script/gi, '<\\/script');
+}
+
 /**
  * Shared handler: serve storefront script (used for both /script.js and /script.js/script.js).
  * Shopify appends the path to the Proxy URL; if Partner Dashboard Proxy URL includes /script.js,
@@ -311,6 +315,8 @@ async function servePreviewBootstrap(req, res) {
               variantId: tu.searchParams.get('ab_preview_variant') || null,
               variantName: tu.searchParams.get('ab_preview_variant_name') || null,
               tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+              simple: tu.searchParams.get('ab_preview_simple') === '1',
+              sessionId: tu.searchParams.get('ab_preview_session') || null,
               persistedAtMs: Date.now(),
             };
             if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
@@ -375,7 +381,7 @@ async function servePreviewBootstrap(req, res) {
         }
         function injectScriptTag(htmlText) {
           var tags =
-            ${JSON.stringify(buildPreviewFlashGuardTag())} +
+            ${toInlineScriptStringLiteral(buildPreviewFlashGuardTag())} +
             '<script>(function(){' +
             'try{' +
               'window.__RIPX_BOOTSTRAP_OK__={' +
@@ -395,7 +401,12 @@ async function servePreviewBootstrap(req, res) {
               'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
               'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
               'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
+              'if(ctx.simple===true||ctx.simple==="1") u.searchParams.set("ab_preview_simple","1");' +
+              'if(ctx.sessionId) u.searchParams.set("ab_preview_session",String(ctx.sessionId));' +
               'return u;}' +
+            'function cleanSimplePreviewAddressBar(){try{var ctx=readCtx();if(!(ctx&&(ctx.simple===true||ctx.simple==="1"))||!history||typeof history.replaceState!=="function")return;var clean=new URL(' +
+              JSON.stringify(targetUrl) +
+              ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap"};}catch(_e){}}' +
             'function toBootstrapHref(href){try{' +
               'var u=new URL(href,window.location.origin);' +
               'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
@@ -464,6 +475,7 @@ async function servePreviewBootstrap(req, res) {
                 'try{' +
                   'window.__RIPX_BOOTSTRAP_OK__=window.__RIPX_BOOTSTRAP_OK__||{};' +
                   'window.__RIPX_BOOTSTRAP_OK__.runtimeReadyAt=Date.now();' +
+                  'cleanSimplePreviewAddressBar();' +
                 '}catch(_eReady){}' +
                 'return;' +
               '}' +
@@ -700,6 +712,8 @@ async function servePreviewBootstrapLoader(req, res) {
         variantId: tu.searchParams.get('ab_preview_variant') || null,
         variantName: tu.searchParams.get('ab_preview_variant_name') || null,
         tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+        simple: tu.searchParams.get('ab_preview_simple') === '1',
+        sessionId: tu.searchParams.get('ab_preview_session') || null,
         persistedAtMs: Date.now(),
       };
       if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
@@ -768,7 +782,7 @@ async function servePreviewBootstrapLoader(req, res) {
   }
   function injectScriptTag(html) {
     var tags =
-      ${JSON.stringify(buildPreviewFlashGuardTag())} +
+      ${toInlineScriptStringLiteral(buildPreviewFlashGuardTag())} +
       '<script>(function(){' +
       'try{' +
         'window.__RIPX_BOOTSTRAP_OK__={' +
@@ -788,7 +802,12 @@ async function servePreviewBootstrapLoader(req, res) {
         'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
         'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
         'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
+        'if(ctx.simple===true||ctx.simple==="1") u.searchParams.set("ab_preview_simple","1");' +
+        'if(ctx.sessionId) u.searchParams.set("ab_preview_session",String(ctx.sessionId));' +
         'return u;}' +
+      'function cleanSimplePreviewAddressBar(){try{var ctx=readCtx();if(!(ctx&&(ctx.simple===true||ctx.simple==="1"))||!history||typeof history.replaceState!=="function")return;var clean=new URL(' +
+        JSON.stringify(targetUrl) +
+        ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap-loader"};}catch(_e){}}' +
       'function toBootstrapHref(href){try{' +
         'var u=new URL(href,window.location.origin);' +
         'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
@@ -857,6 +876,7 @@ async function servePreviewBootstrapLoader(req, res) {
           'try{' +
             'window.__RIPX_BOOTSTRAP_OK__=window.__RIPX_BOOTSTRAP_OK__||{};' +
             'window.__RIPX_BOOTSTRAP_OK__.runtimeReadyAt=Date.now();' +
+            'cleanSimplePreviewAddressBar();' +
           '}catch(_eReady){}' +
           'return;' +
         '}' +

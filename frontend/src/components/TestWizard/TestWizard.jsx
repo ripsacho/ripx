@@ -4773,6 +4773,10 @@ function TestWizard({
               }) || directPreviewUrl;
           }
         }
+      } else if (options.simplePreview) {
+        // Customer-facing previews should show the real store URL, not the internal app-proxy
+        // bootstrap. The preview query params seed the runtime on the first storefront load.
+        finalPreviewUrl = directPreviewUrl;
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
