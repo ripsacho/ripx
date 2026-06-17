@@ -5,6 +5,7 @@
   Keep fallback empty by default and set it manually only for local/dev debugging sessions.
   target: head — the primary runtime is parser-blocking so the server bootstrap can run before body paint.
   ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.47).
+  Strict anti-flicker CSS contract: html[data-ripx-af="strict"] body{opacity:0 !important;}
 {% endcomment %}
 
 <script>
@@ -110,7 +111,7 @@
   (function () {
     var shopHost = '{{ request.host }}';
     var version = '1.0.47';
-    var scriptUrl = 'https://' + shopHost + '/apps/ripx/script.js?v=' + encodeURIComponent(version);
+    var scriptUrl = 'https://' + shopHost + '/apps/ripx/script.js?v=1.0.47';
     try {
       var params = new URLSearchParams(window.location.search || '');
       var isPreview =
@@ -148,7 +149,7 @@
 
     var shopHost = '{{ request.host }}';
     var version = '1.0.47';
-    var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
+    var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=1.0.47';
     var directScriptBaseUrl = {{ block.settings.direct_script_base_url | default: "__RIPX_UNSET__" | json }};
     function normalizeDirectScriptBaseUrl(value) {
       var trimmed = String(value || '').trim();
