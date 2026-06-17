@@ -376,6 +376,20 @@ describe('ABTestEngine.validateTest audience segments', () => {
     expect(result.isValid).toBe(false);
     expect(result.errors.some(e => e.includes('operating_system'))).toBe(true);
   });
+
+  it('rejects tests with more than ten variants', () => {
+    const result = ABTestEngine.validateTest({
+      ...baseSplit,
+      variants: Array.from({ length: 11 }, (_, index) => ({
+        name: index === 0 ? 'Control' : `Variant ${index}`,
+        allocation: index < 10 ? 10 : 0,
+        config: index === 0 ? { url: '' } : { url: `/pages/${index}` },
+      })),
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain('A test can include at most 10 variants');
+  });
 });
 
 describe('ABTestEngine.validateTest theme contract', () => {

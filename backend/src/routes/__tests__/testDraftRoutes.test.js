@@ -126,6 +126,25 @@ describe('test draft routes', () => {
     expect(testModel.createTest).not.toHaveBeenCalled();
   });
 
+  it('rejects draft payloads with more than ten variants', async () => {
+    const res = await request(app)
+      .post('/api/tests/drafts')
+      .send({
+        type: 'content',
+        variants: Array.from({ length: 11 }, (_, index) => ({
+          name: index === 0 ? 'Control' : `Variant ${index}`,
+          allocation: index === 0 ? 10 : 9,
+          config: {},
+        })),
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toEqual(
+      expect.arrayContaining(['A test can include at most 10 variants'])
+    );
+    expect(testModel.createTest).not.toHaveBeenCalled();
+  });
+
   it('updates only existing draft tests through the relaxed draft endpoint', async () => {
     testModel.getTestById.mockResolvedValueOnce({
       id: draftId,
@@ -153,6 +172,33 @@ describe('test draft routes', () => {
       })
     );
     expect(abTestEngine.validateTest).not.toHaveBeenCalled();
+  });
+
+  it('rejects relaxed draft updates with more than ten variants', async () => {
+    testModel.getTestById.mockResolvedValueOnce({
+      id: draftId,
+      status: 'draft',
+      type: 'content',
+      goal: {},
+      variants: [{ id: 'control', name: 'Control', config: {} }],
+    });
+
+    const res = await request(app)
+      .put(`/api/tests/${draftId}/draft`)
+      .send({
+        type: 'content',
+        variants: Array.from({ length: 11 }, (_, index) => ({
+          name: index === 0 ? 'Control' : `Variant ${index}`,
+          allocation: index === 0 ? 10 : 9,
+          config: {},
+        })),
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toEqual(
+      expect.arrayContaining(['A test can include at most 10 variants'])
+    );
+    expect(testModel.updateTest).not.toHaveBeenCalled();
   });
 
   it('rejects relaxed draft updates for non-draft tests', async () => {

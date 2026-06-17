@@ -845,9 +845,7 @@
         var resetTestId = getPreviewParam('ab_preview_test');
         if (resetTestId) {
           window.sessionStorage.removeItem('ripx_preview_variant_cache_' + String(resetTestId));
-          window.sessionStorage.removeItem(
-            'ripx_preview_variant_cache_v2_' + String(resetTestId)
-          );
+          window.sessionStorage.removeItem('ripx_preview_variant_cache_v2_' + String(resetTestId));
         }
         for (var i = window.sessionStorage.length - 1; i >= 0; i -= 1) {
           var key = window.sessionStorage.key(i);
@@ -2106,9 +2104,9 @@
     function fetchVariantChunk(chunkIds, chunkIndex) {
       var params = new URLSearchParams(baseParams.toString());
       params.set('test_ids', chunkIds.join(','));
-    var variantsUrl = CONFIG.apiUrl + '/track/variants?' + params.toString();
+      var variantsUrl = CONFIG.apiUrl + '/track/variants?' + params.toString();
       return fetchWithRetry(variantsUrl, { method: 'GET' }, 8000, 600)
-      .then(function (r) {
+        .then(function (r) {
           if (!r.ok) {
             recordRipxSkip('runtime', 'variants_request_http_error', {
               status: r.status,
@@ -2118,8 +2116,8 @@
             return { variants: {}, diagnostics: null };
           }
           return r.json();
-      })
-      .then(function (data) {
+        })
+        .then(function (data) {
           return {
             variants: (data && data.variants) || {},
             diagnostics: data && data.diagnostics ? data.diagnostics : null,
@@ -2731,7 +2729,9 @@
     var normalized = normalizeRipxCatalogEventName(eventName);
     var definitions = getCatalogDefinitionsForRuntime();
     for (var i = 0; i < definitions.length; i += 1) {
-      if (normalizeRipxCatalogEventName(definitions[i] && definitions[i].eventName) === normalized) {
+      if (
+        normalizeRipxCatalogEventName(definitions[i] && definitions[i].eventName) === normalized
+      ) {
         return definitions[i];
       }
     }
@@ -2748,7 +2748,13 @@
       return;
     }
     _ripxAutomaticGoalLastFiredAt[normalized] = now;
-    fireCatalogEvent(getCatalogDefinitionForEvent(normalized), source, payload || {}, element, tests);
+    fireCatalogEvent(
+      getCatalogDefinitionForEvent(normalized),
+      source,
+      payload || {},
+      element,
+      tests
+    );
   }
 
   function wildcardToRegExp(pattern) {
@@ -3816,12 +3822,7 @@
       preserveExisting
     );
     forEachRipxLineProperty(payload, function (propKey, value) {
-      setRipxAttrValueOnFormData(
-        formData,
-        'properties[' + propKey + ']',
-        value,
-        preserveExisting
-      );
+      setRipxAttrValueOnFormData(formData, 'properties[' + propKey + ']', value, preserveExisting);
     });
     applyToItemIndexes();
     return true;
@@ -4254,7 +4255,12 @@
                   delete nextProps[publicKey];
                 }
               });
-              if (Object.prototype.hasOwnProperty.call(nextProps, RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY)) {
+              if (
+                Object.prototype.hasOwnProperty.call(
+                  nextProps,
+                  RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY
+                )
+              ) {
                 delete nextProps[RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY];
               }
               function setPropIfMissing(key, value) {
@@ -5011,17 +5017,17 @@
               return undefined;
             } else {
               var bodyBeforeXhr = body;
-            var headerObj = { 'content-type': this.__ripxContentType || '' };
-            var patch = patchCartAddBodyForRipx(body, headerObj, _ripxCartAttributeState);
-            recordShippingDebugStep('cart_add_xhr_patch_result', {
-              path: xhrCartPath,
-              changed: Boolean(patch.changed),
-            });
-            body = patch.body;
-            if (patch.contentType && !this.__ripxContentType) {
-              this.setRequestHeader('Content-Type', patch.contentType);
-              this.__ripxContentType = patch.contentType;
-            }
+              var headerObj = { 'content-type': this.__ripxContentType || '' };
+              var patch = patchCartAddBodyForRipx(body, headerObj, _ripxCartAttributeState);
+              recordShippingDebugStep('cart_add_xhr_patch_result', {
+                path: xhrCartPath,
+                changed: Boolean(patch.changed),
+              });
+              body = patch.body;
+              if (patch.contentType && !this.__ripxContentType) {
+                this.setRequestHeader('Content-Type', patch.contentType);
+                this.__ripxContentType = patch.contentType;
+              }
               if (DEBUG) {
                 debugLog(
                   'cart intercept xhr:',
@@ -6095,7 +6101,14 @@
     var vid = variant.variantId != null ? variant.variantId : variant.id;
     if (vid == null || String(vid).trim() === '') vid = PREVIEW_VARIANT_ID;
     if (vid == null || String(vid).trim() === '') return;
-    injectPriceTestCartAttributes(testId, vid, getAssignmentProofFromVariant(variant), null, null, null);
+    injectPriceTestCartAttributes(
+      testId,
+      vid,
+      getAssignmentProofFromVariant(variant),
+      null,
+      null,
+      null
+    );
   }
 
   function configLooksLikeShipping(config) {
@@ -6892,7 +6905,7 @@
         var attrWrites = 0;
         // Avoid continuous mutation churn by writing only when value changed.
         if (el.textContent !== currentDisplay) {
-        el.textContent = currentDisplay;
+          el.textContent = currentDisplay;
           textWrites += 1;
         }
         var variantStr = String(variantIdForCart);
@@ -6906,7 +6919,7 @@
           attrWrites += 1;
         }
         if (el.getAttribute('data-ripx-price') !== '1') {
-        el.setAttribute('data-ripx-price', '1');
+          el.setAttribute('data-ripx-price', '1');
           attrWrites += 1;
         }
         recordRipxPaintEvent('pdp', textWrites, attrWrites);
@@ -7588,11 +7601,11 @@
           } catch (eRegistry) {}
         });
         if (!priceSurfaceMappingsAuthoritative) {
-        var priceEls = card.querySelectorAll(
-          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
-        );
-        priceEls.forEach(function (el) {
-          if (!el || inCartUi(el)) return;
+          var priceEls = card.querySelectorAll(
+            '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+          );
+          priceEls.forEach(function (el) {
+            if (!el || inCartUi(el)) return;
             paintPriceNode(
               el,
               cardDisplay,
@@ -7862,11 +7875,11 @@
         } catch (eRegistryCollection) {}
       });
       if (!priceSurfaceMappingsAuthoritative) {
-      var priceEls = card.querySelectorAll(
-        '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
-      );
-      priceEls.forEach(function (el) {
-        if (!el || inCartUi(el)) return;
+        var priceEls = card.querySelectorAll(
+          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+        );
+        priceEls.forEach(function (el) {
+          if (!el || inCartUi(el)) return;
           paintPriceNode(
             el,
             cardDisplay,
@@ -8135,7 +8148,7 @@
                   linePidNum &&
                   (excludedProductIds.indexOf(linePidNum) !== -1 ||
                     !filteredTargetIds.some(function (id) {
-                    return id && toNumericProductId(id) === linePidNum;
+                      return id && toNumericProductId(id) === linePidNum;
                     }))
                 )
                   return;
@@ -9021,17 +9034,17 @@
       var val = selectorInput.value.trim();
       if (!val) return;
       postVisualSelector(val);
-        if (window.opener && !window.opener.closed) {
-          sendBtn.textContent = 'Sent!';
-          setTimeout(function () {
-            sendBtn.textContent = 'Send to RipX';
-          }, 2000);
-        } else {
-          sendBtn.textContent = 'Open from editor tab';
-          setTimeout(function () {
-            sendBtn.textContent = 'Send to RipX';
-          }, 2500);
-        }
+      if (window.opener && !window.opener.closed) {
+        sendBtn.textContent = 'Sent!';
+        setTimeout(function () {
+          sendBtn.textContent = 'Send to RipX';
+        }, 2000);
+      } else {
+        sendBtn.textContent = 'Open from editor tab';
+        setTimeout(function () {
+          sendBtn.textContent = 'Send to RipX';
+        }, 2500);
+      }
     };
     var closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
@@ -9091,11 +9104,11 @@
       postVisualSelector(selector, el);
       if (IN_IFRAME || (window.opener && !window.opener.closed)) {
         label.textContent = 'Selector sent to RipX. You can pick another element or close.';
-          label.setAttribute('style', 'flex:1;min-width:120px;color:#34d399;');
-        } else {
-          label.textContent = 'Copy the selector below and paste it in the editor.';
-          label.setAttribute('style', 'flex:1;min-width:120px;color:#fbbf24;');
-        }
+        label.setAttribute('style', 'flex:1;min-width:120px;color:#34d399;');
+      } else {
+        label.textContent = 'Copy the selector below and paste it in the editor.';
+        label.setAttribute('style', 'flex:1;min-width:120px;color:#fbbf24;');
+      }
     }
 
     function pickTargetElementAt(clientX, clientY) {
@@ -11484,24 +11497,24 @@
             function (variant) {
               var antiFlickerDeferred = false;
               try {
-            if (!variant) {
+                if (!variant) {
                   recordRipxSkip(test.id, 'no_variant_assigned', {
                     previewMode: PREVIEW_MODE,
                     targetType: test.targetType || test.target_type || null,
                   });
-              if (DEBUG) {
-                debugLog(
-                  'Test skipped (no variant assigned):',
-                  test.id,
-                  '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
-                );
-              }
-              return;
-            }
+                  if (DEBUG) {
+                    debugLog(
+                      'Test skipped (no variant assigned):',
+                      test.id,
+                      '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
+                    );
+                  }
+                  return;
+                }
                 recordRipxAssignment(test.id, variant, PREVIEW_MODE ? 'preview' : 'live');
                 var tt = getNormalizedTargetType(test);
                 var productScope = isProductScopeTargetType(tt);
-            var matched = matchesTarget(test);
+                var matched = matchesTarget(test);
                 seedFixedPriceCartAttributesWithoutProductId(test, variant, 'assigned');
                 if (!matched && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
                   var pathM = getEffectivePreviewPathname();
@@ -11511,9 +11524,9 @@
                   ) {
                     matched = true;
                   } else if (isProductListingSurface() || isCartSurface()) {
-                matched = true;
-              }
-            }
+                    matched = true;
+                  }
+                }
                 if (matched && testTypeIsPrice(test) && variant && !variant.config) {
                   injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
                 }
@@ -11553,8 +11566,8 @@
                 }
                 if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) {
                   upsertOfferCodeNotice(test, variant);
-            }
-            if (matched) {
+                }
+                if (matched) {
                   var previewFocusTest =
                     PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
                   if (
@@ -11567,37 +11580,37 @@
                   if (
                     !previewFocusTest &&
                     !testTypeIsPrice(test) &&
-                variant.config &&
-                typeof variant.config.url === 'string' &&
-                variant.config.url.trim()
-              ) {
-                var rawUrl = variant.config.url.trim();
-                try {
-                  var dest = new URL(rawUrl, window.location.href);
-                  var cur = window.location;
-                  var sameOriginPath =
-                    dest.origin === cur.origin &&
-                    dest.pathname === cur.pathname &&
-                    (dest.search || '') === (cur.search || '');
-                  if (!sameOriginPath) {
-                    if (DEBUG) debugLog('Split-URL redirect', dest.toString());
-                    window.location.href = dest.toString();
-                    return;
+                    variant.config &&
+                    typeof variant.config.url === 'string' &&
+                    variant.config.url.trim()
+                  ) {
+                    var rawUrl = variant.config.url.trim();
+                    try {
+                      var dest = new URL(rawUrl, window.location.href);
+                      var cur = window.location;
+                      var sameOriginPath =
+                        dest.origin === cur.origin &&
+                        dest.pathname === cur.pathname &&
+                        (dest.search || '') === (cur.search || '');
+                      if (!sameOriginPath) {
+                        if (DEBUG) debugLog('Split-URL redirect', dest.toString());
+                        window.location.href = dest.toString();
+                        return;
+                      }
+                    } catch (e) {
+                      if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
+                    }
                   }
-                } catch (e) {
-                  if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
-                }
-              }
-              if (!previewFocusTest) {
-                applyCustomCode(test.id, variant);
+                  if (!previewFocusTest) {
+                    applyCustomCode(test.id, variant);
                     applyVisualEditorRules(test.id, variant);
-              }
-            }
+                  }
+                }
 
-            var tids =
-              test.targetIds ||
-              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-            if (testTypeIsPrice(test)) {
+                var tids =
+                  test.targetIds ||
+                  (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+                if (testTypeIsPrice(test)) {
                   try {
                     if (
                       deferPdpPriceApplyUntilProductId(
@@ -11666,7 +11679,11 @@
                 String(previewVariantIdForCart).trim() !== ''
               ) {
                 var previewTestForCart = getActiveTestById(PREVIEW_TEST_ID);
-                if (!previewTestForCart && variant.config && configLooksLikeShipping(variant.config)) {
+                if (
+                  !previewTestForCart &&
+                  variant.config &&
+                  configLooksLikeShipping(variant.config)
+                ) {
                   previewTestForCart = makeSyntheticPreviewShippingTest();
                 }
                 if (previewTestForCart && testTypeIsShipping(previewTestForCart)) {
@@ -11755,8 +11772,8 @@
                 curPid &&
                 (tt === 'all-products' ||
                   tt === 'all_products' ||
-                tids.some(function (id) {
-                  return id && gidMatches(id, curPid);
+                  tids.some(function (id) {
+                    return id && gidMatches(id, curPid);
                   }))
               ) {
                 applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
@@ -12240,7 +12257,7 @@
 
     return {
       ok: true,
-    version: SCRIPT_VERSION,
+      version: SCRIPT_VERSION,
       loaded: !!window.__RIPX_LOADED__,
       href: window.location.href,
       pathname: window.location.pathname || '',

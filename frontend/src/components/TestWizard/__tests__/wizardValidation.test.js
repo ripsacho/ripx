@@ -360,6 +360,24 @@ describe('wizardValidation', () => {
         expect(errors).toHaveLength(0);
       });
 
+      it('returns error when more than ten variants are configured', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.traffic, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            variants: Array.from({ length: 11 }, (_, index) => ({
+              name: index === 0 ? 'Control' : `Variant ${index}`,
+              allocation: index < 10 ? 10 : 0,
+              config: {},
+            })),
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+
+        expect(errors).toContain('A test can include at most 10 variants.');
+      });
+
       it('returns error for price test when per-variant override has invalid fixed price', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.traffic, {
           stepIds: stepIdsWithTemplate,

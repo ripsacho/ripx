@@ -183,6 +183,7 @@ const DRAFT_TEST_TYPES = new Set([
   'split-url',
   'onsite-edit',
 ]);
+const MAX_TEST_VARIANTS = 10;
 
 function normalizeDraftTestType(value) {
   const normalized = String(value || '')
@@ -199,9 +200,15 @@ function normalizeDraftTestType(value) {
 
 function getDraftTypeLabel(type) {
   const normalized = normalizeDraftTestType(type).type || 'content';
-  if (normalized === 'onsite-edit') {return 'onsite edit';}
-  if (normalized === 'split-url') {return 'split URL';}
-  if (normalized === 'pricing') {return 'price';}
+  if (normalized === 'onsite-edit') {
+    return 'onsite edit';
+  }
+  if (normalized === 'split-url') {
+    return 'split URL';
+  }
+  if (normalized === 'pricing') {
+    return 'price';
+  }
   return normalized || 'experiment';
 }
 
@@ -221,23 +228,21 @@ function getDefaultDraftVariants(type) {
 
 function normalizeDraftVariants(input, type) {
   const source = Array.isArray(input) && input.length > 0 ? input : getDefaultDraftVariants(type);
-  return source
-    .filter(Boolean)
-    .map((variant, index) => {
-      const name =
-        String(variant?.name || '').trim() ||
-        (index === 0 ? 'Control' : `Variant ${String.fromCharCode(64 + Math.min(index, 26))}`);
-      const config =
-        variant?.config && typeof variant.config === 'object' && !Array.isArray(variant.config)
-          ? variant.config
-          : {};
-      return {
-        ...variant,
-        name,
-        allocation: Number(variant?.allocation) || 0,
-        config,
-      };
-    });
+  return source.filter(Boolean).map((variant, index) => {
+    const name =
+      String(variant?.name || '').trim() ||
+      (index === 0 ? 'Control' : `Variant ${String.fromCharCode(64 + Math.min(index, 26))}`);
+    const config =
+      variant?.config && typeof variant.config === 'object' && !Array.isArray(variant.config)
+        ? variant.config
+        : {};
+    return {
+      ...variant,
+      name,
+      allocation: Number(variant?.allocation) || 0,
+      config,
+    };
+  });
 }
 
 function mergeIncomingDraftVariants(existingTest, incomingVariants) {
@@ -248,7 +253,9 @@ function mergeIncomingDraftVariants(existingTest, incomingVariants) {
   const consumedExistingIndices = new Set();
   return incomingVariants.map((incomingVariant, incomingIndex) => {
     const matchIndex = existingTest.variants.findIndex((existingVariant, existingIndex) => {
-      if (consumedExistingIndices.has(existingIndex)) {return false;}
+      if (consumedExistingIndices.has(existingIndex)) {
+        return false;
+      }
       if (
         incomingVariant?.id &&
         existingVariant?.id &&
@@ -297,6 +304,9 @@ function normalizeDraftTestPayload(rawPayload, shopDomain, existingTest = null) 
     return { errors: [typeResult.error] };
   }
   const type = typeResult.type;
+  if (Array.isArray(raw.variants) && raw.variants.length > MAX_TEST_VARIANTS) {
+    return { errors: [`A test can include at most ${MAX_TEST_VARIANTS} variants`] };
+  }
   const name = String(raw.name || '').trim() || `Untitled ${getDraftTypeLabel(type)} test`;
   const description =
     raw.description === null || raw.description === undefined
@@ -333,8 +343,12 @@ function normalizeDraftTestPayload(rawPayload, shopDomain, existingTest = null) 
     draft.holdout_percent = holdoutResult.value;
   }
 
-  if (draft.scheduled_start_at === '') {draft.scheduled_start_at = null;}
-  if (draft.scheduled_stop_at === '') {draft.scheduled_stop_at = null;}
+  if (draft.scheduled_start_at === '') {
+    draft.scheduled_start_at = null;
+  }
+  if (draft.scheduled_stop_at === '') {
+    draft.scheduled_stop_at = null;
+  }
   draft.auto_start = draft.auto_start === true;
   draft.auto_stop = draft.auto_stop === true;
 
@@ -436,7 +450,8 @@ function buildShippingLiveResourceChecks(actions = []) {
     .filter(action => action && action.status !== 'skipped_control')
     .map(action => {
       const details = action.details && typeof action.details === 'object' ? action.details : {};
-      const service = details.service && typeof details.service === 'object' ? details.service : null;
+      const service =
+        details.service && typeof details.service === 'object' ? details.service : null;
       const customization =
         details.customization && typeof details.customization === 'object'
           ? details.customization
@@ -469,19 +484,19 @@ function buildShippingLiveResourceChecks(actions = []) {
                 expected_callback_url: expectedCallback,
                 expected_profile_binding: details.profile_binding || null,
               }
-          : customization
-            ? {
-                type: 'delivery_customization',
-                id: customization.id || null,
-                title: customization.title || details.title || null,
-                enabled: customization.enabled !== false,
-                expected_config: details.config || null,
-                function: details.function || null,
-              }
-            : {
-                type: action.execution_adapter || 'unknown',
-                expected_callback_url: expectedCallback,
-              },
+            : customization
+              ? {
+                  type: 'delivery_customization',
+                  id: customization.id || null,
+                  title: customization.title || details.title || null,
+                  enabled: customization.enabled !== false,
+                  expected_config: details.config || null,
+                  function: details.function || null,
+                }
+              : {
+                  type: action.execution_adapter || 'unknown',
+                  expected_callback_url: expectedCallback,
+                },
       };
     });
 }
@@ -538,10 +553,16 @@ function buildShippingProfileBindingChecks(liveResourceChecks = [], currentSetup
     .filter(item => item?.live_resource?.type === 'carrier_service' && item?.live_resource?.id)
     .map(item => {
       const resource = item.live_resource || {};
-      const serviceName = String(resource.name || '').trim().toLowerCase();
-      const callbackUrl = String(resource.callback_url || '').trim().toLowerCase();
+      const serviceName = String(resource.name || '')
+        .trim()
+        .toLowerCase();
+      const callbackUrl = String(resource.callback_url || '')
+        .trim()
+        .toLowerCase();
       const matchingRates = rates.filter(rate => {
-        const carrierName = String(rate?.carrier_service_name || '').trim().toLowerCase();
+        const carrierName = String(rate?.carrier_service_name || '')
+          .trim()
+          .toLowerCase();
         const carrierCallback = String(rate?.carrier_service_callback_url || '')
           .trim()
           .toLowerCase();
@@ -581,7 +602,9 @@ function buildShippingVariantDisplaySummary(test = {}) {
       const normalized = normalizeShippingVariantConfig(variant?.config || {});
       const strategy = String(normalized.strategy || 'control').toLowerCase();
       const actionable = strategy !== 'control';
-      const displayMode = String(normalized.shipping_display_mode || '').trim().toLowerCase();
+      const displayMode = String(normalized.shipping_display_mode || '')
+        .trim()
+        .toLowerCase();
       const mode =
         displayMode === 'replace_existing_methods'
           ? 'replace_existing_methods'
@@ -610,8 +633,11 @@ function buildShippingVariantDisplaySummary(test = {}) {
     .filter(item => item.actionable);
   return {
     actionable_variants: byVariant.length,
-    replace_mode_variants: byVariant.filter(item => item.display_mode === 'replace_existing_methods').length,
-    additive_mode_variants: byVariant.filter(item => item.display_mode === 'add_preview_method').length,
+    replace_mode_variants: byVariant.filter(
+      item => item.display_mode === 'replace_existing_methods'
+    ).length,
+    additive_mode_variants: byVariant.filter(item => item.display_mode === 'add_preview_method')
+      .length,
     multi_rate_variants: byVariant.filter(item => item.configured_rate_count > 1).length,
     variants: byVariant,
   };
@@ -637,7 +663,11 @@ function buildShippingRateNameCollisionWarnings(variantDisplaySummary = {}, curr
   const nativeNames = new Set(
     (Array.isArray(currentSetup?.rates) ? currentSetup.rates : [])
       .filter(rate => rate?.rate_provider_type !== 'DeliveryParticipant')
-      .map(rate => String(rate?.name || '').trim().toLowerCase())
+      .map(rate =>
+        String(rate?.name || '')
+          .trim()
+          .toLowerCase()
+      )
       .filter(Boolean)
   );
   if (nativeNames.size === 0 || !Array.isArray(variantDisplaySummary?.variants)) {
@@ -671,9 +701,13 @@ function stampShippingConfigRevisionOnVariants(variants = [], revision = new Dat
   return variants.map((variant, index) => {
     const current = variant && typeof variant === 'object' ? variant : {};
     const config = current.config && typeof current.config === 'object' ? current.config : {};
-    const strategy = String(config.strategy || '').trim().toLowerCase();
+    const strategy = String(config.strategy || '')
+      .trim()
+      .toLowerCase();
     const isControlLike =
-      index === 0 || /^control(\s|$)/i.test(String(current.name || '').trim()) || strategy === 'control';
+      index === 0 ||
+      /^control(\s|$)/i.test(String(current.name || '').trim()) ||
+      strategy === 'control';
     if (isControlLike) {
       return current;
     }
@@ -2364,7 +2398,9 @@ router.get(
         profiles: [],
         rates: [],
         summary: { total_rates: 0, manual_rate_count: 0, calculated_rate_count: 0 },
-        warnings: [`Could not read Shopify shipping profiles/zones: ${error.message || 'unknown error'}`],
+        warnings: [
+          `Could not read Shopify shipping profiles/zones: ${error.message || 'unknown error'}`,
+        ],
         generated_at: new Date().toISOString(),
       }))
     );

@@ -3,6 +3,7 @@ import {
   buildWizardSteps,
   TEST_TEMPLATES,
   TEST_TYPE_CATEGORIES,
+  MAX_TEST_VARIANTS,
 } from '../testWizardConfig';
 
 describe('testWizardConfig', () => {
@@ -75,6 +76,7 @@ describe('testWizardConfig', () => {
         expect(t).toHaveProperty('name');
         expect(t).toHaveProperty('defaultConfig');
         expect(Array.isArray(t.defaultConfig.variants)).toBe(true);
+        expect(t.defaultConfig.variants.length).toBeLessThanOrEqual(MAX_TEST_VARIANTS);
       });
     });
   });

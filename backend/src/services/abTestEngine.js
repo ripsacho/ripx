@@ -33,6 +33,8 @@ const {
   AUDIENCE_OPERATING_SYSTEM_VALUES,
 } = require('../utils/segments');
 
+const MAX_TEST_VARIANTS = 10;
+
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
   if (!currentUrl || typeof currentUrl !== 'string') {
@@ -1228,6 +1230,8 @@ class ABTestEngine {
       errors.push(
         minVariants === 1 ? 'At least 1 variant is required' : 'At least 2 variants are required'
       );
+    } else if (testConfig.variants.length > MAX_TEST_VARIANTS) {
+      errors.push(`A test can include at most ${MAX_TEST_VARIANTS} variants`);
     }
 
     // Check allocation percentages

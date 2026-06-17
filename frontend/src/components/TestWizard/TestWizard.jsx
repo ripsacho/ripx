@@ -107,6 +107,7 @@ import {
   normalizeGoalSecondaryMetric,
 } from '../../utils/goalMetricConfig';
 import {
+  MAX_TEST_VARIANTS,
   TEST_TEMPLATES,
   TEST_TYPE_CATEGORIES,
   buildWizardSteps,
@@ -5408,6 +5409,7 @@ function TestWizard({
         <div className={stepStyles.trafficStepContent}>
           <TrafficAllocationSlider
             variants={variants}
+            maxVariants={MAX_TEST_VARIANTS}
             onChange={updatedVariants => {
               setFormData(prev => ({ ...prev, variants: updatedVariants }));
             }}
@@ -5415,6 +5417,9 @@ function TestWizard({
               setIsDirty(true);
               setFormData(prev => {
                 const current = prev.variants || [];
+                if (current.length >= MAX_TEST_VARIANTS) {
+                  return prev;
+                }
                 const equalAlloc = Math.floor(100 / (current.length + 1));
                 const remainder = 100 - equalAlloc * (current.length + 1);
                 const updated = current.map((v, i) => ({

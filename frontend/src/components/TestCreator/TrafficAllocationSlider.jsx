@@ -19,6 +19,8 @@ import Toast from '../Toast/Toast';
 import { VARIANT_COLORS } from '../../constants';
 import styles from './TrafficAllocationSlider.module.css';
 
+const DEFAULT_MAX_VARIANTS = 10;
+
 function TrafficAllocationSlider({
   variants,
   onChange,
@@ -31,6 +33,7 @@ function TrafficAllocationSlider({
   pricePreviewMode = false,
   compact = false,
   minVariants = 2,
+  maxVariants = DEFAULT_MAX_VARIANTS,
 }) {
   const [localVariants, setLocalVariants] = useState(variants || []);
   const [draggingIndex, setDraggingIndex] = useState(null);
@@ -46,6 +49,9 @@ function TrafficAllocationSlider({
   /** Refs for smooth drag: avoid stale closure and enable RAF throttling */
   const dragStateRef = useRef({ index: null, lastClientX: 0 });
   const rafIdRef = useRef(null);
+  const variantLimitReached = localVariants.length >= maxVariants;
+  const variantLimitMessage = `You can add up to ${maxVariants} variants per test. Remove an existing variant before adding another.`;
+  const variantCountLabel = `${localVariants.length}/${maxVariants} variants`;
 
   // Sync local state with props when variants change externally (e.g. initial load, template change)
   // Skip sync when we just did add/remove and parent hasn't updated yet (avoids undoing add/remove)
@@ -282,6 +288,10 @@ function TrafficAllocationSlider({
   };
 
   const handleAddVariant = () => {
+    if (variantLimitReached) {
+      setErrorMessage(variantLimitMessage);
+      return;
+    }
     const defaultName = getDefaultVariantName();
     const newVariant = {
       name: defaultName,
@@ -306,6 +316,31 @@ function TrafficAllocationSlider({
       onAddVariant(newVariant);
     }
   };
+
+  const addVariantButton = compact ? (
+    <Tooltip content={variantLimitReached ? variantLimitMessage : 'Add another variant'}>
+      <span className={styles.tooltipButtonWrap}>
+        <button
+          type="button"
+          className={`${styles.toolbarBtn} ${styles.toolbarBtnPrimary}`}
+          onClick={handleAddVariant}
+          disabled={variantLimitReached}
+          aria-disabled={variantLimitReached}
+        >
+          <Icon source={PlusIcon} />
+          Add Variant
+        </button>
+      </span>
+    </Tooltip>
+  ) : (
+    <Tooltip content={variantLimitReached ? variantLimitMessage : 'Add another variant'}>
+      <span className={styles.tooltipButtonWrap}>
+        <Button onClick={handleAddVariant} disabled={variantLimitReached}>
+          Add Variant
+        </Button>
+      </span>
+    </Tooltip>
+  );
 
   const handleRemoveVariant = index => {
     if (localVariants.length <= minVariants) {
@@ -445,8 +480,16 @@ function TrafficAllocationSlider({
             Traffic Allocation
           </Text>
           <InlineStack gap="300">
+            <span
+              className={`${styles.variantCountBadge} ${
+                variantLimitReached ? styles.variantCountBadgeLimit : ''
+              }`}
+              aria-label={`Variant count: ${variantCountLabel}`}
+            >
+              {variantCountLabel}
+            </span>
             <Button onClick={handleEqualSplit}>Split Equally</Button>
-            <Button onClick={handleAddVariant}>Add Variant</Button>
+            {addVariantButton}
           </InlineStack>
         </div>
       )}
@@ -464,18 +507,19 @@ function TrafficAllocationSlider({
             </span>
           </div>
           <div className={styles.toolbarActions}>
+            <span
+              className={`${styles.variantCountBadge} ${
+                variantLimitReached ? styles.variantCountBadgeLimit : ''
+              }`}
+              aria-label={`Variant count: ${variantCountLabel}`}
+            >
+              {variantCountLabel}
+            </span>
             <button type="button" className={styles.toolbarBtn} onClick={handleEqualSplit}>
               <Icon source={ChartHorizontalIcon} />
               Split Equally
             </button>
-            <button
-              type="button"
-              className={`${styles.toolbarBtn} ${styles.toolbarBtnPrimary}`}
-              onClick={handleAddVariant}
-            >
-              <Icon source={PlusIcon} />
-              Add Variant
-            </button>
+            {addVariantButton}
           </div>
         </div>
       )}

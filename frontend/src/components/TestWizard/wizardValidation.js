@@ -31,6 +31,7 @@ import {
   resolveCustomRuleGroupsFromSegments,
   validateCustomRuleGroups,
 } from './customAudienceRules';
+import { MAX_TEST_VARIANTS } from './testWizardConfig';
 
 /**
  * Test Wizard validation (pure functions)
@@ -727,6 +728,9 @@ export function getWizardStepErrors(stepId, options) {
 
   // Traffic step: only validate allocation. Variant price config is required on Code and Review.
   if (stepId === stepIds.traffic) {
+    if (Array.isArray(formData.variants) && formData.variants.length > MAX_TEST_VARIANTS) {
+      errors.push(`A test can include at most ${MAX_TEST_VARIANTS} variants.`);
+    }
     const totalAllocation = (formData.variants || []).reduce(
       (sum, v) => sum + (v.allocation || 0),
       0
@@ -997,6 +1001,9 @@ export function getWizardStepErrors(stepId, options) {
   if (reviewStepId !== undefined && reviewStepId !== null && stepId === reviewStepId) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
     if (!nameToCheck) errors.push('Test name is required.');
+    if (Array.isArray(formData.variants) && formData.variants.length > MAX_TEST_VARIANTS) {
+      errors.push(`A test can include at most ${MAX_TEST_VARIANTS} variants.`);
+    }
     if (!formData.goal?.metric && !initialData?.goal?.metric) {
       errors.push('Select a success metric in the Goal & Metrics step.');
     }
