@@ -2,10 +2,15 @@ const trackRoutes = require('../trackRoutes');
 
 describe('track heatmap route helpers', () => {
   const {
+    carrierRequestMatchesAssignment,
+    getShippingCarrierCallbackTrace,
     isHeatmapVariantAllowedForTest,
     isValidHeatmapVariantId,
+    normalizeShippingCallbackStrategy,
     normalizeHeatmapCaptureEvent,
     parseFiniteHeatmapNumber,
+    recordShippingCarrierCallbackTrace,
+    summarizeCarrierAssignmentDiagnostics,
   } = trackRoutes.__testUtils;
 
   it('accepts assignment variant identifiers that are not UUIDs', () => {
@@ -41,6 +46,163 @@ describe('track heatmap route helpers', () => {
     expect(parseFiniteHeatmapNumber('NaN')).toBeNull();
     expect(parseFiniteHeatmapNumber(Infinity)).toBeNull();
     expect(parseFiniteHeatmapNumber('')).toBeNull();
+  });
+
+  it('matches carrier callback assignments from line item properties', () => {
+    const req = {
+      body: {
+        rate: {
+          items: [
+            {
+              properties: {
+                _ripx_price_test: 'test-1',
+                _ripx_variant: 'Variant A',
+              },
+            },
+          ],
+        },
+      },
+    };
+    expect(
+      carrierRequestMatchesAssignment(req, {
+        testId: 'test-1',
+        variantId: 'Variant A',
+        variantIndex: 1,
+      })
+    ).toBe(true);
+    expect(
+      carrierRequestMatchesAssignment(req, {
+        testId: 'test-1',
+        variantId: 'Variant B',
+        variantIndex: 2,
+      })
+    ).toBe(false);
+  });
+
+  it('matches carrier callback assignment by configured variant name alias', () => {
+    const req = {
+      body: {
+        rate: {
+          items: [
+            {
+              properties: {
+                _ripx_price_test: 'test-alias',
+                _ripx_variant: 'Variant A',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    expect(
+      carrierRequestMatchesAssignment(req, {
+        testId: 'test-alias',
+        variantId: 'variant-canonical-id',
+        variantName: 'Variant A',
+      })
+    ).toBe(true);
+  });
+
+  it('summarizes carrier assignment diagnostics for missing-rate debugging', () => {
+    const req = {
+      body: {
+        rate: {
+          items: [
+            {
+              properties: {
+                _ripx_price_test: 'test-diagnostics',
+                _ripx_variant: 'Variant Diagnostics',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    expect(
+      summarizeCarrierAssignmentDiagnostics(req, {
+        testId: 'test-diagnostics',
+        variantId: 'variant-diagnostics-id',
+        variantName: 'Variant Diagnostics',
+      })
+    ).toMatchObject({
+      attributes_count: 2,
+      ripx_test_values: ['test-diagnostics'],
+      ripx_variant_values: ['Variant Diagnostics'],
+      expected_test_id: 'test-diagnostics',
+      expected_variant_values: ['variant-diagnostics-id', 'Variant Diagnostics'],
+    });
+  });
+
+  it('normalizes truncated shipping carrier callback strategies', () => {
+    expect(normalizeShippingCallbackStrategy('flat_rat')).toBe('flat_rate');
+    expect(normalizeShippingCallbackStrategy('carrier_quot')).toBe('carrier_quote');
+    expect(normalizeShippingCallbackStrategy('flat_rat', { strategy: 'flat_rate' })).toBe(
+      'flat_rate'
+    );
+    expect(normalizeShippingCallbackStrategy('flat_rat', { strategy: 'carrier_quote' })).toBe(
+      'carrier_quote'
+    );
+  });
+
+  it('matches carrier callback assignments from public line item properties', () => {
+    const req = {
+      body: {
+        rate: {
+          items: [
+            {
+              properties: {
+                ripx_price_test: 'test-public',
+                ripx_variant: 'Variant Public',
+              },
+            },
+          ],
+        },
+      },
+    };
+    expect(
+      carrierRequestMatchesAssignment(req, {
+        testId: 'test-public',
+        variantId: 'Variant Public',
+      })
+    ).toBe(true);
+  });
+
+  it('records recent shipping carrier callback traces', () => {
+    recordShippingCarrierCallbackTrace({
+      test_id: 'trace-test',
+      variant_id: 'Variant Trace',
+      strategy: 'flat_rate',
+      amount: 44,
+      currency: 'USD',
+      rates_count: 1,
+      assignment_diagnostics: {
+        attributes_count: 2,
+        ripx_test_values: ['trace-test'],
+        ripx_variant_values: ['Variant Trace'],
+        expected_test_id: 'trace-test',
+        expected_variant_values: ['Variant Trace'],
+      },
+      request_shape: { has_rate: true },
+    });
+
+    const traces = getShippingCarrierCallbackTrace({ testId: 'trace-test', limit: 1 });
+    expect(traces).toHaveLength(1);
+    expect(traces[0]).toMatchObject({
+      test_id: 'trace-test',
+      variant_id: 'Variant Trace',
+      strategy: 'flat_rate',
+      rates_count: 1,
+      assignment_diagnostics: {
+        attributes_count: 2,
+        ripx_test_values: ['trace-test'],
+        ripx_variant_values: ['Variant Trace'],
+        expected_test_id: 'trace-test',
+        expected_variant_values: ['Variant Trace'],
+      },
+      request_shape: { has_rate: true },
+    });
   });
 
   it('clamps click coordinates and preserves capture diagnostics', () => {

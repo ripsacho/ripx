@@ -24,3 +24,11 @@
   background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
   z-index: 1;
 }
+
+[data-theme='dark'] .errorPage :global(.Polaris-Card) {
+  background: var(--bg-secondary) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(6, 182, 212, 0.08) !important;
+}

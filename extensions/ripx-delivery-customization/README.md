@@ -7,6 +7,7 @@ Shopify `delivery_customization` function for RipX checkout delivery-method expe
 - Delivery-group cart line attributes:
   - `_ripx_price_test`
   - `_ripx_variant`
+  - `ripx_price_test` / `ripx_variant` as public fallbacks when Shopify does not expose private underscore properties
 - Owner metafield:
   - namespace: `delivery-customization`
   - key: `function-configuration`

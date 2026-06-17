@@ -95,6 +95,20 @@ const SECTIONS = [
     keywords: 'standalone api key register domain',
   },
   {
+    id: 'my-domains',
+    title: 'My Domains & Store Access',
+    icon: StoreIcon,
+    group: 'start',
+    keywords: 'domains stores shopify oauth account access install link',
+  },
+  {
+    id: 'local-dev',
+    title: 'Local Shopify Dev',
+    icon: CodeIcon,
+    group: 'start',
+    keywords: 'shopify cli local tunnel cloudflare ngrok otp smtp',
+  },
+  {
     id: 'dashboard',
     title: 'Dashboard',
     icon: ChartVerticalIcon,
@@ -109,11 +123,60 @@ const SECTIONS = [
     keywords: 'lifecycle types traffic allocation variants',
   },
   {
+    id: 'test-decision-guide',
+    title: 'Test Decision Guide',
+    icon: CompassIcon,
+    group: 'core',
+    keywords: 'choose price offer shipping checkout combination test type decision',
+  },
+  {
+    id: 'launch-preflight',
+    title: 'Launch Preflight',
+    icon: CompassIcon,
+    group: 'core',
+    keywords: 'preflight readiness launch canary visual qa guardrails checkout theme',
+  },
+  {
     id: 'price-testing',
     title: 'Price testing (Shopify)',
     icon: TargetIcon,
     group: 'core',
     keywords: 'price checkout catalog discount display pdp catalog alignment',
+  },
+  {
+    id: 'offer-testing',
+    title: 'Offer Testing',
+    icon: LinkIcon,
+    group: 'core',
+    keywords: 'offer discount promotion campaign coupon free shipping',
+  },
+  {
+    id: 'checkout-studio',
+    title: 'Checkout Studio',
+    icon: SettingsIcon,
+    group: 'core',
+    keywords: 'checkout ui payment delivery shipping functions studio readiness',
+  },
+  {
+    id: 'shipping-tests',
+    title: 'Shipping Tests',
+    icon: StoreIcon,
+    group: 'core',
+    keywords: 'shipping rates carrier service delivery customization free shipping diagnostics',
+  },
+  {
+    id: 'onsite-split-url',
+    title: 'Onsite Edit & Split URL',
+    icon: CodeIcon,
+    group: 'core',
+    keywords: 'onsite edit visual editor split url content css javascript landing page',
+  },
+  {
+    id: 'theme-template-tests',
+    title: 'Theme & Template Tests',
+    icon: StoreIcon,
+    group: 'core',
+    keywords: 'theme template selector preflight visual qa app embed',
   },
   {
     id: 'data-flow',
@@ -184,6 +247,35 @@ const SECTIONS = [
     icon: ExportIcon,
     group: 'integrations',
     keywords: 'CSV JSON BigQuery report',
+  },
+  {
+    id: 'profile-notifications',
+    title: 'Profile & Notifications',
+    icon: PersonIcon,
+    group: 'advanced',
+    keywords: 'account profile appearance preferences notifications alerts email',
+  },
+  {
+    id: 'support-agent',
+    title: 'Support & RipX Agent',
+    icon: NotificationIcon,
+    group: 'advanced',
+    keywords: 'support tickets supportai ripx agent chat confirmed actions',
+  },
+  {
+    id: 'admin-ops',
+    title: 'Admin Operations',
+    icon: SettingsIcon,
+    group: 'advanced',
+    keywords: 'admin users domains jobs health feature flags audit support tickets mail processes',
+  },
+  {
+    id: 'automation-guardrails',
+    title: 'Automation & Guardrails',
+    icon: SettingsIcon,
+    group: 'advanced',
+    keywords:
+      'auto stop scheduled tests archive guardrails jobs significance alerts personalization',
   },
   {
     id: 'api',
@@ -487,6 +579,124 @@ npm run dev`}
         </BlockStack>
       );
 
+    case 'my-domains':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            My Domains is the account-level store picker. It lists every Shopify store and
+            standalone domain your signed-in email can access, and it keeps stale store context from
+            leaking into the app while you switch accounts.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Add a store or site
+          </Text>
+          <DocTable
+            headers={['Flow', 'When to use it', 'What happens']}
+            rows={[
+              [
+                'Connect Shopify store',
+                'For *.myshopify.com stores',
+                'Starts Shopify OAuth, links the store to your account, then refreshes My Domains.',
+              ],
+              [
+                'Add standalone domain',
+                'For non-Shopify sites',
+                'Registers the domain and stores an account API key for that site.',
+              ],
+              [
+                'Use existing key',
+                'For a domain already registered outside your account',
+                'Stores the key locally and opens the app for that domain.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Shopify connection states
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Connected:</strong> The app is installed and your account can open the store.
+            </li>
+            <li>
+              <strong>Installed but not linked:</strong> OAuth must be completed by the account that
+              should manage the store.
+            </li>
+            <li>
+              <strong>Restricted:</strong> The store exists, but the account role or access status
+              blocks entry.
+            </li>
+            <li>
+              <strong>Wrong store:</strong> Use the generated incognito/install link to complete
+              OAuth with the intended Shopify account.
+            </li>
+          </ul>
+          <DocCallout type="info" title="Account safety">
+            If you are changing Shopify accounts locally, sign out of Shopify CLI/browser admin,
+            reconnect from My Domains, and confirm the store shown in the OAuth screen before
+            approving access.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'local-dev':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Local development uses the local Shopify app configuration and a public tunnel only when
+            Shopify needs to reach your machine. Keep the Shopify CLI account, app config, and
+            environment variables aligned.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Recommended startup
+          </Text>
+          <CodeBlock
+            code={`# Backend + frontend
+npm run dev
+
+# Shopify CLI with the local-safe config
+npm run shopify:dev`}
+            language="bash"
+          />
+          <Text variant="headingMd" as="h4">
+            Local checklist
+          </Text>
+          <StepList
+            steps={[
+              'Copy .env.example to .env and set DATABASE_URL, JWT_SECRET, APP_URL, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, and VITE_SHOPIFY_API_KEY.',
+              'Use local Shopify credentials that match shopify.app.local.toml.',
+              'Run migrations before opening the app.',
+              'If OTP or magic links should send real email, set RIPX_EMAIL_VERIFICATION_STUB=false and configure SMTP_HOST, SMTP_PORT=587, SMTP_USER, SMTP_PASS, and SMTP_FROM.',
+              'If a tunnel URL changes, update APP_URL and the Shopify Partner Dashboard application URL and redirect URL.',
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Tunnel guidance
+          </Text>
+          <DocTable
+            headers={['Symptom', 'Fix']}
+            rows={[
+              [
+                'Shopify OAuth redirects to the wrong URL',
+                'Sync APP_URL, FRONTEND_URL if used, and Partner Dashboard redirect URLs.',
+              ],
+              [
+                'Old tunnel shows bandwidth or unavailable errors',
+                'Stop stale Shopify CLI/tunnel processes and restart the local-safe Shopify dev command.',
+              ],
+              [
+                'Changing Shopify login account',
+                'Run Shopify CLI logout/login, then reconnect the target store from My Domains.',
+              ],
+            ]}
+          />
+          <DocCallout type="warning" title="Secrets">
+            Do not paste tunnel auth tokens, SMTP passwords, Shopify secrets, or API keys into chat
+            or committed files. If a token is exposed in terminal history, rotate it in the provider
+            dashboard.
+          </DocCallout>
+        </BlockStack>
+      );
+
     case 'dashboard':
       return (
         <BlockStack gap="400">
@@ -557,6 +767,165 @@ npm run dev`}
               together
             </li>
           </ul>
+        </BlockStack>
+      );
+
+    case 'test-decision-guide':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Use this guide before creating a test. Pick the smallest test type that changes the
+            thing you want to learn, then add checkout or shipping support only when the customer
+            experience must continue past the storefront.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Choose the right test type
+          </Text>
+          <DocTable
+            headers={['Goal', 'Use this test', 'Avoid this when']}
+            rows={[
+              [
+                'Find the best final product price',
+                'Price test',
+                'You only need a promotion or discount campaign; use Offer instead.',
+              ],
+              [
+                'Run promo, coupon, or free-shipping style campaigns',
+                'Offer test',
+                'You need the catalog-equivalent price level to change everywhere.',
+              ],
+              [
+                'Compare shipping rates, thresholds, or delivery names',
+                'Shipping test',
+                'The change is only marketing copy; use Onsite Edit or Checkout Studio.',
+              ],
+              [
+                'Change checkout reassurance, payment, or delivery presentation',
+                'Checkout test / Checkout Studio',
+                'The main learning is PDP content or price; keep it in storefront tests.',
+              ],
+              [
+                'Compare landing pages or templates',
+                'Split URL, Template, or Theme test',
+                'The variant needs precise DOM edits only; use Onsite Edit.',
+              ],
+              [
+                'Test price plus shipping or price plus content together',
+                'Combination test',
+                'You do not have enough traffic to estimate interaction effects.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Capability matrix
+          </Text>
+          <DocTable
+            headers={['Capability', 'Storefront', 'Cart', 'Checkout', 'Notes']}
+            rows={[
+              [
+                'Price',
+                'Yes',
+                'Yes',
+                'Yes with Cart Transform',
+                'Best for final price-level learning.',
+              ],
+              [
+                'Offer',
+                'Optional',
+                'Optional',
+                'Yes with Discount Function',
+                'Best for promo mechanics and campaign messaging.',
+              ],
+              [
+                'Shipping',
+                'Assignment only',
+                'Assignment metadata',
+                'Yes with shipping resolver/functions',
+                'Always run diagnostics and checkout QA.',
+              ],
+              [
+                'Checkout content',
+                'No',
+                'No',
+                'Yes with Checkout UI extension',
+                'Requires checkout extension setup and network access where applicable.',
+              ],
+            ]}
+          />
+          <DocCallout type="info" title="Keep the first test simple">
+            If two test types could answer the same question, start with the one that changes fewer
+            systems. Add checkout, shipping, or combination behavior after the storefront-only
+            version proves the idea is worth deeper rollout.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'launch-preflight':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Launch preflight runs before a test starts. It turns technical checks into a short
+            merchant-facing summary, then keeps the detailed checklist available for developers and
+            support teams.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            What preflight checks
+          </Text>
+          <DocTable
+            headers={['Area', 'What it verifies', 'Typical owner']}
+            rows={[
+              [
+                'Storefront runtime',
+                'RipX script/app embed loads and can assign variants on the target surface.',
+                'Merchant or theme developer',
+              ],
+              [
+                'Shopify OAuth',
+                'The store has a valid app connection and Admin API access.',
+                'Store admin',
+              ],
+              [
+                'Theme selectors',
+                'Price, product, and variant markers are available for PDP/listing edits.',
+                'Theme developer',
+              ],
+              [
+                'Checkout readiness',
+                'Cart Transform, discount, payment, delivery, and checkout UI pieces are attached when required.',
+                'Shopify admin or developer',
+              ],
+              [
+                'Guardrails and QA',
+                'Required guardrails, visual QA metadata, canary settings, and manual launch checklist are present.',
+                'Experiment owner',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Launch decisions
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Blocking errors:</strong> Fix before launch unless an admin intentionally uses
+              force start for a known, contained issue.
+            </li>
+            <li>
+              <strong>Warnings:</strong> Review the recommendation. Many warnings are safe for
+              non-checkout or non-price tests but should be documented.
+            </li>
+            <li>
+              <strong>Canary rollout:</strong> Use a small starting percentage when risk is elevated
+              or when the theme/checkout surface changed recently.
+            </li>
+            <li>
+              <strong>Visual QA required:</strong> Add a baseline ID and latest verification date
+              before starting.
+            </li>
+          </ul>
+          <DocCallout type="info" title="Merchant-friendly summary">
+            The launch dialog shows the top actionable items first and hides routine passed checks
+            inside Technical details. Use that detailed section when opening a support ticket.
+          </DocCallout>
         </BlockStack>
       );
 
@@ -859,6 +1228,289 @@ npm run dev`}
           <DocCallout type="info" title="Best practice">
             Run price tests 2-4 weeks with 200+ conversions per variant. Track both revenue and
             margin, and verify the same variant behavior on PDP, cart, and checkout before launch.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'offer-testing':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Offer tests are for promotion mechanics: percentage or amount discounts, campaign
+            messaging, no-code promo links, and free-shipping style incentives. Use Price tests when
+            the learning is the final product price level.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Offer vs price
+          </Text>
+          <DocTable
+            headers={['Question', 'Use Offer', 'Use Price']}
+            rows={[
+              [
+                'What are you changing?',
+                'Promotion, incentive, discount, or campaign framing.',
+                'The actual product price level.',
+              ],
+              [
+                'Checkout path',
+                'Discount Function or promo-link attribution.',
+                'Cart Transform / Direct Price Override.',
+              ],
+              [
+                'After the test',
+                'Keep, pause, or retire the campaign.',
+                'Publish winning prices to Shopify catalog if appropriate.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Launch checklist
+          </Text>
+          <StepList
+            steps={[
+              'Confirm the offer applies only to the intended products, segments, or cart conditions.',
+              'Verify the checkout discount function or promo link path is configured for the shop.',
+              'Preview attribution so conversions are tied back to the test and variant.',
+              'Run launch preflight and perform an incognito checkout QA pass.',
+            ]}
+          />
+          <DocCallout type="info" title="Promo links">
+            Use Promo Links when the variant should be shared in campaigns or emails. Use the
+            checkout discount path when the offer should follow normal variant assignment.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'checkout-studio':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Checkout Studio centralizes checkout experience testing: content blocks, offer
+            messaging, payment and delivery customizations, shipping behavior, and checkout
+            reporting. It is most useful when checkout must match a storefront assignment.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Checkout surfaces
+          </Text>
+          <DocTable
+            headers={['Surface', 'Use it for', 'Readiness requirement']}
+            rows={[
+              [
+                'Checkout UI extension',
+                'Trust copy, reassurance, offer sections, CTA labels, and layout experiments.',
+                'Sync generated checkout UI config and verify checkout experience diagnostics.',
+              ],
+              [
+                'Cart Transform',
+                'Direct Price Override so checkout charged price matches the test price.',
+                'Attach the RipX Cart Transform function and verify price diagnostics.',
+              ],
+              [
+                'Discount Function',
+                'Offer tests and promotion-style discounts.',
+                'Network access/config must point to the price/offer resolver endpoints.',
+              ],
+              [
+                'Payment customization',
+                'Hide, rename, or reorder payment methods.',
+                'Shopify payment customization function deployed and enabled.',
+              ],
+              [
+                'Delivery customization',
+                'Hide, rename, or reorder delivery methods.',
+                'Shopify delivery customization function deployed and enabled.',
+              ],
+              [
+                'Shipping resolver',
+                'Flat-rate, threshold, carrier quote, and free-shipping tests.',
+                'Shipping diagnostics green or variant classified as manual/discount-only by design.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Setup flow
+          </Text>
+          <StepList
+            steps={[
+              'Open Settings -> Installation for the store.',
+              'Refresh Shopify function inventory and checkout diagnostics.',
+              'Use Ensure/Verify actions for Cart Transform and discount function configuration.',
+              'Create or edit a test in the wizard and configure the checkout surface mode.',
+              'Run launch preflight and verify checkout/cart behavior in an incognito checkout.',
+            ]}
+          />
+          <DocCallout type="warning" title="Checkout limits">
+            Checkout behavior depends on Shopify plan, function attachment, network access, and
+            theme/cart metadata. If checkout price or shipping cannot be changed automatically,
+            document the limitation and use an Offer or manual QA path instead.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'shipping-tests':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Shipping tests compare rates, thresholds, method names, and delivery-option behavior.
+            RipX can plan and apply some Shopify resources automatically, but every shipping test
+            should still be verified in a live checkout before full rollout.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            What RipX can apply
+          </Text>
+          <DocTable
+            headers={['Strategy', 'Automatic path', 'What to verify']}
+            rows={[
+              [
+                'Flat rate',
+                'CarrierService adapter when the shop supports carrier-calculated shipping.',
+                'The expected title and amount appear for assigned checkout lines.',
+              ],
+              [
+                'Free shipping / threshold',
+                'Discount function or shipping resolver depending on the variant design.',
+                'The threshold, currency, and cart qualification match the test design.',
+              ],
+              [
+                'Carrier quote',
+                'CarrierService callback with a configured quote provider.',
+                'The provider returns stable rates for the target country/cart combinations.',
+              ],
+              [
+                'Delivery customization',
+                'Delivery customization function for hide, rename, or reorder behavior.',
+                'Existing Shopify delivery methods are present and match the configured names.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Rollout workflow
+          </Text>
+          <StepList
+            steps={[
+              'Create a Shipping test and configure each variant with rate, threshold, carrier quote, or delivery-method behavior.',
+              'Run shipping diagnostics from the test review or detail screen.',
+              'Review the execution split: automatic, discount-only, or manual.',
+              'Run a dry run before apply so resource changes and callback needs are visible.',
+              'Apply only when diagnostics are ready, then place a checkout QA order path for control and treatment.',
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Diagnostic outcomes
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Automatic:</strong> RipX can provision the needed CarrierService, delivery
+              customization, or discount behavior.
+            </li>
+            <li>
+              <strong>Discount-only:</strong> No Shopify resource provisioning is needed, but the
+              checkout discount path must be configured.
+            </li>
+            <li>
+              <strong>Manual:</strong> A merchant/developer step is still required, usually because
+              a callback URL, provider, Shopify plan capability, or delivery method name is missing.
+            </li>
+          </ul>
+          <DocCallout type="warning" title="Before enabling on a real shop">
+            Confirm <code>read_shipping</code> and <code>write_shipping</code> scopes, a reachable
+            carrier callback URL, and a successful checkout QA pass. Treat diagnostics as the source
+            of truth when the wizard and Shopify settings disagree.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'onsite-split-url':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Onsite Edit tests change content on the current page. Split URL tests send visitors to
+            alternate landing pages. Both are good first tests because they avoid checkout and
+            catalog complexity.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            When to use each
+          </Text>
+          <DocTable
+            headers={['Test type', 'Best for', 'QA focus']}
+            rows={[
+              [
+                'Onsite Edit',
+                'Headlines, CTA text, image swaps, hiding/showing sections, lightweight CSS/JS.',
+                'Selector stability, mobile layout, and flicker.',
+              ],
+              [
+                'Visual editor',
+                'Merchant-friendly DOM edits without writing code.',
+                'Confirm selectors still match after theme updates.',
+              ],
+              [
+                'Split URL',
+                'Landing page, collection, or PDP variants hosted at different URLs.',
+                'Redirect loops, query parameters, canonical/SEO expectations, and page speed.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            QA checklist
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>Preview every variant in desktop and mobile viewport sizes.</li>
+            <li>Confirm the RipX script loads before the target content needs to change.</li>
+            <li>
+              For Split URL, keep destination pages live and reachable for the full test window.
+            </li>
+            <li>Use launch preflight and document any selector or visual QA exceptions.</li>
+          </ul>
+        </BlockStack>
+      );
+
+    case 'theme-template-tests':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Theme and Template tests are for larger storefront experiences: alternate templates,
+            section layouts, native theme snippets, and redesign experiments. They need stronger QA
+            because theme markup can change selector and price-detection behavior.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Readiness checks
+          </Text>
+          <DocTable
+            headers={['Area', 'What to confirm']}
+            rows={[
+              ['App embed', 'RipX App Embed is enabled and serving the expected script version.'],
+              [
+                'Selectors',
+                'Product, variant, price, and CTA selectors are stable on target pages.',
+              ],
+              ['Visual QA', 'Baseline metadata exists when visual QA is required by policy.'],
+              [
+                'Checkout impact',
+                'Any price, offer, or shipping behavior still passes checkout QA.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Troubleshooting
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              If a variant does not render, check the theme app embed, App Proxy signature, and
+              storefront script health.
+            </li>
+            <li>
+              If price selectors fail, add or adjust price surface mappings before launching price
+              or theme tests.
+            </li>
+            <li>
+              If a theme update lands during a test, rerun preflight and refresh visual QA before
+              scaling traffic.
+            </li>
+          </ul>
+          <DocCallout type="warning" title="Theme changes have broad blast radius">
+            Prefer canary rollout for theme and template tests. Keep a rollback plan and avoid
+            launching major theme experiments at the same time as checkout or shipping changes.
           </DocCallout>
         </BlockStack>
       );
@@ -1255,9 +1907,246 @@ npm run dev`}
         </BlockStack>
       );
 
+    case 'profile-notifications':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Profile holds account-level preferences that are not tied to a single store. Use it for
+            account identity, app appearance, and personal notification preferences.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Profile areas
+          </Text>
+          <DocTable
+            headers={['Area', 'Purpose']}
+            rows={[
+              [
+                'Account',
+                'Email/session details, connected account context, and API documentation link.',
+              ],
+              ['Appearance', 'Light, dark, or automatic theme preference.'],
+              [
+                'Preferences',
+                'Default UI preferences that follow your account rather than one store.',
+              ],
+              [
+                'Notifications',
+                'Experiment alerts, admin notices, support updates, and read/unread state.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Notification guidance
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>Review unread notifications after launches, test stops, and support replies.</li>
+            <li>
+              Use significance alerts for test-level decisions instead of watching dashboards
+              manually.
+            </li>
+            <li>Keep email delivery configured if production alerts must leave the app.</li>
+          </ul>
+        </BlockStack>
+      );
+
+    case 'support-agent':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Support combines human tickets, ticket threads, SupportAI, and the store-aware RipX
+            Agent. Use the lightweight SupportAI chat for documentation questions and RipX Agent
+            when the answer depends on the current store, test, or diagnostics.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Support channels
+          </Text>
+          <DocTable
+            headers={['Channel', 'Best for', 'Notes']}
+            rows={[
+              [
+                'Contact us',
+                'Human support requests',
+                'Creates a ticket and emails the configured support inbox.',
+              ],
+              [
+                'My requests',
+                'Following up on open or closed tickets',
+                'Thread replies stay attached to the original support request.',
+              ],
+              [
+                'SupportAI',
+                'General docs and setup answers',
+                'Uses the support knowledge base when AI is configured; otherwise shows a setup notice.',
+              ],
+              [
+                'RipX Agent',
+                'Store-aware diagnostics and safe actions',
+                'Can inspect readiness and propose actions; write actions are confirmation-gated.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Production setup
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              Configure <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>,{' '}
+              <code>SMTP_PASS</code>, and <code>SMTP_FROM</code> for ticket and OTP delivery.
+            </li>
+            <li>
+              Set <code>SUPPORT_EMAIL_TO</code> when support tickets should go to a team inbox
+              instead of the sender address.
+            </li>
+            <li>
+              Add <code>OPENAI_API_KEY</code> only when SupportAI should generate real answers.
+            </li>
+            <li>
+              Keep <code>SUPPORT_AGENT_ACTIONS_ENABLED</code> off until confirmed actions are ready
+              for the environment.
+            </li>
+          </ul>
+        </BlockStack>
+      );
+
+    case 'admin-ops':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            The Admin area is for operators and super admins. It centralizes account control, safety
+            switches, operational monitoring, support workflows, and data maintenance.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Admin map
+          </Text>
+          <DocTable
+            headers={['Group', 'Pages', 'Use for']}
+            rows={[
+              [
+                'Core',
+                'Users, Domains, Tests, Test types, Accounts',
+                'Access control, account ownership, and feature availability.',
+              ],
+              [
+                'System & data',
+                'Audit log, KV, Jobs, Feature flags, Aggregation',
+                'Operational debugging, queues, rollups, and controlled rollout.',
+              ],
+              [
+                'Shops & limits',
+                'Shop sessions, settings overrides, rate limits, block list, conflicts',
+                'Per-shop exceptions, throttling, and abuse protection.',
+              ],
+              [
+                'Integrations',
+                'Webhook events, targeting presets, webhooks',
+                'Integration health and reusable targeting data.',
+              ],
+              [
+                'Monitoring & support',
+                'System health, test health, notifications, support tickets, alerts, event catalog, client errors',
+                'Production health, merchant issues, and event quality.',
+              ],
+              [
+                'Product & policy',
+                'Consent/script, legal, maintenance, announcement banner, landing clients, email delivery, usage export',
+                'Policy controls, customer messaging, and compliance operations.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Operational checklist
+          </Text>
+          <StepList
+            steps={[
+              'Check System health before and after deployments.',
+              'Use Test health and Event catalog when analytics or assignment data looks stale.',
+              'Review Jobs and Aggregation after queue or Redis changes.',
+              'Use Feature flags and Test type controls to stage risky functionality.',
+              'Check Email delivery before debugging OTP, magic-link, or support-ticket failures.',
+            ]}
+          />
+          <DocCallout type="warning" title="Admin safety">
+            Restrict admin access with database roles, <code>ADMIN_API_KEY</code> only for scripts,
+            and <code>ADMIN_IP_ALLOWLIST</code> for production networks when possible.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'automation-guardrails':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            RipX can continue working after a test is launched: scheduled starts/stops, significance
+            alerts, guardrail checks, auto-stop, archival jobs, BigQuery exports, and
+            personalization rollout all depend on background workers and feature flags.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Merchant-visible automation
+          </Text>
+          <DocTable
+            headers={['Automation', 'What it does', 'Where to check']}
+            rows={[
+              [
+                'Scheduled tests',
+                'Starts or stops tests at configured times.',
+                'Test detail, Admin -> Jobs, and notifications.',
+              ],
+              [
+                'Auto-stop',
+                'Stops a test when significance or configured stop conditions are met.',
+                'App settings defaults, test result status, and outbound webhooks.',
+              ],
+              [
+                'Significance alerts',
+                'Notifies users or admins when a test crosses the configured threshold.',
+                'Notifications, Admin -> Significance alerts.',
+              ],
+              [
+                'Guardrails',
+                'Watches risk metrics and can recommend rollback or personalization changes.',
+                'Launch preflight, Admin -> Jobs, and test health.',
+              ],
+              [
+                'Archive',
+                'Moves old stopped tests out of active views after the retention window.',
+                'Admin -> Jobs and archive settings.',
+              ],
+              [
+                'Warehouse export',
+                'Pushes events, tests, heatmaps, and rollups to BigQuery.',
+                'Settings -> Integrations and Admin -> Aggregation.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Operator checklist
+          </Text>
+          <StepList
+            steps={[
+              'Set REDIS_URL in environments that should run background jobs.',
+              'Confirm feature flags for scheduled tests, guardrails, significance alerts, and warehouse export.',
+              'Check Admin -> Jobs after deploys and after Redis/network incidents.',
+              'Use Admin -> Test health and Event catalog when metrics are stale or missing.',
+              'Document any manual override in Admin audit log before forcing launch or rollback.',
+            ]}
+          />
+          <DocCallout type="warning" title="Do not assume automation is active">
+            If Redis is not configured, many jobs fall back to manual operation. Production
+            environments should treat job health as part of launch readiness, especially for
+            scheduled tests, guardrails, auto-stop, and exports.
+          </DocCallout>
+        </BlockStack>
+      );
+
     case 'api':
       return (
         <BlockStack gap="400">
+          <DocCallout type="warning" title="API documentation status">
+            Swagger UI is available at <strong>/api-docs</strong>, but several newer route groups
+            are still documented in runbooks instead of full OpenAPI annotations. Treat the tables
+            below as a route map and use authenticated app flows for merchant operations whenever
+            possible.
+          </DocCallout>
           <Text variant="headingMd" as="h4">
             Authentication
           </Text>
@@ -1285,8 +2174,47 @@ npm run dev`}
               ['GET', '/api/track/script.js', 'Storefront script'],
             ]}
           />
+          <Text variant="headingMd" as="h4">
+            Newer route groups to know
+          </Text>
+          <DocTable
+            headers={['Group', 'Examples', 'Use']}
+            rows={[
+              [
+                'Checkout price',
+                '/api/track/price-resolve-batch, /api/settings/checkout-price-diagnostics',
+                'Discount/Cart Transform resolver and checkout price health.',
+              ],
+              [
+                'Shipping',
+                '/api/track/shipping-resolve-batch, /api/track/shipping-carrier-rates',
+                'Shipping resolver, CarrierService callback, and checkout rate behavior.',
+              ],
+              [
+                'Launch readiness',
+                '/api/tests/:id/preflight, /api/tests/:id/checkout/readiness',
+                'Preflight and checkout readiness checks before launch.',
+              ],
+              [
+                'Settings diagnostics',
+                '/api/settings/installation, /api/settings/shopify-functions-inventory',
+                'Script, App Proxy, Shopify function, and store setup health.',
+              ],
+              [
+                'Support and agent',
+                '/api/support/*, /api/support-agent/*',
+                'Tickets, SupportAI, and store-aware confirmed actions.',
+              ],
+              [
+                'Admin operations',
+                '/api/admin/jobs, /api/admin/system-health, /api/admin/mail-processes',
+                'Operator health, background jobs, mail delivery, and support triage.',
+              ],
+            ]}
+          />
           <DocCallout type="info" title="Full API Docs">
-            Open <strong>/api-docs</strong> in your app for interactive Swagger UI.
+            Open <strong>/api-docs</strong> in your app for interactive Swagger UI. For route groups
+            not yet covered there, use the linked runbooks in the repository docs index.
           </DocCallout>
         </BlockStack>
       );
@@ -1363,7 +2291,7 @@ npm run dev`}
   }
 }
 
-const READING_TIME_MIN = 18;
+const READING_TIME_MIN = 30;
 
 const QUICK_JUMP_SECTIONS = SECTIONS.slice(0, 9);
 
@@ -2021,12 +2949,24 @@ function Documentation() {
             <Link to={ROUTES.PROFILE_APPEARANCE} className={styles.docsResourcesLink}>
               <SettingsIcon /> Profile appearance
             </Link>
-            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
+            <a href="#settings" className={styles.docsResourcesLink}>
               <SettingsIcon /> App settings
-            </Link>
-            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
+            </a>
+            <a href="#setup-wizard" className={styles.docsResourcesLink}>
               <CompassIcon /> Setup Wizard
-            </Link>
+            </a>
+            <a href="#launch-preflight" className={styles.docsResourcesLink}>
+              <CompassIcon /> Launch Preflight
+            </a>
+            <a href="#offer-testing" className={styles.docsResourcesLink}>
+              <LinkIcon /> Offer Testing
+            </a>
+            <a href="#shipping-tests" className={styles.docsResourcesLink}>
+              <StoreIcon /> Shipping Tests
+            </a>
+            <a href="#theme-template-tests" className={styles.docsResourcesLink}>
+              <StoreIcon /> Theme Tests
+            </a>
             <Link to={ROUTES.PROFILE} className={styles.docsResourcesLink}>
               <PersonIcon /> Profile
             </Link>

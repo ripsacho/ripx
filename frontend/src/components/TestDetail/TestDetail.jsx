@@ -1,7 +1,8 @@
 /**
  * Test Detail (shared wizard edit view)
  */
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Page,
   Layout,
@@ -34,7 +35,7 @@ import PartyPop from '../PartyPop/PartyPop';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { apiGet, apiPost, apiPut, apiRequest, unwrapData, getShopDomain } from '../../services';
 import TestWizard from '../TestWizard/TestWizard';
-import { PageShell } from '../Shared';
+import { BlockingOverlay, PageShell } from '../Shared';
 import {
   useTest,
   useStartTest,
@@ -65,6 +66,9 @@ import {
 } from '../../utils/preferences';
 import styles from './TestDetail.module.css';
 
+const UNSAVED_TEST_DETAIL_MESSAGE =
+  'You have unsaved test changes. Leave this page and lose those changes?';
+
 function DetailActionMenuItem({
   icon,
   label,
@@ -94,6 +98,242 @@ function DetailActionMenuItem({
   );
 }
 
+function getStaleCarrierCallbackToastMessage(diagnosticsPayload) {
+  const checks = Array.isArray(diagnosticsPayload?.diagnostics?.live_resource_checks)
+    ? diagnosticsPayload.diagnostics.live_resource_checks
+    : [];
+  const staleCheck = checks.find(item => item?.live_resource?.callback_matches === false);
+  const urls = diagnosticsPayload?.diagnostics?.urls || {};
+  const expected =
+    staleCheck?.live_resource?.expected_callback_url ||
+    urls.carrier_callback_url ||
+    'the current RipX app URL';
+  const live = staleCheck?.live_resource?.callback_url || 'an older tunnel URL';
+  const appUrl = urls.app_url || expected;
+  return `Shipping setup needs re-apply: Shopify still has ${live}, but RipX expects ${expected}. If you restarted shopify app dev, run "npm run dev:switch-tunnel -- ${appUrl}", then click Save changes again.`;
+}
+
+function applyShippingDiagnosticsToast(payload, setShippingExecutionToast) {
+  const readiness = payload?.diagnostics?.readiness || {};
+  const carrierCount = Number(readiness.live_carrier_services_found || 0);
+  const pendingCarrierCount = Number(readiness.pending_carrier_services || 0);
+  const customizationCount = Number(readiness.live_delivery_customizations_found || 0);
+  const staleCallbacks = Number(readiness.stale_carrier_callbacks || 0);
+  const missingBindings = Number(readiness.missing_carrier_profile_bindings || 0);
+  const rateNameWarnings = Number(readiness.rate_name_collision_warnings || 0);
+  const latestCallbackSeen = Boolean(readiness.latest_carrier_callback_seen);
+  const latestCallbackRatesCount = Number(readiness.latest_carrier_callback_rates_count ?? 0);
+  const multiRateVariants = Number(readiness.multi_rate_variants || 0);
+  const conflicts = Number(readiness.running_shipping_conflicts || 0);
+
+  if (staleCallbacks > 0) {
+    setShippingExecutionToast({
+      type: 'error',
+      message: getStaleCarrierCallbackToastMessage(payload),
+      duration: 8000,
+    });
+    return;
+  }
+  if (pendingCarrierCount > 0 && carrierCount === 0) {
+    setShippingExecutionToast({
+      type: 'info',
+      message:
+        'No live CarrierService exists for the current shipping config yet. Click Save changes to create it, then verify checkout once more.',
+      duration: 7000,
+    });
+    return;
+  }
+  if (missingBindings > 0) {
+    setShippingExecutionToast({
+      type: 'info',
+      message:
+        'CarrierService exists, but it is not attached to a Shopify delivery profile/zone yet. Pick scope from Current Shopify setup (Use as scope), then click Save changes again.',
+    });
+    return;
+  }
+  if (rateNameWarnings > 0) {
+    setShippingExecutionToast({
+      type: 'info',
+      message:
+        'Shipping setup is live, but at least one RipX rate name matches an existing Shopify rate. Rename one of them if checkout hides the price or subline.',
+      duration: 7000,
+    });
+    return;
+  }
+  if (carrierCount > 0 && !latestCallbackSeen) {
+    setShippingExecutionToast({
+      type: 'info',
+      message:
+        'CarrierService is configured, but no recent Shopify checkout callback was recorded for this test.',
+    });
+    return;
+  }
+  if (multiRateVariants > 0 && latestCallbackSeen && latestCallbackRatesCount <= 1) {
+    setShippingExecutionToast({
+      type: 'info',
+      message:
+        'Multi-rate variant is configured, but latest checkout callback returned only one rate. Check per-rate priority/amount conditions and assignment targeting.',
+    });
+    return;
+  }
+  if (carrierCount === 0 && customizationCount === 0) {
+    setShippingExecutionToast({
+      type: 'info',
+      message: 'No live Shopify shipping resources found yet. Save changes to run shipping sync.',
+    });
+    return;
+  }
+  if (conflicts > 0) {
+    setShippingExecutionToast({
+      type: 'info',
+      message: `Shipping setup found, but ${conflicts} other running shipping test${conflicts === 1 ? '' : 's'} may conflict.`,
+    });
+    return;
+  }
+  setShippingExecutionToast({
+    type: 'success',
+    message: `Shipping setup checked: ${carrierCount} carrier service${carrierCount === 1 ? '' : 's'} and ${customizationCount} delivery customization${customizationCount === 1 ? '' : 's'} found.`,
+  });
+}
+
+function stringifyApiDetail(detail) {
+  if (detail === null || detail === undefined || detail === '') {
+    return '';
+  }
+  if (typeof detail === 'string') {
+    return detail;
+  }
+  if (typeof detail === 'number' || typeof detail === 'boolean') {
+    return String(detail);
+  }
+  if (Array.isArray(detail)) {
+    return detail.map(stringifyApiDetail).filter(Boolean).join('. ');
+  }
+  if (typeof detail === 'object') {
+    const parts = [
+      detail.message,
+      detail.error,
+      detail.status,
+      detail.code,
+      detail.field
+        ? `Field: ${Array.isArray(detail.field) ? detail.field.join('.') : detail.field}`
+        : '',
+    ]
+      .map(stringifyApiDetail)
+      .filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join('. ');
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return 'Unexpected API error detail.';
+    }
+  }
+  return String(detail);
+}
+
+function getApiErrorMessage(error, fallback) {
+  const details = error?.response?.data?.details;
+  const detailMessage = stringifyApiDetail(details);
+  return (
+    detailMessage ||
+    stringifyApiDetail(error?.response?.data?.error) ||
+    stringifyApiDetail(error?.response?.data) ||
+    stringifyApiDetail(error?.message) ||
+    fallback
+  );
+}
+
+function normalizeToastPayload(payload, fallbackType = 'info') {
+  if (!payload) {
+    return null;
+  }
+  if (typeof payload === 'string') {
+    return { type: fallbackType, message: payload };
+  }
+  if (typeof payload !== 'object') {
+    return { type: fallbackType, message: stringifyApiDetail(payload) };
+  }
+  const message =
+    stringifyApiDetail(payload.message) ||
+    stringifyApiDetail(payload.error) ||
+    stringifyApiDetail(payload.detail) ||
+    stringifyApiDetail(payload.details) ||
+    'Unexpected notification detail.';
+  return {
+    ...payload,
+    type: typeof payload.type === 'string' ? payload.type : fallbackType,
+    message,
+    ...(payload.title !== undefined ? { title: stringifyApiDetail(payload.title) } : {}),
+    ...(payload.detail !== undefined ? { detail: stringifyApiDetail(payload.detail) } : {}),
+  };
+}
+
+function getShippingExecutionFailureMessage(payload, fallback = 'Shipping execution failed') {
+  const actions = Array.isArray(payload?.execution_result?.actions)
+    ? payload.execution_result.actions
+    : [];
+  const failedAction = actions.find(action => {
+    const status = String(action?.status || '').trim();
+    return status === 'failed' || status.endsWith('_profile_binding_failed');
+  });
+  const detail =
+    failedAction?.details?.message ||
+    failedAction?.details?.user_errors ||
+    failedAction?.details?.profile_binding?.message ||
+    failedAction?.message ||
+    null;
+  const detailMessage = stringifyApiDetail(detail);
+  if (detailMessage) {
+    return detailMessage;
+  }
+  const failedCount = Number(payload?.execution_result?.summary?.failed_count || 0);
+  return failedCount > 0
+    ? `Shipping execution finished with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
+    : fallback;
+}
+
+const SHIPPING_SAVE_PROGRESS_STEPS = [
+  { id: 'check', label: 'Check shipping setup plan' },
+  { id: 'preview', label: 'Preview shipping setup changes' },
+  { id: 'apply', label: 'Apply shipping setup to Shopify' },
+];
+
+function buildShippingSaveProgress(activeStepId, failedStepId = '') {
+  const activeIndex = SHIPPING_SAVE_PROGRESS_STEPS.findIndex(step => step.id === activeStepId);
+  const failedIndex = SHIPPING_SAVE_PROGRESS_STEPS.findIndex(step => step.id === failedStepId);
+  return SHIPPING_SAVE_PROGRESS_STEPS.map((step, index) => {
+    if (failedIndex >= 0) {
+      if (index < failedIndex) return { label: step.label, state: 'complete' };
+      if (index === failedIndex) return { label: step.label, state: 'error' };
+      return { label: step.label, state: 'pending' };
+    }
+    if (activeIndex < 0) {
+      return { label: step.label, state: 'pending' };
+    }
+    if (index < activeIndex) return { label: step.label, state: 'complete' };
+    if (index === activeIndex) return { label: step.label, state: 'active' };
+    return { label: step.label, state: 'pending' };
+  });
+}
+
+function buildShippingSaveProgressComplete() {
+  return SHIPPING_SAVE_PROGRESS_STEPS.map(step => ({ label: step.label, state: 'complete' }));
+}
+
+function isRequestTimeoutError(error) {
+  const message = String(error?.message || error?.response?.data?.error || '')
+    .trim()
+    .toLowerCase();
+  const code = String(error?.code || '')
+    .trim()
+    .toLowerCase();
+  return (
+    code === 'econnaborted' || message.includes('timeout') || message.includes('request timeout')
+  );
+}
+
 function DetailActionMenuSection({ title, children }) {
   const items = React.Children.toArray(children).filter(Boolean);
   if (items.length === 0) return null;
@@ -112,6 +352,7 @@ function TestDetail() {
   const routes = useAppRoutes();
   const [actionLoading, setActionLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   const [startCelebrationMode, setStartCelebrationMode] = useState(null);
   const [deleteModal, setDeleteModal] = useState(false);
@@ -126,16 +367,25 @@ function TestDetail() {
   const [copyToast, setCopyToast] = useState(null);
   const [rolloutCsvLoading, setRolloutCsvLoading] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
-  const [shippingExecutionLoading, setShippingExecutionLoading] = useState(false);
   const [, setShippingExecutionReport] = useState(null);
-  const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
+  const [shippingExecutionToast, setRawShippingExecutionToast] = useState(null);
+  const setShippingExecutionToast = useCallback(nextToast => {
+    setRawShippingExecutionToast(currentToast => {
+      const resolvedToast = typeof nextToast === 'function' ? nextToast(currentToast) : nextToast;
+      return normalizeToastPayload(resolvedToast);
+    });
+  }, []);
+  const [shippingDiagnosticsBlockingVisible, setShippingDiagnosticsBlockingVisible] =
+    useState(false);
+  const [shippingBlockingOverlayState, setShippingBlockingOverlayState] = useState({
+    title: '',
+    message: '',
+    accessibilityLabel: '',
+    steps: [],
+  });
   const [detailInsightPanels, setDetailInsightPanels] = useState({
     readiness: true,
-    shippingPlan: false,
-    shippingActions: false,
   });
-  const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
-  const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
   const [checkoutReadinessLoading, setCheckoutReadinessLoading] = useState(false);
   const [checkoutReadinessReport, setCheckoutReadinessReport] = useState(null);
   const [checkoutCustomizationLoading, setCheckoutCustomizationLoading] = useState(false);
@@ -163,8 +413,95 @@ function TestDetail() {
   });
   const actionsMenuRef = useRef(null);
 
+  const updateShippingBlockingOverlay = useCallback(next => {
+    setShippingBlockingOverlayState(current => {
+      const patch = typeof next === 'function' ? next(current) : next;
+      return {
+        title: '',
+        message: '',
+        accessibilityLabel: '',
+        steps: [],
+        ...(current || {}),
+        ...(patch || {}),
+      };
+    });
+  }, []);
+
   const queryClient = useQueryClient();
   const invalidateTests = useInvalidateTests();
+  const confirmDiscardUnsavedChanges = useCallback(() => {
+    if (!hasUnsavedChanges) {
+      return true;
+    }
+    if (!window.confirm(UNSAVED_TEST_DETAIL_MESSAGE)) {
+      return false;
+    }
+    setHasUnsavedChanges(false);
+    return true;
+  }, [hasUnsavedChanges]);
+  const guardedNavigate = useCallback(
+    (...args) => {
+      if (!confirmDiscardUnsavedChanges()) {
+        return;
+      }
+      navigate(...args);
+    },
+    [confirmDiscardUnsavedChanges, navigate]
+  );
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const handleBeforeUnload = event => {
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const handleDocumentClick = event => {
+      const anchor = event.target?.closest?.('a[href]');
+      if (!anchor) return;
+      if (anchor.target && anchor.target !== '_self') return;
+      if (anchor.hasAttribute('download')) return;
+      const href = anchor.getAttribute('href') || '';
+      if (!href || href.startsWith('#')) return;
+      const nextUrl = new URL(href, window.location.href);
+      if (nextUrl.href === window.location.href) return;
+      if (window.confirm(UNSAVED_TEST_DETAIL_MESSAGE)) {
+        setHasUnsavedChanges(false);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener('click', handleDocumentClick, true);
+    return () => document.removeEventListener('click', handleDocumentClick, true);
+  }, [hasUnsavedChanges]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    window.history.pushState(
+      { ...(window.history.state || {}), ripxTestDetailGuard: true },
+      '',
+      window.location.href
+    );
+    const handlePopState = () => {
+      if (!window.confirm(UNSAVED_TEST_DETAIL_MESSAGE)) {
+        window.history.pushState(
+          { ...(window.history.state || {}), ripxTestDetailGuard: true },
+          '',
+          window.location.href
+        );
+        return;
+      }
+      setHasUnsavedChanges(false);
+      window.removeEventListener('popstate', handlePopState);
+      window.history.back();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [hasUnsavedChanges]);
   const createdTest = location.state?.createdTest;
   const listTest = location.state?.listTest;
   const placeholderTest =
@@ -270,6 +607,7 @@ function TestDetail() {
   }, []);
 
   const isStopped = test?.status === 'stopped' || test?.status === 'completed';
+  const isDraft = test?.status === 'draft';
   const isPersonalized = test?.personalization_mode === 'personalized';
   const isRollout = test?.personalization_mode === 'rollout';
   const hasPersonalization = isPersonalized || isRollout;
@@ -278,7 +616,57 @@ function TestDetail() {
     String(test?.type || '').toLowerCase() === 'pricing';
   const isOfferTest = String(test?.type || '').toLowerCase() === 'offer';
   const isCheckoutTest = String(test?.type || '').toLowerCase() === 'checkout';
-  const isShippingTest = String(test?.type || '').toLowerCase() === 'shipping';
+  const normalizedTestType = String(test?.type || '')
+    .trim()
+    .toLowerCase();
+  const isShippingTest =
+    normalizedTestType === 'shipping' || normalizedTestType.includes('shipping');
+  const isThemeLikeTest =
+    ['theme', 'template'].includes(normalizedTestType) || normalizedTestType.includes('theme');
+  const isContentLikeTest =
+    ['content', 'onsite-edit', 'split-url'].includes(normalizedTestType) ||
+    normalizedTestType.includes('onsite') ||
+    normalizedTestType.includes('split');
+  const shippingApplyScopeGate = useMemo(() => {
+    if (!isShippingTest) {
+      return { blocked: false, missingVariants: [] };
+    }
+    const variants = Array.isArray(test?.variants) ? test.variants : [];
+    const missingVariants = variants
+      .map((variant, index) => {
+        const config = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+        const strategy = String(config.strategy || '')
+          .trim()
+          .toLowerCase();
+        const isControlLike =
+          index === 0 || /^control(\s|$)/i.test(String(variant?.name || '').trim());
+        if (isControlLike || strategy === 'control') {
+          return null;
+        }
+        if (!['flat_rate', 'carrier_quote'].includes(strategy)) {
+          return null;
+        }
+        const scope =
+          config.shipping_scope && typeof config.shipping_scope === 'object'
+            ? config.shipping_scope
+            : {};
+        const profileId = String(scope.profile_id || config.profile_id || '').trim();
+        const locationGroupId = String(scope.location_group_id || '').trim();
+        const zoneId = String(scope.zone_id || '').trim();
+        if (profileId && locationGroupId && zoneId) {
+          return null;
+        }
+        return {
+          index,
+          name: String(variant?.name || `Variant ${index + 1}`).trim() || `Variant ${index + 1}`,
+        };
+      })
+      .filter(Boolean);
+    return {
+      blocked: missingVariants.length > 0,
+      missingVariants,
+    };
+  }, [isShippingTest, test?.variants]);
   const supportsCheckoutReadiness =
     isPriceLikeTest || isOfferTest || isCheckoutTest || isShippingTest;
   const checkoutReadinessLabel = isCheckoutTest ? 'Checkout readiness' : 'Launch readiness';
@@ -688,77 +1076,6 @@ function TestDetail() {
     }
   }, [id, invalidateTests, queryClient]);
 
-  const handleExecuteShipping = useCallback(
-    async (apply, variantIndex = null) => {
-      setShippingExecutionLoading(true);
-      setErrorMessage(null);
-      setShippingExecutionToast(null);
-      try {
-        const response = await apiPost(`/tests/${id}/shipping/execute`, {
-          apply: Boolean(apply),
-          dry_run: !apply,
-          ...(variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}),
-        });
-        const payload = unwrapData(response);
-        setShippingExecutionReport(payload);
-        const summary = payload?.execution_result?.summary || {};
-        const successCount = Number(summary.success_count || 0);
-        const manualCount = Number(summary.manual_required_count || 0);
-        const failedCount = Number(summary.failed_count || 0);
-        const refreshed = apply ? await refreshTestAfterShippingExecution() : true;
-        const actionLabel = apply ? 'Apply' : 'Dry run';
-        if (failedCount > 0) {
-          setErrorMessage(
-            `Shipping execution finished with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
-          );
-        } else {
-          let message =
-            successCount > 0
-              ? `${actionLabel} complete: ${successCount} shipping action${successCount === 1 ? '' : 's'} ready.`
-              : `${actionLabel} complete. No automatic shipping actions were required.`;
-          let type = 'success';
-          if (manualCount > 0) {
-            type = 'info';
-            message = `${actionLabel} finished: ${successCount} ready, ${manualCount} manual follow-up required.`;
-          }
-          if (apply && !refreshed) {
-            type = 'info';
-            message = `${message} The page could not refresh automatically, so some details may update on the next reload.`;
-          }
-          setShippingExecutionToast({ type, message });
-        }
-      } catch (err) {
-        setErrorMessage(
-          err?.response?.data?.details?.[0] ||
-            err?.response?.data?.error ||
-            err?.message ||
-            'Failed to execute shipping actions'
-        );
-      } finally {
-        setShippingExecutionLoading(false);
-      }
-    },
-    [id, refreshTestAfterShippingExecution]
-  );
-
-  const handleShippingDiagnostics = useCallback(async () => {
-    setShippingDiagnosticsLoading(true);
-    setErrorMessage(null);
-    try {
-      const response = await apiGet(`/tests/${id}/shipping/diagnostics`);
-      setShippingDiagnosticsReport(unwrapData(response));
-    } catch (err) {
-      setErrorMessage(
-        err?.response?.data?.details?.[0] ||
-          err?.response?.data?.error ||
-          err?.message ||
-          'Failed to load shipping diagnostics'
-      );
-    } finally {
-      setShippingDiagnosticsLoading(false);
-    }
-  }, [id]);
-
   const handleCheckoutReadiness = useCallback(async () => {
     setCheckoutReadinessLoading(true);
     setErrorMessage(null);
@@ -820,6 +1137,7 @@ function TestDetail() {
       queryClient.setQueryData(testDetailQueryKey(getShopDomain(), id), updatedTest);
     }
     invalidateTests(id);
+    setHasUnsavedChanges(false);
     setSuccessMessage('Code saved successfully');
     setTimeout(() => setSuccessMessage(null), 3000);
     return updatedTest;
@@ -838,99 +1156,321 @@ function TestDetail() {
             code: variant?.code ?? variant?.config?.code ?? '',
           })),
         };
-        response = await apiPut(`/tests/${id}/variants/codes`, codePayload);
+        response = await apiPut(`/tests/${id}/variants/codes`, codePayload, { timeout: 120000 });
+      } else if (isDraft) {
+        response = await apiPut(`/tests/${id}/draft`, payload, { timeout: 120000 });
       } else {
-        response = await apiPut(`/tests/${id}`, payload);
+        response = await apiPut(`/tests/${id}`, payload, { timeout: 120000 });
       }
       const updatedTest = unwrapData(response)?.test ?? unwrapData(response);
       if (updatedTest) {
         queryClient.setQueryData(testDetailQueryKey(getShopDomain(), id), updatedTest);
       }
       invalidateTests(id);
+      setHasUnsavedChanges(false);
+      const shouldRunShippingSaveFlow = isShippingTest && !isDraft && !options.silent;
+      if (shouldRunShippingSaveFlow) {
+        const syncStartedAt = Date.now();
+        const minimumBlockingMs = 1500;
+        let shippingFlowHadError = false;
+        flushSync(() => {
+          updateShippingBlockingOverlay({
+            title: 'Saving shipping setup changes…',
+            message: 'Running check, preview, and apply automatically.',
+            accessibilityLabel: 'Saving shipping setup changes',
+            steps: buildShippingSaveProgress('check'),
+          });
+          setShippingDiagnosticsBlockingVisible(true);
+        });
+        setShippingExecutionToast({
+          type: 'info',
+          message: 'Shipping changes saved. Running check, preview, and apply automatically…',
+          duration: 0,
+        });
+        try {
+          try {
+            const checkResponse = await apiGet(
+              `/tests/${id}/shipping/diagnostics`,
+              {},
+              { timeout: 120000 }
+            );
+            const checkPayload = unwrapData(checkResponse);
+          } catch (checkError) {
+            const timedOut = isRequestTimeoutError(checkError);
+            const message = getApiErrorMessage(
+              checkError,
+              'Could not check shipping setup before sync.'
+            );
+            setShippingExecutionToast({
+              type: timedOut ? 'info' : 'warning',
+              message: timedOut
+                ? 'Shipping check timed out. Continuing with preview/apply sync.'
+                : `Shipping check could not complete (${message}). Continuing with preview/apply sync.`,
+              duration: 7000,
+            });
+          }
+
+          updateShippingBlockingOverlay({
+            title: 'Previewing shipping setup…',
+            message: 'Validating planned Shopify changes before apply.',
+            accessibilityLabel: 'Previewing shipping setup',
+            steps: buildShippingSaveProgress('preview'),
+          });
+          const previewResponse = await apiPost(
+            `/tests/${id}/shipping/execute`,
+            {
+              apply: false,
+              dry_run: true,
+            },
+            { timeout: 120000 }
+          );
+          const previewPayload = unwrapData(previewResponse);
+          setShippingExecutionReport(previewPayload);
+          const previewFailedCount = Number(
+            previewPayload?.execution_result?.summary?.failed_count || 0
+          );
+          if (previewFailedCount > 0 || previewPayload?.has_failures) {
+            shippingFlowHadError = true;
+            const failureMessage = getShippingExecutionFailureMessage(
+              previewPayload,
+              'Shipping changes saved, but preview found issues before apply.'
+            );
+            updateShippingBlockingOverlay({
+              title: 'Shipping setup needs attention',
+              message: failureMessage,
+              accessibilityLabel: 'Shipping setup needs attention',
+              steps: buildShippingSaveProgress('', 'preview'),
+            });
+            setShippingExecutionToast({
+              type: 'error',
+              message: failureMessage,
+              duration: 8000,
+            });
+            return;
+          }
+
+          if (shippingApplyScopeGate.blocked) {
+            shippingFlowHadError = true;
+            const missingNames = shippingApplyScopeGate.missingVariants
+              .slice(0, 2)
+              .map(item => item.name)
+              .join(', ');
+            const scopeMessage = `Shipping sync is waiting for Profile Scope + zone on ${missingNames}${
+              shippingApplyScopeGate.missingVariants.length > 2 ? '…' : ''
+            }. Open Shipping Variant Config, use Current Shopify setup → Use as scope, then save again.`;
+            updateShippingBlockingOverlay({
+              title: 'Shipping apply is blocked',
+              message: scopeMessage,
+              accessibilityLabel: 'Shipping apply is blocked',
+              steps: buildShippingSaveProgress('', 'apply'),
+            });
+            setShippingExecutionToast({
+              type: 'info',
+              message: `Changes saved. ${scopeMessage}`,
+              duration: 9000,
+            });
+            return;
+          }
+
+          updateShippingBlockingOverlay({
+            title: 'Applying shipping setup…',
+            message: 'Updating Shopify resources with this shipping revision.',
+            accessibilityLabel: 'Applying shipping setup',
+            steps: buildShippingSaveProgress('apply'),
+          });
+          const applyResponse = await apiPost(
+            `/tests/${id}/shipping/execute`,
+            {
+              apply: true,
+              dry_run: false,
+            },
+            { timeout: 120000 }
+          );
+          const applyPayload = unwrapData(applyResponse);
+          setShippingExecutionReport(applyPayload);
+          const applyFailedCount = Number(
+            applyPayload?.execution_result?.summary?.failed_count || 0
+          );
+          if (applyFailedCount > 0 || applyPayload?.has_failures) {
+            shippingFlowHadError = true;
+            const failureMessage = getShippingExecutionFailureMessage(
+              applyPayload,
+              'Shipping changes saved, but Shopify sync needs attention.'
+            );
+            updateShippingBlockingOverlay({
+              title: 'Shipping apply needs attention',
+              message: failureMessage,
+              accessibilityLabel: 'Shipping apply needs attention',
+              steps: buildShippingSaveProgress('', 'apply'),
+            });
+            setShippingExecutionToast({
+              type: 'error',
+              message: failureMessage,
+              duration: 8000,
+            });
+            return;
+          }
+
+          await refreshTestAfterShippingExecution();
+          updateShippingBlockingOverlay({
+            title: 'Shipping sync complete',
+            message: 'Check, preview, and apply finished successfully.',
+            accessibilityLabel: 'Shipping sync complete',
+            steps: buildShippingSaveProgressComplete(),
+          });
+          try {
+            const diagnosticsResponse = await apiGet(
+              `/tests/${id}/shipping/diagnostics`,
+              {},
+              { timeout: 120000 }
+            );
+            const diagnosticsPayload = unwrapData(diagnosticsResponse);
+            applyShippingDiagnosticsToast(diagnosticsPayload, setShippingExecutionToast);
+          } catch {
+            setShippingExecutionToast({
+              type: 'success',
+              message: 'Shipping changes saved and synced to Shopify.',
+            });
+          }
+        } catch (applyError) {
+          shippingFlowHadError = true;
+          updateShippingBlockingOverlay({
+            title: 'Shipping sync could not complete',
+            message: getApiErrorMessage(
+              applyError,
+              'Shipping changes saved. Could not complete the automatic shipping sync.'
+            ),
+            accessibilityLabel: 'Shipping sync could not complete',
+            steps: buildShippingSaveProgress('', 'apply'),
+          });
+          setShippingExecutionToast({
+            type: 'info',
+            message: getApiErrorMessage(
+              applyError,
+              'Shipping changes saved. Automatic shipping sync failed, so check shipping diagnostics.'
+            ),
+            duration: 8000,
+          });
+        } finally {
+          const elapsedMs = Date.now() - syncStartedAt;
+          const waitMs = Math.max(0, minimumBlockingMs - elapsedMs);
+          if (waitMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+          }
+          if (shippingFlowHadError) {
+            await new Promise(resolve => setTimeout(resolve, 850));
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 450));
+          }
+          setShippingDiagnosticsBlockingVisible(false);
+          updateShippingBlockingOverlay({
+            title: '',
+            message: '',
+            accessibilityLabel: '',
+            steps: [],
+          });
+        }
+      }
       if (!options.silent) {
-        setSuccessMessage('Test updated successfully');
+        setSuccessMessage(isDraft ? 'Draft saved successfully' : 'Test updated successfully');
         setTimeout(() => setSuccessMessage(null), 3000);
       }
     } catch (err) {
-      const details = err.response?.data?.details;
-      const apiError = err.response?.data?.error;
-      if (Array.isArray(details) && details.length > 0) {
-        setErrorMessage(details.join('. '));
-      } else if (apiError) {
-        setErrorMessage(apiError);
-      } else {
-        setErrorMessage(err.message || 'Failed to update test');
-      }
+      setErrorMessage(getApiErrorMessage(err, 'Failed to update test'));
+      throw err;
     } finally {
       setSaveLoading(false);
     }
   };
 
+  const shippingBlockingOverlay = (
+    <BlockingOverlay
+      open={shippingDiagnosticsBlockingVisible}
+      title={shippingBlockingOverlayState.title || 'Updating shipping setup…'}
+      message={
+        shippingBlockingOverlayState.message || 'Please wait while shipping setup is processed.'
+      }
+      accessibilityLabel={
+        shippingBlockingOverlayState.accessibilityLabel || 'Updating shipping setup'
+      }
+      steps={shippingBlockingOverlayState.steps}
+    />
+  );
+
   if (loading) {
     return (
-      <PageShell className={`${styles.detailPage} wizard-page`}>
-        <Page title="Test Details">
-          <LoadingSkeleton type="card" count={2} />
-        </Page>
-      </PageShell>
+      <>
+        {shippingBlockingOverlay}
+        <PageShell className={`${styles.detailPage} wizard-page`}>
+          <Page title="Test Details">
+            <LoadingSkeleton type="card" count={2} />
+          </Page>
+        </PageShell>
+      </>
     );
   }
 
   const displayError =
-    errorMessage ||
-    (isError ? error?.response?.data?.error || error?.message || 'Failed to load test' : null);
+    stringifyApiDetail(errorMessage) ||
+    (isError ? getApiErrorMessage(error, 'Failed to load test') : null);
 
   if (displayError && !test) {
     return (
-      <PageShell
-        className={`${styles.detailPage} wizard-page`}
-        message={displayError}
-        messageType="error"
-        onCloseMessage={() => setErrorMessage(null)}
-      >
-        <Page
-          title="Test Details"
-          backAction={{ content: 'Tests', onAction: () => navigate(routes.tests) }}
+      <>
+        {shippingBlockingOverlay}
+        <PageShell
+          className={`${styles.detailPage} wizard-page`}
+          message={displayError}
+          messageType="error"
+          onCloseMessage={() => setErrorMessage(null)}
         >
-          <Layout>
-            <Layout.Section>
-              <Banner
-                tone="critical"
-                title="Could not load this test"
-                action={{ content: 'Retry', onAction: () => refetchTest?.() }}
-                secondaryAction={{
-                  content: 'Back to tests',
-                  onAction: () => navigate(routes.tests),
-                }}
-              >
-                <BlockStack gap="200">
-                  <Text as="p" variant="bodyMd">
-                    {displayError}
-                  </Text>
-                  {id ? (
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Test ID: {id}
+          <Page
+            title="Test Details"
+            backAction={{ content: 'Tests', onAction: () => guardedNavigate(routes.tests) }}
+          >
+            <Layout>
+              <Layout.Section>
+                <Banner
+                  tone="critical"
+                  title="Could not load this test"
+                  action={{ content: 'Retry', onAction: () => refetchTest?.() }}
+                  secondaryAction={{
+                    content: 'Back to tests',
+                    onAction: () => guardedNavigate(routes.tests),
+                  }}
+                >
+                  <BlockStack gap="200">
+                    <Text as="p" variant="bodyMd">
+                      {displayError}
                     </Text>
-                  ) : null}
-                </BlockStack>
-              </Banner>
-            </Layout.Section>
-          </Layout>
-        </Page>
-      </PageShell>
+                    {id ? (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Test ID: {id}
+                      </Text>
+                    ) : null}
+                  </BlockStack>
+                </Banner>
+              </Layout.Section>
+            </Layout>
+          </Page>
+        </PageShell>
+      </>
     );
   }
 
   if (!test) {
     return (
-      <PageShell
-        className={`${styles.detailPage} wizard-page`}
-        message="Test not found"
-        messageType="error"
-        onCloseMessage={() => navigate(routes.tests)}
-      >
-        <Page title="Test Details" />
-      </PageShell>
+      <>
+        {shippingBlockingOverlay}
+        <PageShell
+          className={`${styles.detailPage} wizard-page`}
+          message="Test not found"
+          messageType="error"
+          onCloseMessage={() => guardedNavigate(routes.tests)}
+        >
+          <Page title="Test Details" />
+        </PageShell>
+      </>
     );
   }
 
@@ -950,30 +1490,6 @@ function TestDetail() {
   const previewScannedVariants = Number(publishSummary.variants_scanned || 0);
   const previewScannedProducts = Number(publishSummary.products_scanned || 0);
   const previewExcludedProducts = Number(publishSummary.products_skipped_excluded || 0);
-  const actionableShippingVariants =
-    String(test?.type || '')
-      .trim()
-      .toLowerCase() === 'shipping'
-      ? (test?.variants || []).map((variant, index) => ({
-          variant,
-          index,
-          strategy:
-            String(variant?.config?.strategy || '')
-              .trim()
-              .toLowerCase() || 'control',
-        }))
-      : [];
-  const shippingExecutionPlan = shippingDiagnosticsReport?.execution_plan || null;
-  const shippingCapabilityReport = shippingDiagnosticsReport?.capability_report || null;
-  const shippingPlanVariants = Array.isArray(shippingExecutionPlan?.variants)
-    ? shippingExecutionPlan.variants.filter(item => item?.actionable)
-    : [];
-  const shippingExecutionMix = {
-    automatic: shippingPlanVariants.filter(item => item?.execution_mode === 'automatic').length,
-    discountOnly: shippingPlanVariants.filter(item => item?.execution_mode === 'discount_only')
-      .length,
-    manual: shippingPlanVariants.filter(item => item?.execution_mode === 'manual').length,
-  };
   const checkoutPhaseLabel = (() => {
     const raw = String(test?.goal?.checkout_phase || 'experience')
       .trim()
@@ -1012,935 +1528,988 @@ function TestDetail() {
     }));
 
   return (
-    <PageShell className={`${styles.detailPage} wizard-page`}>
-      <PartyPop
-        active={!!startCelebrationMode}
-        variant={startCelebrationMode || 'full'}
-        styleMode={getCelebrationStylePreference()}
-        palette={getCelebrationColorThemePreference()}
-        onComplete={() => setStartCelebrationMode(null)}
-      />
-      <Toast
-        message={displayError}
-        type="error"
-        onClose={() => setErrorMessage(null)}
-        duration={5000}
-      />
-      <Toast
-        message={successMessage}
-        type="success"
-        onClose={() => setSuccessMessage(null)}
-        duration={3000}
-      />
-      <Toast
-        message={shippingExecutionToast?.message}
-        type={shippingExecutionToast?.type || 'success'}
-        onClose={() => setShippingExecutionToast(null)}
-        duration={4000}
-      />
-      <Toast
-        message={copyToast}
-        type="success"
-        onClose={() => setCopyToast(null)}
-        duration={2200}
-      />
-      <Modal
-        open={idsModalOpen}
-        onClose={() => setIdsModalOpen(false)}
-        title="Test & variant IDs"
-        secondaryActions={[
-          {
-            content: 'Close',
-            onAction: () => setIdsModalOpen(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            <Text variant="bodySm" tone="subdued" as="p">
-              Click any value to copy it to the clipboard. Use these IDs in APIs, scripts, or
-              support tickets.
-            </Text>
-            <div className={styles.idsModalSection}>
-              <Text variant="headingSm" as="h3">
-                Test ID
+    <>
+      {shippingBlockingOverlay}
+      <PageShell className={`${styles.detailPage} wizard-page`}>
+        <PartyPop
+          active={!!startCelebrationMode}
+          variant={startCelebrationMode || 'full'}
+          styleMode={getCelebrationStylePreference()}
+          palette={getCelebrationColorThemePreference()}
+          onComplete={() => setStartCelebrationMode(null)}
+        />
+        <Toast
+          message={displayError}
+          type="error"
+          onClose={() => setErrorMessage(null)}
+          duration={5000}
+        />
+        <Toast
+          message={successMessage}
+          type="success"
+          onClose={() => setSuccessMessage(null)}
+          duration={3000}
+        />
+        <Toast
+          message={shippingExecutionToast?.message}
+          type={shippingExecutionToast?.type || 'success'}
+          onClose={() => setShippingExecutionToast(null)}
+          duration={shippingExecutionToast?.duration ?? 4000}
+        />
+        <Toast
+          message={copyToast}
+          type="success"
+          onClose={() => setCopyToast(null)}
+          duration={2200}
+        />
+        <Modal
+          open={idsModalOpen}
+          onClose={() => setIdsModalOpen(false)}
+          title="Test & variant IDs"
+          secondaryActions={[
+            {
+              content: 'Close',
+              onAction: () => setIdsModalOpen(false),
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <Text variant="bodySm" tone="subdued" as="p">
+                Click any value to copy it to the clipboard. Use these IDs in APIs, scripts, or
+                support tickets.
               </Text>
-              <button
-                type="button"
-                className={styles.idsModalCopyValue}
-                onClick={() => handleCopyValue(test?.id, 'Test ID')}
-                title="Copy test ID"
-              >
-                {test?.id !== undefined && test?.id !== null ? String(test.id) : '—'}
-              </button>
-            </div>
-            <div className={styles.idsModalSection}>
-              <Text variant="headingSm" as="h3">
-                Variants
-              </Text>
-              {Array.isArray(test?.variants) && test.variants.length > 0 ? (
-                <BlockStack gap="300">
-                  {test.variants.map((v, index) => {
-                    const displayName =
-                      (typeof v?.name === 'string'
-                        ? v.name.trim()
-                        : String(v?.name ?? '').trim()) || `Variant ${index + 1}`;
-                    const vid = v?.id !== undefined && v?.id !== null ? String(v.id) : '';
-                    return (
-                      <div key={`${vid}-${index}`} className={styles.idsModalVariantCard}>
-                        <Text variant="bodySm" fontWeight="semibold" as="p">
-                          {displayName}
-                        </Text>
-                        <div className={styles.idsModalVariantRows}>
-                          <div className={styles.idsModalLabelRow}>
-                            <span className={styles.idsModalFieldLabel}>Name</span>
-                            <button
-                              type="button"
-                              className={styles.idsModalCopyValue}
-                              onClick={() => handleCopyValue(displayName, 'Variant name')}
-                              title="Copy variant name"
-                            >
-                              {displayName}
-                            </button>
-                          </div>
-                          <div className={styles.idsModalLabelRow}>
-                            <span className={styles.idsModalFieldLabel}>Variant ID</span>
-                            <button
-                              type="button"
-                              className={styles.idsModalCopyValue}
-                              onClick={() => handleCopyValue(vid || displayName, 'Variant ID')}
-                              title="Copy variant ID"
-                            >
-                              {vid || '—'}
-                            </button>
+              <div className={styles.idsModalSection}>
+                <Text variant="headingSm" as="h3">
+                  Test ID
+                </Text>
+                <button
+                  type="button"
+                  className={styles.idsModalCopyValue}
+                  onClick={() => handleCopyValue(test?.id, 'Test ID')}
+                  title="Copy test ID"
+                >
+                  {test?.id !== undefined && test?.id !== null ? String(test.id) : '—'}
+                </button>
+              </div>
+              <div className={styles.idsModalSection}>
+                <Text variant="headingSm" as="h3">
+                  Variants
+                </Text>
+                {Array.isArray(test?.variants) && test.variants.length > 0 ? (
+                  <BlockStack gap="300">
+                    {test.variants.map((v, index) => {
+                      const displayName =
+                        (typeof v?.name === 'string'
+                          ? v.name.trim()
+                          : String(v?.name ?? '').trim()) || `Variant ${index + 1}`;
+                      const vid = v?.id !== undefined && v?.id !== null ? String(v.id) : '';
+                      return (
+                        <div key={`${vid}-${index}`} className={styles.idsModalVariantCard}>
+                          <Text variant="bodySm" fontWeight="semibold" as="p">
+                            {displayName}
+                          </Text>
+                          <div className={styles.idsModalVariantRows}>
+                            <div className={styles.idsModalLabelRow}>
+                              <span className={styles.idsModalFieldLabel}>Name</span>
+                              <button
+                                type="button"
+                                className={styles.idsModalCopyValue}
+                                onClick={() => handleCopyValue(displayName, 'Variant name')}
+                                title="Copy variant name"
+                              >
+                                {displayName}
+                              </button>
+                            </div>
+                            <div className={styles.idsModalLabelRow}>
+                              <span className={styles.idsModalFieldLabel}>Variant ID</span>
+                              <button
+                                type="button"
+                                className={styles.idsModalCopyValue}
+                                onClick={() => handleCopyValue(vid || displayName, 'Variant ID')}
+                                title="Copy variant ID"
+                              >
+                                {vid || '—'}
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </BlockStack>
-              ) : (
-                <Text variant="bodySm" tone="subdued" as="p">
-                  No variants on this test yet.
-                </Text>
-              )}
-            </div>
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
-      <Modal
-        open={deleteModal}
-        onClose={() => setDeleteModal(false)}
-        title="Delete test?"
-        primaryAction={{
-          content: 'Delete',
-          destructive: true,
-          onAction: () => {
-            setDeleteModal(false);
-            handleDelete();
-          },
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancel',
-            onAction: () => setDeleteModal(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <Text variant="bodyMd" as="p">
-            This will permanently delete the test and its configuration.
-          </Text>
-        </Modal.Section>
-      </Modal>
-
-      <Modal
-        open={publishConfirmOpen}
-        onClose={() => {
-          if (actionLoading) return;
-          setPublishConfirmOpen(false);
-        }}
-        title={
-          publishConfirmMode === 'stop_and_publish'
-            ? 'Stop test and publish winner prices?'
-            : 'Publish winner prices to Shopify?'
-        }
-        primaryAction={{
-          content:
-            publishConfirmMode === 'stop_and_publish' ? 'Stop + publish' : 'Publish to Shopify',
-          onAction: handleConfirmPublishToShopify,
-          loading: actionLoading,
-          disabled: publishPreviewLoading || !!publishPreviewError,
-          destructive: false,
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancel',
-            onAction: () => setPublishConfirmOpen(false),
-            disabled: actionLoading,
-          },
-        ]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <Text variant="bodyMd" as="p" tone="subdued">
-              This action applies the winner for traffic personalization and writes matching prices
-              into your Shopify catalog variants.
+                      );
+                    })}
+                  </BlockStack>
+                ) : (
+                  <Text variant="bodySm" tone="subdued" as="p">
+                    No variants on this test yet.
+                  </Text>
+                )}
+              </div>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+        <Modal
+          open={deleteModal}
+          onClose={() => setDeleteModal(false)}
+          title="Delete test?"
+          primaryAction={{
+            content: 'Delete',
+            destructive: true,
+            onAction: () => {
+              setDeleteModal(false);
+              handleDelete();
+            },
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancel',
+              onAction: () => setDeleteModal(false),
+            },
+          ]}
+        >
+          <Modal.Section>
+            <Text variant="bodyMd" as="p">
+              This will permanently delete the test and its configuration.
             </Text>
-            {publishPreviewLoading && (
-              <Banner tone="info">
-                <Text as="p" variant="bodySm">
-                  Estimating impacted products and variants…
-                </Text>
-              </Banner>
-            )}
-            {publishPreviewError && (
-              <Banner tone="critical">
-                <Text as="p" variant="bodySm">
-                  {publishPreviewError}
-                </Text>
-              </Banner>
-            )}
-            {!publishPreviewLoading && !publishPreviewError && publishPreview && (
-              <Banner tone="warning">
-                <BlockStack gap="100">
-                  <Text as="p" variant="bodySm">
-                    Products scanned: <strong>{previewScannedProducts}</strong>
-                  </Text>
-                  <Text as="p" variant="bodySm">
-                    Variants scanned: <strong>{previewScannedVariants}</strong>
-                  </Text>
-                  <Text as="p" variant="bodySm">
-                    Variants to update: <strong>{previewWouldUpdate}</strong>
-                  </Text>
-                  {previewExcludedProducts > 0 && (
-                    <Text as="p" variant="bodySm">
-                      Excluded products skipped: <strong>{previewExcludedProducts}</strong>
-                    </Text>
-                  )}
-                </BlockStack>
-              </Banner>
-            )}
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
+          </Modal.Section>
+        </Modal>
 
-      <Modal
-        open={preLaunchOpen}
-        onClose={() => setPreLaunchOpen(false)}
-        title="Launch safety check"
-        primaryAction={{
-          content: forceStart ? 'Force start test' : 'Start test',
-          onAction: handleStart,
-          loading: actionLoading,
-          destructive: forceStart,
-          disabled: forceReasonRequired || visualQaRequiredButMissing,
-        }}
-        secondaryActions={[
-          {
-            content: 'Run preflight',
-            onAction: handleRunPreflight,
-            loading: preflightLoading,
-          },
-          {
-            content: 'Cancel',
-            onAction: () => setPreLaunchOpen(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <LaunchPreflightPanel preflightResult={preflightResult} loading={preflightLoading} />
-            <details className={styles.launchAdvancedOptions}>
-              <summary>Advanced launch options</summary>
-              <BlockStack gap="200">
-                <TextField
-                  label="Canary percent override (optional)"
-                  type="number"
-                  value={launchCanaryPercent}
-                  onChange={setLaunchCanaryPercent}
-                  placeholder="e.g. 10"
-                  min={0}
-                  max={100}
-                  suffix="%"
-                  autoComplete="off"
-                  helpText="If set, overrides this launch with a start ramp percent."
-                />
-                <TextField
-                  label="Canary days override (optional)"
-                  type="number"
-                  value={launchCanaryDays}
-                  onChange={setLaunchCanaryDays}
-                  placeholder="e.g. 7"
-                  min={1}
-                  max={30}
-                  suffix="days"
-                  autoComplete="off"
-                  helpText="Used with canary percent to ramp to 100% over N days."
-                />
-                <Checkbox
-                  label="Visual QA baseline required for this launch"
-                  checked={launchVisualQaRequired}
-                  onChange={setLaunchVisualQaRequired}
-                  helpText="When enabled, launch requires baseline metadata and preflight enforces it."
-                />
-                <TextField
-                  label="Visual QA baseline ID (optional)"
-                  value={launchVisualQaBaselineId}
-                  onChange={setLaunchVisualQaBaselineId}
-                  placeholder="e.g. home-v2-desktop"
-                  autoComplete="off"
-                  error={
-                    visualQaRequiredButMissing
-                      ? 'Baseline ID is required when visual QA requirement is enabled.'
-                      : undefined
-                  }
-                />
-                <TextField
-                  label="Visual QA checked at (optional)"
-                  type="date"
-                  value={launchVisualQaCheckedAt}
-                  onChange={setLaunchVisualQaCheckedAt}
-                  autoComplete="off"
-                  helpText="Date of latest visual QA verification for this launch."
-                />
-                <Checkbox
-                  label="Force start even if preflight has blocking errors"
-                  checked={forceStart}
-                  onChange={setForceStart}
-                  helpText="Use only for emergency/controlled launches."
-                />
-                {forceStart && (
+        <Modal
+          open={publishConfirmOpen}
+          onClose={() => {
+            if (actionLoading) return;
+            setPublishConfirmOpen(false);
+          }}
+          title={
+            publishConfirmMode === 'stop_and_publish'
+              ? 'Stop test and publish winner prices?'
+              : 'Publish winner prices to Shopify?'
+          }
+          primaryAction={{
+            content:
+              publishConfirmMode === 'stop_and_publish' ? 'Stop + publish' : 'Publish to Shopify',
+            onAction: handleConfirmPublishToShopify,
+            loading: actionLoading,
+            disabled: publishPreviewLoading || !!publishPreviewError,
+            destructive: false,
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancel',
+              onAction: () => setPublishConfirmOpen(false),
+              disabled: actionLoading,
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <Text variant="bodyMd" as="p" tone="subdued">
+                This action applies the winner for traffic personalization and writes matching
+                prices into your Shopify catalog variants.
+              </Text>
+              {publishPreviewLoading && (
+                <Banner tone="info">
+                  <Text as="p" variant="bodySm">
+                    Estimating impacted products and variants…
+                  </Text>
+                </Banner>
+              )}
+              {publishPreviewError && (
+                <Banner tone="critical">
+                  <Text as="p" variant="bodySm">
+                    {publishPreviewError}
+                  </Text>
+                </Banner>
+              )}
+              {!publishPreviewLoading && !publishPreviewError && publishPreview && (
+                <Banner tone="warning">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodySm">
+                      Products scanned: <strong>{previewScannedProducts}</strong>
+                    </Text>
+                    <Text as="p" variant="bodySm">
+                      Variants scanned: <strong>{previewScannedVariants}</strong>
+                    </Text>
+                    <Text as="p" variant="bodySm">
+                      Variants to update: <strong>{previewWouldUpdate}</strong>
+                    </Text>
+                    {previewExcludedProducts > 0 && (
+                      <Text as="p" variant="bodySm">
+                        Excluded products skipped: <strong>{previewExcludedProducts}</strong>
+                      </Text>
+                    )}
+                  </BlockStack>
+                </Banner>
+              )}
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+
+        <Modal
+          open={preLaunchOpen}
+          onClose={() => setPreLaunchOpen(false)}
+          title="Launch safety check"
+          primaryAction={{
+            content: forceStart ? 'Force start test' : 'Start test',
+            onAction: handleStart,
+            loading: actionLoading,
+            destructive: forceStart,
+            disabled: forceReasonRequired || visualQaRequiredButMissing,
+          }}
+          secondaryActions={[
+            {
+              content: 'Run preflight',
+              onAction: handleRunPreflight,
+              loading: preflightLoading,
+            },
+            {
+              content: 'Cancel',
+              onAction: () => setPreLaunchOpen(false),
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <LaunchPreflightPanel preflightResult={preflightResult} loading={preflightLoading} />
+              <details className={styles.launchAdvancedOptions}>
+                <summary>Advanced launch options</summary>
+                <BlockStack gap="200">
                   <TextField
-                    label="Force-start reason (required)"
-                    value={forceStartReason}
-                    onChange={setForceStartReason}
-                    placeholder="Why is a forced launch needed?"
+                    label="Canary percent override (optional)"
+                    type="number"
+                    value={launchCanaryPercent}
+                    onChange={setLaunchCanaryPercent}
+                    placeholder="e.g. 10"
+                    min={0}
+                    max={100}
+                    suffix="%"
                     autoComplete="off"
-                    multiline={2}
-                    maxLength={500}
+                    helpText="If set, overrides this launch with a start ramp percent."
+                  />
+                  <TextField
+                    label="Canary days override (optional)"
+                    type="number"
+                    value={launchCanaryDays}
+                    onChange={setLaunchCanaryDays}
+                    placeholder="e.g. 7"
+                    min={1}
+                    max={30}
+                    suffix="days"
+                    autoComplete="off"
+                    helpText="Used with canary percent to ramp to 100% over N days."
+                  />
+                  <Checkbox
+                    label="Visual QA baseline required for this launch"
+                    checked={launchVisualQaRequired}
+                    onChange={setLaunchVisualQaRequired}
+                    helpText="When enabled, launch requires baseline metadata and preflight enforces it."
+                  />
+                  <TextField
+                    label="Visual QA baseline ID (optional)"
+                    value={launchVisualQaBaselineId}
+                    onChange={setLaunchVisualQaBaselineId}
+                    placeholder="e.g. home-v2-desktop"
+                    autoComplete="off"
                     error={
-                      forceReasonRequired
-                        ? 'Provide at least 8 characters so this action is auditable.'
+                      visualQaRequiredButMissing
+                        ? 'Baseline ID is required when visual QA requirement is enabled.'
                         : undefined
                     }
                   />
-                )}
-              </BlockStack>
-            </details>
-            <details className={styles.launchChecklist}>
-              <summary>Pre-launch checklist (optional)</summary>
-              <BlockStack gap="200">
-                <Checkbox
-                  label="Hypothesis or goal is documented"
-                  checked={preLaunchChecked.hypothesis}
-                  onChange={v => setPreLaunchChecked(c => ({ ...c, hypothesis: v }))}
-                />
-                <Checkbox
-                  label="Primary goal and metrics are set"
-                  checked={preLaunchChecked.goal}
-                  onChange={v => setPreLaunchChecked(c => ({ ...c, goal: v }))}
-                />
-                <Checkbox
-                  label="Audience or targeting is configured"
-                  checked={preLaunchChecked.audience}
-                  onChange={v => setPreLaunchChecked(c => ({ ...c, audience: v }))}
-                />
-                <Checkbox
-                  label="Tracking and conversion events are verified"
-                  checked={preLaunchChecked.tracking}
-                  onChange={v => setPreLaunchChecked(c => ({ ...c, tracking: v }))}
-                />
-                <Checkbox
-                  label="Staging or QA run completed (e.g. force variation)"
-                  checked={preLaunchChecked.staging}
-                  onChange={v => setPreLaunchChecked(c => ({ ...c, staging: v }))}
-                />
-              </BlockStack>
-            </details>
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
+                  <TextField
+                    label="Visual QA checked at (optional)"
+                    type="date"
+                    value={launchVisualQaCheckedAt}
+                    onChange={setLaunchVisualQaCheckedAt}
+                    autoComplete="off"
+                    helpText="Date of latest visual QA verification for this launch."
+                  />
+                  <Checkbox
+                    label="Force start even if preflight has blocking errors"
+                    checked={forceStart}
+                    onChange={setForceStart}
+                    helpText="Use only for emergency/controlled launches."
+                  />
+                  {forceStart && (
+                    <TextField
+                      label="Force-start reason (required)"
+                      value={forceStartReason}
+                      onChange={setForceStartReason}
+                      placeholder="Why is a forced launch needed?"
+                      autoComplete="off"
+                      multiline={2}
+                      maxLength={500}
+                      error={
+                        forceReasonRequired
+                          ? 'Provide at least 8 characters so this action is auditable.'
+                          : undefined
+                      }
+                    />
+                  )}
+                </BlockStack>
+              </details>
+              <details className={styles.launchChecklist}>
+                <summary>Pre-launch checklist (optional)</summary>
+                <BlockStack gap="200">
+                  <Checkbox
+                    label="Hypothesis or goal is documented"
+                    checked={preLaunchChecked.hypothesis}
+                    onChange={v => setPreLaunchChecked(c => ({ ...c, hypothesis: v }))}
+                  />
+                  <Checkbox
+                    label="Primary goal and metrics are set"
+                    checked={preLaunchChecked.goal}
+                    onChange={v => setPreLaunchChecked(c => ({ ...c, goal: v }))}
+                  />
+                  <Checkbox
+                    label="Audience or targeting is configured"
+                    checked={preLaunchChecked.audience}
+                    onChange={v => setPreLaunchChecked(c => ({ ...c, audience: v }))}
+                  />
+                  <Checkbox
+                    label="Tracking and conversion events are verified"
+                    checked={preLaunchChecked.tracking}
+                    onChange={v => setPreLaunchChecked(c => ({ ...c, tracking: v }))}
+                  />
+                  <Checkbox
+                    label="Staging or QA run completed (e.g. force variation)"
+                    checked={preLaunchChecked.staging}
+                    onChange={v => setPreLaunchChecked(c => ({ ...c, staging: v }))}
+                  />
+                </BlockStack>
+              </details>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
 
-      <Page title="" subtitle="">
-        <div className={styles.detailLayout}>
-          <div className={styles.detailHero}>
-            <div className={styles.detailHeroInner}>
-              <div className={styles.detailHeroContent}>
-                <div className={styles.detailBreadcrumb}>
-                  <button
-                    type="button"
-                    className={styles.detailBreadcrumbLink}
-                    onClick={() => navigate(routes.tests)}
-                  >
-                    ← All Tests
-                  </button>
-                  <div className={styles.detailHeroTopBadges}>
-                    <span className={styles.detailHeroMetaKicker}>Test</span>
-                    <span
-                      className={`${styles.detailStatusPill} ${
-                        test.status === 'running'
-                          ? styles.detailStatusRunning
+        <Page title="" subtitle="">
+          <div className={styles.detailLayout}>
+            <div className={styles.detailHero}>
+              <div className={styles.detailHeroInner}>
+                <div className={styles.detailHeroContent}>
+                  <div className={styles.detailBreadcrumb}>
+                    <button
+                      type="button"
+                      className={styles.detailBreadcrumbLink}
+                      onClick={() => guardedNavigate(routes.tests)}
+                    >
+                      ← All Tests
+                    </button>
+                    <div className={styles.detailHeroTopBadges}>
+                      <span className={styles.detailHeroMetaKicker}>Test</span>
+                      <span
+                        className={`${styles.detailStatusPill} ${
+                          test.status === 'running'
+                            ? styles.detailStatusRunning
+                            : test.status === 'draft'
+                              ? styles.detailStatusDraft
+                              : styles.detailStatusStopped
+                        }`}
+                      >
+                        <span className={styles.detailStatusDot} aria-hidden="true" />
+                        {test.status === 'running'
+                          ? 'Running'
                           : test.status === 'draft'
-                            ? styles.detailStatusDraft
-                            : styles.detailStatusStopped
-                      }`}
-                    >
-                      <span className={styles.detailStatusDot} aria-hidden="true" />
-                      {test.status === 'running'
-                        ? 'Running'
-                        : test.status === 'draft'
-                          ? 'Draft'
-                          : 'Stopped'}
-                    </span>
-                    <span className={styles.detailHeroMetaChip}>
-                      <span className={styles.detailHeroMetaLabel}>Type</span>
-                      {testTypeLabel}
-                    </span>
-                    {test.variants?.length > 0 && (
-                      <span className={styles.detailHeroMetaChip}>
-                        <span className={styles.detailHeroMetaLabel}>Variants</span>
-                        {getVariantCount(test)} variants
+                            ? 'Draft'
+                            : 'Stopped'}
                       </span>
-                    )}
-                  </div>
-                </div>
-                <h1 className={styles.detailHeroTitle}>{displayTitle}</h1>
-                {(srmDetected ||
-                  riskLevel === 'high' ||
-                  rolloutRecommendation?.action === 'canary_rollout') && (
-                  <div style={{ marginTop: 12, maxWidth: 760 }}>
-                    {srmDetected && (
-                      <Banner tone="critical" title="Sample ratio mismatch detected">
-                        <Text as="p" variant="bodySm">
-                          Traffic split deviates from expected allocation. Verify instrumentation
-                          and bot filtering before rollout actions.
-                        </Text>
-                      </Banner>
-                    )}
-                    {!srmDetected && riskLevel === 'high' && (
-                      <Banner tone="warning" title="High rollout risk">
-                        <Text as="p" variant="bodySm">
-                          {rolloutRecommendation?.message ||
-                            'Current quality signals suggest delaying rollout decisions.'}
-                        </Text>
-                      </Banner>
-                    )}
-                    {!srmDetected && rolloutRecommendation?.action === 'canary_rollout' && (
-                      <Banner tone="success" title="Controlled rollout recommended">
-                        <Text as="p" variant="bodySm">
-                          {rolloutRecommendation?.message}
-                        </Text>
-                      </Banner>
-                    )}
-                  </div>
-                )}
-              </div>
-              {!stopExpanded && !rolloutConfigExpanded && (
-                <div className={styles.detailHeroActions}>
-                  <div className={styles.detailHeroActionsStrip}>
-                    <div
-                      className={styles.detailHeroActionsRow1}
-                      role="group"
-                      aria-label="Test control"
-                    >
-                      <span className={styles.detailHeroRowLabel}>Control</span>
-                      {test.status === 'running' ? (
-                        <button
-                          type="button"
-                          className={`${styles.detailPrimaryBtn} ${styles.detailPrimaryBtnStop}`}
-                          onClick={() => setStopExpanded(true)}
-                          disabled={actionLoading}
-                        >
-                          <Icon source={StopCircleIcon} />
-                          StopTest
-                        </button>
-                      ) : test.status !== 'running' ? (
-                        <button
-                          type="button"
-                          className={`${styles.detailPrimaryBtn} ${styles.detailPrimaryBtnStart}`}
-                          onClick={handleStartClick}
-                          disabled={actionLoading}
-                        >
-                          <Icon source={PlayIcon} />
-                          StartTest
-                        </button>
-                      ) : null}
-                      {hasPersonalization && !rolloutConfigExpanded && (
-                        <>
-                          <div className={styles.detailPersonalizationBadge}>
-                            {isPersonalized ? (
-                              <span className={styles.badgePersonalized}>
-                                <Icon source={TargetIcon} /> Winner at 100%
-                              </span>
-                            ) : (
-                              <span className={styles.badgeRollout}>
-                                <Icon source={ChartVerticalFilledIcon} /> Rollout{' '}
-                                {test?.effective_rollout_percent ?? test?.rollout_percent ?? 0}%
-                              </span>
-                            )}
-                          </div>
-                        </>
+                      <span className={styles.detailHeroMetaChip}>
+                        <span className={styles.detailHeroMetaLabel}>Type</span>
+                        {testTypeLabel}
+                      </span>
+                      {test.variants?.length > 0 && (
+                        <span className={styles.detailHeroMetaChip}>
+                          <span className={styles.detailHeroMetaLabel}>Variants</span>
+                          {getVariantCount(test)} variants
+                        </span>
                       )}
                     </div>
-                    <div
-                      className={styles.detailHeroActionsRow2}
-                      role="group"
-                      aria-label="Quick actions"
-                    >
-                      <span className={styles.detailHeroRowLabel}>Actions</span>
-                      <div className={styles.detailActionsMenuWrap} ref={actionsMenuRef}>
-                        <button
-                          type="button"
-                          className={styles.detailActionsMenuTrigger}
-                          onClick={() => setActionsMenuOpen(open => !open)}
-                          aria-expanded={actionsMenuOpen}
-                          aria-haspopup="menu"
-                        >
-                          <span className={styles.detailActionsMenuTriggerIcon}>
-                            <span className={styles.detailActionsMenuDesktopIcon}>
-                              <Icon source={ChartVerticalFilledIcon} />
-                            </span>
-                            <span className={styles.detailActionsMenuMobileIcon}>
-                              <Icon source={MenuHorizontalIcon} />
-                            </span>
-                          </span>
-                          <span className={styles.detailActionsMenuTriggerCopy}>
-                            <span className={styles.detailActionsMenuTriggerLabel}>
-                              CommandCenter
-                            </span>
-                            <span className={styles.detailActionsMenuTriggerHint}>
-                              Insights, readiness, growth, manage
-                            </span>
-                          </span>
-                          <span
-                            className={`${styles.detailActionsMenuChevron} ${
-                              actionsMenuOpen ? styles.detailActionsMenuChevronOpen : ''
-                            }`}
-                            aria-hidden="true"
+                  </div>
+                  <h1 className={styles.detailHeroTitle}>{displayTitle}</h1>
+                  {(srmDetected ||
+                    riskLevel === 'high' ||
+                    rolloutRecommendation?.action === 'canary_rollout') && (
+                    <div style={{ marginTop: 12, maxWidth: 760 }}>
+                      {srmDetected && (
+                        <Banner tone="critical" title="Sample ratio mismatch detected">
+                          <Text as="p" variant="bodySm">
+                            Traffic split deviates from expected allocation. Verify instrumentation
+                            and bot filtering before rollout actions.
+                          </Text>
+                        </Banner>
+                      )}
+                      {!srmDetected && riskLevel === 'high' && (
+                        <Banner tone="warning" title="High rollout risk">
+                          <Text as="p" variant="bodySm">
+                            {rolloutRecommendation?.message ||
+                              'Current quality signals suggest delaying rollout decisions.'}
+                          </Text>
+                        </Banner>
+                      )}
+                      {!srmDetected && rolloutRecommendation?.action === 'canary_rollout' && (
+                        <Banner tone="success" title="Controlled rollout recommended">
+                          <Text as="p" variant="bodySm">
+                            {rolloutRecommendation?.message}
+                          </Text>
+                        </Banner>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {!stopExpanded && !rolloutConfigExpanded && (
+                  <div className={styles.detailHeroActions}>
+                    <div className={styles.detailHeroActionsStrip}>
+                      <div
+                        className={styles.detailHeroActionsRow1}
+                        role="group"
+                        aria-label="Test control"
+                      >
+                        <span className={styles.detailHeroRowLabel}>Control</span>
+                        {test.status === 'running' ? (
+                          <button
+                            type="button"
+                            className={`${styles.detailPrimaryBtn} ${styles.detailPrimaryBtnStop}`}
+                            onClick={() => setStopExpanded(true)}
+                            disabled={actionLoading}
                           >
-                            <Icon source={ChevronDownIcon} />
-                          </span>
-                        </button>
-                        {actionsMenuOpen && (
-                          <div className={styles.detailActionsMenuPanel} role="menu">
-                            <DetailActionMenuSection title="Insights">
-                              <DetailActionMenuItem
-                                icon={ChartLineIcon}
-                                label="Analytics"
-                                description="Open performance and variant metrics."
-                                onAction={() =>
-                                  runHeaderAction(() => navigate(routes.testAnalytics(id)))
-                                }
-                              />
-                              <DetailActionMenuItem
-                                icon={ExportIcon}
-                                label="Export"
-                                description="Open full export options."
-                                onAction={() =>
-                                  runHeaderAction(() => navigate(routes.testExport(id)))
-                                }
-                              />
-                              <DetailActionMenuItem
-                                icon={ExportIcon}
-                                label={reportDownloadLoading ? 'PreparingReport…' : 'ReportMD'}
-                                description="Download a concise markdown report."
-                                disabled={reportDownloadLoading}
-                                onAction={() => runHeaderAction(handleDownloadReport)}
-                              />
-                              <DetailActionMenuItem
-                                icon={ClipboardIcon}
-                                label="IDs"
-                                description="View and copy test or variant IDs."
-                                onAction={() => runHeaderAction(() => setIdsModalOpen(true))}
-                              />
-                            </DetailActionMenuSection>
-
-                            <DetailActionMenuSection title="Readiness">
-                              {supportsCheckoutReadiness && (
+                            <Icon source={StopCircleIcon} />
+                            StopTest
+                          </button>
+                        ) : test.status !== 'running' ? (
+                          <button
+                            type="button"
+                            className={`${styles.detailPrimaryBtn} ${styles.detailPrimaryBtnStart}`}
+                            onClick={handleStartClick}
+                            disabled={actionLoading}
+                          >
+                            <Icon source={PlayIcon} />
+                            StartTest
+                          </button>
+                        ) : null}
+                        {hasPersonalization && !rolloutConfigExpanded && (
+                          <>
+                            <div className={styles.detailPersonalizationBadge}>
+                              {isPersonalized ? (
+                                <span className={styles.badgePersonalized}>
+                                  <Icon source={TargetIcon} /> Winner at 100%
+                                </span>
+                              ) : (
+                                <span className={styles.badgeRollout}>
+                                  <Icon source={ChartVerticalFilledIcon} /> Rollout{' '}
+                                  {test?.effective_rollout_percent ?? test?.rollout_percent ?? 0}%
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div
+                        className={styles.detailHeroActionsRow2}
+                        role="group"
+                        aria-label="Quick actions"
+                      >
+                        <span className={styles.detailHeroRowLabel}>Actions</span>
+                        <div className={styles.detailActionsMenuWrap} ref={actionsMenuRef}>
+                          <button
+                            type="button"
+                            className={styles.detailActionsMenuTrigger}
+                            onClick={() => setActionsMenuOpen(open => !open)}
+                            aria-expanded={actionsMenuOpen}
+                            aria-haspopup="menu"
+                          >
+                            <span className={styles.detailActionsMenuTriggerIcon}>
+                              <span className={styles.detailActionsMenuDesktopIcon}>
+                                <Icon source={ChartVerticalFilledIcon} />
+                              </span>
+                              <span className={styles.detailActionsMenuMobileIcon}>
+                                <Icon source={MenuHorizontalIcon} />
+                              </span>
+                            </span>
+                            <span className={styles.detailActionsMenuTriggerCopy}>
+                              <span className={styles.detailActionsMenuTriggerLabel}>
+                                CommandCenter
+                              </span>
+                              <span className={styles.detailActionsMenuTriggerHint}>
+                                Insights, readiness, growth, manage
+                              </span>
+                            </span>
+                            <span
+                              className={`${styles.detailActionsMenuChevron} ${
+                                actionsMenuOpen ? styles.detailActionsMenuChevronOpen : ''
+                              }`}
+                              aria-hidden="true"
+                            >
+                              <Icon source={ChevronDownIcon} />
+                            </span>
+                          </button>
+                          {actionsMenuOpen && (
+                            <div className={styles.detailActionsMenuPanel} role="menu">
+                              <DetailActionMenuSection title="Insights">
                                 <DetailActionMenuItem
-                                  icon={TargetIcon}
-                                  label={
-                                    checkoutReadinessLoading ? 'Checking…' : checkoutReadinessLabel
+                                  icon={ChartLineIcon}
+                                  label="Analytics"
+                                  description="Open performance and variant metrics."
+                                  onAction={() =>
+                                    runHeaderAction(() => guardedNavigate(routes.testAnalytics(id)))
                                   }
-                                  description="Check checkout launch readiness."
-                                  disabled={checkoutReadinessLoading || actionLoading}
-                                  onAction={() => runHeaderAction(handleCheckoutReadiness)}
                                 />
-                              )}
-                              {isCheckoutTest && (
                                 <DetailActionMenuItem
-                                  icon={LinkIcon}
-                                  label="CheckoutDocs"
-                                  description="Open checkout setup documentation."
-                                  onAction={() => runHeaderAction(() => navigate(routes.docs))}
+                                  icon={ExportIcon}
+                                  label="Export"
+                                  description="Open full export options."
+                                  onAction={() =>
+                                    runHeaderAction(() => guardedNavigate(routes.testExport(id)))
+                                  }
                                 />
-                              )}
-                              {isCheckoutTest && hasDeployableCheckoutCustomizationPhase && (
-                                <>
+                                <DetailActionMenuItem
+                                  icon={ExportIcon}
+                                  label={reportDownloadLoading ? 'PreparingReport…' : 'ReportMD'}
+                                  description="Download a concise markdown report."
+                                  disabled={reportDownloadLoading}
+                                  onAction={() => runHeaderAction(handleDownloadReport)}
+                                />
+                                <DetailActionMenuItem
+                                  icon={ClipboardIcon}
+                                  label="IDs"
+                                  description="View and copy test or variant IDs."
+                                  onAction={() => runHeaderAction(() => setIdsModalOpen(true))}
+                                />
+                              </DetailActionMenuSection>
+
+                              <DetailActionMenuSection title="Readiness">
+                                {supportsCheckoutReadiness && (
                                   <DetailActionMenuItem
-                                    icon={ChartVerticalFilledIcon}
+                                    icon={TargetIcon}
                                     label={
-                                      checkoutCustomizationLoading
-                                        ? 'Running…'
-                                        : 'CustomizationDryRun'
+                                      checkoutReadinessLoading
+                                        ? 'Checking…'
+                                        : checkoutReadinessLabel
                                     }
-                                    description="Preview Shopify checkout customization changes."
-                                    disabled={checkoutCustomizationLoading || actionLoading}
+                                    description="Check checkout launch readiness."
+                                    disabled={checkoutReadinessLoading || actionLoading}
+                                    onAction={() => runHeaderAction(handleCheckoutReadiness)}
+                                  />
+                                )}
+                                {isCheckoutTest && (
+                                  <DetailActionMenuItem
+                                    icon={LinkIcon}
+                                    label="CheckoutDocs"
+                                    description="Open checkout setup documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        handleEnsureCheckoutCustomization(false)
+                                        guardedNavigate(`${routes.docs}#checkout-studio`)
                                       )
                                     }
                                   />
+                                )}
+                                {isPriceLikeTest && (
                                   <DetailActionMenuItem
                                     icon={LinkIcon}
-                                    label={
-                                      checkoutCustomizationLoading
-                                        ? 'Applying…'
-                                        : 'ApplyCustomization'
-                                    }
-                                    description="Create or update Shopify checkout customization."
-                                    disabled={checkoutCustomizationLoading || actionLoading}
-                                    primary
+                                    label="PriceDocs"
+                                    description="Open price testing documentation."
                                     onAction={() =>
-                                      runHeaderAction(() => handleEnsureCheckoutCustomization(true))
+                                      runHeaderAction(() =>
+                                        guardedNavigate(`${routes.docs}#price-testing`)
+                                      )
                                     }
                                   />
-                                </>
-                              )}
-                              {isShippingTest && (
-                                <>
-                                  <DetailActionMenuItem
-                                    icon={TargetIcon}
-                                    label={
-                                      shippingDiagnosticsLoading
-                                        ? 'Checking…'
-                                        : 'ShippingDiagnostics'
-                                    }
-                                    description="Check shipping readiness and live conflicts."
-                                    disabled={shippingDiagnosticsLoading || actionLoading}
-                                    onAction={() => runHeaderAction(handleShippingDiagnostics)}
-                                  />
-                                  <DetailActionMenuItem
-                                    icon={ChartVerticalFilledIcon}
-                                    label={shippingExecutionLoading ? 'Running…' : 'ShippingDryRun'}
-                                    description="Preview shipping adapter actions."
-                                    disabled={shippingExecutionLoading || actionLoading}
-                                    onAction={() =>
-                                      runHeaderAction(() => handleExecuteShipping(false))
-                                    }
-                                  />
+                                )}
+                                {isOfferTest && (
                                   <DetailActionMenuItem
                                     icon={LinkIcon}
-                                    label={shippingExecutionLoading ? 'Applying…' : 'ApplyShipping'}
-                                    description="Apply actionable shipping adapter changes."
-                                    disabled={shippingExecutionLoading || actionLoading}
-                                    primary
+                                    label="OfferDocs"
+                                    description="Open offer testing documentation."
                                     onAction={() =>
-                                      runHeaderAction(() => handleExecuteShipping(true))
+                                      runHeaderAction(() =>
+                                        guardedNavigate(`${routes.docs}#offer-testing`)
+                                      )
                                     }
                                   />
-                                </>
-                              )}
-                            </DetailActionMenuSection>
-
-                            <DetailActionMenuSection title="Growth">
-                              {hasPersonalization && !rolloutConfigExpanded && (
-                                <DetailActionMenuItem
-                                  icon={XCircleIcon}
-                                  label="DisablePersonalization"
-                                  description="Return this test to normal traffic handling."
-                                  disabled={actionLoading}
-                                  onAction={() => runHeaderAction(handleDisablePersonalization)}
-                                />
-                              )}
-                              {isStopped && !hasPersonalization && !rolloutConfigExpanded && (
-                                <>
+                                )}
+                                {isShippingTest && (
                                   <DetailActionMenuItem
-                                    icon={TargetIcon}
-                                    label="Personalize"
-                                    description="Apply the winner to all eligible traffic."
-                                    disabled={actionLoading}
-                                    primary
-                                    onAction={() => runHeaderAction(handlePersonalize)}
-                                  />
-                                  <DetailActionMenuItem
-                                    icon={ChartVerticalFilledIcon}
-                                    label="Rollout"
-                                    description="Configure a controlled canary rollout."
-                                    disabled={actionLoading}
+                                    icon={LinkIcon}
+                                    label="ShippingDocs"
+                                    description="Open shipping testing documentation."
                                     onAction={() =>
-                                      runHeaderAction(() => {
-                                        setRolloutInitialPercent('25');
-                                        setRolloutDuration(7);
-                                        setRolloutConfigExpanded(true);
-                                      })
+                                      runHeaderAction(() =>
+                                        guardedNavigate(`${routes.docs}#shipping-tests`)
+                                      )
                                     }
                                   />
-                                  {isPriceLikeTest && (
-                                    <DetailActionMenuItem
-                                      icon={LinkIcon}
-                                      label="PersonalizeShopify"
-                                      description="Apply winner to traffic and write Shopify prices."
-                                      disabled={actionLoading}
-                                      onAction={() => runHeaderAction(handlePersonalizeAndPublish)}
-                                    />
-                                  )}
-                                </>
-                              )}
-                              {(String(test?.type || '').toLowerCase() === 'price' ||
-                                String(test?.type || '').toLowerCase() === 'pricing') &&
-                                isStopped && (
+                                )}
+                                {isThemeLikeTest && (
+                                  <DetailActionMenuItem
+                                    icon={LinkIcon}
+                                    label="ThemeDocs"
+                                    description="Open theme and template testing documentation."
+                                    onAction={() =>
+                                      runHeaderAction(() =>
+                                        guardedNavigate(`${routes.docs}#theme-template-tests`)
+                                      )
+                                    }
+                                  />
+                                )}
+                                {isContentLikeTest && (
+                                  <DetailActionMenuItem
+                                    icon={LinkIcon}
+                                    label="ContentDocs"
+                                    description="Open onsite edit and split URL documentation."
+                                    onAction={() =>
+                                      runHeaderAction(() =>
+                                        guardedNavigate(`${routes.docs}#onsite-split-url`)
+                                      )
+                                    }
+                                  />
+                                )}
+                                {isCheckoutTest && hasDeployableCheckoutCustomizationPhase && (
                                   <>
                                     <DetailActionMenuItem
-                                      icon={LinkIcon}
-                                      label="PublishToShopify"
-                                      description="Apply winner to traffic and write catalog prices."
-                                      disabled={actionLoading}
-                                      onAction={() => runHeaderAction(handlePersonalizeAndPublish)}
+                                      icon={ChartVerticalFilledIcon}
+                                      label={
+                                        checkoutCustomizationLoading
+                                          ? 'Running…'
+                                          : 'CustomizationDryRun'
+                                      }
+                                      description="Preview Shopify checkout customization changes."
+                                      disabled={checkoutCustomizationLoading || actionLoading}
+                                      onAction={() =>
+                                        runHeaderAction(() =>
+                                          handleEnsureCheckoutCustomization(false)
+                                        )
+                                      }
                                     />
                                     <DetailActionMenuItem
-                                      icon={ExportIcon}
-                                      label={rolloutCsvLoading ? 'PreparingCSV…' : 'RolloutCSV'}
-                                      description="Download winner price mapping CSV."
-                                      disabled={rolloutCsvLoading}
-                                      onAction={() => runHeaderAction(handleDownloadRolloutCsv)}
+                                      icon={LinkIcon}
+                                      label={
+                                        checkoutCustomizationLoading
+                                          ? 'Applying…'
+                                          : 'ApplyCustomization'
+                                      }
+                                      description="Create or update Shopify checkout customization."
+                                      disabled={checkoutCustomizationLoading || actionLoading}
+                                      primary
+                                      onAction={() =>
+                                        runHeaderAction(() =>
+                                          handleEnsureCheckoutCustomization(true)
+                                        )
+                                      }
                                     />
                                   </>
                                 )}
-                              {test.type === 'offer' && (
-                                <DetailActionMenuItem
-                                  icon={LinkIcon}
-                                  label="PromoLinks"
-                                  description="Open offer promo links."
-                                  onAction={() =>
-                                    runHeaderAction(() => navigate(routes.testPromoLinks(id)))
-                                  }
-                                />
-                              )}
-                            </DetailActionMenuSection>
+                                {isShippingTest && (
+                                  <>
+                                    {shippingApplyScopeGate.blocked && (
+                                      <DetailActionMenuItem
+                                        icon={TargetIcon}
+                                        label="Open Shipping Variant Config"
+                                        description="Open the editor and use Current Shopify setup → Use as scope."
+                                        disabled={actionLoading}
+                                        onAction={() =>
+                                          runHeaderAction(() =>
+                                            guardedNavigate(routes.testEditor(id))
+                                          )
+                                        }
+                                      />
+                                    )}
+                                  </>
+                                )}
+                              </DetailActionMenuSection>
 
-                            <DetailActionMenuSection title="Manage">
-                              <DetailActionMenuItem
-                                icon={DuplicateIcon}
-                                label="Clone"
-                                description="Create a copy of this test."
-                                disabled={actionLoading}
-                                onAction={() => runHeaderAction(handleClone)}
-                              />
-                              <DetailActionMenuItem
-                                icon={DeleteIcon}
-                                label="Delete"
-                                description="Permanently delete this test."
-                                disabled={actionLoading}
-                                destructive
-                                onAction={() => runHeaderAction(() => setDeleteModal(true))}
-                              />
-                            </DetailActionMenuSection>
-                          </div>
-                        )}
+                              <DetailActionMenuSection title="Growth">
+                                {hasPersonalization && !rolloutConfigExpanded && (
+                                  <DetailActionMenuItem
+                                    icon={XCircleIcon}
+                                    label="DisablePersonalization"
+                                    description="Return this test to normal traffic handling."
+                                    disabled={actionLoading}
+                                    onAction={() => runHeaderAction(handleDisablePersonalization)}
+                                  />
+                                )}
+                                {isStopped && !hasPersonalization && !rolloutConfigExpanded && (
+                                  <>
+                                    <DetailActionMenuItem
+                                      icon={TargetIcon}
+                                      label="Personalize"
+                                      description="Apply the winner to all eligible traffic."
+                                      disabled={actionLoading}
+                                      primary
+                                      onAction={() => runHeaderAction(handlePersonalize)}
+                                    />
+                                    <DetailActionMenuItem
+                                      icon={ChartVerticalFilledIcon}
+                                      label="Rollout"
+                                      description="Configure a controlled canary rollout."
+                                      disabled={actionLoading}
+                                      onAction={() =>
+                                        runHeaderAction(() => {
+                                          setRolloutInitialPercent('25');
+                                          setRolloutDuration(7);
+                                          setRolloutConfigExpanded(true);
+                                        })
+                                      }
+                                    />
+                                    {isPriceLikeTest && (
+                                      <DetailActionMenuItem
+                                        icon={LinkIcon}
+                                        label="PersonalizeShopify"
+                                        description="Apply winner to traffic and write Shopify prices."
+                                        disabled={actionLoading}
+                                        onAction={() =>
+                                          runHeaderAction(handlePersonalizeAndPublish)
+                                        }
+                                      />
+                                    )}
+                                  </>
+                                )}
+                                {(String(test?.type || '').toLowerCase() === 'price' ||
+                                  String(test?.type || '').toLowerCase() === 'pricing') &&
+                                  isStopped && (
+                                    <>
+                                      <DetailActionMenuItem
+                                        icon={LinkIcon}
+                                        label="PublishToShopify"
+                                        description="Apply winner to traffic and write catalog prices."
+                                        disabled={actionLoading}
+                                        onAction={() =>
+                                          runHeaderAction(handlePersonalizeAndPublish)
+                                        }
+                                      />
+                                      <DetailActionMenuItem
+                                        icon={ExportIcon}
+                                        label={rolloutCsvLoading ? 'PreparingCSV…' : 'RolloutCSV'}
+                                        description="Download winner price mapping CSV."
+                                        disabled={rolloutCsvLoading}
+                                        onAction={() => runHeaderAction(handleDownloadRolloutCsv)}
+                                      />
+                                    </>
+                                  )}
+                                {test.type === 'offer' && (
+                                  <DetailActionMenuItem
+                                    icon={LinkIcon}
+                                    label="PromoLinks"
+                                    description="Open offer promo links."
+                                    onAction={() =>
+                                      runHeaderAction(() =>
+                                        guardedNavigate(routes.testPromoLinks(id))
+                                      )
+                                    }
+                                  />
+                                )}
+                              </DetailActionMenuSection>
+
+                              <DetailActionMenuSection title="Manage">
+                                <DetailActionMenuItem
+                                  icon={DuplicateIcon}
+                                  label="Clone"
+                                  description="Create a copy of this test."
+                                  disabled={actionLoading}
+                                  onAction={() => runHeaderAction(handleClone)}
+                                />
+                                <DetailActionMenuItem
+                                  icon={DeleteIcon}
+                                  label="Delete"
+                                  description="Permanently delete this test."
+                                  disabled={actionLoading}
+                                  destructive
+                                  onAction={() => runHeaderAction(() => setDeleteModal(true))}
+                                />
+                              </DetailActionMenuSection>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-              {stopExpanded && (
-                <div className={styles.stopInline}>
-                  <div className={styles.stopInlineHeader}>
-                    <span className={styles.stopInlineTitle}>What happens next?</span>
-                    <button
-                      type="button"
-                      className={styles.stopInlineCancel}
-                      onClick={() => setStopExpanded(false)}
-                      aria-label="Cancel"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className={styles.stopInlineCards}>
-                    <button
-                      type="button"
-                      className={`${styles.stopInlineCard} ${styles.stopInlineCardPersonalize}`}
-                      onClick={() => handleStop('personalize')}
-                      disabled={actionLoading}
-                    >
-                      <Icon source={TargetIcon} />
-                      <span className={styles.stopInlineCardLabel}>Apply winner</span>
-                      <span className={styles.stopInlineCardBadge}>Recommended</span>
-                    </button>
-                    {isPriceLikeTest && (
+                )}
+                {stopExpanded && (
+                  <div className={styles.stopInline}>
+                    <div className={styles.stopInlineHeader}>
+                      <span className={styles.stopInlineTitle}>What happens next?</span>
+                      <button
+                        type="button"
+                        className={styles.stopInlineCancel}
+                        onClick={() => setStopExpanded(false)}
+                        aria-label="Cancel"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className={styles.stopInlineCards}>
                       <button
                         type="button"
                         className={`${styles.stopInlineCard} ${styles.stopInlineCardPersonalize}`}
-                        onClick={() => handleStop('personalize_publish_shopify')}
+                        onClick={() => handleStop('personalize')}
                         disabled={actionLoading}
-                        title="Stop test, apply winner to traffic, and write prices to Shopify catalog"
                       >
-                        <Icon source={LinkIcon} />
-                        <span className={styles.stopInlineCardLabel}>Apply winner + Shopify</span>
-                        <span className={styles.stopInlineCardBadge}>Catalog update</span>
+                        <Icon source={TargetIcon} />
+                        <span className={styles.stopInlineCardLabel}>Apply winner</span>
+                        <span className={styles.stopInlineCardBadge}>Recommended</span>
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      className={`${styles.stopInlineCard} ${styles.stopInlineCardRollout}`}
-                      onClick={() => handleStop('rollout')}
-                      disabled={actionLoading}
-                    >
-                      <Icon source={ChartVerticalFilledIcon} />
-                      <span className={styles.stopInlineCardLabel}>Gradual rollout</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.stopInlineCard} ${styles.stopInlineCardStop}`}
-                      onClick={() => handleStop()}
-                      disabled={actionLoading}
-                    >
-                      <Icon source={StopCircleIcon} />
-                      <span className={styles.stopInlineCardLabel}>Just stop</span>
-                    </button>
+                      {isPriceLikeTest && (
+                        <button
+                          type="button"
+                          className={`${styles.stopInlineCard} ${styles.stopInlineCardPersonalize}`}
+                          onClick={() => handleStop('personalize_publish_shopify')}
+                          disabled={actionLoading}
+                          title="Stop test, apply winner to traffic, and write prices to Shopify catalog"
+                        >
+                          <Icon source={LinkIcon} />
+                          <span className={styles.stopInlineCardLabel}>Apply winner + Shopify</span>
+                          <span className={styles.stopInlineCardBadge}>Catalog update</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={`${styles.stopInlineCard} ${styles.stopInlineCardRollout}`}
+                        onClick={() => handleStop('rollout')}
+                        disabled={actionLoading}
+                      >
+                        <Icon source={ChartVerticalFilledIcon} />
+                        <span className={styles.stopInlineCardLabel}>Gradual rollout</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.stopInlineCard} ${styles.stopInlineCardStop}`}
+                        onClick={() => handleStop()}
+                        disabled={actionLoading}
+                      >
+                        <Icon source={StopCircleIcon} />
+                        <span className={styles.stopInlineCardLabel}>Just stop</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-              {rolloutConfigExpanded && (
-                <div className={styles.rolloutInline}>
-                  <div className={styles.rolloutInlineHeader}>
-                    <span className={styles.rolloutInlineTitle}>Configure rollout</span>
-                    <button
-                      type="button"
-                      className={styles.rolloutInlineCancel}
-                      onClick={() => setRolloutConfigExpanded(false)}
-                      aria-label="Cancel"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className={styles.rolloutInlineBody}>
-                    <div className={styles.rolloutInlineRow}>
-                      <span className={styles.rolloutInlineLabel}>Start at</span>
-                      <div className={styles.rolloutInlinePresets}>
-                        {[10, 25, 50, 75, 100].map(p => (
+                )}
+                {rolloutConfigExpanded && (
+                  <div className={styles.rolloutInline}>
+                    <div className={styles.rolloutInlineHeader}>
+                      <span className={styles.rolloutInlineTitle}>Configure rollout</span>
+                      <button
+                        type="button"
+                        className={styles.rolloutInlineCancel}
+                        onClick={() => setRolloutConfigExpanded(false)}
+                        aria-label="Cancel"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className={styles.rolloutInlineBody}>
+                      <div className={styles.rolloutInlineRow}>
+                        <span className={styles.rolloutInlineLabel}>Start at</span>
+                        <div className={styles.rolloutInlinePresets}>
+                          {[10, 25, 50, 75, 100].map(p => (
+                            <button
+                              key={p}
+                              type="button"
+                              className={`${styles.rolloutInlinePreset} ${Number(rolloutInitialPercent) === p ? styles.rolloutInlinePresetActive : ''}`}
+                              onClick={() => setRolloutInitialPercent(String(p))}
+                            >
+                              {p}%
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="range"
+                          className={styles.rolloutInlineSlider}
+                          min="5"
+                          max="100"
+                          step="5"
+                          value={rolloutInitialPercent}
+                          onChange={e => setRolloutInitialPercent(e.target.value)}
+                        />
+                        <span className={styles.rolloutInlineValue}>{rolloutInitialPercent}%</span>
+                      </div>
+                      <div className={styles.rolloutInlineRow}>
+                        <span className={styles.rolloutInlineLabel}>Duration</span>
+                        {[
+                          { days: 3, label: '3d' },
+                          { days: 7, label: '7d' },
+                          { days: 14, label: '14d' },
+                        ].map(({ days, label }) => (
                           <button
-                            key={p}
+                            key={days}
                             type="button"
-                            className={`${styles.rolloutInlinePreset} ${Number(rolloutInitialPercent) === p ? styles.rolloutInlinePresetActive : ''}`}
-                            onClick={() => setRolloutInitialPercent(String(p))}
+                            className={`${styles.rolloutInlineDuration} ${rolloutDuration === days ? styles.rolloutInlineDurationActive : ''}`}
+                            onClick={() => setRolloutDuration(days)}
                           >
-                            {p}%
+                            {label}
                           </button>
                         ))}
                       </div>
-                      <input
-                        type="range"
-                        className={styles.rolloutInlineSlider}
-                        min="5"
-                        max="100"
-                        step="5"
-                        value={rolloutInitialPercent}
-                        onChange={e => setRolloutInitialPercent(e.target.value)}
-                      />
-                      <span className={styles.rolloutInlineValue}>{rolloutInitialPercent}%</span>
-                    </div>
-                    <div className={styles.rolloutInlineRow}>
-                      <span className={styles.rolloutInlineLabel}>Duration</span>
-                      {[
-                        { days: 3, label: '3d' },
-                        { days: 7, label: '7d' },
-                        { days: 14, label: '14d' },
-                      ].map(({ days, label }) => (
+                      <div className={styles.rolloutInlinePreview}>
+                        <span>
+                          {rolloutInitialPercent}% → 100% in {rolloutDuration} days
+                        </span>
+                        <div className={styles.rolloutInlineChart}>
+                          <div
+                            className={styles.rolloutInlineBar}
+                            style={{
+                              width: `${rolloutInitialPercent}%`,
+                              background:
+                                'linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet))',
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className={styles.rolloutInlineActions}>
                         <button
-                          key={days}
                           type="button"
-                          className={`${styles.rolloutInlineDuration} ${rolloutDuration === days ? styles.rolloutInlineDurationActive : ''}`}
-                          onClick={() => setRolloutDuration(days)}
+                          className={styles.rolloutInlineBtnCancel}
+                          onClick={() => setRolloutConfigExpanded(false)}
                         >
-                          {label}
+                          Cancel
                         </button>
-                      ))}
-                    </div>
-                    <div className={styles.rolloutInlinePreview}>
-                      <span>
-                        {rolloutInitialPercent}% → 100% in {rolloutDuration} days
-                      </span>
-                      <div className={styles.rolloutInlineChart}>
-                        <div
-                          className={styles.rolloutInlineBar}
-                          style={{
-                            width: `${rolloutInitialPercent}%`,
-                            background:
-                              'linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet))',
-                          }}
-                        />
+                        <button
+                          type="button"
+                          className={styles.rolloutInlineBtnSubmit}
+                          onClick={handleRolloutSubmit}
+                          disabled={actionLoading}
+                        >
+                          {actionLoading ? (
+                            <span className={styles.rolloutSubmitSpinner} />
+                          ) : (
+                            'Start rollout'
+                          )}
+                        </button>
                       </div>
                     </div>
-                    <div className={styles.rolloutInlineActions}>
-                      <button
-                        type="button"
-                        className={styles.rolloutInlineBtnCancel}
-                        onClick={() => setRolloutConfigExpanded(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.rolloutInlineBtnSubmit}
-                        onClick={handleRolloutSubmit}
-                        disabled={actionLoading}
-                      >
-                        {actionLoading ? (
-                          <span className={styles.rolloutSubmitSpinner} />
-                        ) : (
-                          'Start rollout'
-                        )}
-                      </button>
-                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Layout>
+              <Layout.Section>
+                <TestWizard
+                  key={`test-wizard-${test?.id}-${getVariantCount(test)}`}
+                  mode="edit"
+                  showTemplateStep={false}
+                  initialData={test}
+                  submitLabel={isDraft ? 'Save Draft' : 'Save Changes'}
+                  onSubmit={handleSave}
+                  onSaveCode={handleSaveCode}
+                  onCancel={() => guardedNavigate(routes.tests)}
+                  onDirtyChange={setHasUnsavedChanges}
+                  submitLoading={saveLoading}
+                  onTitleRender={handleTitleRender}
+                  onRefreshTest={refreshTestAfterShippingExecution}
+                />
+              </Layout.Section>
+            </Layout>
+
+            {!isShippingTest && supportsCheckoutReadiness && checkoutReadinessSummary && (
+              <div className={styles.detailPostWizardPanels}>
+                <div className={styles.detailPostWizardHeader}>
+                  <span className={styles.detailPostWizardHeaderIcon} aria-hidden>
+                    <Icon source={ChartVerticalFilledIcon} />
+                  </span>
+                  <div className={styles.detailPostWizardHeaderCopy}>
+                    <Text as="h3" variant="headingSm">
+                      Launch support
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Check launch readiness without interrupting the editor.
+                    </Text>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          <Layout>
-            <Layout.Section>
-              <TestWizard
-                key={`test-wizard-${test?.id}-${getVariantCount(test)}`}
-                mode="edit"
-                showTemplateStep={false}
-                initialData={test}
-                submitLabel="Save Changes"
-                onSubmit={handleSave}
-                onSaveCode={handleSaveCode}
-                onCancel={() => navigate(routes.tests)}
-                submitLoading={saveLoading}
-                onTitleRender={handleTitleRender}
-                onRefreshTest={refreshTestAfterShippingExecution}
-              />
-            </Layout.Section>
-          </Layout>
-
-          {((supportsCheckoutReadiness && checkoutReadinessSummary) ||
-            (isShippingTest && shippingExecutionPlan) ||
-            (isShippingTest &&
-              actionableShippingVariants.some(
-                item => item.index > 0 && item.strategy !== 'control'
-              ))) && (
-            <div className={styles.detailPostWizardPanels}>
-              <div className={styles.detailPostWizardHeader}>
-                <span className={styles.detailPostWizardHeaderIcon} aria-hidden>
-                  <Icon source={ChartVerticalFilledIcon} />
-                </span>
-                <div className={styles.detailPostWizardHeaderCopy}>
-                  <Text as="h3" variant="headingSm">
-                    Supporting diagnostics
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Readiness, execution, and launch support panels stay below the editor so the
-                    wizard remains the primary workspace.
-                  </Text>
-                </div>
-              </div>
-              {supportsCheckoutReadiness && checkoutReadinessSummary && (
                 <div className={styles.detailInsightPanel}>
                   <button
                     type="button"
@@ -2036,170 +2605,12 @@ function TestDetail() {
                     </div>
                   )}
                 </div>
-              )}
-
-              {isShippingTest && shippingExecutionPlan && (
-                <div className={styles.detailInsightPanel}>
-                  <button
-                    type="button"
-                    className={styles.detailInsightToggle}
-                    onClick={() => toggleDetailInsightPanel('shippingPlan')}
-                    aria-expanded={detailInsightPanels.shippingPlan}
-                  >
-                    <span className={styles.detailInsightToggleMeta}>
-                      <span className={styles.detailInsightToggleTitle}>
-                        Shipping execution split
-                      </span>
-                      <span className={styles.detailInsightToggleSummary}>
-                        {shippingPlanVariants.length} variant
-                        {shippingPlanVariants.length === 1 ? '' : 's'}, automatic{' '}
-                        {shippingExecutionMix.automatic}, manual {shippingExecutionMix.manual}
-                      </span>
-                    </span>
-                    <span
-                      className={`${styles.detailInsightChevron} ${
-                        detailInsightPanels.shippingPlan ? styles.detailInsightChevronOpen : ''
-                      }`}
-                    >
-                      <Icon source={ChevronDownIcon} />
-                    </span>
-                  </button>
-                  {detailInsightPanels.shippingPlan && (
-                    <div
-                      className={`${styles.detailInsightBody} ${styles.checkoutExperiencePanel}`}
-                    >
-                      <Banner title="Shipping execution split" tone="info">
-                        <BlockStack gap="300">
-                          <Text as="p" variant="bodySm">
-                            RipX classifies shipping variants by execution path so you can tell
-                            which ones are fully automatic, discount-only, or still manual before
-                            launch.
-                          </Text>
-                          <div className={styles.checkoutReadinessMetaRow}>
-                            <span className={styles.checkoutReadinessPill}>
-                              Automatic: {shippingExecutionMix.automatic}
-                            </span>
-                            <span className={styles.checkoutReadinessPill}>
-                              Discount-only: {shippingExecutionMix.discountOnly}
-                            </span>
-                            <span className={styles.checkoutReadinessPill}>
-                              Manual: {shippingExecutionMix.manual}
-                            </span>
-                          </div>
-                          <div className={styles.checkoutExperienceGrid}>
-                            {shippingPlanVariants.map(item => (
-                              <div
-                                key={`shipping-plan-${item.index}`}
-                                className={styles.checkoutExperienceCard}
-                              >
-                                <div className={styles.checkoutExperienceCardHeader}>
-                                  <span className={styles.checkoutExperienceCardTitle}>
-                                    {item.name}
-                                  </span>
-                                  <span className={styles.checkoutReadinessPill}>
-                                    {item.execution_mode_label ||
-                                      item.execution_mode ||
-                                      item.execution_adapter}
-                                  </span>
-                                </div>
-                                <Text as="p" variant="bodySm">
-                                  Strategy: {item.strategy}
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Adapter:{' '}
-                                  {String(item.execution_adapter || 'manual').replace(/_/g, ' ')}
-                                </Text>
-                              </div>
-                            ))}
-                          </div>
-                          {shippingCapabilityReport?.capabilities?.adapter_support ? (
-                            <Text as="p" variant="bodySm" tone="subdued">
-                              Recommended path:{' '}
-                              {String(
-                                shippingCapabilityReport.recommended_execution_path ||
-                                  shippingExecutionPlan.recommended_execution_path ||
-                                  'manual'
-                              ).replace(/_/g, ' ')}
-                            </Text>
-                          ) : null}
-                        </BlockStack>
-                      </Banner>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {isShippingTest &&
-                actionableShippingVariants.some(
-                  item => item.index > 0 && item.strategy !== 'control'
-                ) && (
-                  <div className={styles.detailInsightPanel}>
-                    <button
-                      type="button"
-                      className={styles.detailInsightToggle}
-                      onClick={() => toggleDetailInsightPanel('shippingActions')}
-                      aria-expanded={detailInsightPanels.shippingActions}
-                    >
-                      <span className={styles.detailInsightToggleMeta}>
-                        <span className={styles.detailInsightToggleTitle}>
-                          Shipping variant actions
-                        </span>
-                        <span className={styles.detailInsightToggleSummary}>
-                          Run dry tests or apply actionable shipping variants individually
-                        </span>
-                      </span>
-                      <span
-                        className={`${styles.detailInsightChevron} ${
-                          detailInsightPanels.shippingActions ? styles.detailInsightChevronOpen : ''
-                        }`}
-                      >
-                        <Icon source={ChevronDownIcon} />
-                      </span>
-                    </button>
-                    {detailInsightPanels.shippingActions && (
-                      <div
-                        className={`${styles.detailInsightBody} ${styles.shippingVariantActions}`}
-                      >
-                        {actionableShippingVariants
-                          .filter(item => item.index > 0 && item.strategy !== 'control')
-                          .map(item => (
-                            <div
-                              key={`shipping-action-${item.index}`}
-                              className={styles.shippingVariantActionRow}
-                            >
-                              <span className={styles.shippingVariantActionLabel}>
-                                {item.variant?.name || `Variant ${item.index + 1}`} ({item.strategy}
-                                )
-                              </span>
-                              <div className={styles.shippingVariantActionButtons}>
-                                <button
-                                  type="button"
-                                  className={styles.detailSecondaryBtn}
-                                  onClick={() => handleExecuteShipping(false, item.index)}
-                                  disabled={shippingExecutionLoading || actionLoading}
-                                >
-                                  Dry run
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
-                                  onClick={() => handleExecuteShipping(true, item.index)}
-                                  disabled={shippingExecutionLoading || actionLoading}
-                                >
-                                  Apply
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-            </div>
-          )}
-        </div>
-      </Page>
-    </PageShell>
+              </div>
+            )}
+          </div>
+        </Page>
+      </PageShell>
+    </>
   );
 }
 

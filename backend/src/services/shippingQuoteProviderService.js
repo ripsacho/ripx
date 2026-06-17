@@ -1,7 +1,8 @@
 const { normalizeShippingVariantConfig } = require('./shippingTestConfigService');
+const { formatCarrierRateForCheckout } = require('./shippingCarrierRateFormatter');
 
 function toFiniteNumber(value) {
-  const parsed = Number.parseFloat(String(value || '').trim());
+  const parsed = Number.parseFloat(String(value ?? '').trim());
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -11,6 +12,10 @@ function toNormalizedString(value) {
 
 function toLowerString(value) {
   return toNormalizedString(value).toLowerCase();
+}
+
+function firstPresent(...values) {
+  return values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
 }
 
 function parseCountryRateMap(input) {
@@ -26,6 +31,8 @@ function parseCountryRateMap(input) {
             .toUpperCase(),
           amount: toFiniteNumber(entry.amount),
           label: toNormalizedString(entry.label || ''),
+          description: toNormalizedString(entry.description || ''),
+          delivery_promise: entry.delivery_promise || entry.deliveryPromise || null,
         };
       })
       .filter(entry => entry && entry.country && Number.isFinite(entry.amount));
@@ -45,7 +52,7 @@ function parseCountryRateMap(input) {
       if (!country || !Number.isFinite(amount)) {
         return null;
       }
-      return { country, amount, label: '' };
+      return { country, amount, label: '', description: '', delivery_promise: null };
     })
     .filter(Boolean);
 }
@@ -60,7 +67,7 @@ function resolveVariantProviderConfig(variant = {}) {
       variant?.quote_provider
   );
   const amount =
-    toFiniteNumber(metadata.quote_amount || metadata.quoteAmount || metadata.amount) ??
+    toFiniteNumber(firstPresent(metadata.quote_amount, metadata.quoteAmount, metadata.amount)) ??
     toFiniteNumber(variant?.config?.amount);
   const serviceName = toNormalizedString(
     metadata.quote_service_name || metadata.quoteServiceName || metadata.label || config.label
@@ -75,17 +82,39 @@ function resolveVariantProviderConfig(variant = {}) {
     provider: provider || '',
     amount,
     service_name: serviceName,
+    description: toNormalizedString(
+      metadata.quote_description || metadata.quoteDescription || metadata.description || ''
+    ),
+    checkout_display: config.checkout_display,
+    delivery_promise: metadata.delivery_promise || metadata.deliveryPromise || null,
     country_rates: countryRates,
   };
 }
 
-function buildCarrierQuoteRate({ serviceName, serviceCode, amount, currency }) {
-  return {
-    service_name: serviceName,
-    service_code: serviceCode,
-    total_price: String(Math.max(0, Math.round(amount * 100))),
-    currency,
-  };
+function buildCarrierQuoteRate({
+  serviceName,
+  serviceCode,
+  amount,
+  currency,
+  providerConfig = {},
+  deliveryPromise = null,
+}) {
+  return formatCarrierRateForCheckout({
+    rateConfig: {
+      name: serviceName,
+      service_code: serviceCode,
+      amount,
+      currency,
+      description: providerConfig.description || '',
+      delivery_promise: deliveryPromise || providerConfig.delivery_promise || null,
+    },
+    variantConfig: {
+      checkout_display: providerConfig.checkout_display || {},
+    },
+    serviceName,
+    fallbackAmount: amount,
+    fallbackCurrency: currency,
+  });
 }
 
 function resolveCarrierQuoteRates({
@@ -128,6 +157,7 @@ function resolveCarrierQuoteRates({
           serviceCode: `ripx_quote_${serviceCodeBase}`,
           amount,
           currency,
+          providerConfig,
         }),
       ],
     };
@@ -162,6 +192,11 @@ function resolveCarrierQuoteRates({
           serviceCode: `ripx_quote_${serviceCodeBase}`,
           amount: match.amount,
           currency,
+          providerConfig: {
+            ...providerConfig,
+            description: match.description || providerConfig.description || '',
+          },
+          deliveryPromise: match.delivery_promise || match.deliveryPromise || null,
         }),
       ],
     };

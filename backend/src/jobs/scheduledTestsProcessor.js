@@ -8,7 +8,8 @@ const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 const { scheduledTestsQueue } = require('./queue');
 
-const { updateTest } = require('../models/test');
+const { getTestById, updateTest } = require('../models/test');
+const { runActivationPreflight } = require('../services/testActivationService');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
 const { getAutomationAnalytics } = require('./analyticsAutomation');
@@ -20,6 +21,21 @@ async function processScheduledStart(testId) {
     ]);
     const test = rows[0];
     if (!test || test.status !== 'draft') {
+      return;
+    }
+
+    const fullTest = await getTestById(testId, test.shop_domain);
+    if (!fullTest) {
+      return;
+    }
+    const preflight = await runActivationPreflight(fullTest, test.shop_domain);
+    if (!preflight.ok) {
+      logger.warn('Scheduled start blocked by activation preflight', {
+        testId,
+        shopDomain: test.shop_domain,
+        errors: Array.isArray(preflight.errors) ? preflight.errors.length : 0,
+        warnings: Array.isArray(preflight.warnings) ? preflight.warnings.length : 0,
+      });
       return;
     }
 

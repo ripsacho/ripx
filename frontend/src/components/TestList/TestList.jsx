@@ -681,27 +681,27 @@ function TestList() {
                   <button
                     type="button"
                     className="test-control-button test-control-play"
-                    onClick={e => handleTestStart(test, e)}
-                    disabled={isLoading}
-                    title="Start Test"
-                    aria-label="Start Test"
+                    onClick={e => {
+                      e.stopPropagation();
+                      navigate(routes.testDetail(test.id), { state: { listTest: test } });
+                    }}
+                    title="Resume Draft"
+                    aria-label="Resume Draft"
                   >
-                    {isLoading ? (
-                      <span className="test-control-spinner"></span>
-                    ) : (
-                      <>
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path d="M4 2L12 8L4 14V2Z" fill="currentColor" />
-                        </svg>
-                        <span>Start</span>
-                      </>
-                    )}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M3 11.5V13h1.5l6.9-6.9-1.5-1.5L3 11.5Z" fill="currentColor" />
+                      <path
+                        d="M10.6 3.9l1.5 1.5.7-.7a.8.8 0 0 0 0-1.1l-.4-.4a.8.8 0 0 0-1.1 0l-.7.7Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                    <span>Resume</span>
                   </button>
                 )}
                 {test.status === 'running' && (

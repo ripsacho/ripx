@@ -10,6 +10,8 @@ import {
   FormLayout,
   TextField,
   Select,
+  Autocomplete,
+  Popover,
   Button,
   Layout,
   BlockStack,
@@ -27,6 +29,7 @@ import {
   UnknownDeviceIcon,
   PersonIcon,
   LockIcon,
+  ChevronUpIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -49,6 +52,8 @@ import {
   DesktopIcon,
   MobileIcon,
   DataTableIcon,
+  DeleteIcon,
+  DuplicateIcon,
   XIcon,
   ViewIcon,
 } from '@shopify/polaris-icons';
@@ -125,7 +130,6 @@ import {
 } from './customAudienceRules';
 import PriceSurfaceMappingsPanel from './PriceSurfaceMappingsPanel';
 import {
-  normalizePriceSurfaceMappings,
   normalizePriceSurfaceMappingsForEditor,
   inferPriceSurfaceFromHref,
   inferPriceSurfaceRoleFromPickerHints,
@@ -135,10 +139,6 @@ import {
   buildPriceSurfaceRegistryStatus,
 } from '../../utils/priceSurfaceRegistry';
 import { shouldHydrateInitialData } from './initialDataHydration';
-import {
-  canShowShippingExecution,
-  shouldDisableShippingExecution,
-} from './reviewShippingExecution';
 import { DEFAULT_FORM_DATA } from './defaultFormData';
 import { useStickyProgressBar } from './hooks/useStickyProgressBar';
 import { useTestTypeControls } from './hooks/useTestTypeControls';
@@ -214,6 +214,11 @@ import {
   normalizeThemeConfig,
   normalizeVariantPriceConfigShape,
 } from './wizardVariantConfigHelpers';
+import ShippingStudio from './shipping/ShippingStudio';
+import {
+  canShowShippingExecution,
+  shouldDisableShippingExecution,
+} from './reviewShippingExecution';
 import {
   createEmptyCheckoutSection,
   getActionableCheckoutSections,
@@ -228,6 +233,17 @@ import {
   normalizeCheckoutPrimaryOutputGoal,
   syncLegacyCheckoutExperienceFields,
 } from '../../utils/checkoutSections';
+import {
+  getShippingReadiness as getSharedShippingReadiness,
+  getShippingStrategy as inferShippingStrategy,
+  getShippingVariantSummary as getSharedShippingVariantSummary,
+  normalizeShippingDeliveryPromise as normalizeSharedShippingDeliveryPromise,
+  SHIPPING_DELIVERY_PROMISE_OPTIONS,
+} from '../../utils/shippingConfig';
+import ControlShippingBaselinePanel from './shipping/panels/ControlShippingBaselinePanel';
+import ControlMethodsPanel from './shipping/panels/ControlMethodsPanel';
+import ShippingOperationsPanel from './shipping/panels/ShippingOperationsPanel';
+import VariationBuilderPanel from './shipping/panels/VariationBuilderPanel';
 
 function getCheckoutOptionLabel(options = [], value, fallback = '') {
   const normalizedValue = String(value || '').trim();
@@ -297,6 +313,9 @@ function TestWizard({
   enableStepNavigation,
   onSubmit,
   onCancel,
+  onSaveDraft,
+  draftSaveLoading = false,
+  onDirtyChange,
   onSaveCode,
   onTitleRender,
   onRefreshTest,
@@ -310,6 +329,24 @@ function TestWizard({
   const [error, setError] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(initialTemplate);
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
+  const shippingStudioEnhancementsEnabled = useMemo(() => {
+    const envValue = String(import.meta.env?.VITE_RIPX_SHIPPING_STUDIO_V2 ?? '')
+      .trim()
+      .toLowerCase();
+    if (['0', 'false', 'off', 'legacy'].includes(envValue)) return false;
+    if (typeof window !== 'undefined') {
+      try {
+        const override = String(window.localStorage?.getItem('ripx_shipping_studio_v2') || '')
+          .trim()
+          .toLowerCase();
+        if (['0', 'false', 'off', 'legacy'].includes(override)) return false;
+        if (['1', 'true', 'on', 'enabled'].includes(override)) return true;
+      } catch {
+        // Keep the default if storage is unavailable.
+      }
+    }
+    return true;
+  }, []);
   const isShippingTargetingMode = selectedTemplate === 'shipping' || formData.type === 'shipping';
   const [variantCodesData, setVariantCodesData] = useState([]);
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
@@ -319,6 +356,9 @@ function TestWizard({
   const [jsValidationErrors, setJsValidationErrors] = useState([]);
   const validationTimeoutRef = useRef(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [shippingOperationLoading, setShippingOperationLoading] = useState('');
+  const [shippingOperationResult, setShippingOperationResult] = useState(null);
+  const [shippingVariantTabIndex, setShippingVariantTabIndex] = useState(0);
   const [autosaveState, setAutosaveState] = useState('idle');
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [isInitialized, setIsInitialized] = useState(mode === 'create');
@@ -412,6 +452,87 @@ function TestWizard({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [variantDropdownOpen]);
+
+  const runShippingOperation = useCallback(
+    async action => {
+      const testId = initialData?.id;
+      if (!testId) return;
+      setShippingRailTab('diagnostics');
+      setShippingOperationLoading(action);
+      setShippingOperationResult(null);
+      try {
+        const response =
+          action === 'diagnostics'
+            ? await apiGet(`/tests/${testId}/shipping/diagnostics`)
+            : await apiPost(`/tests/${testId}/shipping/execute`, {
+                dry_run: action === 'dryRun',
+                apply: action === 'apply',
+                variantIndex: shippingVariantTabIndex,
+              });
+        const payload = unwrapData(response) || response;
+        const summary =
+          payload?.diagnostics?.readiness ||
+          payload?.execution_result?.summary ||
+          payload?.summary ||
+          payload?.result ||
+          {};
+        const mode =
+          payload?.execution_result?.mode ||
+          payload?.execution_result?.execution_mode ||
+          summary?.execution_mode ||
+          summary?.mode ||
+          'reviewed';
+        const normalizationSummary =
+          payload?.diagnostics?.normalization_summary || summary?.normalization_summary || null;
+        const detailItems = [];
+        if (summary?.action_count !== undefined) {
+          detailItems.push(
+            `${summary.action_count} action${summary.action_count === 1 ? '' : 's'}`
+          );
+        }
+        if (summary?.manual_required_count !== undefined) {
+          detailItems.push(`${summary.manual_required_count} manual`);
+        }
+        if (summary?.failed_count !== undefined) {
+          detailItems.push(`${summary.failed_count} failed`);
+        }
+        if (normalizationSummary?.replace_mode_variants !== undefined) {
+          detailItems.push(`${normalizationSummary.replace_mode_variants} replace mode`);
+        }
+        if (normalizationSummary?.additive_mode_variants !== undefined) {
+          detailItems.push(`${normalizationSummary.additive_mode_variants} add mode`);
+        }
+        if (summary?.running_shipping_conflicts !== undefined) {
+          detailItems.push(`${summary.running_shipping_conflicts} conflicts`);
+        }
+        setShippingOperationResult({
+          title:
+            action === 'diagnostics'
+              ? 'Diagnostics complete'
+              : action === 'dryRun'
+                ? 'Active variant dry run complete'
+                : 'Active variant shipping apply complete',
+          message:
+            typeof summary === 'string'
+              ? summary
+              : payload?.message ||
+                `Execution mode: ${mode}. Review the diagnostics report before launch.`,
+          details: detailItems,
+        });
+        if (typeof onRefreshTest === 'function') {
+          onRefreshTest();
+        }
+      } catch (err) {
+        setShippingOperationResult({
+          title: 'Shipping operation failed',
+          message: err?.message || 'Could not complete the shipping operation.',
+        });
+      } finally {
+        setShippingOperationLoading('');
+      }
+    },
+    [initialData?.id, onRefreshTest, shippingVariantTabIndex]
+  );
   useEffect(() => {
     if (!isDirty) {
       setVisualEditorDirty(false);
@@ -419,6 +540,11 @@ function TestWizard({
       codeEditorDirtyRef.current = false;
     }
   }, [isDirty]);
+  useEffect(() => {
+    if (typeof onDirtyChange === 'function') {
+      onDirtyChange(isDirty);
+    }
+  }, [isDirty, onDirtyChange]);
   const [visualPreviewLoadState, setVisualPreviewLoadState] = useState('idle'); // 'idle' | 'loading' | 'loaded' | 'error'
   const [visualPreviewRetryKey, setVisualPreviewRetryKey] = useState(0); // increment to force iframe remount on retry
   const [visualPreviewLoadingSlow, setVisualPreviewLoadingSlow] = useState(false); // true after 3s in loading
@@ -449,12 +575,24 @@ function TestWizard({
   const [priceMatrixActionToast, setPriceMatrixActionToast] = useState(null);
   const [antiFlickerToast, setAntiFlickerToast] = useState(null);
   const [goalEventCopyToast, setGoalEventCopyToast] = useState(null);
-  const [shippingExecutionLoading, setShippingExecutionLoading] = useState(false);
-  const [shippingExecutionAction, setShippingExecutionAction] = useState(null);
-  const [shippingExecutionReport, setShippingExecutionReport] = useState(null);
-  const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
-  const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
-  const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
+  const [shippingUiMode, setShippingUiMode] = useState('beginner');
+  const [shippingChecklistExpanded, setShippingChecklistExpanded] = useState(false);
+  const [shippingCurrentSetupExpanded, setShippingCurrentSetupExpanded] = useState(false);
+  const [shippingRailTab, setShippingRailTab] = useState('overview');
+  const [shippingGuidedStep, setShippingGuidedStep] = useState('category');
+  const [shippingUiAdvancedOpen, setShippingUiAdvancedOpen] = useState(false);
+  const [shippingReplacementExtraRowsOpen, setShippingReplacementExtraRowsOpen] = useState(false);
+  const [shippingRateActionToast, setShippingRateActionToast] = useState(null);
+  const [shippingRateLastFixedAt, setShippingRateLastFixedAt] = useState(null);
+  const [shippingLastAutoFixSnapshot, setShippingLastAutoFixSnapshot] = useState(null);
+  const [shippingCurrencySearchByRate, setShippingCurrencySearchByRate] = useState({});
+  const [shippingCurrencyEditByRate, setShippingCurrencyEditByRate] = useState({});
+  const [shippingRecentCurrencies, setShippingRecentCurrencies] = useState([]);
+  const [shippingProfileScopeSearch, setShippingProfileScopeSearch] = useState('');
+  const [shippingCurrentSetup, setShippingCurrentSetup] = useState(null);
+  const [shippingCurrentSetupLoading, setShippingCurrentSetupLoading] = useState(false);
+  const [shippingCurrentSetupError, setShippingCurrentSetupError] = useState(null);
+  const [shippingCurrentSetupRefreshKey, setShippingCurrentSetupRefreshKey] = useState(0);
   const [checkoutCustomizationLoading, setCheckoutCustomizationLoading] = useState(false);
   const [checkoutCustomizationAction, setCheckoutCustomizationAction] = useState(null);
   const [checkoutCustomizationToast, setCheckoutCustomizationToast] = useState(null);
@@ -464,7 +602,6 @@ function TestWizard({
   const [checkoutPendingScrollTarget, setCheckoutPendingScrollTarget] = useState(null);
   const [checkoutEditorModalOpen, setCheckoutEditorModalOpen] = useState(false);
   const [checkoutEditorMode, setCheckoutEditorMode] = useState('overview');
-  const [shippingStorewideApplyConfirmed, setShippingStorewideApplyConfirmed] = useState(false);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
     if (n === 0) {
@@ -489,6 +626,17 @@ function TestWizard({
     }
     setCheckoutStudioVariantIndex(prev => Math.min(prev, n - 1));
   }, [formData.variants?.length]);
+  useEffect(() => {
+    const n = formData.variants?.length ?? 0;
+    if (n === 0) {
+      setShippingVariantTabIndex(0);
+      return;
+    }
+    setShippingVariantTabIndex(prev => Math.min(prev, n - 1));
+  }, [formData.variants?.length]);
+  useEffect(() => {
+    setShippingRailTab('overview');
+  }, [shippingVariantTabIndex]);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
     if (n === 0) {
@@ -848,9 +996,8 @@ function TestWizard({
   const priceMatrixFetchInFlightRef = useRef({});
   const priceMatrixLoadStartedAtRef = useRef({});
   const priceProductMetaByIdRef = useRef({});
-  const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
-  const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
-  const [priceMatrixBulkSummary, setPriceMatrixBulkSummary] = useState(null);
+  const [priceMatrixBulkByVariant, setPriceMatrixBulkByVariant] = useState({});
+  const [priceMatrixDraftValues, setPriceMatrixDraftValues] = useState({});
   const [priceMatrixUndoByScope, setPriceMatrixUndoByScope] = useState({});
   const [priceGuideSampleOpen, setPriceGuideSampleOpen] = useState(false);
   const [priceVariantToolsExpanded, setPriceVariantToolsExpanded] = useState(false);
@@ -1025,6 +1172,58 @@ function TestWizard({
       cancelled = true;
     };
   }, [isShopifyFromRoute, isStandalone, routeDomain, scopedShopDomain]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isShopifyFromRoute || isStandalone || !isShippingTargetingMode) {
+      setShippingCurrentSetup(null);
+      setShippingCurrentSetupError(null);
+      setShippingCurrentSetupLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadShippingCurrentSetup = async () => {
+      setShippingCurrentSetupLoading(true);
+      setShippingCurrentSetupError(null);
+      try {
+        const res = await apiGet(
+          '/tests/shipping/current-setup',
+          {
+            ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
+          },
+          { timeout: 15000 }
+        );
+        const data = unwrapData(res);
+        if (!cancelled) {
+          setShippingCurrentSetup(data?.current_setup || null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setShippingCurrentSetup(null);
+          setShippingCurrentSetupError(e?.message || 'Could not load Shopify shipping setup');
+        }
+      } finally {
+        if (!cancelled) {
+          setShippingCurrentSetupLoading(false);
+        }
+      }
+    };
+
+    loadShippingCurrentSetup();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isShopifyFromRoute,
+    isShippingTargetingMode,
+    isStandalone,
+    routeDomain,
+    scopedShopDomain,
+    shippingCurrentSetupRefreshKey,
+  ]);
 
   const directPriceOverrideSupportLevel = String(
     checkoutDiagnostics?.support?.direct_price_override?.level || ''
@@ -2333,17 +2532,6 @@ function TestWizard({
   }, [formData.target_type, isShippingTargetingMode]);
 
   useEffect(() => {
-    const normalizedTargetType = String(formData.target_type || '')
-      .trim()
-      .toLowerCase();
-    const isStorewide =
-      normalizedTargetType === 'all-products' || normalizedTargetType === 'all_products';
-    if (!isStorewide) {
-      setShippingStorewideApplyConfirmed(false);
-    }
-  }, [formData.target_type]);
-
-  useEffect(() => {
     if (!isShippingTargetingMode) {
       return;
     }
@@ -2582,6 +2770,14 @@ function TestWizard({
         timezone: initialData.timezone || DEFAULT_FORM_DATA.timezone,
       };
       setFormData(nextFormData);
+      if (mode === 'create' && showTemplateStep) {
+        const hydratedTemplate = normalizeTextValue(
+          initialData.goal?.template_key || initialData.type || selectedTemplate
+        ).toLowerCase();
+        if (hydratedTemplate) {
+          setSelectedTemplate(hydratedTemplate);
+        }
+      }
       setCustomUrlModeActive(hasCustomUrl);
       if (isNewTest) {
         setSelectedVariantIndex(0);
@@ -2603,6 +2799,7 @@ function TestWizard({
   useEffect(() => {
     if (mode !== 'edit') return;
     if (!initialData) return;
+    if (isDirty) return;
 
     const serverVariants = Array.isArray(initialData.variants)
       ? initialData.variants.filter(Boolean)
@@ -2611,7 +2808,7 @@ function TestWizard({
     const variantCountMismatch = serverVariants.length !== formVariants.length;
 
     // When server has different variant count, always sync (critical for correct display)
-    if (variantCountMismatch && serverVariants.length > 0) {
+    if (variantCountMismatch && serverVariants.length > 0 && !isInitialized) {
       setFormData(prev => ({
         ...prev,
         variants: serverVariants.map(rawVariant => {
@@ -2629,20 +2826,21 @@ function TestWizard({
       return;
     }
 
-    if (isDirty) return;
-
     if (initialData.name && !formData.name) {
       setFormData(prev => ({ ...prev, name: initialData.name }));
     }
     if (initialData.description && !formData.description) {
       setFormData(prev => ({ ...prev, description: initialData.description }));
     }
-  }, [mode, initialData, formData.name, formData.description, isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, initialData, formData.name, formData.description, isDirty, isInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const normalizeVariantAllocations = vars => {
     if (!vars || !Array.isArray(vars) || vars.length === 0) return vars;
     const valid = vars.filter(v => v !== null && v !== undefined && typeof v === 'object');
     if (valid.length === 0) return vars;
+    if (valid.length === 1) {
+      return [{ ...valid[0], allocation: 100 }];
+    }
     const total = valid.reduce((sum, v) => sum + (Number(v.allocation) || 0), 0);
     if (total === 0) return vars;
     const scaled = valid.map(v => ({
@@ -2844,6 +3042,30 @@ function TestWizard({
       url_pattern: data.segments?.url_pattern ?? '',
       min_sessions: data.segments?.min_sessions ?? '',
     };
+    if (data.segments?.exclude_internal_ips === true) {
+      normalizedSegments.exclude_internal_ips = true;
+    }
+    if (data.segments?.exclude_bots === true) {
+      normalizedSegments.exclude_bots = true;
+    }
+    if (
+      data.segments?.traffic_ramp_percent !== undefined &&
+      data.segments?.traffic_ramp_percent !== null &&
+      data.segments?.traffic_ramp_percent !== ''
+    ) {
+      const rampPercent = Number(data.segments.traffic_ramp_percent);
+      normalizedSegments.traffic_ramp_percent =
+        Number.isFinite(rampPercent) && rampPercent >= 0 && rampPercent <= 100 ? rampPercent : null;
+    }
+    if (
+      data.segments?.traffic_ramp_days !== undefined &&
+      data.segments?.traffic_ramp_days !== null &&
+      data.segments?.traffic_ramp_days !== ''
+    ) {
+      const rampDays = Number(data.segments.traffic_ramp_days);
+      normalizedSegments.traffic_ramp_days =
+        Number.isFinite(rampDays) && rampDays >= 1 && rampDays <= 30 ? Math.round(rampDays) : null;
+    }
     if (
       Array.isArray(data.segments?.excluded_product_ids) &&
       data.segments.excluded_product_ids.length > 0
@@ -2917,10 +3139,10 @@ function TestWizard({
         .map(r => (r && typeof r === 'object' ? normalizeVisualEditorRule(r) : null))
         .filter(Boolean);
     }
-    const normalizedPriceSurfaceMappings = normalizePriceSurfaceMappings(
+    const normalizedPriceSurfaceMappings = normalizePriceSurfaceMappingsForEditor(
       data.segments?.price_surface_mappings
     ).slice(0, 25);
-    if (normalizedPriceSurfaceMappings.length > 0) {
+    if (Array.isArray(data.segments?.price_surface_mappings)) {
       normalizedSegments.price_surface_mappings = normalizedPriceSurfaceMappings;
     }
 
@@ -2967,8 +3189,12 @@ function TestWizard({
         allocation: Number(v.allocation) || 0,
       };
       if (isPriceLikeTest) {
+        const priceConfig = { ...(nextVariant.config || {}) };
+        if (!data.pricePerProduct && priceConfig.byProduct) {
+          delete priceConfig.byProduct;
+        }
         nextVariant.config = applyPriceExecutionModeToConfig(
-          sanitizePriceConfigOverrides(nextVariant.config || {}),
+          sanitizePriceConfigOverrides(priceConfig),
           priceCheckoutExecutionMode
         );
       } else if (isThemeFamilyTest) {
@@ -3414,13 +3640,15 @@ function TestWizard({
                   ? applyRecommendedPriceSurfaceDefaults({ ...row, ...patch })
                   : row
               );
-              return {
+              const next = {
                 ...prev,
                 segments: {
                   ...prev.segments,
                   price_surface_mappings: nextRows,
                 },
               };
+              formDataRef.current = next;
+              return next;
             });
           } else if (pricePick.scope === 'shop' && priceSurfaceShopPickRef.current) {
             priceSurfaceShopPickRef.current(pricePick.index, patch);
@@ -3762,13 +3990,16 @@ function TestWizard({
     }
   }, [selectedVariantIndex, variantCodesData]);
 
-  const handleTemplateSelect = templateKey => {
+  const handleTemplateSelect = (templateKey, options = {}) => {
     if (!isTemplateTypeEnabled(templateKey)) {
       const templateLabel = TEST_TEMPLATES[templateKey]?.name || templateKey;
       setError(`${templateLabel} is currently unavailable.`);
       return;
     }
     setSelectedTemplate(templateKey);
+    if (options.markDirty !== false) {
+      setIsDirty(true);
+    }
 
     let targetType = '';
     let urlPattern = '';
@@ -3858,7 +4089,7 @@ function TestWizard({
 
   useEffect(() => {
     if (showTemplateStep && initialTemplate) {
-      handleTemplateSelect(initialTemplate);
+      handleTemplateSelect(initialTemplate, { markDirty: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when step/template available; handleTemplateSelect is stable
   }, [showTemplateStep, initialTemplate]);
@@ -4365,6 +4596,7 @@ function TestWizard({
     option => option.value !== (formData.goal?.metric || 'revenue')
   );
   const setPrimaryGoalMetric = value => {
+    setIsDirty(true);
     setFormData(prev => {
       const nextPrimary = normalizeGoalPrimaryMetric(value, 'revenue');
       const currentSecondary = normalizeGoalSecondaryMetric(
@@ -4384,6 +4616,7 @@ function TestWizard({
     });
   };
   const setSecondaryGoalMetric = value => {
+    setIsDirty(true);
     setFormData(prev => {
       const nextSecondary = value ? normalizeGoalSecondaryMetric(prev.goal?.metric, value) : null;
       return {
@@ -4498,6 +4731,10 @@ function TestWizard({
       codeEditorDirtyRef.current = false;
       setAutosaveState('saved');
       setLastSavedAt(new Date());
+      if (!options.silent) {
+        // Force preview sessions/iframes to re-seed after explicit Save Changes.
+        setVisualPreviewRetryKey(key => key + 1);
+      }
     } catch (err) {
       const details = err?.response?.data?.details;
       if (Array.isArray(details) && details.length > 0) {
@@ -4513,6 +4750,45 @@ function TestWizard({
     setLoading(false);
   };
 
+  const handleSaveDraft = async () => {
+    if (!onSaveDraft) return;
+
+    const form = formDataRef.current;
+    const codes = variantCodesDataRef.current;
+    const draftPayload = buildPayload(form, codes);
+
+    setLoading(true);
+    setError(null);
+    setAutosaveState('saving');
+
+    try {
+      const savedDraft = await onSaveDraft(draftPayload);
+      const savedName = normalizeTextValue(savedDraft?.name);
+      const payloadSnapshot =
+        !normalizeTextValue(draftPayload.name) && savedName
+          ? { ...draftPayload, name: savedName }
+          : draftPayload;
+      if (!normalizeTextValue(draftPayload.name) && savedName) {
+        setFormData(prev => ({ ...prev, name: savedName }));
+      }
+      lastSavedSnapshotRef.current = JSON.stringify(payloadSnapshot);
+      setIsDirty(false);
+      codeEditorDirtyRef.current = false;
+      setAutosaveState('saved');
+      setLastSavedAt(new Date());
+    } catch (err) {
+      const details = err?.response?.data?.details;
+      if (Array.isArray(details) && details.length > 0) {
+        setError(details.join(' '));
+      } else {
+        setError(err?.response?.data?.error || err?.message || 'Failed to save draft');
+      }
+      setAutosaveState('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const dirtyCompareReadyRef = useRef(false);
 
   useEffect(() => {
@@ -4523,6 +4799,36 @@ function TestWizard({
     }, 400);
     return () => clearTimeout(t);
   }, [mode, initialData?.id]);
+
+  useEffect(() => {
+    if (mode !== 'create') return;
+    dirtyCompareReadyRef.current = false;
+    const t = setTimeout(() => {
+      dirtyCompareReadyRef.current = true;
+    }, 400);
+    return () => clearTimeout(t);
+  }, [mode, initialData?.id, initialTemplate]);
+
+  useEffect(() => {
+    if (mode !== 'create') return;
+    if (!isInitialized || formData.variants?.length <= 0) return;
+
+    if (initialSnapshotPendingRef.current || !lastSavedSnapshotRef.current) {
+      lastSavedSnapshotRef.current = JSON.stringify(
+        buildPayload(formDataRef.current, variantCodesDataRef.current)
+      );
+      initialSnapshotPendingRef.current = false;
+      setIsDirty(false);
+      return;
+    }
+
+    if (!dirtyCompareReadyRef.current) {
+      return;
+    }
+
+    const snapshot = JSON.stringify(buildPayload());
+    setIsDirty(snapshot !== lastSavedSnapshotRef.current);
+  }, [mode, isInitialized, formData, variantCodesData, initialTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (mode !== 'edit') return;
@@ -4740,17 +5046,20 @@ function TestWizard({
     let finalPreviewUrl = directPreviewUrl;
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
-        // Customer-facing simple previews should use the real storefront URL. The first URL seeds
-        // preview context; subsequent same-origin page navigations keep it in sessionStorage/window.name.
-        // Password-protected dev stores must be unlocked in the browser first.
+        const storefrontPassword = resolveStorefrontPasswordForPreview(
+          scopedShopDomain || domain,
+          visualEditorStorefrontPassword,
+          [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
+        );
+        // Customer-facing links should remain on the storefront domain while still forcing a
+        // fresh preview runtime. The price bootstrap route guarantees runtime injection even when
+        // the theme app-embed script is unavailable on the current page/template.
         if (options.simplePreview) {
-          finalPreviewUrl = directPreviewUrl;
+          finalPreviewUrl =
+            buildShopifyPricePreviewBootstrapUrl({
+              previewUrl: directPreviewUrl,
+            }) || directPreviewUrl;
         } else {
-          const storefrontPassword = resolveStorefrontPasswordForPreview(
-            scopedShopDomain || domain,
-            visualEditorStorefrontPassword,
-            [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
-          );
           if (storefrontPassword) {
             finalPreviewUrl =
               buildPreviewDocumentUrl({
@@ -4834,6 +5143,8 @@ function TestWizard({
     }
     const url = buildPreviewUrl(variant, index, {
       pricePreviewProduct: pricePreviewProductOverride,
+      resetPreviewSession: true,
+      previewSessionId: `preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });
     if (!url) {
       setError(
@@ -4929,89 +5240,10 @@ function TestWizard({
     return buildPreviewUrl(variant, index, {
       pricePreviewProduct: pricePreviewProductOverride,
       simplePreview: true,
+      resetPreviewSession: true,
+      previewSessionId: `copy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });
   };
-
-  const handleExecuteShippingFromReview = useCallback(
-    async (apply, variantIndex = null) => {
-      const testId = initialData?.id;
-      if (!testId) return;
-      setShippingExecutionLoading(true);
-      setShippingExecutionAction(apply ? 'apply' : 'dry_run');
-      setError(null);
-      setShippingExecutionToast(null);
-      try {
-        const response = await apiPost(`/tests/${testId}/shipping/execute`, {
-          apply: Boolean(apply),
-          dry_run: !apply,
-          ...(variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}),
-        });
-        const payload = response?.data?.data ?? response?.data ?? {};
-        setShippingExecutionReport(payload);
-        const summary = payload?.execution_result?.summary || {};
-        const successCount = Number(summary.success_count || 0);
-        const manualCount = Number(summary.manual_required_count || 0);
-        const failedCount = Number(summary.failed_count || 0);
-        const refreshed =
-          apply && typeof onRefreshTest === 'function' ? await onRefreshTest() : true;
-        const actionLabel = apply ? 'Apply' : 'Dry run';
-        if (failedCount > 0) {
-          setError(
-            `Shipping execution finished with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
-          );
-        } else {
-          let message =
-            successCount > 0
-              ? `${actionLabel} complete: ${successCount} shipping action${successCount === 1 ? '' : 's'} ready.`
-              : `${actionLabel} complete. No automatic shipping actions were required.`;
-          let type = 'success';
-          if (manualCount > 0) {
-            type = 'info';
-            message = `${actionLabel} finished: ${successCount} ready, ${manualCount} manual follow-up required.`;
-          }
-          if (apply && !refreshed) {
-            type = 'info';
-            message = `${message} The page could not refresh automatically, so some details may update on the next reload.`;
-          }
-          setShippingExecutionToast({
-            type,
-            message,
-          });
-        }
-      } catch (err) {
-        setError(
-          err?.response?.data?.details?.[0] ||
-            err?.response?.data?.error ||
-            err?.message ||
-            'Failed to execute shipping actions'
-        );
-      } finally {
-        setShippingExecutionLoading(false);
-        setShippingExecutionAction(null);
-      }
-    },
-    [initialData?.id, onRefreshTest]
-  );
-
-  const handleRunShippingDiagnostics = useCallback(async () => {
-    const testId = initialData?.id;
-    if (!testId) return;
-    setShippingDiagnosticsLoading(true);
-    setError(null);
-    try {
-      const response = await apiGet(`/tests/${testId}/shipping/diagnostics`);
-      setShippingDiagnosticsReport(response?.data?.data ?? response?.data ?? {});
-    } catch (err) {
-      setError(
-        err?.response?.data?.details?.[0] ||
-          err?.response?.data?.error ||
-          err?.message ||
-          'Failed to load shipping diagnostics'
-      );
-    } finally {
-      setShippingDiagnosticsLoading(false);
-    }
-  }, [initialData?.id]);
 
   const handleEnsureCheckoutCustomizationFromReview = useCallback(
     async apply => {
@@ -5056,30 +5288,6 @@ function TestWizard({
       }
     },
     [initialData?.id, onRefreshTest]
-  );
-
-  const openShippingDocs = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    window.open(`${ROUTES.DOCS}#shipping`, '_blank', 'noopener,noreferrer');
-  }, []);
-
-  const jumpToShippingTargeting = useCallback(
-    targetId => {
-      setCurrentStep(stepIds.targeting);
-      openOnlyTargetingSection('page');
-      if (targetId === 'shipping-exclusions-card') {
-        setShippingScopeAdvancedOpen(true);
-      }
-      if (typeof window === 'undefined') return;
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          const element = document.getElementById(targetId || 'targeting-scope');
-          if (!element) return;
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      });
-    },
-    [stepIds.targeting, openOnlyTargetingSection]
   );
 
   const canNavigateSteps =
@@ -5160,6 +5368,7 @@ function TestWizard({
 
   const renderVariants = () => {
     const variants = formData.variants || [];
+    const minVariantCount = isShippingTestType ? 1 : 2;
     const totalAllocation = variants.reduce((sum, v) => sum + (v.allocation || 0), 0);
     const totalRounded = Math.round(totalAllocation * 100) / 100;
     const allocationValid = Math.abs(totalRounded - 100) < 0.01;
@@ -5225,11 +5434,18 @@ function TestWizard({
                 return { ...prev, variants: updated };
               });
             }}
-            onRemoveVariant={index => {
+            onRemoveVariant={(index, normalizedVariants) => {
               let nextLength = 0;
               setFormData(prev => {
+                if (
+                  Array.isArray(normalizedVariants) &&
+                  normalizedVariants.length >= minVariantCount
+                ) {
+                  nextLength = normalizedVariants.length;
+                  return { ...prev, variants: normalizedVariants };
+                }
                 const current = prev.variants || [];
-                if (current.length <= 2) return prev;
+                if (current.length <= minVariantCount) return prev;
                 const next = [...current];
                 const removed = next.splice(index, 1)[0];
                 const removedAlloc = removed?.allocation || 0;
@@ -5249,6 +5465,22 @@ function TestWizard({
                 nextLength = updated.length;
                 return { ...prev, variants: updated };
               });
+              const remapVariantIndexedObject = prev => {
+                const next = {};
+                Object.entries(prev || {}).forEach(([rawKey, value]) => {
+                  const key = Number(rawKey);
+                  if (!Number.isInteger(key)) return;
+                  if (key === index) return;
+                  next[key > index ? key - 1 : key] = value;
+                });
+                return next;
+              };
+              setVariantCodesData(prev =>
+                Array.isArray(prev) ? prev.filter((_, i) => i !== index) : prev
+              );
+              setVisualRuleHistoryByVariant(remapVariantIndexedObject);
+              setCheckoutExpandedSectionsByVariant(remapVariantIndexedObject);
+              setShippingLastAutoFixSnapshot(null);
               setIsDirty(true);
               if (nextLength > 0) setSelectedVariantIndex(prev => Math.min(prev, nextLength - 1));
             }}
@@ -5263,6 +5495,7 @@ function TestWizard({
             pricePreviewMode={isPriceLikeTestType(
               formData.type || initialData?.type || selectedTemplate
             )}
+            minVariants={minVariantCount}
             compact
           />
           {!allocationValid && (
@@ -5530,188 +5763,247 @@ function TestWizard({
     };
 
     return (
-      <BlockStack gap="400">
-        <Card>
-          <div className={styles.configWrapper}>
-            <div className={styles.configAccent} aria-hidden />
-            <div className={styles.stepHeader}>
-              <span className={styles.stepHeaderIcon}>
-                <Icon source={PageIcon} />
-              </span>
-              <div>
-                <h2 className={styles.stepHeaderTitle}>Targeting & Segmentation</h2>
-                <p className={styles.stepHeaderSubtitle}>
-                  {isCheckoutTestType
-                    ? 'Checkout runs only on the checkout surface. Audience, holdout, and advanced rules still apply.'
-                    : isShippingTestType
-                      ? 'Define cart qualification, holdout, and optional safety rules.'
-                      : isStandalone
-                        ? 'Define where your test runs (URL) and holdout.'
-                        : 'Define where your test runs and who sees it.'}
-                </p>
+      <ShippingStudio>
+        <BlockStack gap="400">
+          <Card>
+            <div className={styles.configWrapper}>
+              <div className={styles.configAccent} aria-hidden />
+              <div className={styles.stepHeader}>
+                <span className={styles.stepHeaderIcon}>
+                  <Icon source={PageIcon} />
+                </span>
+                <div>
+                  <h2 className={styles.stepHeaderTitle}>Targeting & Segmentation</h2>
+                  <p className={styles.stepHeaderSubtitle}>
+                    {isCheckoutTestType
+                      ? 'Checkout runs only on the checkout surface. Audience, holdout, and advanced rules still apply.'
+                      : isShippingTestType
+                        ? 'Define cart qualification, holdout, and optional safety rules.'
+                        : isStandalone
+                          ? 'Define where your test runs (URL) and holdout.'
+                          : 'Define where your test runs and who sees it.'}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className={styles.targetingTabContent}>
-              <div id="targeting-audience" className={styles.targetingTabPanel} role="tabpanel">
-                <div className={styles.tabPanelInner}>
-                  <div className={styles.placementBar}>
-                    <TargetingStepLayout
-                      styles={styles}
-                      summary={targetingSummary}
-                      activeSection={placementSection}
-                      issuesBySection={targetingIssuesBySection}
-                      coachBySection={coachHintBySection}
-                      onSelectSection={openOnlyTargetingSection}
-                    >
-                      <div
-                        className={`${styles.targetingAccordionStack} ${styles.targetingAccordionStackWithRail}`}
-                        role="group"
-                        aria-label="Targeting sections"
+              <div className={styles.targetingTabContent}>
+                <div id="targeting-audience" className={styles.targetingTabPanel} role="tabpanel">
+                  <div className={styles.tabPanelInner}>
+                    <div className={styles.placementBar}>
+                      <TargetingStepLayout
+                        styles={styles}
+                        summary={targetingSummary}
+                        activeSection={placementSection}
+                        issuesBySection={targetingIssuesBySection}
+                        coachBySection={coachHintBySection}
+                        onSelectSection={openOnlyTargetingSection}
                       >
-                        <div className={styles.targetingAccordionItem}>
-                          <button
-                            type="button"
-                            aria-expanded={targetingSectionExpanded.page}
-                            className={sectionTriggerClass('page', targetingSectionExpanded.page)}
-                            onClick={() => toggleTargetingSectionExpanded('page')}
-                            title={
-                              isShippingTestType
-                                ? 'Qualification (1)'
-                                : targetingScopeFixedForCommerce
-                                  ? 'Product scope (1)'
-                                  : 'Page (1)'
-                            }
-                          >
-                            <span
-                              className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.page ? styles.targetingAccordionChevronOpen : ''}`}
-                              aria-hidden
+                        <div
+                          className={`${styles.targetingAccordionStack} ${styles.targetingAccordionStackWithRail}`}
+                          role="group"
+                          aria-label="Targeting sections"
+                        >
+                          <div className={styles.targetingAccordionItem}>
+                            <button
+                              type="button"
+                              aria-expanded={targetingSectionExpanded.page}
+                              className={sectionTriggerClass('page', targetingSectionExpanded.page)}
+                              onClick={() => toggleTargetingSectionExpanded('page')}
+                              title={
+                                isShippingTestType
+                                  ? 'Qualification (1)'
+                                  : targetingScopeFixedForCommerce
+                                    ? 'Product scope (1)'
+                                    : 'Page (1)'
+                              }
                             >
-                              <Icon source={ChevronDownIcon} />
-                            </span>
-                            <span className={styles.placementTabStep}>1</span>
-                            <Icon source={PageIcon} />
-                            <span className={styles.targetingAccordionTriggerLabel}>
-                              {isShippingTestType
-                                ? 'Qualification'
-                                : targetingScopeFixedForCommerce
-                                  ? 'Product scope'
-                                  : 'Page'}
-                            </span>
-                            {((formData.segments?.page_rules || []).length > 0 ||
-                              (customUrlModeActive &&
-                                (formData.segments?.url_pattern ?? '') !== '')) && (
-                              <span className={styles.placementTabDot} />
-                            )}
-                            {renderTargetingIssueBadge('page')}
-                          </button>
-                          {targetingSectionExpanded.page && (
-                            <div key="page-placement" className={styles.targetingAccordionPanel}>
-                              <div className={styles.placementPanel} id="targeting-scope">
-                                {targetingScopeFixedForCommerce ? (
-                                  <BlockStack gap="300">
-                                    <Banner
-                                      tone={isShippingStorewideAdvanced ? 'warning' : 'info'}
-                                      title={
-                                        isShippingTestType
-                                          ? isShippingStorewideAdvanced
-                                            ? 'Shipping test uses advanced storewide qualification'
-                                            : 'Shipping tests default to selected-product cart qualification'
-                                          : isOfferTestType
-                                            ? 'Offer tests use product-only scope'
-                                            : 'Price tests use product-only scope'
-                                      }
-                                    >
-                                      <Text as="p" variant="bodySm">
-                                        {isShippingTestType ? (
-                                          isShippingStorewideAdvanced ? (
+                              <span
+                                className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.page ? styles.targetingAccordionChevronOpen : ''}`}
+                                aria-hidden
+                              >
+                                <Icon source={ChevronDownIcon} />
+                              </span>
+                              <span className={styles.placementTabStep}>1</span>
+                              <Icon source={PageIcon} />
+                              <span className={styles.targetingAccordionTriggerLabel}>
+                                {isShippingTestType
+                                  ? 'Qualification'
+                                  : targetingScopeFixedForCommerce
+                                    ? 'Product scope'
+                                    : 'Page'}
+                              </span>
+                              {((formData.segments?.page_rules || []).length > 0 ||
+                                (customUrlModeActive &&
+                                  (formData.segments?.url_pattern ?? '') !== '')) && (
+                                <span className={styles.placementTabDot} />
+                              )}
+                              {renderTargetingIssueBadge('page')}
+                            </button>
+                            {targetingSectionExpanded.page && (
+                              <div key="page-placement" className={styles.targetingAccordionPanel}>
+                                <div className={styles.placementPanel} id="targeting-scope">
+                                  {targetingScopeFixedForCommerce ? (
+                                    <BlockStack gap="300">
+                                      <Banner
+                                        tone={isShippingStorewideAdvanced ? 'warning' : 'info'}
+                                        title={
+                                          isShippingTestType
+                                            ? isShippingStorewideAdvanced
+                                              ? 'Shipping test uses advanced storewide qualification'
+                                              : 'Shipping tests default to selected-product cart qualification'
+                                            : isOfferTestType
+                                              ? 'Offer tests use product-only scope'
+                                              : 'Price tests use product-only scope'
+                                        }
+                                      >
+                                        <Text as="p" variant="bodySm">
+                                          {isShippingTestType ? (
+                                            isShippingStorewideAdvanced ? (
+                                              <>
+                                                <strong>Storewide shipping</strong> qualifies nearly
+                                                every cart across your catalog. Use{' '}
+                                                <strong>excluded products</strong> to carve out
+                                                exceptions, then validate with diagnostics and
+                                                holdout before you apply it live.
+                                              </>
+                                            ) : (
+                                              <>
+                                                Choose the{' '}
+                                                <strong>
+                                                  products that must appear in the cart
+                                                </strong>{' '}
+                                                before this shipping test can apply. You can also
+                                                add optional <strong>excluded products</strong> to
+                                                block shipping assignment and checkout application
+                                                for carts that contain those SKUs. If you need
+                                                broader coverage, unlock{' '}
+                                                <strong>advanced storewide scope</strong> below.
+                                              </>
+                                            )
+                                          ) : (
                                             <>
-                                              <strong>Storewide shipping</strong> qualifies nearly
-                                              every cart across your catalog. Use{' '}
-                                              <strong>excluded products</strong> to carve out
-                                              exceptions, then validate with diagnostics and holdout
-                                              before you apply it live.
+                                              Choose between <strong>all products</strong> and{' '}
+                                              <strong>selected products</strong> here. You can also
+                                              add optional <strong>excluded products</strong> to
+                                              prevent assignment and storefront application for
+                                              specific SKUs.
+                                            </>
+                                          )}
+                                        </Text>
+                                      </Banner>
+                                      <div className={styles.panelSection}>
+                                        <span className={styles.panelSectionTitle}>
+                                          {isShippingTestType
+                                            ? 'Cart qualification'
+                                            : 'Product scope'}
+                                        </span>
+                                        <div className={styles.scopeSelectGrid}>
+                                          {isShippingTestType ? (
+                                            <>
+                                              <div
+                                                className={`${styles.scopeCard} ${!isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() =>
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'product',
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }))
+                                                }
+                                                onKeyDown={event => {
+                                                  if (event.key !== 'Enter' && event.key !== ' ') {
+                                                    return;
+                                                  }
+                                                  event.preventDefault();
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'product',
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }));
+                                                }}
+                                                aria-pressed={!isShippingStorewideAdvanced}
+                                                aria-label="Carts with selected products"
+                                              >
+                                                <span className={styles.scopeCardIcon}>
+                                                  <Icon source={TargetIcon} />
+                                                </span>
+                                                <span className={styles.scopeCardLabel}>
+                                                  Carts with selected products
+                                                </span>
+                                                <span className={styles.scopeCardDesc}>
+                                                  Qualify only carts that contain one of the
+                                                  products you choose below
+                                                </span>
+                                              </div>
+                                              {(shippingScopeAdvancedOpen ||
+                                                isShippingStorewideAdvanced) && (
+                                                <div
+                                                  className={`${styles.scopeCard} ${isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                                  role="button"
+                                                  tabIndex={0}
+                                                  onClick={() =>
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      target_type: 'all-products',
+                                                      target_id: '',
+                                                      target_ids: null,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        url_pattern: '',
+                                                        page_rules: prev.segments?.page_rules || [],
+                                                      },
+                                                    }))
+                                                  }
+                                                  onKeyDown={event => {
+                                                    if (
+                                                      event.key !== 'Enter' &&
+                                                      event.key !== ' '
+                                                    ) {
+                                                      return;
+                                                    }
+                                                    event.preventDefault();
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      target_type: 'all-products',
+                                                      target_id: '',
+                                                      target_ids: null,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        url_pattern: '',
+                                                        page_rules: prev.segments?.page_rules || [],
+                                                      },
+                                                    }));
+                                                  }}
+                                                  aria-pressed={isShippingStorewideAdvanced}
+                                                  aria-label="Storewide shipping qualification"
+                                                >
+                                                  <span className={styles.scopeCardIcon}>
+                                                    <Icon source={ProductIcon} />
+                                                  </span>
+                                                  <span className={styles.scopeCardLabel}>
+                                                    Storewide shipping
+                                                  </span>
+                                                  <span className={styles.scopeCardDesc}>
+                                                    Qualify carts across your full catalog. Excluded
+                                                    products still block assignment and checkout
+                                                    application.
+                                                  </span>
+                                                </div>
+                                              )}
                                             </>
                                           ) : (
                                             <>
-                                              Choose the{' '}
-                                              <strong>products that must appear in the cart</strong>{' '}
-                                              before this shipping test can apply. You can also add
-                                              optional <strong>excluded products</strong> to block
-                                              shipping assignment and checkout application for carts
-                                              that contain those SKUs. If you need broader coverage,
-                                              unlock <strong>advanced storewide scope</strong>{' '}
-                                              below.
-                                            </>
-                                          )
-                                        ) : (
-                                          <>
-                                            Choose between <strong>all products</strong> and{' '}
-                                            <strong>selected products</strong> here. You can also
-                                            add optional <strong>excluded products</strong> to
-                                            prevent assignment and storefront application for
-                                            specific SKUs.
-                                          </>
-                                        )}
-                                      </Text>
-                                    </Banner>
-                                    <div className={styles.panelSection}>
-                                      <span className={styles.panelSectionTitle}>
-                                        {isShippingTestType
-                                          ? 'Cart qualification'
-                                          : 'Product scope'}
-                                      </span>
-                                      <div className={styles.scopeSelectGrid}>
-                                        {isShippingTestType ? (
-                                          <>
-                                            <div
-                                              className={`${styles.scopeCard} ${!isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
-                                              role="button"
-                                              tabIndex={0}
-                                              onClick={() =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'product',
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }))
-                                              }
-                                              onKeyDown={event => {
-                                                if (event.key !== 'Enter' && event.key !== ' ') {
-                                                  return;
-                                                }
-                                                event.preventDefault();
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'product',
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }));
-                                              }}
-                                              aria-pressed={!isShippingStorewideAdvanced}
-                                              aria-label="Carts with selected products"
-                                            >
-                                              <span className={styles.scopeCardIcon}>
-                                                <Icon source={TargetIcon} />
-                                              </span>
-                                              <span className={styles.scopeCardLabel}>
-                                                Carts with selected products
-                                              </span>
-                                              <span className={styles.scopeCardDesc}>
-                                                Qualify only carts that contain one of the products
-                                                you choose below
-                                              </span>
-                                            </div>
-                                            {(shippingScopeAdvancedOpen ||
-                                              isShippingStorewideAdvanced) && (
                                               <div
-                                                className={`${styles.scopeCard} ${isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                                className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
                                                 role="button"
                                                 tabIndex={0}
                                                 onClick={() =>
@@ -5722,7 +6014,7 @@ function TestWizard({
                                                     target_ids: null,
                                                     segments: {
                                                       ...prev.segments,
-                                                      url_pattern: '',
+                                                      url_pattern: '/products/',
                                                       page_rules: prev.segments?.page_rules || [],
                                                     },
                                                   }))
@@ -5739,221 +6031,290 @@ function TestWizard({
                                                     target_ids: null,
                                                     segments: {
                                                       ...prev.segments,
-                                                      url_pattern: '',
+                                                      url_pattern: '/products/',
                                                       page_rules: prev.segments?.page_rules || [],
                                                     },
                                                   }));
                                                 }}
-                                                aria-pressed={isShippingStorewideAdvanced}
-                                                aria-label="Storewide shipping qualification"
+                                                aria-pressed={
+                                                  (formData.target_type || 'all-products') !==
+                                                  'product'
+                                                }
+                                                aria-label="All products"
                                               >
                                                 <span className={styles.scopeCardIcon}>
                                                   <Icon source={ProductIcon} />
                                                 </span>
                                                 <span className={styles.scopeCardLabel}>
-                                                  Storewide shipping
+                                                  All products
                                                 </span>
                                                 <span className={styles.scopeCardDesc}>
-                                                  Qualify carts across your full catalog. Excluded
-                                                  products still block assignment and checkout
-                                                  application.
+                                                  Assign this test across your full product catalog
                                                 </span>
                                               </div>
-                                            )}
-                                          </>
-                                        ) : (
-                                          <>
-                                            <div
-                                              className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
-                                              role="button"
-                                              tabIndex={0}
-                                              onClick={() =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'all-products',
-                                                  target_id: '',
-                                                  target_ids: null,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '/products/',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }))
-                                              }
-                                              onKeyDown={event => {
-                                                if (event.key !== 'Enter' && event.key !== ' ') {
-                                                  return;
+                                              <div
+                                                className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() =>
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'product',
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '/products/',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }))
                                                 }
-                                                event.preventDefault();
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'all-products',
-                                                  target_id: '',
-                                                  target_ids: null,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '/products/',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }));
-                                              }}
-                                              aria-pressed={
-                                                (formData.target_type || 'all-products') !==
-                                                'product'
-                                              }
-                                              aria-label="All products"
-                                            >
-                                              <span className={styles.scopeCardIcon}>
-                                                <Icon source={ProductIcon} />
-                                              </span>
-                                              <span className={styles.scopeCardLabel}>
-                                                All products
-                                              </span>
-                                              <span className={styles.scopeCardDesc}>
-                                                Assign this test across your full product catalog
-                                              </span>
-                                            </div>
-                                            <div
-                                              className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
-                                              role="button"
-                                              tabIndex={0}
-                                              onClick={() =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'product',
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '/products/',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }))
-                                              }
-                                              onKeyDown={event => {
-                                                if (event.key !== 'Enter' && event.key !== ' ') {
-                                                  return;
-                                                }
-                                                event.preventDefault();
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'product',
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '/products/',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }));
-                                              }}
-                                              aria-pressed={formData.target_type === 'product'}
-                                              aria-label="Selected products only"
-                                            >
-                                              <span className={styles.scopeCardIcon}>
-                                                <Icon source={TargetIcon} />
-                                              </span>
-                                              <span className={styles.scopeCardLabel}>
-                                                Selected products
-                                              </span>
-                                              <span className={styles.scopeCardDesc}>
-                                                Assign only for specific products you choose
-                                              </span>
-                                            </div>
-                                          </>
-                                        )}
-                                      </div>
-                                      {isShippingTestType && (
-                                        <div className={styles.inlineAdvancedToggle}>
-                                          <button
-                                            type="button"
-                                            className={styles.inlineAdvancedToggleBtn}
-                                            onClick={() => {
-                                              const nextOpen = !shippingScopeAdvancedOpen;
-                                              setShippingScopeAdvancedOpen(nextOpen);
-                                              if (!nextOpen && isShippingStorewideAdvanced) {
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_type: 'product',
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    url_pattern: '',
-                                                    page_rules: prev.segments?.page_rules || [],
-                                                  },
-                                                }));
-                                              }
-                                            }}
-                                            aria-expanded={shippingScopeAdvancedOpen}
-                                          >
-                                            <span
-                                              className={`${styles.inlineAdvancedChevron} ${shippingScopeAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
-                                            >
-                                              <Icon source={ChevronDownIcon} />
-                                            </span>
-                                            Advanced: enable storewide shipping scope
-                                            {isShippingStorewideAdvanced && (
-                                              <span className={styles.inlineAdvancedCount}>On</span>
-                                            )}
-                                          </button>
-                                          {shippingScopeAdvancedOpen && (
-                                            <div className={styles.inlineAdvancedBody}>
-                                              <p className={styles.inlineAdvancedHint}>
-                                                Use storewide qualification only when you
-                                                intentionally want this shipping test to reach
-                                                nearly every eligible cart. RipX will still respect
-                                                excluded products, holdout, and shipping
-                                                diagnostics.
-                                              </p>
-                                              <Banner
-                                                tone="warning"
-                                                title="Broader impact, stronger guardrails"
+                                                onKeyDown={event => {
+                                                  if (event.key !== 'Enter' && event.key !== ' ') {
+                                                    return;
+                                                  }
+                                                  event.preventDefault();
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'product',
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '/products/',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }));
+                                                }}
+                                                aria-pressed={formData.target_type === 'product'}
+                                                aria-label="Selected products only"
                                               >
-                                                <BlockStack gap="200">
-                                                  <Text as="p" variant="bodySm">
-                                                    Storewide shipping tests are powerful but easier
-                                                    to misconfigure. Add a holdout, use excluded
-                                                    products to carve out sensitive SKUs, and run
-                                                    diagnostics before you apply live.
-                                                  </Text>
-                                                  <div className={styles.bannerChecklist}>
-                                                    {shippingTargetingChecklist.map(item => (
-                                                      <div
-                                                        key={item.label}
-                                                        className={styles.bannerChecklistItem}
-                                                      >
-                                                        <span
-                                                          className={styles.bannerChecklistIcon}
-                                                        >
-                                                          <Icon
-                                                            source={
-                                                              item.passed
-                                                                ? CheckCircleIcon
-                                                                : AlertTriangleIcon
-                                                            }
-                                                            tone={
-                                                              item.passed ? 'success' : 'warning'
-                                                            }
-                                                          />
-                                                        </span>
-                                                        <Text
-                                                          as="span"
-                                                          variant="bodySm"
-                                                          className={styles.bannerChecklistLabel}
-                                                        >
-                                                          {item.label}
-                                                        </Text>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                </BlockStack>
-                                              </Banner>
-                                            </div>
+                                                <span className={styles.scopeCardIcon}>
+                                                  <Icon source={TargetIcon} />
+                                                </span>
+                                                <span className={styles.scopeCardLabel}>
+                                                  Selected products
+                                                </span>
+                                                <span className={styles.scopeCardDesc}>
+                                                  Assign only for specific products you choose
+                                                </span>
+                                              </div>
+                                            </>
                                           )}
                                         </div>
-                                      )}
-                                    </div>
-                                    <div className={styles.productScopePickerGrid}>
-                                      {((isShippingTestType && !isShippingStorewideAdvanced) ||
-                                        (!isShippingTestType &&
-                                          formData.target_type === 'product')) && (
+                                        {isShippingTestType && (
+                                          <div className={styles.inlineAdvancedToggle}>
+                                            <button
+                                              type="button"
+                                              className={styles.inlineAdvancedToggleBtn}
+                                              onClick={() => {
+                                                const nextOpen = !shippingScopeAdvancedOpen;
+                                                setShippingScopeAdvancedOpen(nextOpen);
+                                                if (!nextOpen && isShippingStorewideAdvanced) {
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    target_type: 'product',
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      url_pattern: '',
+                                                      page_rules: prev.segments?.page_rules || [],
+                                                    },
+                                                  }));
+                                                }
+                                              }}
+                                              aria-expanded={shippingScopeAdvancedOpen}
+                                            >
+                                              <span
+                                                className={`${styles.inlineAdvancedChevron} ${shippingScopeAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
+                                              >
+                                                <Icon source={ChevronDownIcon} />
+                                              </span>
+                                              Advanced: enable storewide shipping scope
+                                              {isShippingStorewideAdvanced && (
+                                                <span className={styles.inlineAdvancedCount}>
+                                                  On
+                                                </span>
+                                              )}
+                                            </button>
+                                            {shippingScopeAdvancedOpen && (
+                                              <div className={styles.inlineAdvancedBody}>
+                                                <p className={styles.inlineAdvancedHint}>
+                                                  Use storewide qualification only when you
+                                                  intentionally want this shipping test to reach
+                                                  nearly every eligible cart. RipX will still
+                                                  respect excluded products, holdout, and shipping
+                                                  diagnostics.
+                                                </p>
+                                                <Banner
+                                                  tone="warning"
+                                                  title="Broader impact, stronger guardrails"
+                                                >
+                                                  <BlockStack gap="200">
+                                                    <Text as="p" variant="bodySm">
+                                                      Storewide shipping tests are powerful but
+                                                      easier to misconfigure. Add a holdout, use
+                                                      excluded products to carve out sensitive SKUs,
+                                                      and run diagnostics before you apply live.
+                                                    </Text>
+                                                    <div className={styles.bannerChecklist}>
+                                                      {shippingTargetingChecklist.map(item => (
+                                                        <div
+                                                          key={item.label}
+                                                          className={styles.bannerChecklistItem}
+                                                        >
+                                                          <span
+                                                            className={styles.bannerChecklistIcon}
+                                                          >
+                                                            <Icon
+                                                              source={
+                                                                item.passed
+                                                                  ? CheckCircleIcon
+                                                                  : AlertTriangleIcon
+                                                              }
+                                                              tone={
+                                                                item.passed ? 'success' : 'warning'
+                                                              }
+                                                            />
+                                                          </span>
+                                                          <Text
+                                                            as="span"
+                                                            variant="bodySm"
+                                                            className={styles.bannerChecklistLabel}
+                                                          >
+                                                            {item.label}
+                                                          </Text>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  </BlockStack>
+                                                </Banner>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className={styles.productScopePickerGrid}>
+                                        {((isShippingTestType && !isShippingStorewideAdvanced) ||
+                                          (!isShippingTestType &&
+                                            formData.target_type === 'product')) && (
+                                          <div
+                                            className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
+                                          >
+                                            <BlockStack gap="200">
+                                              <InlineStack
+                                                align="space-between"
+                                                blockAlign="center"
+                                                wrap
+                                              >
+                                                <InlineStack gap="200" blockAlign="center">
+                                                  <span className={styles.productScopePickerIcon}>
+                                                    <Icon source={ProductIcon} />
+                                                  </span>
+                                                  <Text as="h4" variant="headingSm">
+                                                    {isShippingTestType
+                                                      ? 'Included products'
+                                                      : 'Included products'}
+                                                  </Text>
+                                                </InlineStack>
+                                                <Badge tone="info">
+                                                  {`${selectedScopeProductIds.length} selected`}
+                                                </Badge>
+                                              </InlineStack>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                {isShippingTestType
+                                                  ? 'Choose products that must appear in a delivery group before this shipping test can apply.'
+                                                  : 'Choose products from your store catalog for this test scope.'}
+                                              </Text>
+                                              <InlineStack>
+                                                <Button
+                                                  size="slim"
+                                                  variant="primary"
+                                                  icon={ProductIcon}
+                                                  onClick={() => openPriceProductModal('include')}
+                                                  disabled={!canUseStoreProductPicker}
+                                                >
+                                                  {isShippingTestType
+                                                    ? 'Choose included products'
+                                                    : 'Choose products'}
+                                                </Button>
+                                              </InlineStack>
+                                              <div
+                                                className={styles.productScopePickerSelectionList}
+                                              >
+                                                {selectedScopeProductsPreview.length === 0 ? (
+                                                  <div
+                                                    className={
+                                                      styles.productScopePickerSelectionEmpty
+                                                    }
+                                                  >
+                                                    <Icon source={ProductIcon} />
+                                                    <span>
+                                                      {isShippingTestType
+                                                        ? 'No included products selected yet.'
+                                                        : 'No products selected yet.'}
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  selectedScopeProductsPreview
+                                                    .slice(0, 4)
+                                                    .map(product => (
+                                                      <div
+                                                        key={product.id}
+                                                        className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                                                      >
+                                                        <span
+                                                          className={styles.priceProductPickerThumb}
+                                                          aria-hidden
+                                                        >
+                                                          {product.imageUrl ? (
+                                                            <img
+                                                              src={product.imageUrl}
+                                                              alt=""
+                                                              loading="lazy"
+                                                            />
+                                                          ) : (
+                                                            <Icon source={ProductIcon} />
+                                                          )}
+                                                        </span>
+                                                        <span
+                                                          className={
+                                                            styles.priceProductPickerRowText
+                                                          }
+                                                        >
+                                                          <span
+                                                            className={
+                                                              styles.priceProductPickerRowTitle
+                                                            }
+                                                          >
+                                                            {product.title}
+                                                          </span>
+                                                          {product.handle ? (
+                                                            <span
+                                                              className={
+                                                                styles.priceProductPickerRowHandle
+                                                              }
+                                                            >
+                                                              {product.handle}
+                                                            </span>
+                                                          ) : null}
+                                                        </span>
+                                                      </div>
+                                                    ))
+                                                )}
+                                                {selectedScopeProductsPreview.length > 4 && (
+                                                  <span
+                                                    className={styles.productScopePickerMoreBadge}
+                                                  >
+                                                    +{selectedScopeProductsPreview.length - 4} more
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </BlockStack>
+                                          </div>
+                                        )}
                                         <div
-                                          className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
+                                          className={styles.productScopePickerCard}
+                                          id={
+                                            isShippingTestType
+                                              ? 'shipping-exclusions-card'
+                                              : undefined
+                                          }
                                         >
                                           <BlockStack gap="200">
                                             <InlineStack
@@ -5962,53 +6323,54 @@ function TestWizard({
                                               wrap
                                             >
                                               <InlineStack gap="200" blockAlign="center">
-                                                <span className={styles.productScopePickerIcon}>
-                                                  <Icon source={ProductIcon} />
+                                                <span
+                                                  className={styles.productScopePickerIconMuted}
+                                                >
+                                                  <Icon source={FilterIcon} />
                                                 </span>
                                                 <Text as="h4" variant="headingSm">
-                                                  {isShippingTestType
-                                                    ? 'Included products'
-                                                    : 'Included products'}
+                                                  Excluded products
                                                 </Text>
                                               </InlineStack>
-                                              <Badge tone="info">
-                                                {`${selectedScopeProductIds.length} selected`}
+                                              <Badge tone="attention">
+                                                {`${excludedScopeProductIds.length} excluded`}
                                               </Badge>
                                             </InlineStack>
                                             <Text as="p" variant="bodySm" tone="subdued">
                                               {isShippingTestType
-                                                ? 'Choose products that must appear in a delivery group before this shipping test can apply.'
-                                                : 'Choose products from your store catalog for this test scope.'}
+                                                ? isShippingStorewideAdvanced
+                                                  ? 'Excluded products carve out exceptions from storewide qualification and block checkout application for matching delivery groups.'
+                                                  : 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
+                                                : 'Optional exclusions are always skipped from bucketing and storefront application.'}
                                             </Text>
                                             <InlineStack>
                                               <Button
                                                 size="slim"
-                                                variant="primary"
-                                                icon={ProductIcon}
-                                                onClick={() => openPriceProductModal('include')}
+                                                icon={FilterIcon}
+                                                onClick={() => openPriceProductModal('exclude')}
                                                 disabled={!canUseStoreProductPicker}
                                               >
                                                 {isShippingTestType
-                                                  ? 'Choose included products'
-                                                  : 'Choose products'}
+                                                  ? 'Choose excluded products'
+                                                  : 'Choose excluded'}
                                               </Button>
                                             </InlineStack>
                                             <div className={styles.productScopePickerSelectionList}>
-                                              {selectedScopeProductsPreview.length === 0 ? (
+                                              {excludedScopeProductsPreview.length === 0 ? (
                                                 <div
                                                   className={
                                                     styles.productScopePickerSelectionEmpty
                                                   }
                                                 >
-                                                  <Icon source={ProductIcon} />
+                                                  <Icon source={FilterIcon} />
                                                   <span>
                                                     {isShippingTestType
-                                                      ? 'No included products selected yet.'
-                                                      : 'No products selected yet.'}
+                                                      ? 'No excluded products selected.'
+                                                      : 'No exclusions selected.'}
                                                   </span>
                                                 </div>
                                               ) : (
-                                                selectedScopeProductsPreview
+                                                excludedScopeProductsPreview
                                                   .slice(0, 4)
                                                   .map(product => (
                                                     <div
@@ -6052,155 +6414,1379 @@ function TestWizard({
                                                     </div>
                                                   ))
                                               )}
-                                              {selectedScopeProductsPreview.length > 4 && (
+                                              {excludedScopeProductsPreview.length > 4 && (
                                                 <span
                                                   className={styles.productScopePickerMoreBadge}
                                                 >
-                                                  +{selectedScopeProductsPreview.length - 4} more
+                                                  +{excludedScopeProductsPreview.length - 4} more
                                                 </span>
                                               )}
                                             </div>
                                           </BlockStack>
                                         </div>
+                                      </div>
+                                      {!canUseStoreProductPicker && (
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Product picker is available when connected to a Shopify
+                                          store.
+                                        </Text>
+                                      )}
+                                    </BlockStack>
+                                  ) : isCheckoutTestType ? (
+                                    <BlockStack gap="300">
+                                      <Banner
+                                        tone="info"
+                                        title="Checkout tests run only on checkout"
+                                      >
+                                        <Text as="p" variant="bodySm">
+                                          RipX pins this experiment to the live checkout surface.
+                                          Page URL rules, storefront scopes, and combo presets do
+                                          not apply—only checkout extensions and checkout-side
+                                          eligibility do.
+                                        </Text>
+                                      </Banner>
+                                      <div className={styles.checkoutPageScopeLocked}>
+                                        <InlineStack gap="300" blockAlign="center" wrap>
+                                          <Icon source={CreditCardIcon} />
+                                          <div>
+                                            <Text as="p" variant="bodyMd" fontWeight="semibold">
+                                              Fixed scope:{' '}
+                                              <code className={styles.inlineCode}>/checkout</code>
+                                              <TooltipWrapper
+                                                content="RipX pins this experiment to the live checkout surface. Audience, holdout, and advanced settings still apply. Use the variant step to edit checkout UI."
+                                                accessibilityLabel="Checkout scope help"
+                                              >
+                                                <span
+                                                  className={styles.panelSectionInfoIcon}
+                                                  aria-hidden="true"
+                                                >
+                                                  <Icon source={InfoIcon} />
+                                                </span>
+                                              </TooltipWrapper>
+                                            </Text>
+                                          </div>
+                                        </InlineStack>
+                                      </div>
+                                    </BlockStack>
+                                  ) : (
+                                    <>
+                                      {!isStandalone && (
+                                        <div className={styles.placementQuickPresetsStrip}>
+                                          <div className={styles.placementQuickPresetsStripHead}>
+                                            <span
+                                              className={styles.placementQuickPresetsStripLabel}
+                                            >
+                                              <Icon source={FilterIcon} />
+                                              <span
+                                                className={styles.placementQuickPresetsStripTitle}
+                                              >
+                                                Combos
+                                              </span>
+                                            </span>
+                                          </div>
+                                          <div className={styles.placementQuickPresetsStripChips}>
+                                            {[
+                                              {
+                                                label: 'Product + Mobile',
+                                                url: '/products/',
+                                                device: 'mobile',
+                                                customer: 'all',
+                                                tooltip: 'Products + Mobile',
+                                              },
+                                              {
+                                                label: 'Cart + New',
+                                                url: '/cart',
+                                                device: 'all',
+                                                customer: 'new',
+                                                tooltip: 'Cart + New visitors',
+                                              },
+                                              {
+                                                label: 'Homepage + All',
+                                                url: '^/$|^/index',
+                                                device: 'all',
+                                                customer: 'all',
+                                                tooltip: 'Homepage + All',
+                                              },
+                                              {
+                                                label: 'Reset',
+                                                url: '',
+                                                device: 'all',
+                                                customer: 'all',
+                                                tooltip: 'Reset to defaults',
+                                              },
+                                            ].map(({ label, url, device, customer, tooltip }) => {
+                                              const s = formData.segments || {};
+                                              const p = s.url_pattern ?? '';
+                                              const pr = s.page_rules || [];
+                                              const isAllPages =
+                                                pr.length === 0 && (!p || p === '' || p === ' ');
+                                              const urlMatches =
+                                                url === ''
+                                                  ? isAllPages
+                                                  : p === url && pr.length === 0;
+                                              const noAdvancedRules =
+                                                (s.device_rules || []).length +
+                                                  (s.audience_rules || []).length ===
+                                                0;
+                                              const matches =
+                                                urlMatches &&
+                                                (s.device ?? 'all') === device &&
+                                                (s.customer ?? 'all') === customer &&
+                                                noAdvancedRules;
+                                              return (
+                                                <TooltipWrapper
+                                                  key={label}
+                                                  content={tooltip}
+                                                  accessibilityLabel={label}
+                                                >
+                                                  <button
+                                                    type="button"
+                                                    className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
+                                                    onClick={() => {
+                                                      setCustomUrlModeActive(false);
+                                                      const targetFromUrl =
+                                                        url === '/products/'
+                                                          ? 'all-products'
+                                                          : url === '/collections/'
+                                                            ? 'all-collections'
+                                                            : url === '/cart'
+                                                              ? 'cart'
+                                                              : url === '/checkout'
+                                                                ? 'checkout'
+                                                                : url === '^/$|^/index'
+                                                                  ? 'homepage'
+                                                                  : null;
+                                                      setFormData(prev => ({
+                                                        ...prev,
+                                                        ...(targetFromUrl !== null &&
+                                                          targetFromUrl !== undefined && {
+                                                            target_type: targetFromUrl,
+                                                          }),
+                                                        segments: {
+                                                          ...prev.segments,
+                                                          url_pattern: url === '' ? '' : url,
+                                                          page_rules: [],
+                                                          device,
+                                                          customer,
+                                                          device_rules: [],
+                                                          audience_rules: [],
+                                                        },
+                                                      }));
+                                                    }}
+                                                  >
+                                                    {label}
+                                                  </button>
+                                                </TooltipWrapper>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
                                       )}
                                       <div
-                                        className={styles.productScopePickerCard}
-                                        id={
-                                          isShippingTestType
-                                            ? 'shipping-exclusions-card'
-                                            : undefined
-                                        }
+                                        className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
                                       >
-                                        <BlockStack gap="200">
-                                          <InlineStack
-                                            align="space-between"
-                                            blockAlign="center"
-                                            wrap
+                                        <span className={styles.panelSectionTitle}>
+                                          Where should this test run?
+                                          <TooltipWrapper
+                                            content={
+                                              !formData.target_type || formData.target_type === ''
+                                                ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
+                                                : 'Scope selected. Click another option to change. By default the test runs on all pages when no scope is chosen.'
+                                            }
+                                            accessibilityLabel="Scope help"
                                           >
-                                            <InlineStack gap="200" blockAlign="center">
-                                              <span className={styles.productScopePickerIconMuted}>
-                                                <Icon source={FilterIcon} />
-                                              </span>
-                                              <Text as="h4" variant="headingSm">
-                                                Excluded products
-                                              </Text>
-                                            </InlineStack>
-                                            <Badge tone="attention">
-                                              {`${excludedScopeProductIds.length} excluded`}
-                                            </Badge>
-                                          </InlineStack>
-                                          <Text as="p" variant="bodySm" tone="subdued">
-                                            {isShippingTestType
-                                              ? isShippingStorewideAdvanced
-                                                ? 'Excluded products carve out exceptions from storewide qualification and block checkout application for matching delivery groups.'
-                                                : 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
-                                              : 'Optional exclusions are always skipped from bucketing and storefront application.'}
-                                          </Text>
-                                          <InlineStack>
-                                            <Button
-                                              size="slim"
-                                              icon={FilterIcon}
-                                              onClick={() => openPriceProductModal('exclude')}
-                                              disabled={!canUseStoreProductPicker}
+                                            <span
+                                              className={styles.panelSectionInfoIcon}
+                                              aria-hidden="true"
                                             >
-                                              {isShippingTestType
-                                                ? 'Choose excluded products'
-                                                : 'Choose excluded'}
-                                            </Button>
-                                          </InlineStack>
-                                          <div className={styles.productScopePickerSelectionList}>
-                                            {excludedScopeProductsPreview.length === 0 ? (
-                                              <div
-                                                className={styles.productScopePickerSelectionEmpty}
-                                              >
-                                                <Icon source={FilterIcon} />
-                                                <span>
-                                                  {isShippingTestType
-                                                    ? 'No excluded products selected.'
-                                                    : 'No exclusions selected.'}
-                                                </span>
-                                              </div>
-                                            ) : (
-                                              excludedScopeProductsPreview
-                                                .slice(0, 4)
-                                                .map(product => (
-                                                  <div
-                                                    key={product.id}
-                                                    className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                                              <Icon source={InfoIcon} />
+                                            </span>
+                                          </TooltipWrapper>
+                                        </span>
+                                        {(!formData.target_type || formData.target_type === '') && (
+                                          <div className={styles.scopeSelectPrompt}>
+                                            <span className={styles.scopeSelectPromptIcon}>
+                                              <Icon source={TargetIcon} />
+                                            </span>
+                                            <span className={styles.scopeSelectPromptText}>
+                                              Choose where to run this test
+                                            </span>
+                                          </div>
+                                        )}
+                                        <div className={styles.scopeSelectGrid}>
+                                          {[
+                                            {
+                                              label: 'Homepage',
+                                              desc: isStandalone
+                                                ? 'Root path (/, /index, /index.html, etc.)'
+                                                : 'Landing page only',
+                                              scope: 'homepage',
+                                              target_type: 'homepage',
+                                              url_pattern: isStandalone
+                                                ? HOMEPAGE_URL_PATTERN_STANDALONE
+                                                : HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                              needsId: false,
+                                              icon: HomeIcon,
+                                              tooltip: isStandalone
+                                                ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
+                                                : 'Homepage',
+                                              standalone: true,
+                                            },
+                                            {
+                                              label: 'Cart',
+                                              desc: 'Cart page',
+                                              scope: 'cart',
+                                              target_type: 'cart',
+                                              url_pattern: '/cart',
+                                              needsId: false,
+                                              icon: CartIcon,
+                                              tooltip: 'Cart page',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'Checkout',
+                                              desc: 'Checkout flow',
+                                              scope: 'checkout',
+                                              target_type: 'checkout',
+                                              url_pattern: '/checkout',
+                                              needsId: false,
+                                              icon: CreditCardIcon,
+                                              tooltip: 'Checkout',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'All products',
+                                              desc: 'Every product page',
+                                              scope: 'all-products',
+                                              target_type: 'all-products',
+                                              url_pattern: '',
+                                              needsId: false,
+                                              icon: ProductIcon,
+                                              tooltip: 'All product pages',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'All collections',
+                                              desc: 'Every collection page',
+                                              scope: 'all-collections',
+                                              target_type: 'all-collections',
+                                              url_pattern: '/collections/',
+                                              needsId: false,
+                                              icon: CollectionIcon,
+                                              tooltip: 'All collection pages',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'Product(s)',
+                                              desc: 'Choose from store',
+                                              scope: 'product-id',
+                                              target_type: 'product',
+                                              url_pattern: '',
+                                              needsId: true,
+                                              icon: ProductIcon,
+                                              tooltip: 'Select product(s) from your store',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'Collection(s)',
+                                              desc: 'Choose from store',
+                                              scope: 'collection-id',
+                                              target_type: 'collection',
+                                              url_pattern: '/collections/',
+                                              needsId: true,
+                                              icon: CollectionIcon,
+                                              tooltip: 'Select collection(s) from your store',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'Page(s)',
+                                              desc: 'Choose from store',
+                                              scope: 'page-id',
+                                              target_type: 'page',
+                                              url_pattern: '',
+                                              needsId: true,
+                                              icon: PageIcon,
+                                              tooltip: 'Select page(s) from your store',
+                                              standalone: false,
+                                            },
+                                            {
+                                              label: 'Custom URL',
+                                              desc: 'Regex or path rules',
+                                              scope: '__custom__',
+                                              target_type: null,
+                                              url_pattern: null,
+                                              needsId: false,
+                                              icon: CodeIcon,
+                                              tooltip: 'Custom URL or regex',
+                                              standalone: true,
+                                            },
+                                          ]
+                                            .filter(opt => !isStandalone || opt.standalone)
+                                            .map(
+                                              ({
+                                                label,
+                                                desc,
+                                                scope,
+                                                target_type: tt,
+                                                url_pattern: up,
+                                                needsId,
+                                                icon: ChipIcon,
+                                                tooltip,
+                                              }) => {
+                                                const p = formData.segments?.url_pattern ?? '';
+                                                const pr = formData.segments?.page_rules || [];
+                                                const t = formData.target_type;
+                                                const isCustom =
+                                                  scope === '__custom__' &&
+                                                  (customUrlModeActive || pr.length > 0);
+                                                const isHomepagePattern =
+                                                  p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
+                                                  p === HOMEPAGE_URL_PATTERN_STANDALONE;
+                                                const active =
+                                                  scope === '__custom__'
+                                                    ? isCustom
+                                                    : t === tt &&
+                                                      (needsId
+                                                        ? true
+                                                        : tt === 'homepage'
+                                                          ? isHomepagePattern
+                                                          : up !== null &&
+                                                              up !== undefined &&
+                                                              up !== ''
+                                                            ? p === up
+                                                            : !p && pr.length === 0);
+                                                return (
+                                                  <button
+                                                    key={scope || 'all'}
+                                                    type="button"
+                                                    title={tooltip}
+                                                    className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
+                                                    onClick={e => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      handleScopeSelect(scope, tt, up, needsId);
+                                                    }}
+                                                    onPointerDown={e => e.stopPropagation()}
+                                                    aria-pressed={active}
+                                                    aria-label={label}
                                                   >
-                                                    <span
-                                                      className={styles.priceProductPickerThumb}
-                                                      aria-hidden
-                                                    >
-                                                      {product.imageUrl ? (
-                                                        <img
-                                                          src={product.imageUrl}
-                                                          alt=""
-                                                          loading="lazy"
-                                                        />
-                                                      ) : (
-                                                        <Icon source={ProductIcon} />
-                                                      )}
+                                                    <span className={styles.scopeCardIcon}>
+                                                      <Icon source={ChipIcon} />
                                                     </span>
-                                                    <span
-                                                      className={styles.priceProductPickerRowText}
-                                                    >
-                                                      <span
-                                                        className={
-                                                          styles.priceProductPickerRowTitle
-                                                        }
-                                                      >
-                                                        {product.title}
+                                                    <span className={styles.scopeCardLabel}>
+                                                      {label}
+                                                    </span>
+                                                    {desc && (
+                                                      <span className={styles.scopeCardDesc}>
+                                                        {desc}
                                                       </span>
-                                                      {product.handle ? (
+                                                    )}
+                                                  </button>
+                                                );
+                                              }
+                                            )}
+                                        </div>
+                                        {['product', 'collection', 'page'].includes(
+                                          formData.target_type
+                                        ) && (
+                                          <div
+                                            className={styles.panelSection}
+                                            style={{ marginTop: '1rem' }}
+                                          >
+                                            {isStandalone ? (
+                                              <TextField
+                                                label="Target ID(s)"
+                                                value={
+                                                  Array.isArray(formData.target_ids) &&
+                                                  formData.target_ids.length > 0
+                                                    ? formData.target_ids.join('\n')
+                                                    : formData.target_id || ''
+                                                }
+                                                onChange={value => {
+                                                  const raw = value
+                                                    .split(/[\n,]+/)
+                                                    .map(s => s.trim())
+                                                    .filter(Boolean);
+                                                  const normalize = id => {
+                                                    if (!id) return '';
+                                                    if (id.startsWith('gid://')) return id;
+                                                    const num = id.replace(/\D/g, '');
+                                                    if (!num) return id;
+                                                    if (formData.target_type === 'product')
+                                                      return `gid://shopify/Product/${num}`;
+                                                    if (formData.target_type === 'collection')
+                                                      return `gid://shopify/Collection/${num}`;
+                                                    if (formData.target_type === 'page')
+                                                      return `gid://shopify/OnlineStorePage/${num}`;
+                                                    return id;
+                                                  };
+                                                  const ids = raw.map(normalize);
+                                                  if (ids.length > 1) {
+                                                    setFormData({
+                                                      ...formData,
+                                                      target_ids: ids,
+                                                      target_id: ids[0] || '',
+                                                    });
+                                                  } else if (ids.length === 1) {
+                                                    setFormData({
+                                                      ...formData,
+                                                      target_id: ids[0],
+                                                      target_ids: null,
+                                                    });
+                                                  } else {
+                                                    setFormData({
+                                                      ...formData,
+                                                      target_id: '',
+                                                      target_ids: null,
+                                                    });
+                                                  }
+                                                }}
+                                                multiline={3}
+                                                helpText="Enter ID(s). One per line. Standalone mode: no store list available."
+                                                autoComplete="off"
+                                              />
+                                            ) : (
+                                              <BlockStack gap="400">
+                                                <div className={styles.storeResourceList}>
+                                                  <div className={styles.storeResourceListHeader}>
+                                                    <div className={styles.storeResourceListSearch}>
+                                                      <TextField
+                                                        label={`Select ${formData.target_type === 'product' ? 'product(s)' : formData.target_type === 'collection' ? 'collection(s)' : 'page(s)'} from your store`}
+                                                        labelHidden
+                                                        value={storeResourceSearch}
+                                                        onChange={setStoreResourceSearch}
+                                                        placeholder={`Search ${formData.target_type === 'product' ? 'products' : formData.target_type === 'collection' ? 'collections' : 'pages'}…`}
+                                                        autoComplete="off"
+                                                        clearButton
+                                                        onClearButtonClick={() =>
+                                                          setStoreResourceSearch('')
+                                                        }
+                                                      />
+                                                    </div>
+                                                    {(() => {
+                                                      const selectedIds =
+                                                        Array.isArray(formData.target_ids) &&
+                                                        formData.target_ids.length > 0
+                                                          ? formData.target_ids
+                                                          : formData.target_id
+                                                            ? [formData.target_id]
+                                                            : [];
+                                                      if (selectedIds.length === 0) return null;
+                                                      return (
                                                         <span
                                                           className={
-                                                            styles.priceProductPickerRowHandle
+                                                            styles.storeResourceSelectedBadge
                                                           }
                                                         >
-                                                          {product.handle}
+                                                          {selectedIds.length} selected
                                                         </span>
-                                                      ) : null}
-                                                    </span>
+                                                      );
+                                                    })()}
                                                   </div>
-                                                ))
-                                            )}
-                                            {excludedScopeProductsPreview.length > 4 && (
-                                              <span className={styles.productScopePickerMoreBadge}>
-                                                +{excludedScopeProductsPreview.length - 4} more
-                                              </span>
+                                                  {storeResourcesLoading ? (
+                                                    <div
+                                                      className={styles.storeResourceListLoading}
+                                                    >
+                                                      <div
+                                                        className={
+                                                          styles.storeResourceListLoadingIcon
+                                                        }
+                                                      >
+                                                        <Spinner size="small" />
+                                                      </div>
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodySm"
+                                                        tone="subdued"
+                                                      >
+                                                        Loading from your store…
+                                                      </Text>
+                                                    </div>
+                                                  ) : storeResources.length === 0 ? (
+                                                    <div className={styles.storeResourceListEmpty}>
+                                                      <div
+                                                        className={
+                                                          styles.storeResourceListEmptyIcon
+                                                        }
+                                                      >
+                                                        <Icon
+                                                          source={
+                                                            formData.target_type === 'product'
+                                                              ? ProductIcon
+                                                              : formData.target_type ===
+                                                                  'collection'
+                                                                ? CollectionIcon
+                                                                : PageIcon
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <Text as="p" variant="bodySm" tone="subdued">
+                                                        {storeResourcesError
+                                                          ? storeResourcesError
+                                                          : storeResourceSearch
+                                                            ? 'No matches. Try a different search.'
+                                                            : formData.target_type === 'page'
+                                                              ? 'No pages found.'
+                                                              : formData.target_type ===
+                                                                    'product' ||
+                                                                  formData.target_type ===
+                                                                    'collection'
+                                                                ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
+                                                                : 'No items in your store yet, or the list is still loading.'}
+                                                      </Text>
+                                                    </div>
+                                                  ) : (
+                                                    (() => {
+                                                      const selectedIds =
+                                                        Array.isArray(formData.target_ids) &&
+                                                        formData.target_ids.length > 0
+                                                          ? formData.target_ids
+                                                          : formData.target_id
+                                                            ? [formData.target_id]
+                                                            : [];
+                                                      const resourcesProgressiveWindow =
+                                                        buildProgressiveListWindow(
+                                                          storeResources,
+                                                          storeResourcesVisibleCount,
+                                                          { pinnedIds: selectedIds }
+                                                        );
+                                                      const visibleStoreResources =
+                                                        resourcesProgressiveWindow.visibleItems;
+                                                      const shownStoreResourcesCount =
+                                                        resourcesProgressiveWindow.shownCount;
+                                                      const storeResourcesHasHiddenLoaded =
+                                                        resourcesProgressiveWindow.hasHiddenLoaded;
+                                                      const storeResourcesCanFetchMore = Boolean(
+                                                        storeResourcesPageInfo?.hasNextPage
+                                                      );
+                                                      const storeResourcesCanShowMore =
+                                                        storeResourcesHasHiddenLoaded ||
+                                                        storeResourcesCanFetchMore;
+                                                      const storeResourcesCanCollapse =
+                                                        resourcesProgressiveWindow.canCollapse;
+                                                      const resourceIds = new Set(
+                                                        storeResources.map(r => r.id)
+                                                      );
+                                                      const missingIds = selectedIds.filter(
+                                                        id => !resourceIds.has(id)
+                                                      );
+                                                      const ResourceIcon =
+                                                        formData.target_type === 'product'
+                                                          ? ProductIcon
+                                                          : formData.target_type === 'collection'
+                                                            ? CollectionIcon
+                                                            : PageIcon;
+                                                      const toggleSelection = id => {
+                                                        setIsDirty(true);
+                                                        const next = selectedIds.includes(id)
+                                                          ? selectedIds.filter(x => x !== id)
+                                                          : [...selectedIds, id];
+                                                        if (next.length > 1) {
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            target_ids: next,
+                                                            target_id: next[0] || '',
+                                                          }));
+                                                        } else if (next.length === 1) {
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            target_id: next[0],
+                                                            target_ids: null,
+                                                          }));
+                                                        } else {
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            target_id: '',
+                                                            target_ids: null,
+                                                          }));
+                                                        }
+                                                      };
+                                                      return (
+                                                        <>
+                                                          <div
+                                                            className={styles.storeResourceListMeta}
+                                                          >
+                                                            <Text
+                                                              as="span"
+                                                              variant="bodySm"
+                                                              tone="subdued"
+                                                            >
+                                                              Showing {shownStoreResourcesCount} of{' '}
+                                                              {storeResources.length} loaded
+                                                            </Text>
+                                                            <InlineStack
+                                                              gap="200"
+                                                              wrap
+                                                              blockAlign="center"
+                                                            >
+                                                              {storeResourcesCanFetchMore && (
+                                                                <Badge tone="info" size="small">
+                                                                  More available
+                                                                </Badge>
+                                                              )}
+                                                              {storeResourcesCanCollapse && (
+                                                                <Button
+                                                                  size="slim"
+                                                                  variant="plain"
+                                                                  onClick={() =>
+                                                                    setStoreResourcesVisibleCount(
+                                                                      PRICE_PRODUCT_MODAL_REVEAL_BATCH
+                                                                    )
+                                                                  }
+                                                                >
+                                                                  Collapse
+                                                                </Button>
+                                                              )}
+                                                            </InlineStack>
+                                                          </div>
+                                                          <div
+                                                            className={
+                                                              styles.storeResourceListScroll
+                                                            }
+                                                          >
+                                                            {visibleStoreResources.map(r => (
+                                                              <button
+                                                                key={r.id}
+                                                                type="button"
+                                                                className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
+                                                                onClick={() =>
+                                                                  toggleSelection(r.id)
+                                                                }
+                                                              >
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemIcon
+                                                                  }
+                                                                  aria-hidden
+                                                                >
+                                                                  <Icon source={ResourceIcon} />
+                                                                </span>
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemContent
+                                                                  }
+                                                                >
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemTitle
+                                                                    }
+                                                                  >
+                                                                    {r.title}
+                                                                  </span>
+                                                                  {r.handle && (
+                                                                    <span
+                                                                      className={
+                                                                        styles.storeResourceItemHandle
+                                                                      }
+                                                                    >
+                                                                      /{r.handle}
+                                                                    </span>
+                                                                  )}
+                                                                </span>
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemCheck
+                                                                  }
+                                                                  onClick={e => e.stopPropagation()}
+                                                                >
+                                                                  <Checkbox
+                                                                    label=""
+                                                                    labelHidden
+                                                                    checked={selectedIds.includes(
+                                                                      r.id
+                                                                    )}
+                                                                    onChange={() =>
+                                                                      toggleSelection(r.id)
+                                                                    }
+                                                                    id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                                  />
+                                                                </span>
+                                                              </button>
+                                                            ))}
+                                                            {missingIds.map(id => (
+                                                              <button
+                                                                key={id}
+                                                                type="button"
+                                                                className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
+                                                                onClick={() => toggleSelection(id)}
+                                                              >
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemIcon
+                                                                  }
+                                                                  aria-hidden
+                                                                >
+                                                                  <Icon source={ResourceIcon} />
+                                                                </span>
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemContent
+                                                                  }
+                                                                >
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemTitle
+                                                                    }
+                                                                  >
+                                                                    {id.replace(/.*\//, '')} (saved)
+                                                                  </span>
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemHandle
+                                                                    }
+                                                                  >
+                                                                    Previously selected
+                                                                  </span>
+                                                                </span>
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemCheck
+                                                                  }
+                                                                  onClick={e => e.stopPropagation()}
+                                                                >
+                                                                  <Checkbox
+                                                                    label=""
+                                                                    labelHidden
+                                                                    checked
+                                                                    onChange={() =>
+                                                                      toggleSelection(id)
+                                                                    }
+                                                                    id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                                  />
+                                                                </span>
+                                                              </button>
+                                                            ))}
+                                                          </div>
+                                                          {storeResourcesCanShowMore && (
+                                                            <div
+                                                              className={
+                                                                styles.storeResourceListFooter
+                                                              }
+                                                            >
+                                                              <Button
+                                                                size="slim"
+                                                                onClick={
+                                                                  handleLoadMoreStoreResources
+                                                                }
+                                                                loading={storeResourcesLoadingMore}
+                                                                disabled={storeResourcesLoadingMore}
+                                                              >
+                                                                {storeResourcesHasHiddenLoaded
+                                                                  ? `Show ${Math.min(
+                                                                      resourcesProgressiveWindow.nextRevealCount ||
+                                                                        PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                                                      storeResources.length -
+                                                                        shownStoreResourcesCount
+                                                                    )} more`
+                                                                  : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
+                                                              </Button>
+                                                            </div>
+                                                          )}
+                                                        </>
+                                                      );
+                                                    })()
+                                                  )}
+                                                </div>
+                                                {!normalizeTargetIdValue(formData.target_id) &&
+                                                  (!formData.target_ids ||
+                                                    formData.target_ids.length === 0) &&
+                                                  !normalizeTargetIdValue(initialData?.target_id) &&
+                                                  (!Array.isArray(initialData?.target_ids) ||
+                                                    initialData.target_ids.length === 0) && (
+                                                    <Text as="p" variant="bodySm" tone="critical">
+                                                      Select at least one{' '}
+                                                      {formData.target_type === 'product'
+                                                        ? 'product'
+                                                        : formData.target_type === 'collection'
+                                                          ? 'collection'
+                                                          : 'page'}{' '}
+                                                      to target.
+                                                    </Text>
+                                                  )}
+                                              </BlockStack>
                                             )}
                                           </div>
-                                        </BlockStack>
+                                        )}
+                                      </div>
+                                      {customUrlModeActive &&
+                                        (() => {
+                                          return (
+                                            <div
+                                              className={`${styles.panelSection} ${styles.panelSectionFull} ${styles.panelSectionCustomUrl}`}
+                                            >
+                                              <div className={styles.customUrlHeader}>
+                                                <span className={styles.customUrlHeaderIcon}>
+                                                  <Icon source={CodeIcon} />
+                                                </span>
+                                                <div>
+                                                  <span className={styles.panelSectionTitle}>
+                                                    Custom URL rules
+                                                    <TooltipWrapper
+                                                      content={
+                                                        isStandalone
+                                                          ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
+                                                          : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
+                                                      }
+                                                      accessibilityLabel="Custom URL help"
+                                                    >
+                                                      <span
+                                                        className={styles.panelSectionInfoIcon}
+                                                        aria-hidden="true"
+                                                      >
+                                                        <Icon source={InfoIcon} />
+                                                      </span>
+                                                    </TooltipWrapper>
+                                                  </span>
+                                                </div>
+                                              </div>
+                                              <div className={styles.customUrlLogicCallout}>
+                                                <span className={styles.customUrlLogicLabel}>
+                                                  How it works
+                                                </span>
+                                                <span className={styles.customUrlLogicText}>
+                                                  {isStandalone
+                                                    ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
+                                                    : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
+                                                </span>
+                                              </div>
+                                              {(formData.segments?.page_rules || []).length ===
+                                              0 ? (
+                                                <div className={styles.customUrlEmptyState}>
+                                                  <p className={styles.customUrlEmptyTitle}>
+                                                    No URL rules yet
+                                                  </p>
+                                                  <p className={styles.customUrlEmptyDesc}>
+                                                    {isStandalone
+                                                      ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
+                                                      : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
+                                                  </p>
+                                                  <div className={styles.customUrlQuickAdd}>
+                                                    {!isStandalone &&
+                                                      [
+                                                        {
+                                                          label: 'Product pages',
+                                                          pattern: '/products/',
+                                                          match_type: 'starts_with',
+                                                          type: 'include',
+                                                        },
+                                                        {
+                                                          label: 'Sale collection',
+                                                          pattern: '/collections/sale',
+                                                          match_type: 'contains',
+                                                          type: 'include',
+                                                        },
+                                                        {
+                                                          label: 'Exclude checkout',
+                                                          pattern: '/checkout',
+                                                          match_type: 'starts_with',
+                                                          type: 'exclude',
+                                                        },
+                                                      ].map(q => (
+                                                        <button
+                                                          key={q.label}
+                                                          type="button"
+                                                          className={styles.customUrlQuickAddChip}
+                                                          onClick={() => {
+                                                            setIsDirty(true);
+                                                            setFormData(prev => ({
+                                                              ...prev,
+                                                              segments: {
+                                                                ...prev.segments,
+                                                                page_rules: [
+                                                                  ...(prev.segments?.page_rules ||
+                                                                    []),
+                                                                  {
+                                                                    type: q.type,
+                                                                    pattern: q.pattern,
+                                                                    match_type: q.match_type,
+                                                                  },
+                                                                ],
+                                                              },
+                                                            }));
+                                                          }}
+                                                        >
+                                                          {q.label}
+                                                        </button>
+                                                      ))}
+                                                    {isStandalone && (
+                                                      <p className={styles.customUrlEmptyDesc}>
+                                                        Use &quot;Add rule&quot; below to define
+                                                        path or regex rules. No fixed presets —
+                                                        enter any path (e.g. /blog, /pricing) or
+                                                        regex.
+                                                      </p>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ) : null}
+                                              {(formData.segments?.page_rules || []).length > 0 ? (
+                                                <div className={styles.customUrlRulesList}>
+                                                  <span className={styles.customUrlRulesLabel}>
+                                                    {(formData.segments?.page_rules || []).length}{' '}
+                                                    rule
+                                                    {(formData.segments?.page_rules || [])
+                                                      .length !== 1
+                                                      ? 's'
+                                                      : ''}
+                                                  </span>
+                                                </div>
+                                              ) : null}
+                                              {(formData.segments?.page_rules || []).map(
+                                                (rule, idx) => {
+                                                  const presets = !isStandalone
+                                                    ? [
+                                                        '/products/',
+                                                        '/collections/',
+                                                        '/cart',
+                                                        HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                        HOMEPAGE_URL_PATTERN_STANDALONE,
+                                                        '',
+                                                      ]
+                                                    : [];
+                                                  const matchTypeOptions = isStandalone
+                                                    ? [
+                                                        {
+                                                          label: 'Path contains',
+                                                          value: 'contains',
+                                                        },
+                                                        {
+                                                          label: 'Path starts with',
+                                                          value: 'starts_with',
+                                                        },
+                                                        {
+                                                          label: 'Path ends with',
+                                                          value: 'ends_with',
+                                                        },
+                                                        { label: 'Path equals', value: 'equals' },
+                                                        { label: 'Regex', value: 'regex' },
+                                                      ]
+                                                    : [
+                                                        { label: 'Contains', value: 'contains' },
+                                                        {
+                                                          label: 'Starts with',
+                                                          value: 'starts_with',
+                                                        },
+                                                        { label: 'Ends with', value: 'ends_with' },
+                                                        { label: 'Equals', value: 'equals' },
+                                                        { label: 'Regex', value: 'regex' },
+                                                      ];
+                                                  const presetMatchTypes = !isStandalone
+                                                    ? {
+                                                        '': 'regex',
+                                                        '/products/': 'starts_with',
+                                                        '/collections/': 'starts_with',
+                                                        '/cart': 'equals',
+                                                        [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
+                                                        [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
+                                                      }
+                                                    : {};
+                                                  return (
+                                                    <div key={idx} className={styles.customRuleRow}>
+                                                      <span
+                                                        className={styles.customRuleNumber}
+                                                        aria-hidden
+                                                      >
+                                                        {idx + 1}
+                                                      </span>
+                                                      <div className={styles.ruleTypeToggle}>
+                                                        <button
+                                                          type="button"
+                                                          className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
+                                                          onClick={() => {
+                                                            setIsDirty(true);
+                                                            setFormData(prev => ({
+                                                              ...prev,
+                                                              segments: {
+                                                                ...prev.segments,
+                                                                page_rules: [
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(0, idx),
+                                                                  { ...rule, type: 'include' },
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(idx + 1),
+                                                                ],
+                                                              },
+                                                            }));
+                                                          }}
+                                                        >
+                                                          Include
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
+                                                          onClick={() => {
+                                                            setIsDirty(true);
+                                                            setFormData(prev => ({
+                                                              ...prev,
+                                                              segments: {
+                                                                ...prev.segments,
+                                                                page_rules: [
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(0, idx),
+                                                                  { ...rule, type: 'exclude' },
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(idx + 1),
+                                                                ],
+                                                              },
+                                                            }));
+                                                          }}
+                                                        >
+                                                          Exclude
+                                                        </button>
+                                                      </div>
+                                                      {!isStandalone && (
+                                                        <Select
+                                                          label=""
+                                                          labelHidden
+                                                          options={[
+                                                            { label: 'All pages', value: '' },
+                                                            {
+                                                              label: 'Product pages',
+                                                              value: '/products/',
+                                                            },
+                                                            {
+                                                              label: 'Collection pages',
+                                                              value: '/collections/',
+                                                            },
+                                                            { label: 'Cart', value: '/cart' },
+                                                            {
+                                                              label: 'Homepage',
+                                                              value: HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                            },
+                                                            {
+                                                              label: 'Custom URL…',
+                                                              value: '__custom__',
+                                                            },
+                                                          ]}
+                                                          value={
+                                                            presets.includes(rule.pattern || '')
+                                                              ? rule.pattern || ''
+                                                              : rule.pattern === ' ' || rule.pattern
+                                                                ? '__custom__'
+                                                                : ''
+                                                          }
+                                                          onChange={v => {
+                                                            setIsDirty(true);
+                                                            const newPattern =
+                                                              v === '__custom__'
+                                                                ? presets.includes(
+                                                                    rule.pattern || ''
+                                                                  ) || rule.pattern === ' '
+                                                                  ? ' '
+                                                                  : rule.pattern || ' '
+                                                                : v;
+                                                            const newMatchType =
+                                                              v === '__custom__'
+                                                                ? rule.match_type || 'contains'
+                                                                : presetMatchTypes[v] || 'regex';
+                                                            setFormData(prev => ({
+                                                              ...prev,
+                                                              segments: {
+                                                                ...prev.segments,
+                                                                page_rules: [
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(0, idx),
+                                                                  {
+                                                                    ...rule,
+                                                                    pattern: newPattern,
+                                                                    match_type: newMatchType,
+                                                                  },
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(idx + 1),
+                                                                ],
+                                                              },
+                                                            }));
+                                                          }}
+                                                        />
+                                                      )}
+                                                      <div className={styles.matchTypeSelect}>
+                                                        <Select
+                                                          label=""
+                                                          labelHidden
+                                                          options={matchTypeOptions}
+                                                          value={
+                                                            rule.match_type ||
+                                                            (isStandalone
+                                                              ? 'starts_with'
+                                                              : presets.includes(rule.pattern || '')
+                                                                ? presetMatchTypes[rule.pattern]
+                                                                : 'contains')
+                                                          }
+                                                          onChange={v => {
+                                                            setIsDirty(true);
+                                                            setFormData(prev => ({
+                                                              ...prev,
+                                                              segments: {
+                                                                ...prev.segments,
+                                                                page_rules: [
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(0, idx),
+                                                                  { ...rule, match_type: v },
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(idx + 1),
+                                                                ],
+                                                              },
+                                                            }));
+                                                          }}
+                                                        />
+                                                      </div>
+                                                      <div className={styles.customUrlInputWrap}>
+                                                        <TextField
+                                                          label={
+                                                            isStandalone
+                                                              ? 'Path or regex'
+                                                              : 'URL pattern'
+                                                          }
+                                                          labelHidden
+                                                          value={
+                                                            rule.pattern === ' '
+                                                              ? ''
+                                                              : rule.pattern || ''
+                                                          }
+                                                          onChange={v => {
+                                                            setIsDirty(true);
+                                                            setFormData(prev => ({
+                                                              ...prev,
+                                                              segments: {
+                                                                ...prev.segments,
+                                                                page_rules: [
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(0, idx),
+                                                                  {
+                                                                    ...rule,
+                                                                    pattern: v === '' ? ' ' : v,
+                                                                  },
+                                                                  ...(
+                                                                    prev.segments?.page_rules || []
+                                                                  ).slice(idx + 1),
+                                                                ],
+                                                              },
+                                                            }));
+                                                          }}
+                                                          placeholder={
+                                                            isStandalone
+                                                              ? (rule.match_type ||
+                                                                  'starts_with') === 'regex'
+                                                                ? 'e.g. ^/blog, ^/en/.*'
+                                                                : 'e.g. /blog, /pricing, /docs'
+                                                              : (rule.match_type || 'contains') ===
+                                                                  'regex'
+                                                                ? 'e.g. ^/products/.* or /collections/sale'
+                                                                : (rule.match_type ||
+                                                                      'contains') === 'contains'
+                                                                  ? 'e.g. /products/ or sale'
+                                                                  : (rule.match_type ||
+                                                                        'contains') ===
+                                                                      'starts_with'
+                                                                    ? 'e.g. /products/ or /collections/'
+                                                                    : (rule.match_type ||
+                                                                          'contains') ===
+                                                                        'ends_with'
+                                                                      ? 'e.g. .html or /checkout'
+                                                                      : 'e.g. /cart or /pages/about'
+                                                          }
+                                                          autoComplete="off"
+                                                          helpText={
+                                                            (rule.match_type || 'starts_with') ===
+                                                              'regex' && isStandalone
+                                                              ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
+                                                              : (rule.match_type || 'contains') ===
+                                                                    'regex' && !isStandalone
+                                                                ? 'JavaScript regex. Use ^ for start, $ for end.'
+                                                                : null
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <button
+                                                        type="button"
+                                                        className={styles.removeRuleBtn}
+                                                        onClick={() => {
+                                                          setIsDirty(true);
+                                                          setFormData(prev => ({
+                                                            ...prev,
+                                                            segments: {
+                                                              ...prev.segments,
+                                                              page_rules: (
+                                                                prev.segments?.page_rules || []
+                                                              ).filter((_, i) => i !== idx),
+                                                            },
+                                                          }));
+                                                        }}
+                                                      >
+                                                        Remove
+                                                      </button>
+                                                    </div>
+                                                  );
+                                                }
+                                              )}
+                                              <button
+                                                type="button"
+                                                className={styles.addRuleBtn}
+                                                onClick={() => {
+                                                  setIsDirty(true);
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      page_rules: [
+                                                        ...(prev.segments?.page_rules || []),
+                                                        {
+                                                          type: 'include',
+                                                          pattern: ' ',
+                                                          match_type: isStandalone
+                                                            ? 'starts_with'
+                                                            : 'contains',
+                                                        },
+                                                      ],
+                                                    },
+                                                  }));
+                                                }}
+                                              >
+                                                <Icon source={PlusIcon} />
+                                                Add rule
+                                              </button>
+                                            </div>
+                                          );
+                                        })()}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {showAudienceTab && (
+                            <div className={styles.targetingAccordionItem}>
+                              <button
+                                type="button"
+                                id="targeting-tab-audience"
+                                aria-expanded={targetingSectionExpanded.audience}
+                                className={sectionTriggerClass(
+                                  'audience',
+                                  targetingSectionExpanded.audience
+                                )}
+                                onClick={() => toggleTargetingSectionExpanded('audience')}
+                                title="Audience (2)"
+                              >
+                                <span
+                                  className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.audience ? styles.targetingAccordionChevronOpen : ''}`}
+                                  aria-hidden
+                                >
+                                  <Icon source={ChevronDownIcon} />
+                                </span>
+                                <span className={styles.placementTabStep}>2</span>
+                                <Icon source={PersonIcon} />
+                                <span className={styles.targetingAccordionTriggerLabel}>
+                                  Audience
+                                </span>
+                                {((formData.segments?.device || 'all') !== 'all' ||
+                                  (formData.segments?.device_rules || []).length > 0 ||
+                                  (formData.segments?.customer || 'all') !== 'all' ||
+                                  (formData.segments?.countries || []).length > 0 ||
+                                  (formData.segments?.traffic_source || 'all') !== 'all' ||
+                                  (formData.segments?.operating_system || 'all') !== 'all' ||
+                                  hasCustomAudienceRules(formData.segments)) && (
+                                  <span className={styles.placementTabDot} />
+                                )}
+                                {renderTargetingIssueBadge('audience')}
+                              </button>
+                              {targetingSectionExpanded.audience && (
+                                <div className={styles.targetingAccordionPanel}>
+                                  <div className={styles.placementPanel}>
+                                    <div className={styles.audienceHeader}>
+                                      <div>
+                                        <h4 className={styles.audienceTitle}>Audience</h4>
+                                        <p className={styles.audienceHint}>
+                                          Show test only to certain visitors. Standard filters are
+                                          combined with Custom conditions when both are configured.
+                                        </p>
+                                      </div>
+                                      <div
+                                        className={styles.audienceModeTabs}
+                                        role="tablist"
+                                        aria-label="Audience sections"
+                                      >
+                                        {[
+                                          { label: 'Standard', value: 'standard' },
+                                          { label: 'Custom', value: 'custom' },
+                                        ].map(tab => (
+                                          <button
+                                            key={tab.value}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={audienceTargetingMode === tab.value}
+                                            className={`${styles.audienceModeTab} ${audienceTargetingMode === tab.value ? styles.audienceModeTabActive : ''}`}
+                                            onClick={() => setAudienceTargetingMode(tab.value)}
+                                          >
+                                            {tab.label}
+                                          </button>
+                                        ))}
                                       </div>
                                     </div>
-                                    {!canUseStoreProductPicker && (
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        Product picker is available when connected to a Shopify
-                                        store.
-                                      </Text>
-                                    )}
-                                  </BlockStack>
-                                ) : isCheckoutTestType ? (
-                                  <BlockStack gap="300">
-                                    <Banner tone="info" title="Checkout tests run only on checkout">
-                                      <Text as="p" variant="bodySm">
-                                        RipX pins this experiment to the live checkout surface. Page
-                                        URL rules, storefront scopes, and combo presets do not
-                                        apply—only checkout extensions and checkout-side eligibility
-                                        do.
-                                      </Text>
-                                    </Banner>
-                                    <div className={styles.checkoutPageScopeLocked}>
-                                      <InlineStack gap="300" blockAlign="center" wrap>
-                                        <Icon source={CreditCardIcon} />
-                                        <div>
-                                          <Text as="p" variant="bodyMd" fontWeight="semibold">
-                                            Fixed scope:{' '}
-                                            <code className={styles.inlineCode}>/checkout</code>
+                                    {audienceTargetingMode === 'standard' ? (
+                                      <>
+                                        <div
+                                          className={`${styles.panelSection} ${styles.panelSectionDevice}`}
+                                        >
+                                          <span className={styles.panelSectionTitle}>
+                                            Device Type
+                                          </span>
+                                          <div className={styles.quickSelectChips}>
+                                            {[
+                                              {
+                                                label: 'All Devices',
+                                                value: 'all',
+                                                icon: UnknownDeviceIcon,
+                                              },
+                                              {
+                                                label: 'Desktop',
+                                                value: 'desktop',
+                                                icon: DesktopIcon,
+                                              },
+                                              {
+                                                label: 'Mobile',
+                                                value: 'mobile',
+                                                icon: MobileIcon,
+                                              },
+                                            ].map(({ label, value, icon: DeviceIcon }) => (
+                                              <button
+                                                key={value}
+                                                type="button"
+                                                className={`${styles.quickSelectChip} ${(formData.segments?.device || 'all') === value ? styles.quickSelectChipActive : ''}`}
+                                                onClick={() =>
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      device: value,
+                                                      device_rules: [],
+                                                    },
+                                                  }))
+                                                }
+                                              >
+                                                <Icon source={DeviceIcon} />
+                                                {label}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div
+                                          className={`${styles.panelSection} ${styles.panelSectionAudience}`}
+                                        >
+                                          <span className={styles.panelSectionTitle}>
+                                            Visitor Type
                                             <TooltipWrapper
-                                              content="RipX pins this experiment to the live checkout surface. Audience, holdout, and advanced settings still apply. Use the variant step to edit checkout UI."
-                                              accessibilityLabel="Checkout scope help"
+                                              content="New vs returning visitors"
+                                              accessibilityLabel="Customer type help"
                                             >
                                               <span
                                                 className={styles.panelSectionInfoIcon}
@@ -6209,1419 +7795,150 @@ function TestWizard({
                                                 <Icon source={InfoIcon} />
                                               </span>
                                             </TooltipWrapper>
-                                          </Text>
-                                        </div>
-                                      </InlineStack>
-                                    </div>
-                                  </BlockStack>
-                                ) : (
-                                  <>
-                                    {!isStandalone && (
-                                      <div className={styles.placementQuickPresetsStrip}>
-                                        <div className={styles.placementQuickPresetsStripHead}>
-                                          <span className={styles.placementQuickPresetsStripLabel}>
-                                            <Icon source={FilterIcon} />
-                                            <span
-                                              className={styles.placementQuickPresetsStripTitle}
-                                            >
-                                              Combos
-                                            </span>
                                           </span>
-                                        </div>
-                                        <div className={styles.placementQuickPresetsStripChips}>
-                                          {[
-                                            {
-                                              label: 'Product + Mobile',
-                                              url: '/products/',
-                                              device: 'mobile',
-                                              customer: 'all',
-                                              tooltip: 'Products + Mobile',
-                                            },
-                                            {
-                                              label: 'Cart + New',
-                                              url: '/cart',
-                                              device: 'all',
-                                              customer: 'new',
-                                              tooltip: 'Cart + New visitors',
-                                            },
-                                            {
-                                              label: 'Homepage + All',
-                                              url: '^/$|^/index',
-                                              device: 'all',
-                                              customer: 'all',
-                                              tooltip: 'Homepage + All',
-                                            },
-                                            {
-                                              label: 'Reset',
-                                              url: '',
-                                              device: 'all',
-                                              customer: 'all',
-                                              tooltip: 'Reset to defaults',
-                                            },
-                                          ].map(({ label, url, device, customer, tooltip }) => {
-                                            const s = formData.segments || {};
-                                            const p = s.url_pattern ?? '';
-                                            const pr = s.page_rules || [];
-                                            const isAllPages =
-                                              pr.length === 0 && (!p || p === '' || p === ' ');
-                                            const urlMatches =
-                                              url === ''
-                                                ? isAllPages
-                                                : p === url && pr.length === 0;
-                                            const noAdvancedRules =
-                                              (s.device_rules || []).length +
-                                                (s.audience_rules || []).length ===
-                                              0;
-                                            const matches =
-                                              urlMatches &&
-                                              (s.device ?? 'all') === device &&
-                                              (s.customer ?? 'all') === customer &&
-                                              noAdvancedRules;
-                                            return (
+                                          <div className={styles.quickSelectChips}>
+                                            {[
+                                              {
+                                                label: 'All Visitors',
+                                                value: 'all',
+                                                icon: PersonIcon,
+                                                tooltip: 'All',
+                                              },
+                                              {
+                                                label: 'New',
+                                                value: 'new',
+                                                icon: PersonIcon,
+                                                tooltip: 'First visit',
+                                              },
+                                              {
+                                                label: 'Returning',
+                                                value: 'returning',
+                                                icon: PersonIcon,
+                                                tooltip: 'Returning',
+                                              },
+                                            ].map(({ label, value, icon: CustIcon, tooltip }) => (
                                               <TooltipWrapper
-                                                key={label}
+                                                key={value}
                                                 content={tooltip}
                                                 accessibilityLabel={label}
                                               >
                                                 <button
                                                   type="button"
-                                                  className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
-                                                  onClick={() => {
-                                                    setCustomUrlModeActive(false);
-                                                    const targetFromUrl =
-                                                      url === '/products/'
-                                                        ? 'all-products'
-                                                        : url === '/collections/'
-                                                          ? 'all-collections'
-                                                          : url === '/cart'
-                                                            ? 'cart'
-                                                            : url === '/checkout'
-                                                              ? 'checkout'
-                                                              : url === '^/$|^/index'
-                                                                ? 'homepage'
-                                                                : null;
+                                                  className={`${styles.quickSelectChip} ${(formData.segments?.customer || 'all') === value ? styles.quickSelectChipActive : ''}`}
+                                                  onClick={() =>
                                                     setFormData(prev => ({
                                                       ...prev,
-                                                      ...(targetFromUrl !== null &&
-                                                        targetFromUrl !== undefined && {
-                                                          target_type: targetFromUrl,
-                                                        }),
                                                       segments: {
                                                         ...prev.segments,
-                                                        url_pattern: url === '' ? '' : url,
-                                                        page_rules: [],
-                                                        device,
-                                                        customer,
-                                                        device_rules: [],
+                                                        customer: value,
                                                         audience_rules: [],
                                                       },
-                                                    }));
-                                                  }}
+                                                    }))
+                                                  }
                                                 >
+                                                  <Icon source={CustIcon} />
                                                   {label}
                                                 </button>
                                               </TooltipWrapper>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-                                    <div
-                                      className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
-                                    >
-                                      <span className={styles.panelSectionTitle}>
-                                        Where should this test run?
-                                        <TooltipWrapper
-                                          content={
-                                            !formData.target_type || formData.target_type === ''
-                                              ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
-                                              : 'Scope selected. Click another option to change. By default the test runs on all pages when no scope is chosen.'
-                                          }
-                                          accessibilityLabel="Scope help"
-                                        >
-                                          <span
-                                            className={styles.panelSectionInfoIcon}
-                                            aria-hidden="true"
-                                          >
-                                            <Icon source={InfoIcon} />
-                                          </span>
-                                        </TooltipWrapper>
-                                      </span>
-                                      {(!formData.target_type || formData.target_type === '') && (
-                                        <div className={styles.scopeSelectPrompt}>
-                                          <span className={styles.scopeSelectPromptIcon}>
-                                            <Icon source={TargetIcon} />
-                                          </span>
-                                          <span className={styles.scopeSelectPromptText}>
-                                            Choose where to run this test
-                                          </span>
-                                        </div>
-                                      )}
-                                      <div className={styles.scopeSelectGrid}>
-                                        {[
-                                          {
-                                            label: 'Homepage',
-                                            desc: isStandalone
-                                              ? 'Root path (/, /index, /index.html, etc.)'
-                                              : 'Landing page only',
-                                            scope: 'homepage',
-                                            target_type: 'homepage',
-                                            url_pattern: isStandalone
-                                              ? HOMEPAGE_URL_PATTERN_STANDALONE
-                                              : HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                            needsId: false,
-                                            icon: HomeIcon,
-                                            tooltip: isStandalone
-                                              ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
-                                              : 'Homepage',
-                                            standalone: true,
-                                          },
-                                          {
-                                            label: 'Cart',
-                                            desc: 'Cart page',
-                                            scope: 'cart',
-                                            target_type: 'cart',
-                                            url_pattern: '/cart',
-                                            needsId: false,
-                                            icon: CartIcon,
-                                            tooltip: 'Cart page',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'Checkout',
-                                            desc: 'Checkout flow',
-                                            scope: 'checkout',
-                                            target_type: 'checkout',
-                                            url_pattern: '/checkout',
-                                            needsId: false,
-                                            icon: CreditCardIcon,
-                                            tooltip: 'Checkout',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'All products',
-                                            desc: 'Every product page',
-                                            scope: 'all-products',
-                                            target_type: 'all-products',
-                                            url_pattern: '',
-                                            needsId: false,
-                                            icon: ProductIcon,
-                                            tooltip: 'All product pages',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'All collections',
-                                            desc: 'Every collection page',
-                                            scope: 'all-collections',
-                                            target_type: 'all-collections',
-                                            url_pattern: '/collections/',
-                                            needsId: false,
-                                            icon: CollectionIcon,
-                                            tooltip: 'All collection pages',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'Product(s)',
-                                            desc: 'Choose from store',
-                                            scope: 'product-id',
-                                            target_type: 'product',
-                                            url_pattern: '',
-                                            needsId: true,
-                                            icon: ProductIcon,
-                                            tooltip: 'Select product(s) from your store',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'Collection(s)',
-                                            desc: 'Choose from store',
-                                            scope: 'collection-id',
-                                            target_type: 'collection',
-                                            url_pattern: '/collections/',
-                                            needsId: true,
-                                            icon: CollectionIcon,
-                                            tooltip: 'Select collection(s) from your store',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'Page(s)',
-                                            desc: 'Choose from store',
-                                            scope: 'page-id',
-                                            target_type: 'page',
-                                            url_pattern: '',
-                                            needsId: true,
-                                            icon: PageIcon,
-                                            tooltip: 'Select page(s) from your store',
-                                            standalone: false,
-                                          },
-                                          {
-                                            label: 'Custom URL',
-                                            desc: 'Regex or path rules',
-                                            scope: '__custom__',
-                                            target_type: null,
-                                            url_pattern: null,
-                                            needsId: false,
-                                            icon: CodeIcon,
-                                            tooltip: 'Custom URL or regex',
-                                            standalone: true,
-                                          },
-                                        ]
-                                          .filter(opt => !isStandalone || opt.standalone)
-                                          .map(
-                                            ({
-                                              label,
-                                              desc,
-                                              scope,
-                                              target_type: tt,
-                                              url_pattern: up,
-                                              needsId,
-                                              icon: ChipIcon,
-                                              tooltip,
-                                            }) => {
-                                              const p = formData.segments?.url_pattern ?? '';
-                                              const pr = formData.segments?.page_rules || [];
-                                              const t = formData.target_type;
-                                              const isCustom =
-                                                scope === '__custom__' &&
-                                                (customUrlModeActive || pr.length > 0);
-                                              const isHomepagePattern =
-                                                p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
-                                                p === HOMEPAGE_URL_PATTERN_STANDALONE;
-                                              const active =
-                                                scope === '__custom__'
-                                                  ? isCustom
-                                                  : t === tt &&
-                                                    (needsId
-                                                      ? true
-                                                      : tt === 'homepage'
-                                                        ? isHomepagePattern
-                                                        : up !== null &&
-                                                            up !== undefined &&
-                                                            up !== ''
-                                                          ? p === up
-                                                          : !p && pr.length === 0);
-                                              return (
-                                                <button
-                                                  key={scope || 'all'}
-                                                  type="button"
-                                                  title={tooltip}
-                                                  className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
-                                                  onClick={e => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleScopeSelect(scope, tt, up, needsId);
-                                                  }}
-                                                  onPointerDown={e => e.stopPropagation()}
-                                                  aria-pressed={active}
-                                                  aria-label={label}
-                                                >
-                                                  <span className={styles.scopeCardIcon}>
-                                                    <Icon source={ChipIcon} />
-                                                  </span>
-                                                  <span className={styles.scopeCardLabel}>
-                                                    {label}
-                                                  </span>
-                                                  {desc && (
-                                                    <span className={styles.scopeCardDesc}>
-                                                      {desc}
-                                                    </span>
-                                                  )}
-                                                </button>
-                                              );
-                                            }
-                                          )}
-                                      </div>
-                                      {['product', 'collection', 'page'].includes(
-                                        formData.target_type
-                                      ) && (
-                                        <div
-                                          className={styles.panelSection}
-                                          style={{ marginTop: '1rem' }}
-                                        >
-                                          {isStandalone ? (
-                                            <TextField
-                                              label="Target ID(s)"
-                                              value={
-                                                Array.isArray(formData.target_ids) &&
-                                                formData.target_ids.length > 0
-                                                  ? formData.target_ids.join('\n')
-                                                  : formData.target_id || ''
-                                              }
-                                              onChange={value => {
-                                                const raw = value
-                                                  .split(/[\n,]+/)
-                                                  .map(s => s.trim())
-                                                  .filter(Boolean);
-                                                const normalize = id => {
-                                                  if (!id) return '';
-                                                  if (id.startsWith('gid://')) return id;
-                                                  const num = id.replace(/\D/g, '');
-                                                  if (!num) return id;
-                                                  if (formData.target_type === 'product')
-                                                    return `gid://shopify/Product/${num}`;
-                                                  if (formData.target_type === 'collection')
-                                                    return `gid://shopify/Collection/${num}`;
-                                                  if (formData.target_type === 'page')
-                                                    return `gid://shopify/OnlineStorePage/${num}`;
-                                                  return id;
-                                                };
-                                                const ids = raw.map(normalize);
-                                                if (ids.length > 1) {
-                                                  setFormData({
-                                                    ...formData,
-                                                    target_ids: ids,
-                                                    target_id: ids[0] || '',
-                                                  });
-                                                } else if (ids.length === 1) {
-                                                  setFormData({
-                                                    ...formData,
-                                                    target_id: ids[0],
-                                                    target_ids: null,
-                                                  });
-                                                } else {
-                                                  setFormData({
-                                                    ...formData,
-                                                    target_id: '',
-                                                    target_ids: null,
-                                                  });
-                                                }
-                                              }}
-                                              multiline={3}
-                                              helpText="Enter ID(s). One per line. Standalone mode: no store list available."
-                                              autoComplete="off"
-                                            />
-                                          ) : (
-                                            <BlockStack gap="400">
-                                              <div className={styles.storeResourceList}>
-                                                <div className={styles.storeResourceListHeader}>
-                                                  <div className={styles.storeResourceListSearch}>
-                                                    <TextField
-                                                      label={`Select ${formData.target_type === 'product' ? 'product(s)' : formData.target_type === 'collection' ? 'collection(s)' : 'page(s)'} from your store`}
-                                                      labelHidden
-                                                      value={storeResourceSearch}
-                                                      onChange={setStoreResourceSearch}
-                                                      placeholder={`Search ${formData.target_type === 'product' ? 'products' : formData.target_type === 'collection' ? 'collections' : 'pages'}…`}
-                                                      autoComplete="off"
-                                                      clearButton
-                                                      onClearButtonClick={() =>
-                                                        setStoreResourceSearch('')
-                                                      }
-                                                    />
-                                                  </div>
-                                                  {(() => {
-                                                    const selectedIds =
-                                                      Array.isArray(formData.target_ids) &&
-                                                      formData.target_ids.length > 0
-                                                        ? formData.target_ids
-                                                        : formData.target_id
-                                                          ? [formData.target_id]
-                                                          : [];
-                                                    if (selectedIds.length === 0) return null;
-                                                    return (
-                                                      <span
-                                                        className={
-                                                          styles.storeResourceSelectedBadge
-                                                        }
-                                                      >
-                                                        {selectedIds.length} selected
-                                                      </span>
-                                                    );
-                                                  })()}
-                                                </div>
-                                                {storeResourcesLoading ? (
-                                                  <div className={styles.storeResourceListLoading}>
-                                                    <div
-                                                      className={
-                                                        styles.storeResourceListLoadingIcon
-                                                      }
-                                                    >
-                                                      <Spinner size="small" />
-                                                    </div>
-                                                    <Text as="span" variant="bodySm" tone="subdued">
-                                                      Loading from your store…
-                                                    </Text>
-                                                  </div>
-                                                ) : storeResources.length === 0 ? (
-                                                  <div className={styles.storeResourceListEmpty}>
-                                                    <div
-                                                      className={styles.storeResourceListEmptyIcon}
-                                                    >
-                                                      <Icon
-                                                        source={
-                                                          formData.target_type === 'product'
-                                                            ? ProductIcon
-                                                            : formData.target_type === 'collection'
-                                                              ? CollectionIcon
-                                                              : PageIcon
-                                                        }
-                                                      />
-                                                    </div>
-                                                    <Text as="p" variant="bodySm" tone="subdued">
-                                                      {storeResourcesError
-                                                        ? storeResourcesError
-                                                        : storeResourceSearch
-                                                          ? 'No matches. Try a different search.'
-                                                          : formData.target_type === 'page'
-                                                            ? 'No pages found.'
-                                                            : formData.target_type === 'product' ||
-                                                                formData.target_type ===
-                                                                  'collection'
-                                                              ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
-                                                              : 'No items in your store yet, or the list is still loading.'}
-                                                    </Text>
-                                                  </div>
-                                                ) : (
-                                                  (() => {
-                                                    const selectedIds =
-                                                      Array.isArray(formData.target_ids) &&
-                                                      formData.target_ids.length > 0
-                                                        ? formData.target_ids
-                                                        : formData.target_id
-                                                          ? [formData.target_id]
-                                                          : [];
-                                                    const resourcesProgressiveWindow =
-                                                      buildProgressiveListWindow(
-                                                        storeResources,
-                                                        storeResourcesVisibleCount,
-                                                        { pinnedIds: selectedIds }
-                                                      );
-                                                    const visibleStoreResources =
-                                                      resourcesProgressiveWindow.visibleItems;
-                                                    const shownStoreResourcesCount =
-                                                      resourcesProgressiveWindow.shownCount;
-                                                    const storeResourcesHasHiddenLoaded =
-                                                      resourcesProgressiveWindow.hasHiddenLoaded;
-                                                    const storeResourcesCanFetchMore = Boolean(
-                                                      storeResourcesPageInfo?.hasNextPage
-                                                    );
-                                                    const storeResourcesCanShowMore =
-                                                      storeResourcesHasHiddenLoaded ||
-                                                      storeResourcesCanFetchMore;
-                                                    const storeResourcesCanCollapse =
-                                                      resourcesProgressiveWindow.canCollapse;
-                                                    const resourceIds = new Set(
-                                                      storeResources.map(r => r.id)
-                                                    );
-                                                    const missingIds = selectedIds.filter(
-                                                      id => !resourceIds.has(id)
-                                                    );
-                                                    const ResourceIcon =
-                                                      formData.target_type === 'product'
-                                                        ? ProductIcon
-                                                        : formData.target_type === 'collection'
-                                                          ? CollectionIcon
-                                                          : PageIcon;
-                                                    const toggleSelection = id => {
-                                                      setIsDirty(true);
-                                                      const next = selectedIds.includes(id)
-                                                        ? selectedIds.filter(x => x !== id)
-                                                        : [...selectedIds, id];
-                                                      if (next.length > 1) {
-                                                        setFormData(prev => ({
-                                                          ...prev,
-                                                          target_ids: next,
-                                                          target_id: next[0] || '',
-                                                        }));
-                                                      } else if (next.length === 1) {
-                                                        setFormData(prev => ({
-                                                          ...prev,
-                                                          target_id: next[0],
-                                                          target_ids: null,
-                                                        }));
-                                                      } else {
-                                                        setFormData(prev => ({
-                                                          ...prev,
-                                                          target_id: '',
-                                                          target_ids: null,
-                                                        }));
-                                                      }
-                                                    };
-                                                    return (
-                                                      <>
-                                                        <div
-                                                          className={styles.storeResourceListMeta}
-                                                        >
-                                                          <Text
-                                                            as="span"
-                                                            variant="bodySm"
-                                                            tone="subdued"
-                                                          >
-                                                            Showing {shownStoreResourcesCount} of{' '}
-                                                            {storeResources.length} loaded
-                                                          </Text>
-                                                          <InlineStack
-                                                            gap="200"
-                                                            wrap
-                                                            blockAlign="center"
-                                                          >
-                                                            {storeResourcesCanFetchMore && (
-                                                              <Badge tone="info" size="small">
-                                                                More available
-                                                              </Badge>
-                                                            )}
-                                                            {storeResourcesCanCollapse && (
-                                                              <Button
-                                                                size="slim"
-                                                                variant="plain"
-                                                                onClick={() =>
-                                                                  setStoreResourcesVisibleCount(
-                                                                    PRICE_PRODUCT_MODAL_REVEAL_BATCH
-                                                                  )
-                                                                }
-                                                              >
-                                                                Collapse
-                                                              </Button>
-                                                            )}
-                                                          </InlineStack>
-                                                        </div>
-                                                        <div
-                                                          className={styles.storeResourceListScroll}
-                                                        >
-                                                          {visibleStoreResources.map(r => (
-                                                            <button
-                                                              key={r.id}
-                                                              type="button"
-                                                              className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
-                                                              onClick={() => toggleSelection(r.id)}
-                                                            >
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemIcon
-                                                                }
-                                                                aria-hidden
-                                                              >
-                                                                <Icon source={ResourceIcon} />
-                                                              </span>
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemContent
-                                                                }
-                                                              >
-                                                                <span
-                                                                  className={
-                                                                    styles.storeResourceItemTitle
-                                                                  }
-                                                                >
-                                                                  {r.title}
-                                                                </span>
-                                                                {r.handle && (
-                                                                  <span
-                                                                    className={
-                                                                      styles.storeResourceItemHandle
-                                                                    }
-                                                                  >
-                                                                    /{r.handle}
-                                                                  </span>
-                                                                )}
-                                                              </span>
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemCheck
-                                                                }
-                                                                onClick={e => e.stopPropagation()}
-                                                              >
-                                                                <Checkbox
-                                                                  label=""
-                                                                  labelHidden
-                                                                  checked={selectedIds.includes(
-                                                                    r.id
-                                                                  )}
-                                                                  onChange={() =>
-                                                                    toggleSelection(r.id)
-                                                                  }
-                                                                  id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                                />
-                                                              </span>
-                                                            </button>
-                                                          ))}
-                                                          {missingIds.map(id => (
-                                                            <button
-                                                              key={id}
-                                                              type="button"
-                                                              className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
-                                                              onClick={() => toggleSelection(id)}
-                                                            >
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemIcon
-                                                                }
-                                                                aria-hidden
-                                                              >
-                                                                <Icon source={ResourceIcon} />
-                                                              </span>
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemContent
-                                                                }
-                                                              >
-                                                                <span
-                                                                  className={
-                                                                    styles.storeResourceItemTitle
-                                                                  }
-                                                                >
-                                                                  {id.replace(/.*\//, '')} (saved)
-                                                                </span>
-                                                                <span
-                                                                  className={
-                                                                    styles.storeResourceItemHandle
-                                                                  }
-                                                                >
-                                                                  Previously selected
-                                                                </span>
-                                                              </span>
-                                                              <span
-                                                                className={
-                                                                  styles.storeResourceItemCheck
-                                                                }
-                                                                onClick={e => e.stopPropagation()}
-                                                              >
-                                                                <Checkbox
-                                                                  label=""
-                                                                  labelHidden
-                                                                  checked
-                                                                  onChange={() =>
-                                                                    toggleSelection(id)
-                                                                  }
-                                                                  id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                                />
-                                                              </span>
-                                                            </button>
-                                                          ))}
-                                                        </div>
-                                                        {storeResourcesCanShowMore && (
-                                                          <div
-                                                            className={
-                                                              styles.storeResourceListFooter
-                                                            }
-                                                          >
-                                                            <Button
-                                                              size="slim"
-                                                              onClick={handleLoadMoreStoreResources}
-                                                              loading={storeResourcesLoadingMore}
-                                                              disabled={storeResourcesLoadingMore}
-                                                            >
-                                                              {storeResourcesHasHiddenLoaded
-                                                                ? `Show ${Math.min(
-                                                                    resourcesProgressiveWindow.nextRevealCount ||
-                                                                      PRICE_PRODUCT_MODAL_REVEAL_BATCH,
-                                                                    storeResources.length -
-                                                                      shownStoreResourcesCount
-                                                                  )} more`
-                                                                : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
-                                                            </Button>
-                                                          </div>
-                                                        )}
-                                                      </>
-                                                    );
-                                                  })()
-                                                )}
-                                              </div>
-                                              {!normalizeTargetIdValue(formData.target_id) &&
-                                                (!formData.target_ids ||
-                                                  formData.target_ids.length === 0) &&
-                                                !normalizeTargetIdValue(initialData?.target_id) &&
-                                                (!Array.isArray(initialData?.target_ids) ||
-                                                  initialData.target_ids.length === 0) && (
-                                                  <Text as="p" variant="bodySm" tone="critical">
-                                                    Select at least one{' '}
-                                                    {formData.target_type === 'product'
-                                                      ? 'product'
-                                                      : formData.target_type === 'collection'
-                                                        ? 'collection'
-                                                        : 'page'}{' '}
-                                                    to target.
-                                                  </Text>
-                                                )}
-                                            </BlockStack>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                    {customUrlModeActive &&
-                                      (() => {
-                                        return (
-                                          <div
-                                            className={`${styles.panelSection} ${styles.panelSectionFull} ${styles.panelSectionCustomUrl}`}
-                                          >
-                                            <div className={styles.customUrlHeader}>
-                                              <span className={styles.customUrlHeaderIcon}>
-                                                <Icon source={CodeIcon} />
-                                              </span>
-                                              <div>
-                                                <span className={styles.panelSectionTitle}>
-                                                  Custom URL rules
-                                                  <TooltipWrapper
-                                                    content={
-                                                      isStandalone
-                                                        ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
-                                                        : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
-                                                    }
-                                                    accessibilityLabel="Custom URL help"
-                                                  >
-                                                    <span
-                                                      className={styles.panelSectionInfoIcon}
-                                                      aria-hidden="true"
-                                                    >
-                                                      <Icon source={InfoIcon} />
-                                                    </span>
-                                                  </TooltipWrapper>
-                                                </span>
-                                              </div>
-                                            </div>
-                                            <div className={styles.customUrlLogicCallout}>
-                                              <span className={styles.customUrlLogicLabel}>
-                                                How it works
-                                              </span>
-                                              <span className={styles.customUrlLogicText}>
-                                                {isStandalone
-                                                  ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
-                                                  : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
-                                              </span>
-                                            </div>
-                                            {(formData.segments?.page_rules || []).length === 0 ? (
-                                              <div className={styles.customUrlEmptyState}>
-                                                <p className={styles.customUrlEmptyTitle}>
-                                                  No URL rules yet
-                                                </p>
-                                                <p className={styles.customUrlEmptyDesc}>
-                                                  {isStandalone
-                                                    ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
-                                                    : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
-                                                </p>
-                                                <div className={styles.customUrlQuickAdd}>
-                                                  {!isStandalone &&
-                                                    [
-                                                      {
-                                                        label: 'Product pages',
-                                                        pattern: '/products/',
-                                                        match_type: 'starts_with',
-                                                        type: 'include',
-                                                      },
-                                                      {
-                                                        label: 'Sale collection',
-                                                        pattern: '/collections/sale',
-                                                        match_type: 'contains',
-                                                        type: 'include',
-                                                      },
-                                                      {
-                                                        label: 'Exclude checkout',
-                                                        pattern: '/checkout',
-                                                        match_type: 'starts_with',
-                                                        type: 'exclude',
-                                                      },
-                                                    ].map(q => (
-                                                      <button
-                                                        key={q.label}
-                                                        type="button"
-                                                        className={styles.customUrlQuickAddChip}
-                                                        onClick={() => {
-                                                          setIsDirty(true);
-                                                          setFormData(prev => ({
-                                                            ...prev,
-                                                            segments: {
-                                                              ...prev.segments,
-                                                              page_rules: [
-                                                                ...(prev.segments?.page_rules ||
-                                                                  []),
-                                                                {
-                                                                  type: q.type,
-                                                                  pattern: q.pattern,
-                                                                  match_type: q.match_type,
-                                                                },
-                                                              ],
-                                                            },
-                                                          }));
-                                                        }}
-                                                      >
-                                                        {q.label}
-                                                      </button>
-                                                    ))}
-                                                  {isStandalone && (
-                                                    <p className={styles.customUrlEmptyDesc}>
-                                                      Use &quot;Add rule&quot; below to define path
-                                                      or regex rules. No fixed presets — enter any
-                                                      path (e.g. /blog, /pricing) or regex.
-                                                    </p>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            ) : null}
-                                            {(formData.segments?.page_rules || []).length > 0 ? (
-                                              <div className={styles.customUrlRulesList}>
-                                                <span className={styles.customUrlRulesLabel}>
-                                                  {(formData.segments?.page_rules || []).length}{' '}
-                                                  rule
-                                                  {(formData.segments?.page_rules || []).length !==
-                                                  1
-                                                    ? 's'
-                                                    : ''}
-                                                </span>
-                                              </div>
-                                            ) : null}
-                                            {(formData.segments?.page_rules || []).map(
-                                              (rule, idx) => {
-                                                const presets = !isStandalone
-                                                  ? [
-                                                      '/products/',
-                                                      '/collections/',
-                                                      '/cart',
-                                                      HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                                      HOMEPAGE_URL_PATTERN_STANDALONE,
-                                                      '',
-                                                    ]
-                                                  : [];
-                                                const matchTypeOptions = isStandalone
-                                                  ? [
-                                                      { label: 'Path contains', value: 'contains' },
-                                                      {
-                                                        label: 'Path starts with',
-                                                        value: 'starts_with',
-                                                      },
-                                                      {
-                                                        label: 'Path ends with',
-                                                        value: 'ends_with',
-                                                      },
-                                                      { label: 'Path equals', value: 'equals' },
-                                                      { label: 'Regex', value: 'regex' },
-                                                    ]
-                                                  : [
-                                                      { label: 'Contains', value: 'contains' },
-                                                      {
-                                                        label: 'Starts with',
-                                                        value: 'starts_with',
-                                                      },
-                                                      { label: 'Ends with', value: 'ends_with' },
-                                                      { label: 'Equals', value: 'equals' },
-                                                      { label: 'Regex', value: 'regex' },
-                                                    ];
-                                                const presetMatchTypes = !isStandalone
-                                                  ? {
-                                                      '': 'regex',
-                                                      '/products/': 'starts_with',
-                                                      '/collections/': 'starts_with',
-                                                      '/cart': 'equals',
-                                                      [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
-                                                      [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
-                                                    }
-                                                  : {};
-                                                return (
-                                                  <div key={idx} className={styles.customRuleRow}>
-                                                    <span
-                                                      className={styles.customRuleNumber}
-                                                      aria-hidden
-                                                    >
-                                                      {idx + 1}
-                                                    </span>
-                                                    <div className={styles.ruleTypeToggle}>
-                                                      <button
-                                                        type="button"
-                                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
-                                                        onClick={() => {
-                                                          setIsDirty(true);
-                                                          setFormData(prev => ({
-                                                            ...prev,
-                                                            segments: {
-                                                              ...prev.segments,
-                                                              page_rules: [
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(0, idx),
-                                                                { ...rule, type: 'include' },
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(idx + 1),
-                                                              ],
-                                                            },
-                                                          }));
-                                                        }}
-                                                      >
-                                                        Include
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
-                                                        onClick={() => {
-                                                          setIsDirty(true);
-                                                          setFormData(prev => ({
-                                                            ...prev,
-                                                            segments: {
-                                                              ...prev.segments,
-                                                              page_rules: [
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(0, idx),
-                                                                { ...rule, type: 'exclude' },
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(idx + 1),
-                                                              ],
-                                                            },
-                                                          }));
-                                                        }}
-                                                      >
-                                                        Exclude
-                                                      </button>
-                                                    </div>
-                                                    {!isStandalone && (
-                                                      <Select
-                                                        label=""
-                                                        labelHidden
-                                                        options={[
-                                                          { label: 'All pages', value: '' },
-                                                          {
-                                                            label: 'Product pages',
-                                                            value: '/products/',
-                                                          },
-                                                          {
-                                                            label: 'Collection pages',
-                                                            value: '/collections/',
-                                                          },
-                                                          { label: 'Cart', value: '/cart' },
-                                                          {
-                                                            label: 'Homepage',
-                                                            value: HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                                          },
-                                                          {
-                                                            label: 'Custom URL…',
-                                                            value: '__custom__',
-                                                          },
-                                                        ]}
-                                                        value={
-                                                          presets.includes(rule.pattern || '')
-                                                            ? rule.pattern || ''
-                                                            : rule.pattern === ' ' || rule.pattern
-                                                              ? '__custom__'
-                                                              : ''
-                                                        }
-                                                        onChange={v => {
-                                                          setIsDirty(true);
-                                                          const newPattern =
-                                                            v === '__custom__'
-                                                              ? presets.includes(
-                                                                  rule.pattern || ''
-                                                                ) || rule.pattern === ' '
-                                                                ? ' '
-                                                                : rule.pattern || ' '
-                                                              : v;
-                                                          const newMatchType =
-                                                            v === '__custom__'
-                                                              ? rule.match_type || 'contains'
-                                                              : presetMatchTypes[v] || 'regex';
-                                                          setFormData(prev => ({
-                                                            ...prev,
-                                                            segments: {
-                                                              ...prev.segments,
-                                                              page_rules: [
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(0, idx),
-                                                                {
-                                                                  ...rule,
-                                                                  pattern: newPattern,
-                                                                  match_type: newMatchType,
-                                                                },
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(idx + 1),
-                                                              ],
-                                                            },
-                                                          }));
-                                                        }}
-                                                      />
-                                                    )}
-                                                    <div className={styles.matchTypeSelect}>
-                                                      <Select
-                                                        label=""
-                                                        labelHidden
-                                                        options={matchTypeOptions}
-                                                        value={
-                                                          rule.match_type ||
-                                                          (isStandalone
-                                                            ? 'starts_with'
-                                                            : presets.includes(rule.pattern || '')
-                                                              ? presetMatchTypes[rule.pattern]
-                                                              : 'contains')
-                                                        }
-                                                        onChange={v => {
-                                                          setIsDirty(true);
-                                                          setFormData(prev => ({
-                                                            ...prev,
-                                                            segments: {
-                                                              ...prev.segments,
-                                                              page_rules: [
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(0, idx),
-                                                                { ...rule, match_type: v },
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(idx + 1),
-                                                              ],
-                                                            },
-                                                          }));
-                                                        }}
-                                                      />
-                                                    </div>
-                                                    <div className={styles.customUrlInputWrap}>
-                                                      <TextField
-                                                        label={
-                                                          isStandalone
-                                                            ? 'Path or regex'
-                                                            : 'URL pattern'
-                                                        }
-                                                        labelHidden
-                                                        value={
-                                                          rule.pattern === ' '
-                                                            ? ''
-                                                            : rule.pattern || ''
-                                                        }
-                                                        onChange={v => {
-                                                          setIsDirty(true);
-                                                          setFormData(prev => ({
-                                                            ...prev,
-                                                            segments: {
-                                                              ...prev.segments,
-                                                              page_rules: [
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(0, idx),
-                                                                {
-                                                                  ...rule,
-                                                                  pattern: v === '' ? ' ' : v,
-                                                                },
-                                                                ...(
-                                                                  prev.segments?.page_rules || []
-                                                                ).slice(idx + 1),
-                                                              ],
-                                                            },
-                                                          }));
-                                                        }}
-                                                        placeholder={
-                                                          isStandalone
-                                                            ? (rule.match_type || 'starts_with') ===
-                                                              'regex'
-                                                              ? 'e.g. ^/blog, ^/en/.*'
-                                                              : 'e.g. /blog, /pricing, /docs'
-                                                            : (rule.match_type || 'contains') ===
-                                                                'regex'
-                                                              ? 'e.g. ^/products/.* or /collections/sale'
-                                                              : (rule.match_type || 'contains') ===
-                                                                  'contains'
-                                                                ? 'e.g. /products/ or sale'
-                                                                : (rule.match_type ||
-                                                                      'contains') === 'starts_with'
-                                                                  ? 'e.g. /products/ or /collections/'
-                                                                  : (rule.match_type ||
-                                                                        'contains') === 'ends_with'
-                                                                    ? 'e.g. .html or /checkout'
-                                                                    : 'e.g. /cart or /pages/about'
-                                                        }
-                                                        autoComplete="off"
-                                                        helpText={
-                                                          (rule.match_type || 'starts_with') ===
-                                                            'regex' && isStandalone
-                                                            ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
-                                                            : (rule.match_type || 'contains') ===
-                                                                  'regex' && !isStandalone
-                                                              ? 'JavaScript regex. Use ^ for start, $ for end.'
-                                                              : null
-                                                        }
-                                                      />
-                                                    </div>
-                                                    <button
-                                                      type="button"
-                                                      className={styles.removeRuleBtn}
-                                                      onClick={() => {
-                                                        setIsDirty(true);
-                                                        setFormData(prev => ({
-                                                          ...prev,
-                                                          segments: {
-                                                            ...prev.segments,
-                                                            page_rules: (
-                                                              prev.segments?.page_rules || []
-                                                            ).filter((_, i) => i !== idx),
-                                                          },
-                                                        }));
-                                                      }}
-                                                    >
-                                                      Remove
-                                                    </button>
-                                                  </div>
-                                                );
-                                              }
-                                            )}
-                                            <button
-                                              type="button"
-                                              className={styles.addRuleBtn}
-                                              onClick={() => {
-                                                setIsDirty(true);
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []),
-                                                      {
-                                                        type: 'include',
-                                                        pattern: ' ',
-                                                        match_type: isStandalone
-                                                          ? 'starts_with'
-                                                          : 'contains',
-                                                      },
-                                                    ],
-                                                  },
-                                                }));
-                                              }}
-                                            >
-                                              <Icon source={PlusIcon} />
-                                              Add rule
-                                            </button>
+                                            ))}
                                           </div>
-                                        );
-                                      })()}
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {showAudienceTab && (
-                          <div className={styles.targetingAccordionItem}>
-                            <button
-                              type="button"
-                              id="targeting-tab-audience"
-                              aria-expanded={targetingSectionExpanded.audience}
-                              className={sectionTriggerClass(
-                                'audience',
-                                targetingSectionExpanded.audience
-                              )}
-                              onClick={() => toggleTargetingSectionExpanded('audience')}
-                              title="Audience (2)"
-                            >
-                              <span
-                                className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.audience ? styles.targetingAccordionChevronOpen : ''}`}
-                                aria-hidden
-                              >
-                                <Icon source={ChevronDownIcon} />
-                              </span>
-                              <span className={styles.placementTabStep}>2</span>
-                              <Icon source={PersonIcon} />
-                              <span className={styles.targetingAccordionTriggerLabel}>
-                                Audience
-                              </span>
-                              {((formData.segments?.device || 'all') !== 'all' ||
-                                (formData.segments?.device_rules || []).length > 0 ||
-                                (formData.segments?.customer || 'all') !== 'all' ||
-                                (formData.segments?.countries || []).length > 0 ||
-                                (formData.segments?.traffic_source || 'all') !== 'all' ||
-                                (formData.segments?.operating_system || 'all') !== 'all' ||
-                                hasCustomAudienceRules(formData.segments)) && (
-                                <span className={styles.placementTabDot} />
-                              )}
-                              {renderTargetingIssueBadge('audience')}
-                            </button>
-                            {targetingSectionExpanded.audience && (
-                              <div className={styles.targetingAccordionPanel}>
-                                <div className={styles.placementPanel}>
-                                  <div className={styles.audienceHeader}>
-                                    <div>
-                                      <h4 className={styles.audienceTitle}>Audience</h4>
-                                      <p className={styles.audienceHint}>
-                                        Show test only to certain visitors. Standard filters are
-                                        combined with Custom conditions when both are configured.
-                                      </p>
-                                    </div>
-                                    <div
-                                      className={styles.audienceModeTabs}
-                                      role="tablist"
-                                      aria-label="Audience sections"
-                                    >
-                                      {[
-                                        { label: 'Standard', value: 'standard' },
-                                        { label: 'Custom', value: 'custom' },
-                                      ].map(tab => (
-                                        <button
-                                          key={tab.value}
-                                          type="button"
-                                          role="tab"
-                                          aria-selected={audienceTargetingMode === tab.value}
-                                          className={`${styles.audienceModeTab} ${audienceTargetingMode === tab.value ? styles.audienceModeTabActive : ''}`}
-                                          onClick={() => setAudienceTargetingMode(tab.value)}
-                                        >
-                                          {tab.label}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  {audienceTargetingMode === 'standard' ? (
-                                    <>
-                                      <div
-                                        className={`${styles.panelSection} ${styles.panelSectionDevice}`}
-                                      >
-                                        <span className={styles.panelSectionTitle}>
-                                          Device Type
-                                        </span>
-                                        <div className={styles.quickSelectChips}>
-                                          {[
-                                            {
-                                              label: 'All Devices',
-                                              value: 'all',
-                                              icon: UnknownDeviceIcon,
-                                            },
-                                            {
-                                              label: 'Desktop',
-                                              value: 'desktop',
-                                              icon: DesktopIcon,
-                                            },
-                                            { label: 'Mobile', value: 'mobile', icon: MobileIcon },
-                                          ].map(({ label, value, icon: DeviceIcon }) => (
-                                            <button
-                                              key={value}
-                                              type="button"
-                                              className={`${styles.quickSelectChip} ${(formData.segments?.device || 'all') === value ? styles.quickSelectChipActive : ''}`}
-                                              onClick={() =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    device: value,
-                                                    device_rules: [],
-                                                  },
-                                                }))
-                                              }
-                                            >
-                                              <Icon source={DeviceIcon} />
-                                              {label}
-                                            </button>
-                                          ))}
                                         </div>
-                                      </div>
-                                      <div
-                                        className={`${styles.panelSection} ${styles.panelSectionAudience}`}
-                                      >
-                                        <span className={styles.panelSectionTitle}>
-                                          Visitor Type
-                                          <TooltipWrapper
-                                            content="New vs returning visitors"
-                                            accessibilityLabel="Customer type help"
-                                          >
-                                            <span
-                                              className={styles.panelSectionInfoIcon}
-                                              aria-hidden="true"
-                                            >
-                                              <Icon source={InfoIcon} />
-                                            </span>
-                                          </TooltipWrapper>
-                                        </span>
-                                        <div className={styles.quickSelectChips}>
-                                          {[
-                                            {
-                                              label: 'All Visitors',
-                                              value: 'all',
-                                              icon: PersonIcon,
-                                              tooltip: 'All',
-                                            },
-                                            {
-                                              label: 'New',
-                                              value: 'new',
-                                              icon: PersonIcon,
-                                              tooltip: 'First visit',
-                                            },
-                                            {
-                                              label: 'Returning',
-                                              value: 'returning',
-                                              icon: PersonIcon,
-                                              tooltip: 'Returning',
-                                            },
-                                          ].map(({ label, value, icon: CustIcon, tooltip }) => (
-                                            <TooltipWrapper
-                                              key={value}
-                                              content={tooltip}
-                                              accessibilityLabel={label}
-                                            >
+                                        <div
+                                          className={`${styles.panelSection} ${styles.panelSectionFull}`}
+                                        >
+                                          <span className={styles.panelSectionTitle}>
+                                            Source Sites
+                                          </span>
+                                          <div className={styles.quickSelectChips}>
+                                            {AUDIENCE_SOURCE_OPTIONS.map(option => (
                                               <button
+                                                key={option.value}
                                                 type="button"
-                                                className={`${styles.quickSelectChip} ${(formData.segments?.customer || 'all') === value ? styles.quickSelectChipActive : ''}`}
+                                                className={`${styles.quickSelectChip} ${(formData.segments?.traffic_source || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
                                                 onClick={() =>
                                                   setFormData(prev => ({
                                                     ...prev,
                                                     segments: {
                                                       ...prev.segments,
-                                                      customer: value,
-                                                      audience_rules: [],
+                                                      traffic_source: option.value,
                                                     },
                                                   }))
                                                 }
                                               >
-                                                <Icon source={CustIcon} />
-                                                {label}
+                                                {option.label}
                                               </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div
+                                          className={`${styles.panelSection} ${styles.panelSectionFull}`}
+                                        >
+                                          <span className={styles.panelSectionTitle}>
+                                            Operating System
+                                          </span>
+                                          <div className={styles.quickSelectChips}>
+                                            {AUDIENCE_OS_OPTIONS.map(option => (
+                                              <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`${styles.quickSelectChip} ${(formData.segments?.operating_system || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
+                                                onClick={() =>
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      operating_system: option.value,
+                                                    },
+                                                  }))
+                                                }
+                                              >
+                                                {option.label}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div
+                                          className={`${styles.panelSection} ${styles.panelSectionFull}`}
+                                        >
+                                          <span className={styles.panelSectionTitle}>
+                                            Countries (optional)
+                                            <TooltipWrapper
+                                              content="ISO 3166-1 alpha-2 codes are stored (e.g. US, GB). Search by full name or code. Leave empty for all countries. Multi-select by name; RipX still matches visitors using the same short country codes as before."
+                                              accessibilityLabel="Countries help"
+                                            >
+                                              <span
+                                                className={styles.panelSectionInfoIcon}
+                                                aria-hidden="true"
+                                              >
+                                                <Icon source={InfoIcon} />
+                                              </span>
                                             </TooltipWrapper>
-                                          ))}
-                                        </div>
-                                      </div>
-                                      <div
-                                        className={`${styles.panelSection} ${styles.panelSectionFull}`}
-                                      >
-                                        <span className={styles.panelSectionTitle}>
-                                          Source Sites
-                                        </span>
-                                        <div className={styles.quickSelectChips}>
-                                          {AUDIENCE_SOURCE_OPTIONS.map(option => (
-                                            <button
-                                              key={option.value}
-                                              type="button"
-                                              className={`${styles.quickSelectChip} ${(formData.segments?.traffic_source || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
-                                              onClick={() =>
+                                          </span>
+                                          <div className={styles.countriesBlock}>
+                                            <AudienceCountryMultiSelect
+                                              value={formData.segments?.countries || []}
+                                              onChange={codes =>
                                                 setFormData(prev => ({
                                                   ...prev,
                                                   segments: {
                                                     ...prev.segments,
-                                                    traffic_source: option.value,
+                                                    countries: codes,
                                                   },
                                                 }))
                                               }
-                                            >
-                                              {option.label}
-                                            </button>
-                                          ))}
+                                            />
+                                          </div>
                                         </div>
-                                      </div>
+                                      </>
+                                    ) : (
                                       <div
                                         className={`${styles.panelSection} ${styles.panelSectionFull}`}
                                       >
                                         <span className={styles.panelSectionTitle}>
-                                          Operating System
-                                        </span>
-                                        <div className={styles.quickSelectChips}>
-                                          {AUDIENCE_OS_OPTIONS.map(option => (
-                                            <button
-                                              key={option.value}
-                                              type="button"
-                                              className={`${styles.quickSelectChip} ${(formData.segments?.operating_system || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
-                                              onClick={() =>
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    operating_system: option.value,
-                                                  },
-                                                }))
-                                              }
-                                            >
-                                              {option.label}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-                                      <div
-                                        className={`${styles.panelSection} ${styles.panelSectionFull}`}
-                                      >
-                                        <span className={styles.panelSectionTitle}>
-                                          Countries (optional)
+                                          Visitors matching the following set of conditions
                                           <TooltipWrapper
-                                            content="ISO 3166-1 alpha-2 codes are stored (e.g. US, GB). Search by full name or code. Leave empty for all countries. Multi-select by name; RipX still matches visitors using the same short country codes as before."
-                                            accessibilityLabel="Countries help"
+                                            content="Add field-based rules for URL params, referrer, device, country, or UTM values. Groups are AND-combined; use OR inside a group when any condition should qualify."
+                                            accessibilityLabel="Custom audience conditions help"
                                           >
                                             <span
                                               className={styles.panelSectionInfoIcon}
@@ -7631,31 +7948,282 @@ function TestWizard({
                                             </span>
                                           </TooltipWrapper>
                                         </span>
-                                        <div className={styles.countriesBlock}>
-                                          <AudienceCountryMultiSelect
-                                            value={formData.segments?.countries || []}
-                                            onChange={codes =>
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                segments: {
-                                                  ...prev.segments,
-                                                  countries: codes,
-                                                },
-                                              }))
-                                            }
-                                          />
+                                        <CustomRuleBuilder
+                                          styles={styles}
+                                          groups={resolveCustomRuleGroupsFromSegments(
+                                            formData.segments
+                                          )}
+                                          rules={formData.segments?.custom_rules || []}
+                                          standardSegments={{
+                                            device: formData.segments?.device,
+                                            countries: formData.segments?.countries,
+                                            traffic_source: formData.segments?.traffic_source,
+                                            operating_system: formData.segments?.operating_system,
+                                          }}
+                                          onChangeGroups={groups => {
+                                            setIsDirty(true);
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              segments: syncSegmentsCustomAudience(
+                                                prev.segments,
+                                                groups
+                                              ),
+                                            }));
+                                          }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className={styles.targetingAccordionItem}>
+                            <button
+                              type="button"
+                              id="targeting-tab-holdout"
+                              aria-expanded={targetingSectionExpanded.holdout}
+                              className={sectionTriggerClass(
+                                'holdout',
+                                targetingSectionExpanded.holdout,
+                                styles.placementTabHoldout
+                              )}
+                              onClick={() => toggleTargetingSectionExpanded('holdout')}
+                              title={`Holdout (${isStandalone ? 2 : 3})`}
+                            >
+                              <span
+                                className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.holdout ? styles.targetingAccordionChevronOpen : ''}`}
+                                aria-hidden
+                              >
+                                <Icon source={ChevronDownIcon} />
+                              </span>
+                              <span className={styles.placementTabStep}>
+                                {isStandalone ? 2 : 3}
+                              </span>
+                              <Icon source={LockIcon} />
+                              <span className={styles.targetingAccordionTriggerLabel}>Holdout</span>
+                              {(Number(holdoutValue) || 0) > 0 && (
+                                <span className={styles.placementTabDot} />
+                              )}
+                              {renderTargetingIssueBadge('holdout')}
+                            </button>
+                            {targetingSectionExpanded.holdout && (
+                              <div className={styles.targetingAccordionPanel}>
+                                <div id="targeting-holdout">
+                                  <div
+                                    key="holdout"
+                                    id="targeting-panel-holdout"
+                                    className={`${styles.targetingPanel} ${styles.targetingPanelHoldout}`}
+                                    role="tabpanel"
+                                    aria-labelledby="targeting-tab-holdout"
+                                  >
+                                    <div className={styles.targetingPanelHeader}>
+                                      <div className={styles.holdoutHeaderCompact}>
+                                        <div className={styles.holdoutHeaderCopy}>
+                                          <h4 className={styles.targetingPanelTitle}>
+                                            Holdout
+                                            <TooltipWrapper
+                                              content="Visitors in the control group never see any test variant. Reserve visitors who never see a variant for a true control. 10% is a common baseline."
+                                              accessibilityLabel="Holdout percentage help"
+                                            >
+                                              <span
+                                                className={styles.panelSectionInfoIcon}
+                                                aria-hidden="true"
+                                              >
+                                                <Icon source={InfoIcon} />
+                                              </span>
+                                            </TooltipWrapper>
+                                          </h4>
+                                        </div>
+                                        <span
+                                          className={styles.holdoutSummaryPill}
+                                          aria-live="polite"
+                                        >
+                                          {holdoutValue || 0}% reserved
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className={styles.targetingPanelBody}>
+                                      <div className={styles.holdoutCard}>
+                                        <div className={styles.holdoutCompactToolbar}>
+                                          <div className={styles.holdoutQuickPresets}>
+                                            {[
+                                              { pct: 0, label: '0%', tooltip: 'No holdout' },
+                                              {
+                                                pct: 10,
+                                                label: '10%',
+                                                recommended: true,
+                                                tooltip: 'Recommended',
+                                              },
+                                              { pct: 25, label: '25%', tooltip: 'Larger control' },
+                                              { pct: 50, label: '50%', tooltip: 'Max holdout' },
+                                            ].map(({ pct, label, recommended, tooltip }) => (
+                                              <TooltipWrapper
+                                                key={pct}
+                                                content={tooltip}
+                                                accessibilityLabel={`Holdout ${label}`}
+                                              >
+                                                <button
+                                                  type="button"
+                                                  className={`${styles.holdoutPresetBtn} ${Number(holdoutValue) === pct ? styles.holdoutPresetBtnActive : ''}`}
+                                                  onClick={() =>
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      holdout_percent: pct,
+                                                    }))
+                                                  }
+                                                >
+                                                  {label}
+                                                  {recommended && (
+                                                    <span
+                                                      className={styles.holdoutPresetRecommended}
+                                                    >
+                                                      Best
+                                                    </span>
+                                                  )}
+                                                </button>
+                                              </TooltipWrapper>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div className={styles.holdoutControlRow}>
+                                          <div className={styles.holdoutValueInput}>
+                                            <input
+                                              type="number"
+                                              className={styles.holdoutNumberInput}
+                                              min={0}
+                                              max={50}
+                                              value={holdoutValue ?? ''}
+                                              onChange={e =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  holdout_percent: e.target.value,
+                                                }))
+                                              }
+                                              aria-label="Holdout percentage"
+                                            />
+                                            <span className={styles.holdoutPercentSuffix}>%</span>
+                                          </div>
+                                          <div className={styles.holdoutSliderColumn}>
+                                            <input
+                                              type="range"
+                                              className={styles.holdoutSlider}
+                                              min={0}
+                                              max={50}
+                                              value={Math.min(
+                                                50,
+                                                Math.max(0, Number(holdoutValue) || 0)
+                                              )}
+                                              onChange={e =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  holdout_percent: e.target.value,
+                                                }))
+                                              }
+                                              aria-label="Holdout percentage slider"
+                                            />
+                                            <div className={styles.holdoutSliderLabels}>
+                                              <span>0%</span>
+                                              <span>25%</span>
+                                              <span>50%</span>
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
-                                    </>
-                                  ) : (
-                                    <div
-                                      className={`${styles.panelSection} ${styles.panelSectionFull}`}
-                                    >
-                                      <span className={styles.panelSectionTitle}>
-                                        Visitors matching the following set of conditions
+                                      {!isStandalone && (
+                                        <div className={styles.holdoutRecommendedBanner}>
+                                          <span className={styles.holdoutRecommendedText}>
+                                            {isShippingTestType
+                                              ? isShippingStorewideAdvanced
+                                                ? 'Quick apply: Storewide + 10% holdout'
+                                                : 'Quick apply: Selected products + 10% holdout'
+                                              : 'Quick apply: Product pages + 10% holdout'}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className={styles.holdoutRecommendedBtn}
+                                            onClick={() => {
+                                              setCustomUrlModeActive(false);
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                target_type: isShippingTestType
+                                                  ? isShippingStorewideAdvanced
+                                                    ? 'all-products'
+                                                    : 'product'
+                                                  : 'all-products',
+                                                target_id: '',
+                                                target_ids: null,
+                                                segments: {
+                                                  ...prev.segments,
+                                                  url_pattern: isShippingTestType
+                                                    ? ''
+                                                    : '/products/',
+                                                  page_rules: [],
+                                                  device: 'all',
+                                                  customer: 'all',
+                                                },
+                                                holdout_percent: 10,
+                                              }));
+                                            }}
+                                          >
+                                            Apply recommended
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className={styles.targetingAccordionItem}>
+                            <button
+                              type="button"
+                              id="targeting-tab-advanced"
+                              aria-expanded={targetingSectionExpanded.advanced}
+                              className={sectionTriggerClass(
+                                'advanced',
+                                targetingSectionExpanded.advanced,
+                                styles.placementTabAdvanced
+                              )}
+                              onClick={() => toggleTargetingSectionExpanded('advanced')}
+                              title={`Advanced (${isStandalone ? 3 : 4})`}
+                            >
+                              <span
+                                className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.advanced ? styles.targetingAccordionChevronOpen : ''}`}
+                                aria-hidden
+                              >
+                                <Icon source={ChevronDownIcon} />
+                              </span>
+                              <span className={styles.placementTabStep}>
+                                {isStandalone ? 3 : 4}
+                              </span>
+                              <Icon source={CodeIcon} />
+                              <span className={styles.targetingAccordionTriggerLabel}>
+                                Advanced targeting
+                              </span>
+                              {advancedSectionHasActivity(formData) && (
+                                <span className={styles.placementTabDot} />
+                              )}
+                              {renderTargetingIssueBadge('advanced')}
+                            </button>
+                            {targetingSectionExpanded.advanced && (
+                              <div className={styles.targetingAccordionPanel}>
+                                <div id="targeting-advanced">
+                                  <div
+                                    id="targeting-panel-advanced"
+                                    className={`${styles.targetingPanel} ${styles.targetingPanelAdvanced}`}
+                                    role="tabpanel"
+                                    aria-labelledby="targeting-tab-advanced"
+                                  >
+                                    <div className={styles.targetingPanelHeader}>
+                                      <h4 className={styles.targetingPanelTitle}>
+                                        Advanced targeting studio
                                         <TooltipWrapper
-                                          content="Add field-based rules for URL params, referrer, device, country, or UTM values. Groups are AND-combined; use OR inside a group when any condition should qualify."
-                                          accessibilityLabel="Custom audience conditions help"
+                                          content="Optional guardrails, rollout controls, URL/session overrides, JavaScript eligibility, and saved presets."
+                                          accessibilityLabel="Advanced targeting help"
                                         >
                                           <span
                                             className={styles.panelSectionInfoIcon}
@@ -7664,387 +8232,111 @@ function TestWizard({
                                             <Icon source={InfoIcon} />
                                           </span>
                                         </TooltipWrapper>
-                                      </span>
-                                      <CustomRuleBuilder
+                                      </h4>
+                                    </div>
+                                    <div className={styles.targetingPanelBody}>
+                                      <AdvancedTargetingStudio
                                         styles={styles}
-                                        groups={resolveCustomRuleGroupsFromSegments(
-                                          formData.segments
-                                        )}
-                                        rules={formData.segments?.custom_rules || []}
-                                        standardSegments={{
-                                          device: formData.segments?.device,
-                                          countries: formData.segments?.countries,
-                                          traffic_source: formData.segments?.traffic_source,
-                                          operating_system: formData.segments?.operating_system,
+                                        formData={formData}
+                                        setFormData={setFormData}
+                                        setIsDirty={setIsDirty}
+                                        activeSection={advancedStudioSection}
+                                        onSelectSection={setAdvancedStudioSection}
+                                        targetingPresets={targetingPresets}
+                                        loadedPresetId={loadedPresetId}
+                                        onLoadedPresetIdChange={setLoadedPresetId}
+                                        onOpenSavePreset={() => {
+                                          setSavePresetName('');
+                                          setSavePresetModalOpen(true);
                                         }}
-                                        onChangeGroups={groups => {
-                                          setIsDirty(true);
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            segments: syncSegmentsCustomAudience(
-                                              prev.segments,
-                                              groups
-                                            ),
-                                          }));
+                                        antiFlickerRecommendedMode={antiFlickerRecommendedMode}
+                                        antiFlickerRecommendationReason={
+                                          antiFlickerRecommendationReason
+                                        }
+                                        onAntiFlickerApplied={mode => {
+                                          setAntiFlickerToast({
+                                            type: 'success',
+                                            message: `Applied recommended anti-flicker mode: ${mode}.`,
+                                          });
                                         }}
+                                        onJumpToAudienceCustom={jumpToAudienceCustom}
+                                        showAudienceCustomLink={!isStandalone}
                                       />
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               </div>
                             )}
                           </div>
-                        )}
-
-                        <div className={styles.targetingAccordionItem}>
-                          <button
-                            type="button"
-                            id="targeting-tab-holdout"
-                            aria-expanded={targetingSectionExpanded.holdout}
-                            className={sectionTriggerClass(
-                              'holdout',
-                              targetingSectionExpanded.holdout,
-                              styles.placementTabHoldout
-                            )}
-                            onClick={() => toggleTargetingSectionExpanded('holdout')}
-                            title={`Holdout (${isStandalone ? 2 : 3})`}
-                          >
-                            <span
-                              className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.holdout ? styles.targetingAccordionChevronOpen : ''}`}
-                              aria-hidden
-                            >
-                              <Icon source={ChevronDownIcon} />
-                            </span>
-                            <span className={styles.placementTabStep}>{isStandalone ? 2 : 3}</span>
-                            <Icon source={LockIcon} />
-                            <span className={styles.targetingAccordionTriggerLabel}>Holdout</span>
-                            {(Number(holdoutValue) || 0) > 0 && (
-                              <span className={styles.placementTabDot} />
-                            )}
-                            {renderTargetingIssueBadge('holdout')}
-                          </button>
-                          {targetingSectionExpanded.holdout && (
-                            <div className={styles.targetingAccordionPanel}>
-                              <div id="targeting-holdout">
-                                <div
-                                  key="holdout"
-                                  id="targeting-panel-holdout"
-                                  className={`${styles.targetingPanel} ${styles.targetingPanelHoldout}`}
-                                  role="tabpanel"
-                                  aria-labelledby="targeting-tab-holdout"
-                                >
-                                  <div className={styles.targetingPanelHeader}>
-                                    <div className={styles.holdoutHeaderCompact}>
-                                      <div className={styles.holdoutHeaderCopy}>
-                                        <h4 className={styles.targetingPanelTitle}>
-                                          Holdout
-                                          <TooltipWrapper
-                                            content="Visitors in the control group never see any test variant. Reserve visitors who never see a variant for a true control. 10% is a common baseline."
-                                            accessibilityLabel="Holdout percentage help"
-                                          >
-                                            <span
-                                              className={styles.panelSectionInfoIcon}
-                                              aria-hidden="true"
-                                            >
-                                              <Icon source={InfoIcon} />
-                                            </span>
-                                          </TooltipWrapper>
-                                        </h4>
-                                      </div>
-                                      <span
-                                        className={styles.holdoutSummaryPill}
-                                        aria-live="polite"
-                                      >
-                                        {holdoutValue || 0}% reserved
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className={styles.targetingPanelBody}>
-                                    <div className={styles.holdoutCard}>
-                                      <div className={styles.holdoutCompactToolbar}>
-                                        <div className={styles.holdoutQuickPresets}>
-                                          {[
-                                            { pct: 0, label: '0%', tooltip: 'No holdout' },
-                                            {
-                                              pct: 10,
-                                              label: '10%',
-                                              recommended: true,
-                                              tooltip: 'Recommended',
-                                            },
-                                            { pct: 25, label: '25%', tooltip: 'Larger control' },
-                                            { pct: 50, label: '50%', tooltip: 'Max holdout' },
-                                          ].map(({ pct, label, recommended, tooltip }) => (
-                                            <TooltipWrapper
-                                              key={pct}
-                                              content={tooltip}
-                                              accessibilityLabel={`Holdout ${label}`}
-                                            >
-                                              <button
-                                                type="button"
-                                                className={`${styles.holdoutPresetBtn} ${Number(holdoutValue) === pct ? styles.holdoutPresetBtnActive : ''}`}
-                                                onClick={() =>
-                                                  setFormData(prev => ({
-                                                    ...prev,
-                                                    holdout_percent: pct,
-                                                  }))
-                                                }
-                                              >
-                                                {label}
-                                                {recommended && (
-                                                  <span className={styles.holdoutPresetRecommended}>
-                                                    Best
-                                                  </span>
-                                                )}
-                                              </button>
-                                            </TooltipWrapper>
-                                          ))}
-                                        </div>
-                                      </div>
-                                      <div className={styles.holdoutControlRow}>
-                                        <div className={styles.holdoutValueInput}>
-                                          <input
-                                            type="number"
-                                            className={styles.holdoutNumberInput}
-                                            min={0}
-                                            max={50}
-                                            value={holdoutValue ?? ''}
-                                            onChange={e =>
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                holdout_percent: e.target.value,
-                                              }))
-                                            }
-                                            aria-label="Holdout percentage"
-                                          />
-                                          <span className={styles.holdoutPercentSuffix}>%</span>
-                                        </div>
-                                        <div className={styles.holdoutSliderColumn}>
-                                          <input
-                                            type="range"
-                                            className={styles.holdoutSlider}
-                                            min={0}
-                                            max={50}
-                                            value={Math.min(
-                                              50,
-                                              Math.max(0, Number(holdoutValue) || 0)
-                                            )}
-                                            onChange={e =>
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                holdout_percent: e.target.value,
-                                              }))
-                                            }
-                                            aria-label="Holdout percentage slider"
-                                          />
-                                          <div className={styles.holdoutSliderLabels}>
-                                            <span>0%</span>
-                                            <span>25%</span>
-                                            <span>50%</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    {!isStandalone && (
-                                      <div className={styles.holdoutRecommendedBanner}>
-                                        <span className={styles.holdoutRecommendedText}>
-                                          {isShippingTestType
-                                            ? isShippingStorewideAdvanced
-                                              ? 'Quick apply: Storewide + 10% holdout'
-                                              : 'Quick apply: Selected products + 10% holdout'
-                                            : 'Quick apply: Product pages + 10% holdout'}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          className={styles.holdoutRecommendedBtn}
-                                          onClick={() => {
-                                            setCustomUrlModeActive(false);
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              target_type: isShippingTestType
-                                                ? isShippingStorewideAdvanced
-                                                  ? 'all-products'
-                                                  : 'product'
-                                                : 'all-products',
-                                              target_id: '',
-                                              target_ids: null,
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: isShippingTestType ? '' : '/products/',
-                                                page_rules: [],
-                                                device: 'all',
-                                                customer: 'all',
-                                              },
-                                              holdout_percent: 10,
-                                            }));
-                                          }}
-                                        >
-                                          Apply recommended
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
-
-                        <div className={styles.targetingAccordionItem}>
-                          <button
-                            type="button"
-                            id="targeting-tab-advanced"
-                            aria-expanded={targetingSectionExpanded.advanced}
-                            className={sectionTriggerClass(
-                              'advanced',
-                              targetingSectionExpanded.advanced,
-                              styles.placementTabAdvanced
-                            )}
-                            onClick={() => toggleTargetingSectionExpanded('advanced')}
-                            title={`Advanced (${isStandalone ? 3 : 4})`}
-                          >
-                            <span
-                              className={`${styles.targetingAccordionChevron} ${targetingSectionExpanded.advanced ? styles.targetingAccordionChevronOpen : ''}`}
-                              aria-hidden
-                            >
-                              <Icon source={ChevronDownIcon} />
-                            </span>
-                            <span className={styles.placementTabStep}>{isStandalone ? 3 : 4}</span>
-                            <Icon source={CodeIcon} />
-                            <span className={styles.targetingAccordionTriggerLabel}>
-                              Advanced targeting
-                            </span>
-                            {advancedSectionHasActivity(formData) && (
-                              <span className={styles.placementTabDot} />
-                            )}
-                            {renderTargetingIssueBadge('advanced')}
-                          </button>
-                          {targetingSectionExpanded.advanced && (
-                            <div className={styles.targetingAccordionPanel}>
-                              <div id="targeting-advanced">
-                                <div
-                                  id="targeting-panel-advanced"
-                                  className={`${styles.targetingPanel} ${styles.targetingPanelAdvanced}`}
-                                  role="tabpanel"
-                                  aria-labelledby="targeting-tab-advanced"
-                                >
-                                  <div className={styles.targetingPanelHeader}>
-                                    <h4 className={styles.targetingPanelTitle}>
-                                      Advanced targeting studio
-                                      <TooltipWrapper
-                                        content="Optional guardrails, rollout controls, URL/session overrides, JavaScript eligibility, and saved presets."
-                                        accessibilityLabel="Advanced targeting help"
-                                      >
-                                        <span
-                                          className={styles.panelSectionInfoIcon}
-                                          aria-hidden="true"
-                                        >
-                                          <Icon source={InfoIcon} />
-                                        </span>
-                                      </TooltipWrapper>
-                                    </h4>
-                                  </div>
-                                  <div className={styles.targetingPanelBody}>
-                                    <AdvancedTargetingStudio
-                                      styles={styles}
-                                      formData={formData}
-                                      setFormData={setFormData}
-                                      setIsDirty={setIsDirty}
-                                      activeSection={advancedStudioSection}
-                                      onSelectSection={setAdvancedStudioSection}
-                                      targetingPresets={targetingPresets}
-                                      loadedPresetId={loadedPresetId}
-                                      onLoadedPresetIdChange={setLoadedPresetId}
-                                      onOpenSavePreset={() => {
-                                        setSavePresetName('');
-                                        setSavePresetModalOpen(true);
-                                      }}
-                                      antiFlickerRecommendedMode={antiFlickerRecommendedMode}
-                                      antiFlickerRecommendationReason={
-                                        antiFlickerRecommendationReason
-                                      }
-                                      onAntiFlickerApplied={mode => {
-                                        setAntiFlickerToast({
-                                          type: 'success',
-                                          message: `Applied recommended anti-flicker mode: ${mode}.`,
-                                        });
-                                      }}
-                                      onJumpToAudienceCustom={jumpToAudienceCustom}
-                                      showAudienceCustomLink={!isStandalone}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </TargetingStepLayout>
-                  </div>
-                  <Modal
-                    open={savePresetModalOpen}
-                    onClose={() => {
-                      setSavePresetModalOpen(false);
-                      setSavePresetAsFullTemplate(false);
-                    }}
-                    title="Save targeting preset"
-                    primaryAction={{
-                      content: 'Save',
-                      disabled: !savePresetName.trim(),
-                      onAction: async () => {
-                        if (!savePresetName.trim()) return;
-                        try {
-                          await apiPost('/targeting-presets', {
-                            name: savePresetName.trim(),
-                            segments: formData.segments,
-                            ...(savePresetAsFullTemplate && {
-                              goal: formData.goal,
-                              variants: formData.variants,
-                            }),
-                          });
-                          const res = await apiGet('/targeting-presets');
-                          setTargetingPresets(res.data?.presets || []);
-                          setSavePresetModalOpen(false);
-                          setSavePresetName('');
-                          setSavePresetAsFullTemplate(false);
-                        } catch (err) {
-                          setError(err?.response?.data?.error || 'Failed to save preset');
-                        }
-                      },
-                    }}
-                    secondaryActions={[
-                      {
-                        content: 'Cancel',
-                        onAction: () => {
-                          setSavePresetModalOpen(false);
-                          setSavePresetAsFullTemplate(false);
+                      </TargetingStepLayout>
+                    </div>
+                    <Modal
+                      open={savePresetModalOpen}
+                      onClose={() => {
+                        setSavePresetModalOpen(false);
+                        setSavePresetAsFullTemplate(false);
+                      }}
+                      title="Save targeting preset"
+                      primaryAction={{
+                        content: 'Save',
+                        disabled: !savePresetName.trim(),
+                        onAction: async () => {
+                          if (!savePresetName.trim()) return;
+                          try {
+                            await apiPost('/targeting-presets', {
+                              name: savePresetName.trim(),
+                              segments: formData.segments,
+                              ...(savePresetAsFullTemplate && {
+                                goal: formData.goal,
+                                variants: formData.variants,
+                              }),
+                            });
+                            const res = await apiGet('/targeting-presets');
+                            setTargetingPresets(res.data?.presets || []);
+                            setSavePresetModalOpen(false);
+                            setSavePresetName('');
+                            setSavePresetAsFullTemplate(false);
+                          } catch (err) {
+                            setError(err?.response?.data?.error || 'Failed to save preset');
+                          }
                         },
-                      },
-                    ]}
-                  >
-                    <Modal.Section>
-                      <BlockStack gap="300">
-                        <TextField
-                          label="Preset name"
-                          value={savePresetName}
-                          onChange={setSavePresetName}
-                          placeholder="e.g. Mobile US, Desktop returning"
-                          autoComplete="off"
-                        />
-                        <Checkbox
-                          label="Include goal and variants (full test template)"
-                          checked={savePresetAsFullTemplate}
-                          onChange={setSavePresetAsFullTemplate}
-                          helpText="When checked, saves metric, statistical design, and variant config for reuse"
-                        />
-                      </BlockStack>
-                    </Modal.Section>
-                  </Modal>
+                      }}
+                      secondaryActions={[
+                        {
+                          content: 'Cancel',
+                          onAction: () => {
+                            setSavePresetModalOpen(false);
+                            setSavePresetAsFullTemplate(false);
+                          },
+                        },
+                      ]}
+                    >
+                      <Modal.Section>
+                        <BlockStack gap="300">
+                          <TextField
+                            label="Preset name"
+                            value={savePresetName}
+                            onChange={setSavePresetName}
+                            placeholder="e.g. Mobile US, Desktop returning"
+                            autoComplete="off"
+                          />
+                          <Checkbox
+                            label="Include goal and variants (full test template)"
+                            checked={savePresetAsFullTemplate}
+                            onChange={setSavePresetAsFullTemplate}
+                            helpText="When checked, saves metric, statistical design, and variant config for reuse"
+                          />
+                        </BlockStack>
+                      </Modal.Section>
+                    </Modal>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </Card>
-      </BlockStack>
+          </Card>
+        </BlockStack>
+      </ShippingStudio>
     );
   };
 
@@ -8947,6 +9239,10 @@ function TestWizard({
     return Number.isFinite(parsed) ? parsed : null;
   };
 
+  const isValidMatrixMoneyDraft = value => /^-?(?:\d+)?(?:\.\d{0,2})?$/.test(String(value || ''));
+  const isCompleteMatrixMoneyDraft = value =>
+    /^-?(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(String(value || ''));
+
   const formatMatrixInputNumber = value => {
     if (!Number.isFinite(value)) return '';
     const rounded = Math.round(value * 100) / 100;
@@ -9126,8 +9422,113 @@ function TestWizard({
     return '—';
   };
 
+  const getPerProductPriceRuleValue = cfg => {
+    const byProduct = cfg?.byProduct;
+    if (!byProduct || typeof byProduct !== 'object') return null;
+
+    const fixedPrices = [];
+    const amountDeltas = [];
+    const percentDeltas = [];
+    let editedRows = 0;
+    let editedProducts = 0;
+
+    const collectRule = row => {
+      if (!row || typeof row !== 'object') return false;
+      const mode = String(row.priceMode || (row.price !== undefined ? 'fixed' : '')).toLowerCase();
+
+      if (mode === 'fixed' && row.price !== null && row.price !== undefined && row.price !== '') {
+        const price = Number(row.price);
+        if (Number.isFinite(price)) {
+          fixedPrices.push(price);
+          editedRows += 1;
+          return true;
+        }
+      }
+
+      if (
+        mode === 'amount' &&
+        row.priceDelta !== null &&
+        row.priceDelta !== undefined &&
+        row.priceDelta !== ''
+      ) {
+        const delta = Number(row.priceDelta);
+        if (Number.isFinite(delta)) {
+          amountDeltas.push(delta);
+          editedRows += 1;
+          return true;
+        }
+      }
+
+      if (
+        mode === 'percent' &&
+        row.pricePercent !== null &&
+        row.pricePercent !== undefined &&
+        row.pricePercent !== ''
+      ) {
+        const percent = Number(row.pricePercent);
+        if (Number.isFinite(percent)) {
+          percentDeltas.push(percent);
+          editedRows += 1;
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    Object.values(byProduct).forEach(productEntry => {
+      if (!productEntry || typeof productEntry !== 'object') return;
+
+      let productHasRule = collectRule(productEntry);
+      const byVariant =
+        productEntry.byVariant && typeof productEntry.byVariant === 'object'
+          ? productEntry.byVariant
+          : {};
+
+      Object.values(byVariant).forEach(row => {
+        if (collectRule(row)) {
+          productHasRule = true;
+        }
+      });
+
+      if (productHasRule) {
+        editedProducts += 1;
+      }
+    });
+
+    if (editedRows === 0) return null;
+
+    const scope =
+      editedProducts > 1
+        ? `${editedRows} rows / ${editedProducts} products`
+        : `${editedRows} row${editedRows === 1 ? '' : 's'}`;
+    const formatMoney = value => `$${value.toFixed(2)}`;
+    const formatSignedMoney = value =>
+      value < 0 ? `−$${Math.abs(value).toFixed(2)}` : `+$${value.toFixed(2)}`;
+    const formatSignedPercent = value => (value >= 0 ? `−${value}%` : `+${Math.abs(value)}%`);
+    const formatRange = (values, formatter) => {
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      return Math.abs(max - min) < 0.001 ? formatter(min) : `${formatter(min)}–${formatter(max)}`;
+    };
+
+    if (fixedPrices.length === editedRows) {
+      return `${formatRange(fixedPrices, formatMoney)} across ${scope}`;
+    }
+    if (amountDeltas.length === editedRows) {
+      return `${formatRange(amountDeltas, formatSignedMoney)} across ${scope}`;
+    }
+    if (percentDeltas.length === editedRows) {
+      return `${formatRange(percentDeltas, formatSignedPercent)} across ${scope}`;
+    }
+    return `Mixed rules across ${scope}`;
+  };
+
   const getPriceValueCell = variant => {
     const cfg = variant.config || {};
+    const perProductRuleValue = getPerProductPriceRuleValue(cfg);
+    if (perProductRuleValue) return perProductRuleValue;
+
     const m = (cfg.priceMode || 'fixed').toLowerCase();
     if (m === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
       const n = Number(cfg.price);
@@ -9267,6 +9668,33 @@ function TestWizard({
       const isFixed = mode === 'fixed';
       const isAmount = mode === 'amount';
       const isPercent = mode === 'percent';
+      const matrixBulkState = priceMatrixBulkByVariant[index] || {};
+      const priceMatrixBulkMode = matrixBulkState.mode || 'amount';
+      const priceMatrixBulkValue = matrixBulkState.value || '';
+      const priceMatrixBulkSummary = matrixBulkState.summary || null;
+      const setScopedPriceMatrixBulkMode = value => {
+        setPriceMatrixBulkByVariant(prev => ({
+          ...prev,
+          [index]: { ...(prev[index] || {}), mode: value },
+        }));
+      };
+      const setScopedPriceMatrixBulkValue = value => {
+        setPriceMatrixBulkByVariant(prev => ({
+          ...prev,
+          [index]: { ...(prev[index] || {}), value },
+        }));
+      };
+      const setScopedPriceMatrixBulkSummary = summary => {
+        setPriceMatrixBulkByVariant(prev => ({
+          ...prev,
+          [index]: { ...(prev[index] || {}), summary },
+        }));
+      };
+      const isControlPriceVariant =
+        index === 0 ||
+        String(variant?.name || '')
+          .trim()
+          .toLowerCase() === 'control';
       const matrixBulkParsedValue = Number(priceMatrixBulkValue);
       const matrixBulkValueValid =
         String(priceMatrixBulkValue).trim() !== '' && Number.isFinite(matrixBulkParsedValue);
@@ -9494,182 +9922,189 @@ function TestWizard({
                   {!isProductTargetScope && allProductsMatrixError && (
                     <div className={styles.priceMatrixScopeError}>{allProductsMatrixError}</div>
                   )}
-                  <div className={styles.priceMatrixBulkBar}>
-                    <InlineStack gap="200" blockAlign="center" wrap>
-                      <Text as="span" variant="bodySm" fontWeight="semibold">
-                        Bulk update
-                      </Text>
-                      <Select
-                        label="Bulk mode"
-                        labelHidden
-                        options={[
-                          { label: 'Amount (+/-)', value: 'amount' },
-                          { label: 'Percent (+/-)', value: 'percent' },
-                        ]}
-                        value={priceMatrixBulkMode}
-                        onChange={setPriceMatrixBulkMode}
-                      />
-                      <div className={styles.priceMatrixBulkValueField}>
-                        <TextField
-                          label="Bulk value"
-                          labelHidden
-                          type="number"
-                          value={priceMatrixBulkValue}
-                          onChange={setPriceMatrixBulkValue}
-                          placeholder={
-                            priceMatrixBulkMode === 'amount' ? 'e.g. -5 or +2' : 'e.g. -10 or +8'
-                          }
-                          suffix={priceMatrixBulkMode === 'percent' ? '%' : ''}
-                          autoComplete="off"
-                        />
-                      </div>
-                      <Button
-                        size="slim"
-                        disabled={!matrixBulkValueValid}
-                        onClick={() => {
-                          if (!matrixBulkValueValid) return;
-                          const applicableProductIds = [];
-                          matrixTableProductIds.forEach(productId => {
-                            const matrixProduct = priceMatrixProductsById[productId];
-                            const variantsForProduct = Array.isArray(matrixProduct?.variants)
-                              ? matrixProduct.variants
-                              : [];
-                            const countForProduct = variantsForProduct.filter(productVariant => {
-                              const variantKey = normalizeNativeVariantIdInput(productVariant?.id);
-                              const currentSelling = getMatrixCurrentSellingPrice(productVariant);
-                              return Boolean(variantKey) && currentSelling !== null;
-                            }).length;
-                            if (countForProduct > 0) {
-                              applicableProductIds.push(productId);
-                            }
-                          });
-                          if (applicableProductIds.length === 0) {
-                            setPriceMatrixBulkSummary(null);
-                            setPriceMatrixActionToast({
-                              message:
-                                'No rows available for bulk update yet. Wait for products to load.',
-                              type: 'info',
-                            });
-                            return;
-                          }
-                          const bulkRowsByProduct = {};
-                          let totalSellingDelta = 0;
-                          let appliedRowCount = 0;
-                          applicableProductIds.forEach(productId => {
-                            const matrixProduct = priceMatrixProductsById[productId];
-                            const variantsForProduct = Array.isArray(matrixProduct?.variants)
-                              ? matrixProduct.variants
-                              : [];
-                            const computedRows = [];
-                            variantsForProduct.forEach(productVariant => {
-                              const variantKey = normalizeNativeVariantIdInput(productVariant?.id);
-                              if (!variantKey) return;
-                              const currentSelling = getMatrixCurrentSellingPrice(productVariant);
-                              if (currentSelling === null) return;
-                              const nextSelling =
-                                priceMatrixBulkMode === 'percent'
-                                  ? currentSelling * (1 + matrixBulkParsedValue / 100)
-                                  : currentSelling + matrixBulkParsedValue;
-                              const roundedSelling = Math.max(
-                                0,
-                                Math.round(nextSelling * 100) / 100
-                              );
-                              computedRows.push({
-                                variantKey,
-                                roundedSelling,
-                              });
-                              totalSellingDelta += roundedSelling - currentSelling;
-                              appliedRowCount += 1;
-                            });
-                            if (computedRows.length > 0) {
-                              bulkRowsByProduct[productId] = computedRows;
-                            }
-                          });
-                          const bulkTargetProductIds = Object.keys(bulkRowsByProduct);
-                          if (bulkTargetProductIds.length === 0 || appliedRowCount === 0) {
-                            setPriceMatrixBulkSummary(null);
-                            setPriceMatrixActionToast({
-                              message:
-                                'No valid product prices found for bulk update. Check loaded rows.',
-                              type: 'info',
-                            });
-                            return;
-                          }
-                          setPriceMatrixUndoByScope(prevUndo => {
-                            const nextUndo = { ...prevUndo };
-                            const currentByProduct = variant.config?.byProduct || {};
-                            bulkTargetProductIds.forEach(productId => {
-                              const undoKey = `${index}::${productId}`;
-                              const hasProductOverride = Object.prototype.hasOwnProperty.call(
-                                currentByProduct,
-                                productId
-                              );
-                              nextUndo[undoKey] = {
-                                hadOverride: hasProductOverride,
-                                value: hasProductOverride
-                                  ? cloneMatrixUndoValue(currentByProduct[productId])
-                                  : null,
-                              };
-                            });
-                            return nextUndo;
-                          });
-                          setFormData(prev => {
-                            const next = [...(prev.variants || [])];
-                            const c = next[index]?.config || {};
-                            const byProduct = { ...(c.byProduct || {}) };
-                            bulkTargetProductIds.forEach(productId => {
-                              const computedRows = bulkRowsByProduct[productId];
-                              if (!Array.isArray(computedRows) || computedRows.length === 0) return;
-                              const productOver = {
-                                ...(byProduct[productId] || {}),
-                                byVariant: { ...(byProduct[productId]?.byVariant || {}) },
-                              };
-                              computedRows.forEach(({ variantKey, roundedSelling }) => {
-                                const rowOver = {
-                                  ...(productOver.byVariant?.[variantKey] || {}),
-                                  priceMode: 'fixed',
-                                  priceBase: 'price',
-                                  price: roundedSelling,
-                                };
-                                productOver.byVariant[variantKey] = rowOver;
-                              });
-                              byProduct[productId] = productOver;
-                            });
-                            next[index] = { ...next[index], config: { ...c, byProduct } };
-                            return { ...prev, variants: next };
-                          });
-                          const avgSellingDelta =
-                            Math.round((totalSellingDelta / appliedRowCount) * 100) / 100;
-                          setPriceMatrixBulkSummary({
-                            rows: appliedRowCount,
-                            products: bulkTargetProductIds.length,
-                            avgSellingDelta,
-                            mode: priceMatrixBulkMode,
-                            value: matrixBulkParsedValue,
-                            updatedAt: Date.now(),
-                          });
-                          setPriceMatrixActionToast({
-                            message: `Applied bulk ${priceMatrixBulkMode === 'percent' ? `${matrixBulkParsedValue}%` : `$${matrixBulkParsedValue.toFixed(2)}`} to ${appliedRowCount} row${appliedRowCount === 1 ? '' : 's'} across ${bulkTargetProductIds.length} product${bulkTargetProductIds.length === 1 ? '' : 's'}.`,
-                            type: 'success',
-                          });
-                        }}
-                      >
-                        Apply to all rows
-                      </Button>
-                    </InlineStack>
-                    {priceMatrixBulkSummary && (
-                      <div className={styles.priceMatrixBulkSummary}>
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          Last bulk update: {priceMatrixBulkSummary.rows} row
-                          {priceMatrixBulkSummary.rows === 1 ? '' : 's'} across{' '}
-                          {priceMatrixBulkSummary.products} product
-                          {priceMatrixBulkSummary.products === 1 ? '' : 's'} · Avg selling change{' '}
-                          {priceMatrixBulkSummary.avgSellingDelta >= 0 ? '+' : '-'}$
-                          {Math.abs(priceMatrixBulkSummary.avgSellingDelta).toFixed(2)} per row
+                  {!isControlPriceVariant && (
+                    <div className={styles.priceMatrixBulkBar}>
+                      <InlineStack gap="200" blockAlign="center" wrap>
+                        <Text as="span" variant="bodySm" fontWeight="semibold">
+                          Bulk update
                         </Text>
-                      </div>
-                    )}
-                  </div>
+                        <Select
+                          label="Bulk mode"
+                          labelHidden
+                          options={[
+                            { label: 'Amount (+/-)', value: 'amount' },
+                            { label: 'Percent (+/-)', value: 'percent' },
+                          ]}
+                          value={priceMatrixBulkMode}
+                          onChange={setScopedPriceMatrixBulkMode}
+                        />
+                        <div className={styles.priceMatrixBulkValueField}>
+                          <TextField
+                            label="Bulk value"
+                            labelHidden
+                            type="number"
+                            value={priceMatrixBulkValue}
+                            onChange={setScopedPriceMatrixBulkValue}
+                            placeholder={
+                              priceMatrixBulkMode === 'amount' ? 'e.g. -5 or +2' : 'e.g. -10 or +8'
+                            }
+                            suffix={priceMatrixBulkMode === 'percent' ? '%' : ''}
+                            autoComplete="off"
+                          />
+                        </div>
+                        <Button
+                          size="slim"
+                          disabled={!matrixBulkValueValid}
+                          onClick={() => {
+                            if (!matrixBulkValueValid) return;
+                            const applicableProductIds = [];
+                            matrixTableProductIds.forEach(productId => {
+                              const matrixProduct = priceMatrixProductsById[productId];
+                              const variantsForProduct = Array.isArray(matrixProduct?.variants)
+                                ? matrixProduct.variants
+                                : [];
+                              const countForProduct = variantsForProduct.filter(productVariant => {
+                                const variantKey = normalizeNativeVariantIdInput(
+                                  productVariant?.id
+                                );
+                                const currentSelling = getMatrixCurrentSellingPrice(productVariant);
+                                return Boolean(variantKey) && currentSelling !== null;
+                              }).length;
+                              if (countForProduct > 0) {
+                                applicableProductIds.push(productId);
+                              }
+                            });
+                            if (applicableProductIds.length === 0) {
+                              setScopedPriceMatrixBulkSummary(null);
+                              setPriceMatrixActionToast({
+                                message:
+                                  'No rows available for bulk update yet. Wait for products to load.',
+                                type: 'info',
+                              });
+                              return;
+                            }
+                            const bulkRowsByProduct = {};
+                            let totalSellingDelta = 0;
+                            let appliedRowCount = 0;
+                            applicableProductIds.forEach(productId => {
+                              const matrixProduct = priceMatrixProductsById[productId];
+                              const variantsForProduct = Array.isArray(matrixProduct?.variants)
+                                ? matrixProduct.variants
+                                : [];
+                              const computedRows = [];
+                              variantsForProduct.forEach(productVariant => {
+                                const variantKey = normalizeNativeVariantIdInput(
+                                  productVariant?.id
+                                );
+                                if (!variantKey) return;
+                                const currentSelling = getMatrixCurrentSellingPrice(productVariant);
+                                if (currentSelling === null) return;
+                                const nextSelling =
+                                  priceMatrixBulkMode === 'percent'
+                                    ? currentSelling * (1 + matrixBulkParsedValue / 100)
+                                    : currentSelling + matrixBulkParsedValue;
+                                const roundedSelling = Math.max(
+                                  0,
+                                  Math.round(nextSelling * 100) / 100
+                                );
+                                computedRows.push({
+                                  variantKey,
+                                  roundedSelling,
+                                });
+                                totalSellingDelta += roundedSelling - currentSelling;
+                                appliedRowCount += 1;
+                              });
+                              if (computedRows.length > 0) {
+                                bulkRowsByProduct[productId] = computedRows;
+                              }
+                            });
+                            const bulkTargetProductIds = Object.keys(bulkRowsByProduct);
+                            if (bulkTargetProductIds.length === 0 || appliedRowCount === 0) {
+                              setScopedPriceMatrixBulkSummary(null);
+                              setPriceMatrixActionToast({
+                                message:
+                                  'No valid product prices found for bulk update. Check loaded rows.',
+                                type: 'info',
+                              });
+                              return;
+                            }
+                            setPriceMatrixUndoByScope(prevUndo => {
+                              const nextUndo = { ...prevUndo };
+                              const currentByProduct = variant.config?.byProduct || {};
+                              bulkTargetProductIds.forEach(productId => {
+                                const undoKey = `${index}::${productId}`;
+                                const hasProductOverride = Object.prototype.hasOwnProperty.call(
+                                  currentByProduct,
+                                  productId
+                                );
+                                nextUndo[undoKey] = {
+                                  hadOverride: hasProductOverride,
+                                  value: hasProductOverride
+                                    ? cloneMatrixUndoValue(currentByProduct[productId])
+                                    : null,
+                                };
+                              });
+                              return nextUndo;
+                            });
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              const c = next[index]?.config || {};
+                              const byProduct = { ...(c.byProduct || {}) };
+                              bulkTargetProductIds.forEach(productId => {
+                                const computedRows = bulkRowsByProduct[productId];
+                                if (!Array.isArray(computedRows) || computedRows.length === 0)
+                                  return;
+                                const productOver = {
+                                  ...(byProduct[productId] || {}),
+                                  byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                                };
+                                computedRows.forEach(({ variantKey, roundedSelling }) => {
+                                  const rowOver = {
+                                    ...(productOver.byVariant?.[variantKey] || {}),
+                                    priceMode: 'fixed',
+                                    priceBase: 'price',
+                                    price: roundedSelling,
+                                  };
+                                  productOver.byVariant[variantKey] = rowOver;
+                                });
+                                byProduct[productId] = productOver;
+                              });
+                              next[index] = { ...next[index], config: { ...c, byProduct } };
+                              return { ...prev, variants: next };
+                            });
+                            const avgSellingDelta =
+                              Math.round((totalSellingDelta / appliedRowCount) * 100) / 100;
+                            setScopedPriceMatrixBulkSummary({
+                              rows: appliedRowCount,
+                              products: bulkTargetProductIds.length,
+                              avgSellingDelta,
+                              mode: priceMatrixBulkMode,
+                              value: matrixBulkParsedValue,
+                              updatedAt: Date.now(),
+                            });
+                            setPriceMatrixActionToast({
+                              message: `Applied bulk ${priceMatrixBulkMode === 'percent' ? `${matrixBulkParsedValue}%` : `$${matrixBulkParsedValue.toFixed(2)}`} to ${appliedRowCount} row${appliedRowCount === 1 ? '' : 's'} across ${bulkTargetProductIds.length} product${bulkTargetProductIds.length === 1 ? '' : 's'}.`,
+                              type: 'success',
+                            });
+                          }}
+                        >
+                          Apply to all rows
+                        </Button>
+                      </InlineStack>
+                      {priceMatrixBulkSummary && (
+                        <div className={styles.priceMatrixBulkSummary}>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            Last bulk update: {priceMatrixBulkSummary.rows} row
+                            {priceMatrixBulkSummary.rows === 1 ? '' : 's'} across{' '}
+                            {priceMatrixBulkSummary.products} product
+                            {priceMatrixBulkSummary.products === 1 ? '' : 's'} · Avg selling change{' '}
+                            {priceMatrixBulkSummary.avgSellingDelta >= 0 ? '+' : '-'}$
+                            {Math.abs(priceMatrixBulkSummary.avgSellingDelta).toFixed(2)} per row
+                          </Text>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className={styles.priceMatrixWrap}>
                     <table className={styles.priceMatrixTable}>
                       <thead>
@@ -9962,6 +10397,35 @@ function TestWizard({
                               Number.isFinite(currentSelling) && Number.isFinite(newSellingNumeric)
                                 ? Math.round((newSellingNumeric - currentSelling) * 100) / 100
                                 : null;
+                            const rowInputKey = `${index}::${productId}::${resolvedVariantId}`;
+                            const sellingDeltaDraftKey = `${rowInputKey}::sellingDelta`;
+                            const newSellingDraftKey = `${rowInputKey}::newSelling`;
+                            const sellingDeltaInputValue = Object.prototype.hasOwnProperty.call(
+                              priceMatrixDraftValues,
+                              sellingDeltaDraftKey
+                            )
+                              ? priceMatrixDraftValues[sellingDeltaDraftKey]
+                              : formatMatrixInputNumber(sellingDelta);
+                            const newSellingInputValue = Object.prototype.hasOwnProperty.call(
+                              priceMatrixDraftValues,
+                              newSellingDraftKey
+                            )
+                              ? priceMatrixDraftValues[newSellingDraftKey]
+                              : newSellingValue === null
+                                ? ''
+                                : String(newSellingValue);
+                            const setMatrixDraftValue = (draftKey, value) => {
+                              setPriceMatrixDraftValues(prev => ({ ...prev, [draftKey]: value }));
+                            };
+                            const clearMatrixDraftValue = draftKey => {
+                              setPriceMatrixDraftValues(prev => {
+                                if (!Object.prototype.hasOwnProperty.call(prev, draftKey))
+                                  return prev;
+                                const next = { ...prev };
+                                delete next[draftKey];
+                                return next;
+                              });
+                            };
 
                             const updateRowOverride = (field, value) => {
                               setFormData(prev => {
@@ -10132,16 +10596,19 @@ function TestWizard({
                                   <TextField
                                     label="Selling change"
                                     labelHidden
-                                    type="number"
-                                    value={formatMatrixInputNumber(sellingDelta)}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={sellingDeltaInputValue}
                                     onChange={val => {
                                       if (isPlaceholderRow) return;
-                                      const parsedDelta =
-                                        val === '' ? null : Number.parseFloat(val);
-                                      if (parsedDelta === null) {
+                                      if (!isValidMatrixMoneyDraft(val)) return;
+                                      setMatrixDraftValue(sellingDeltaDraftKey, val);
+                                      if (val === '') {
                                         updateRowOverride('price', null);
                                         return;
                                       }
+                                      if (!isCompleteMatrixMoneyDraft(val)) return;
+                                      const parsedDelta = Number(val);
                                       if (
                                         !Number.isFinite(parsedDelta) ||
                                         !Number.isFinite(currentSelling)
@@ -10154,6 +10621,7 @@ function TestWizard({
                                       );
                                       updateRowOverride('price', nextValue);
                                     }}
+                                    onBlur={() => clearMatrixDraftValue(sellingDeltaDraftKey)}
                                     placeholder="+/-"
                                     prefix="$"
                                     autoComplete="off"
@@ -10168,16 +10636,24 @@ function TestWizard({
                                   <TextField
                                     label="New selling"
                                     labelHidden
-                                    type="number"
-                                    value={newSellingValue === null ? '' : String(newSellingValue)}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={newSellingInputValue}
                                     onChange={val => {
                                       if (isPlaceholderRow) return;
-                                      const parsed = val === '' ? null : Number.parseFloat(val);
-                                      updateRowOverride(
-                                        'price',
-                                        parsed === null || Number.isFinite(parsed) ? parsed : null
-                                      );
+                                      if (!isValidMatrixMoneyDraft(val)) return;
+                                      setMatrixDraftValue(newSellingDraftKey, val);
+                                      if (val === '') {
+                                        updateRowOverride('price', null);
+                                        return;
+                                      }
+                                      if (!isCompleteMatrixMoneyDraft(val)) return;
+                                      const parsed = Number(val);
+                                      if (Number.isFinite(parsed)) {
+                                        updateRowOverride('price', parsed);
+                                      }
                                     }}
+                                    onBlur={() => clearMatrixDraftValue(newSellingDraftKey)}
                                     placeholder="Required to apply"
                                     prefix="$"
                                     autoComplete="off"
@@ -10557,13 +11033,18 @@ function TestWizard({
                 priceSurfaceShopPickRef.current = handler;
               }}
               onTestMappingsChange={mappings =>
-                setFormData(prev => ({
-                  ...prev,
-                  segments: {
-                    ...prev.segments,
-                    price_surface_mappings: mappings,
-                  },
-                }))
+                setFormData(prev => {
+                  const next = {
+                    ...prev,
+                    segments: {
+                      ...prev.segments,
+                      price_surface_mappings: mappings,
+                    },
+                  };
+                  // Keep submit ref in sync for Save clicks that happen immediately after mapping edits.
+                  formDataRef.current = next;
+                  return next;
+                })
               }
               onStatusChange={handlePriceSurfaceRegistryStatusChange}
               expandRequestToken={priceSurfacePanelExpandToken}
@@ -11092,254 +11573,4263 @@ function TestWizard({
       { label: 'Force free shipping', value: 'free_shipping' },
       { label: 'Carrier quote adapter', value: 'carrier_quote' },
     ];
+    const deliveryActionOptions = [
+      {
+        label: 'Hide methods',
+        value: 'hide',
+        description: 'Remove the matched delivery options from checkout.',
+      },
+      {
+        label: 'Rename methods',
+        value: 'rename',
+        description: 'Keep the option but change the shopper-facing label.',
+      },
+      {
+        label: 'Reorder methods',
+        value: 'reorder',
+        description: 'Move matched methods into the order entered here.',
+      },
+    ];
+    const quoteProviderOptions = [
+      {
+        value: '',
+        label: 'Choose later',
+        description: 'Keep the adapter draft open until a quote source is ready.',
+      },
+      {
+        value: 'static_rate',
+        label: 'Static rate',
+        description: 'Return one configured provider quote for this variant.',
+      },
+      {
+        value: 'country_table',
+        label: 'Country table',
+        description: 'Return destination-aware rates from a country table.',
+      },
+    ];
+    const shippingStrategyChoices = [
+      {
+        key: 'control',
+        group: 'baseline',
+        label: 'Control baseline',
+        description: 'No shipping change for the baseline variant.',
+        value: 'control',
+      },
+      {
+        key: 'flat_rate',
+        group: 'rates',
+        label: 'Flat shipping rate',
+        description: 'Set a controlled shipping amount.',
+        value: 'flat_rate',
+      },
+      {
+        key: 'threshold_free_shipping',
+        group: 'discounts',
+        label: 'Free over threshold',
+        description: 'Make shipping free after a cart threshold.',
+        value: 'threshold_free_shipping',
+      },
+      {
+        key: 'discount_percentage',
+        group: 'discounts',
+        label: 'Percent off shipping',
+        description: 'Discount delivery cost by percentage.',
+        value: 'discount_percentage',
+      },
+      {
+        key: 'discount_fixed',
+        group: 'discounts',
+        label: 'Fixed shipping discount',
+        description: 'Discount delivery cost by a fixed amount.',
+        value: 'discount_fixed',
+      },
+      {
+        key: 'free_shipping',
+        group: 'discounts',
+        label: 'Force free shipping',
+        description: 'Make matching delivery groups free.',
+        value: 'free_shipping',
+      },
+      {
+        key: 'carrier_quote',
+        group: 'advanced',
+        label: 'Carrier quote adapter',
+        description: 'Return provider-backed calculated rates.',
+        value: 'carrier_quote',
+      },
+      {
+        key: 'delivery_option',
+        group: 'advanced',
+        label: 'Delivery option experience',
+        description: 'Hide, rename, or reorder existing methods.',
+        value: 'delivery_option',
+      },
+    ];
+    const shippingStrategyGroups = [
+      { key: 'baseline', label: 'Baseline' },
+      { key: 'rates', label: 'Rate changes' },
+      { key: 'discounts', label: 'Discounts and free shipping' },
+      { key: 'advanced', label: 'Advanced delivery options' },
+    ];
 
     const updateShippingVariantConfig = (index, patch) => {
-      const next = [...(formData.variants || [])];
-      const current = next[index] || {};
-      next[index] = {
-        ...current,
-        config: {
-          ...(current.config || {}),
-          ...patch,
-        },
-      };
-      setFormData({ ...formData, variants: next });
+      setIsDirty(true);
+      setFormData(currentFormData => {
+        const next = [...(currentFormData.variants || [])];
+        const current = next[index] || {};
+        const currentConfig = current.config || {};
+        const patchMetadata =
+          patch.metadata && typeof patch.metadata === 'object' ? patch.metadata : {};
+        next[index] = {
+          ...current,
+          config: {
+            ...currentConfig,
+            ...patch,
+            metadata: {
+              ...((currentConfig && currentConfig.metadata) || {}),
+              ...patchMetadata,
+              shipping_config_revision: new Date().toISOString(),
+            },
+          },
+        };
+        return { ...currentFormData, variants: next };
+      });
     };
     const updateShippingMetadata = (index, patch) => {
-      const next = [...(formData.variants || [])];
-      const current = next[index] || {};
-      next[index] = {
-        ...current,
-        config: {
-          ...(current.config || {}),
-          metadata: {
-            ...((current.config && current.config.metadata) || {}),
-            ...patch,
+      setIsDirty(true);
+      setFormData(currentFormData => {
+        const next = [...(currentFormData.variants || [])];
+        const current = next[index] || {};
+        next[index] = {
+          ...current,
+          config: {
+            ...(current.config || {}),
+            metadata: {
+              ...((current.config && current.config.metadata) || {}),
+              ...patch,
+              shipping_config_revision: new Date().toISOString(),
+            },
           },
-        },
-      };
-      setFormData({ ...formData, variants: next });
+        };
+        return { ...currentFormData, variants: next };
+      });
     };
 
     const getShippingNumberValue = value =>
       value === null || value === undefined || value === '' ? '' : String(value);
+    const SHIPPING_CURRENCY_OPTIONS = [
+      ['USD', 'US Dollar'],
+      ['EUR', 'Euro'],
+      ['GBP', 'British Pound'],
+      ['CAD', 'Canadian Dollar'],
+      ['AUD', 'Australian Dollar'],
+      ['NZD', 'New Zealand Dollar'],
+      ['JPY', 'Japanese Yen'],
+      ['CNY', 'Chinese Yuan'],
+      ['HKD', 'Hong Kong Dollar'],
+      ['SGD', 'Singapore Dollar'],
+      ['INR', 'Indian Rupee'],
+      ['AED', 'UAE Dirham'],
+      ['SAR', 'Saudi Riyal'],
+      ['SEK', 'Swedish Krona'],
+      ['NOK', 'Norwegian Krone'],
+      ['DKK', 'Danish Krone'],
+      ['CHF', 'Swiss Franc'],
+      ['ZAR', 'South African Rand'],
+      ['BRL', 'Brazilian Real'],
+      ['MXN', 'Mexican Peso'],
+      ['PLN', 'Polish Zloty'],
+      ['CZK', 'Czech Koruna'],
+      ['HUF', 'Hungarian Forint'],
+      ['TRY', 'Turkish Lira'],
+      ['KRW', 'South Korean Won'],
+      ['THB', 'Thai Baht'],
+      ['MYR', 'Malaysian Ringgit'],
+      ['IDR', 'Indonesian Rupiah'],
+      ['PHP', 'Philippine Peso'],
+      ['VND', 'Vietnamese Dong'],
+    ];
+    const toShippingRateNumber = value => {
+      if (value === null || value === undefined || value === '') return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
+    const getConfiguredShippingRates = (cfg, fallbackCurrency = 'USD') => {
+      if (!Array.isArray(cfg?.rates)) return [];
+      const rawRates =
+        cfg.rates.length === 1 &&
+        String(cfg.rates[0]?.service_code || cfg.rates[0]?.serviceCode || cfg.rates[0]?.code || '')
+          .trim()
+          .toLowerCase() === 'ripx_flat_rate'
+          ? []
+          : cfg.rates;
+      return rawRates.map((rate, index) => {
+        const raw = rate && typeof rate === 'object' ? rate : {};
+        const parsedAmount = toShippingRateNumber(raw.amount ?? raw.price ?? raw.rate);
+        const parsedPriority = Number.parseInt(String(raw.priority ?? index + 1), 10);
+        const parsedSortOrder = Number.parseInt(
+          String(raw.sort_order ?? raw.sortOrder ?? parsedPriority ?? index + 1),
+          10
+        );
+        return {
+          ...raw,
+          name: String(raw.name || raw.service_name || '').trim(),
+          description: String(raw.description || '').trim(),
+          delivery_promise:
+            raw.delivery_promise && typeof raw.delivery_promise === 'object'
+              ? raw.delivery_promise
+              : raw.deliveryPromise && typeof raw.deliveryPromise === 'object'
+                ? raw.deliveryPromise
+                : { mode: 'none', preset: 'none' },
+          amount: parsedAmount,
+          currency: String(raw.currency || fallbackCurrency || 'USD')
+            .trim()
+            .toUpperCase(),
+          priority: Number.isFinite(parsedPriority) ? parsedPriority : index + 1,
+          sort_order: Number.isFinite(parsedSortOrder)
+            ? parsedSortOrder
+            : Number.isFinite(parsedPriority)
+              ? parsedPriority
+              : index + 1,
+        };
+      });
+    };
+    const shippingVariants = formData.variants || [];
+    const activeShippingVariantIndex =
+      shippingVariants.length > 0
+        ? Math.min(shippingVariantTabIndex, shippingVariants.length - 1)
+        : 0;
+    const activeShippingVariant = shippingVariants[activeShippingVariantIndex] || null;
+    const activeShippingConfig = activeShippingVariant?.config || {};
+    const isActiveControlLike =
+      activeShippingVariantIndex === 0 ||
+      /^control(\s|$)/i.test(String(activeShippingVariant?.name || ''));
 
-    return (
-      <BlockStack gap="400">
-        <Banner tone="warning" title="Shipping execution depends on Shopify capabilities">
-          <Text as="p" variant="bodySm">
-            RipX assigns variants and tracks outcomes. Strategy execution depends on store plan and
-            configured Shopify adapters (CarrierService / Discount Function). Use diagnostics
-            endpoints to confirm auto-execution readiness for this shop.{' '}
-            <a href={`${ROUTES.DOCS}#tests`} target="_blank" rel="noopener noreferrer">
-              Test types &amp; docs →
-            </a>
-          </Text>
-        </Banner>
-        <Text variant="bodyMd" color="subdued" as="p">
-          Configure shipping strategy per variant. Keep Control unchanged and set actionable rules
-          on test variants.
-        </Text>
-        {(formData.variants || []).map((variant, index) => {
-          const cfg = variant?.config || {};
-          const strategy = String(cfg.strategy || cfg.shipping_strategy || '').trim() || 'control';
-          const isControlLike = index === 0 || /^control(\s|$)/i.test(String(variant?.name || ''));
-          const amountValue =
-            cfg.amount !== undefined && cfg.amount !== null ? cfg.amount : (cfg.rate ?? '');
-          const thresholdValue =
-            cfg.threshold_amount !== undefined && cfg.threshold_amount !== null
-              ? cfg.threshold_amount
-              : (cfg.free_shipping_threshold ?? '');
-          const percentOffValue =
-            cfg.percent_off !== undefined && cfg.percent_off !== null
-              ? cfg.percent_off
-              : (cfg.discount_percent ?? '');
-          const metadata = cfg.metadata && typeof cfg.metadata === 'object' ? cfg.metadata : {};
-          const quoteProvider = String(metadata.quote_provider || '').trim();
-          const zoneCountriesValue = Array.isArray(cfg.zone_countries)
-            ? cfg.zone_countries.join(', ')
-            : String(cfg.zone_countries || '');
-          const strategyGuidance =
-            strategy === 'flat_rate'
-              ? 'Best for simple fixed-price shipping tests. Watch for multi-profile carts where combined rates can be confusing.'
-              : strategy === 'threshold_free_shipping'
-                ? 'Use when all qualifying delivery options should become free after the cart threshold is reached.'
-                : strategy === 'discount_percentage'
-                  ? 'Use for broad shipping discounts that should scale with the selected delivery option.'
-                  : strategy === 'discount_fixed'
-                    ? 'Use when you want a capped dollar-off shipping incentive regardless of the chosen rate.'
-                    : strategy === 'carrier_quote'
-                      ? 'Use for provider-backed quotes or Delivery Customization flows. Configure a quote provider before applying CarrierService automation.'
-                      : 'Keep control variants unchanged and scope actionable variants carefully.';
-
+    const getShippingStrategy = cfg => inferShippingStrategy(cfg);
+    const getShippingStrategyLabel = strategy =>
+      strategyOptions.find(option => option.value === strategy)?.label || 'Control';
+    const hasShippingNumericValue = value =>
+      value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+    function formatShippingMoney(value) {
+      return hasShippingNumericValue(value) ? `$${Number(value).toFixed(2)}` : 'Not set';
+    }
+    const normalizeShippingDeliveryPromise = promise => {
+      const normalized = normalizeSharedShippingDeliveryPromise(promise);
+      if (normalized.mode === 'custom') {
+        return { ...normalized, preset: 'custom' };
+      }
+      const presetValue = ['next_business_day', '2_3_business_days', '5_7_business_days'].includes(
+        normalized.preset
+      )
+        ? normalized.preset
+        : 'none';
+      return { mode: presetValue === 'none' ? 'none' : 'preset', preset: presetValue };
+    };
+    const getShippingDeliveryPromiseValue = promise => {
+      const normalized = normalizeShippingDeliveryPromise(promise);
+      return normalized.mode === 'custom' ? 'custom' : normalized.preset || 'none';
+    };
+    const getShippingDeliveryPromiseLabel = promise => {
+      const normalized = normalizeShippingDeliveryPromise(promise);
+      if (normalized.mode === 'custom') {
+        if (normalized.min_delivery_date || normalized.max_delivery_date) {
+          return `${normalized.min_delivery_date || 'Custom date'} to ${
+            normalized.max_delivery_date || normalized.min_delivery_date
+          }`;
+        }
+        return 'Custom date range';
+      }
+      const value = getShippingDeliveryPromiseValue(normalized);
+      return (
+        SHIPPING_DELIVERY_PROMISE_OPTIONS.find(option => option.value === value)?.label ||
+        'No delivery promise'
+      );
+    };
+    const buildShippingDeliveryPromisePatch = value => {
+      const normalized = String(value || 'none').trim();
+      if (normalized === 'custom') {
+        return { mode: 'custom', preset: 'custom', min_delivery_date: '', max_delivery_date: '' };
+      }
+      if (normalized === 'none') {
+        return { mode: 'none', preset: 'none' };
+      }
+      return { mode: 'preset', preset: normalized };
+    };
+    const getShippingReadiness = (variant, index) => getSharedShippingReadiness(variant, index);
+    const getShippingVariantSummary = (variant, index) =>
+      getSharedShippingVariantSummary(variant, index, formatShippingMoney);
+    const activeStrategy = getShippingStrategy(activeShippingConfig);
+    const activeReadiness = activeShippingVariant
+      ? getShippingReadiness(activeShippingVariant, activeShippingVariantIndex)
+      : null;
+    const amountValue =
+      activeShippingConfig.amount !== undefined && activeShippingConfig.amount !== null
+        ? activeShippingConfig.amount
+        : (activeShippingConfig.rate ?? '');
+    const activeConfiguredRates = getConfiguredShippingRates(
+      activeShippingConfig,
+      activeShippingConfig.currency || 'USD'
+    );
+    const hasSingleSimpleConfiguredRate =
+      activeConfiguredRates.length === 1 &&
+      ['none', ''].includes(
+        String(activeConfiguredRates[0]?.condition_type || '')
+          .trim()
+          .toLowerCase()
+      ) &&
+      !hasShippingNumericValue(activeConfiguredRates[0]?.cart_total_min) &&
+      !hasShippingNumericValue(activeConfiguredRates[0]?.cart_total_max) &&
+      !hasShippingNumericValue(activeConfiguredRates[0]?.weight_min) &&
+      !hasShippingNumericValue(activeConfiguredRates[0]?.weight_max) &&
+      (!Array.isArray(activeConfiguredRates[0]?.countries) ||
+        activeConfiguredRates[0].countries.length === 0);
+    const updateFlatShippingAmount = value => {
+      const nextAmount = value === '' ? null : Number(value);
+      const patch = { amount: nextAmount };
+      const selectedReplacementNames = new Set(
+        normalizeCheckoutListInput(
+          activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+        ).map(name => name.toLowerCase())
+      );
+      const isReplaceExistingMode =
+        String(
+          activeShippingConfig.shipping_display_mode ||
+            activeShippingConfig.shippingDisplayMode ||
+            activeShippingConfig.display_mode ||
+            ''
+        )
+          .trim()
+          .toLowerCase() === 'replace_existing_methods' ||
+        activeShippingConfig.replace_existing_rates === true ||
+        activeShippingConfig.replaceExistingRates === true;
+      if (isReplaceExistingMode && activeConfiguredRates.length > 0) {
+        let updatedLinkedRateCount = 0;
+        patch.rates = activeConfiguredRates.map((rate, index) => {
+          const sourceName = String(
+            rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
+          )
+            .trim()
+            .toLowerCase();
+          const visibleName = String(rate?.name || rate?.service_name || '')
+            .trim()
+            .toLowerCase();
+          const isLinkedReplacement =
+            selectedReplacementNames.size === 0 ||
+            selectedReplacementNames.has(sourceName) ||
+            selectedReplacementNames.has(visibleName) ||
+            (activeConfiguredRates.length === 1 && index === 0);
+          if (!isLinkedReplacement) {
+            return rate;
+          }
+          updatedLinkedRateCount += 1;
+          return {
+            ...rate,
+            amount: nextAmount,
+            currency: String(rate?.currency || activeShippingConfig.currency || 'USD')
+              .trim()
+              .toUpperCase(),
+          };
+        });
+        if (updatedLinkedRateCount === 0 && activeConfiguredRates[0]) {
+          patch.rates = activeConfiguredRates.map((rate, index) =>
+            index === 0
+              ? {
+                  ...rate,
+                  amount: nextAmount,
+                  currency: String(rate?.currency || activeShippingConfig.currency || 'USD')
+                    .trim()
+                    .toUpperCase(),
+                }
+              : rate
+          );
+        }
+      } else if (hasSingleSimpleConfiguredRate) {
+        patch.rates = [
+          {
+            ...activeConfiguredRates[0],
+            amount: nextAmount,
+            currency: String(
+              activeConfiguredRates[0]?.currency || activeShippingConfig.currency || 'USD'
+            )
+              .trim()
+              .toUpperCase(),
+          },
+        ];
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, patch);
+    };
+    const activeCheckoutDisplay =
+      activeShippingConfig.checkout_display &&
+      typeof activeShippingConfig.checkout_display === 'object'
+        ? activeShippingConfig.checkout_display
+        : activeShippingConfig.checkoutDisplay &&
+            typeof activeShippingConfig.checkoutDisplay === 'object'
+          ? activeShippingConfig.checkoutDisplay
+          : {};
+    const activeCheckoutDeliveryPromise = normalizeShippingDeliveryPromise(
+      activeCheckoutDisplay.delivery_promise || activeCheckoutDisplay.deliveryPromise
+    );
+    const isLinkedReplacementRate = (rate, index) => {
+      const selectedReplacementNames = new Set(
+        normalizeCheckoutListInput(
+          activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+        ).map(name => name.toLowerCase())
+      );
+      const sourceName = String(
+        rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
+      )
+        .trim()
+        .toLowerCase();
+      const visibleName = String(rate?.name || rate?.service_name || '')
+        .trim()
+        .toLowerCase();
+      return (
+        selectedReplacementNames.size === 0 ||
+        selectedReplacementNames.has(sourceName) ||
+        selectedReplacementNames.has(visibleName) ||
+        (activeConfiguredRates.length === 1 && index === 0)
+      );
+    };
+    const buildSyncedReplacementRatesPatch = ratePatch => {
+      const isReplaceExistingMode =
+        String(
+          activeShippingConfig.shipping_display_mode ||
+            activeShippingConfig.shippingDisplayMode ||
+            activeShippingConfig.display_mode ||
+            ''
+        )
+          .trim()
+          .toLowerCase() === 'replace_existing_methods' ||
+        activeShippingConfig.replace_existing_rates === true ||
+        activeShippingConfig.replaceExistingRates === true;
+      if (!isReplaceExistingMode || !ratePatch || Object.keys(ratePatch).length === 0) {
+        return null;
+      }
+      if (activeConfiguredRates.length === 0) {
+        return null;
+      }
+      let syncedCount = 0;
+      const nextRates = activeConfiguredRates.map((rate, index) => {
+        if (!isLinkedReplacementRate(rate, index)) {
+          return rate;
+        }
+        syncedCount += 1;
+        return {
+          ...rate,
+          ...ratePatch,
+        };
+      });
+      if (syncedCount > 0) {
+        return nextRates;
+      }
+      return activeConfiguredRates[0]
+        ? activeConfiguredRates.map((rate, index) =>
+            index === 0
+              ? {
+                  ...rate,
+                  ...ratePatch,
+                }
+              : rate
+          )
+        : null;
+    };
+    const updateShippingCheckoutDisplay = patch => {
+      const nextCheckoutDisplay = {
+        default_description: String(activeCheckoutDisplay.default_description || ''),
+        delivery_promise: activeCheckoutDeliveryPromise,
+        ...activeCheckoutDisplay,
+        ...patch,
+      };
+      const variantPatch = {
+        checkout_display: nextCheckoutDisplay,
+      };
+      const ratePatch = {};
+      if (Object.prototype.hasOwnProperty.call(patch || {}, 'default_description')) {
+        ratePatch.description = String(patch.default_description || '');
+      }
+      if (Object.prototype.hasOwnProperty.call(patch || {}, 'delivery_promise')) {
+        ratePatch.delivery_promise = normalizeShippingDeliveryPromise(patch.delivery_promise);
+      }
+      const syncedRates = buildSyncedReplacementRatesPatch(ratePatch);
+      if (syncedRates) {
+        variantPatch.rates = syncedRates;
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, variantPatch);
+    };
+    const activeConfiguredValidRates = activeConfiguredRates.filter(
+      rate => hasShippingNumericValue(rate.amount) && Number(rate.amount) >= 0
+    );
+    const activePrimaryRateAmount =
+      activeConfiguredValidRates.length > 0 ? activeConfiguredValidRates[0].amount : amountValue;
+    const thresholdValue =
+      activeShippingConfig.threshold_amount !== undefined &&
+      activeShippingConfig.threshold_amount !== null
+        ? activeShippingConfig.threshold_amount
+        : (activeShippingConfig.free_shipping_threshold ?? '');
+    const percentOffValue =
+      activeShippingConfig.percent_off !== undefined && activeShippingConfig.percent_off !== null
+        ? activeShippingConfig.percent_off
+        : (activeShippingConfig.discount_percent ?? '');
+    const metadata =
+      activeShippingConfig.metadata && typeof activeShippingConfig.metadata === 'object'
+        ? activeShippingConfig.metadata
+        : {};
+    const activeShippingScope =
+      activeShippingConfig.shipping_scope && typeof activeShippingConfig.shipping_scope === 'object'
+        ? activeShippingConfig.shipping_scope
+        : {};
+    const shippingCurrentRatesForPreview = Array.isArray(shippingCurrentSetup?.rates)
+      ? shippingCurrentSetup.rates
+      : [];
+    const selectedProfileId = String(
+      activeShippingScope.profile_id || activeShippingConfig.profile_id || ''
+    ).trim();
+    const selectedLocationGroupId = String(activeShippingScope.location_group_id || '').trim();
+    const selectedZoneId = String(activeShippingScope.zone_id || '').trim();
+    const selectedScopeCountries = Array.isArray(activeShippingConfig.zone_countries)
+      ? activeShippingConfig.zone_countries
+          .map(code =>
+            String(code || '')
+              .trim()
+              .toUpperCase()
+          )
+          .filter(Boolean)
+      : [];
+    const selectedMethodNames = normalizeCheckoutListInput(
+      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+    ).map(name =>
+      String(name || '')
+        .trim()
+        .toLowerCase()
+    );
+    const selectedScopeRateNames = Array.isArray(activeShippingScope.selected_rate_names)
+      ? activeShippingScope.selected_rate_names
+          .map(name =>
+            String(name || '')
+              .trim()
+              .toLowerCase()
+          )
+          .filter(Boolean)
+      : [];
+    const selectedScopeRateIds = new Set(
+      [
+        ...(Array.isArray(activeShippingScope.selected_method_definition_ids)
+          ? activeShippingScope.selected_method_definition_ids
+          : []),
+        ...(Array.isArray(activeShippingScope.selected_rate_ids)
+          ? activeShippingScope.selected_rate_ids
+          : []),
+      ]
+        .map(id => String(id || '').trim())
+        .filter(Boolean)
+    );
+    const scopedCurrentRateCandidate = shippingCurrentRatesForPreview
+      .filter(rate => hasShippingNumericValue(rate?.amount))
+      .map(rate => {
+        let score = 0;
+        const profileId = String(rate?.profile_id || '').trim();
+        const locationGroupId = String(rate?.profile_location_group_id || '').trim();
+        const zoneId = String(rate?.zone_id || '').trim();
+        const methodDefinitionId = String(rate?.method_definition_id || '').trim();
+        const rateId = String(rate?.id || '').trim();
+        const rateName = String(rate?.name || '')
+          .trim()
+          .toLowerCase();
+        const rateCountries = Array.isArray(rate?.countries)
+          ? rate.countries
+              .map(code =>
+                String(code || '')
+                  .trim()
+                  .toUpperCase()
+              )
+              .filter(Boolean)
+          : [];
+        if (selectedProfileId && profileId === selectedProfileId) score += 4;
+        if (selectedLocationGroupId && locationGroupId === selectedLocationGroupId) score += 3;
+        if (selectedZoneId && zoneId === selectedZoneId) score += 3;
+        if (
+          selectedScopeCountries.length > 0 &&
+          rateCountries.some(country => selectedScopeCountries.includes(country))
+        ) {
+          score += 2;
+        }
+        if (rateName && selectedMethodNames.includes(rateName)) score += 2;
+        if (rateName && selectedScopeRateNames.includes(rateName)) score += 2;
+        if (
+          (methodDefinitionId && selectedScopeRateIds.has(methodDefinitionId)) ||
+          (rateId && selectedScopeRateIds.has(rateId))
+        ) {
+          score += 8;
+        }
+        return { rate, score };
+      })
+      .sort((a, b) => b.score - a.score)[0];
+    const shippingLiveCheckoutQaDone =
+      metadata.shipping_live_checkout_qa_complete === true ||
+      Boolean(metadata.shipping_live_checkout_qa_checked_at);
+    const shippingLiveCheckoutQaCheckedAt = String(
+      metadata.shipping_live_checkout_qa_checked_at || ''
+    ).trim();
+    const shippingLiveCheckoutQaCheckedAtText = shippingLiveCheckoutQaCheckedAt
+      ? new Date(shippingLiveCheckoutQaCheckedAt).toLocaleString()
+      : '';
+    const quoteProvider = String(metadata.quote_provider || '').trim();
+    const inferredCurrentRate =
+      (scopedCurrentRateCandidate?.score || 0) > 0
+        ? scopedCurrentRateCandidate.rate
+        : shippingCurrentSetup?.summary?.inferred_baseline_rate || null;
+    const hasExplicitCurrentShippingRate =
+      Object.prototype.hasOwnProperty.call(metadata, 'current_shipping_rate') ||
+      Object.prototype.hasOwnProperty.call(metadata, 'baseline_shipping_rate');
+    const currentShippingRateValue = hasExplicitCurrentShippingRate
+      ? (metadata.current_shipping_rate ?? metadata.baseline_shipping_rate ?? '')
+      : (inferredCurrentRate?.amount ?? '');
+    const deliveryTargetsValue = normalizeCheckoutListInput(
+      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+    ).join(', ');
+    const methodHandlesValue = normalizeCheckoutListInput(
+      activeShippingConfig.method_handles || activeShippingConfig.methodHandles
+    ).join(', ');
+    const activeShippingDisplayMode = String(
+      activeShippingConfig.shipping_display_mode ||
+        activeShippingConfig.shippingDisplayMode ||
+        activeShippingConfig.display_mode ||
+        ''
+    )
+      .trim()
+      .toLowerCase();
+    const replacesExistingRates =
+      activeShippingDisplayMode === 'replace_existing_methods'
+        ? true
+        : activeShippingDisplayMode === 'add_preview_method'
+          ? false
+          : Boolean(
+              activeShippingConfig.replace_existing_rates ||
+              activeShippingConfig.replaceExistingRates
+            );
+    const previewLabelPrefix = String(
+      activeShippingConfig.preview_label_prefix || activeShippingConfig.previewLabelPrefix || ''
+    ).trim();
+    const strategyGuidance =
+      activeStrategy === 'flat_rate'
+        ? 'Best for simple fixed-price shipping tests. Watch for multi-profile carts where combined rates can be confusing.'
+        : activeStrategy === 'threshold_free_shipping'
+          ? 'Use when all qualifying delivery options should become free after the cart threshold is reached.'
+          : activeStrategy === 'discount_percentage'
+            ? 'Use for broad shipping discounts that should scale with the selected delivery option.'
+            : activeStrategy === 'discount_fixed'
+              ? 'Use when you want a capped dollar-off shipping incentive regardless of the chosen rate.'
+              : activeStrategy === 'carrier_quote'
+                ? 'Use for provider-backed quotes or Delivery Customization flows. Configure a quote provider before applying CarrierService automation.'
+                : 'Keep control variants unchanged and scope actionable variants carefully.';
+    const shippingReadinessList = shippingVariants.map((variant, index) => ({
+      variant,
+      index,
+      readiness: getShippingReadiness(variant, index),
+      strategy: getShippingStrategy(variant?.config || {}),
+      summary: getShippingVariantSummary(variant, index),
+    }));
+    const isDeliveryCustomizationPath =
+      String(activeShippingConfig.execution_hint || '').trim() === 'delivery_customization' ||
+      (activeStrategy === 'carrier_quote' &&
+        String(activeShippingConfig.execution_hint || '').trim() !== 'carrier_quote' &&
+        normalizeCheckoutListInput(
+          activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+        ).length > 0);
+    const isCarrierProviderPath =
+      activeStrategy === 'carrier_quote' &&
+      !isDeliveryCustomizationPath &&
+      String(activeShippingConfig.execution_hint || 'auto').trim() !== 'delivery_customization';
+    const isStrategyChoiceActive = choice => {
+      if (choice.value === 'delivery_option') {
+        return isDeliveryCustomizationPath;
+      }
+      if (choice.value === 'carrier_quote') {
+        return isCarrierProviderPath;
+      }
+      return activeStrategy === choice.value;
+    };
+    const handleShippingStrategyChoice = value => {
+      if (isActiveControlLike) return;
+      if (value === 'delivery_option') {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          strategy: 'carrier_quote',
+          execution_hint: 'delivery_customization',
+          delivery_action: activeShippingConfig.delivery_action || 'hide',
+        });
+        return;
+      }
+      if (value === 'carrier_quote') {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          strategy: 'carrier_quote',
+          execution_hint: 'carrier_quote',
+        });
+        return;
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        strategy: value,
+        execution_hint: '',
+      });
+    };
+    const getSelectedShippingCategory = () => {
+      if (activeStrategy === 'flat_rate') {
+        return replacesExistingRates ? 'replace_rate' : 'add_rate';
+      }
+      if (isDeliveryCustomizationPath) {
+        const action = String(activeShippingConfig.delivery_action || 'hide')
+          .trim()
+          .toLowerCase();
+        return action === 'rename' ? 'rename_method' : 'hide_method';
+      }
+      if (activeStrategy === 'carrier_quote') return 'carrier_quote';
+      return activeStrategy;
+    };
+    const handleShippingCategorySelect = category => {
+      if (isActiveControlLike) return;
+      const normalized = String(category || '').trim();
+      if (normalized === 'replace_rate') {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          strategy: 'flat_rate',
+          execution_hint: 'auto',
+          shipping_display_mode: 'replace_existing_methods',
+          replace_existing_rates: true,
+          delivery_action: 'hide',
+        });
+        setShippingReplacementExtraRowsOpen(false);
+        setShippingRailTab('overview');
+        setShippingGuidedStep('methods');
+        return;
+      }
+      if (normalized === 'add_rate') {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          strategy: 'flat_rate',
+          execution_hint: 'auto',
+          shipping_display_mode: 'add_preview_method',
+          replace_existing_rates: false,
+          delivery_method_names: [],
+          delivery_action: 'hide',
+          shipping_scope: {
+            ...activeShippingScope,
+            selected_rate_ids: [],
+            selected_rate_names: [],
+            selected_method_definition_ids: [],
+          },
+        });
+        setShippingRailTab('overview');
+        setShippingGuidedStep('details');
+        return;
+      }
+      if (normalized === 'hide_method' || normalized === 'rename_method') {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          strategy: 'carrier_quote',
+          execution_hint: 'delivery_customization',
+          delivery_action: normalized === 'rename_method' ? 'rename' : 'hide',
+          shipping_display_mode: 'replace_existing_methods',
+          replace_existing_rates: false,
+          rates: [],
+        });
+        setShippingRailTab('overview');
+        setShippingGuidedStep('methods');
+        return;
+      }
+      if (normalized === 'carrier_quote') {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          strategy: 'carrier_quote',
+          execution_hint: 'carrier_quote',
+          delivery_method_names: [],
+          delivery_action: 'hide',
+          shipping_display_mode: 'add_preview_method',
+          replace_existing_rates: false,
+        });
+        setShippingRailTab('overview');
+        setShippingGuidedStep('details');
+        return;
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        strategy: normalized,
+        execution_hint: '',
+        delivery_method_names: [],
+        shipping_display_mode: 'add_preview_method',
+        replace_existing_rates: false,
+      });
+      setShippingRailTab('overview');
+      setShippingGuidedStep('details');
+    };
+    const selectedShippingCategory = getSelectedShippingCategory();
+    const selectedCategoryNeedsMethods = ['replace_rate', 'hide_method', 'rename_method'].includes(
+      selectedShippingCategory
+    );
+    const selectedStrategyChoice =
+      shippingStrategyChoices.find(choice => isStrategyChoiceActive(choice)) ||
+      shippingStrategyChoices[0];
+    const shippingCurrentRates = shippingCurrentRatesForPreview.filter(rate => {
+      if (!rate || typeof rate !== 'object') return false;
+      if (rate.active === false) return false;
+      if (rate.carrier_service && rate.carrier_service_active === false) return false;
+      return String(rate.name || '').trim();
+    });
+    const shippingCurrentSetupSummary = shippingCurrentSetup?.summary || null;
+    const hasShippingCarrierScopeSelection = Boolean(
+      String(activeShippingScope.profile_id || activeShippingConfig.profile_id || '').trim() &&
+      String(activeShippingScope.location_group_id || '').trim() &&
+      String(activeShippingScope.zone_id || '').trim()
+    );
+    const formatCurrentSetupRateAmount = rate => {
+      if (rate?.formatted_amount) return rate.formatted_amount;
+      if (hasShippingNumericValue(rate?.amount)) {
+        return `${String(rate?.currency || 'USD').toUpperCase()} ${Number(rate.amount).toFixed(2)}`;
+      }
+      return 'Calculated at checkout';
+    };
+    const getCurrentSetupRateLine = rate => {
+      const zone = rate?.zone_name ? ` · ${rate.zone_name}` : '';
+      const condition = rate?.condition ? ` · ${rate.condition}` : '';
+      return `${rate?.name || 'Shipping rate'}: ${formatCurrentSetupRateAmount(rate)}${zone}${condition}`;
+    };
+    const getCurrentSetupRateMeta = rate => {
+      const pieces = [
+        rate?.profile_name || rate?.profile_id,
+        rate?.profile_location_group_id ? 'Location group attached' : null,
+        rate?.rate_provider_type === 'DeliveryParticipant'
+          ? rate?.carrier_service_name || 'Carrier/app calculated'
+          : rate?.source === 'manual'
+            ? 'Manual Shopify rate'
+            : 'Calculated rate',
+      ].filter(Boolean);
+      return pieces.join(' · ');
+    };
+    const applyCurrentSetupRateScope = rate => {
+      if (!rate) return;
+      const countries = Array.isArray(rate.countries)
+        ? rate.countries.map(code => String(code || '').toUpperCase()).filter(Boolean)
+        : [];
+      const nextScope = {
+        ...activeShippingScope,
+        profile_id: rate.profile_id || activeShippingScope.profile_id || '',
+        profile_name: rate.profile_name || activeShippingScope.profile_name || '',
+        location_group_id:
+          rate.profile_location_group_id || activeShippingScope.location_group_id || '',
+        zone_id: rate.zone_id || activeShippingScope.zone_id || '',
+        zone_name: rate.zone_name || activeShippingScope.zone_name || '',
+        countries,
+        selected_rate_ids: rate.id ? [rate.id] : activeShippingScope.selected_rate_ids || [],
+        selected_rate_names: rate.name
+          ? [rate.name]
+          : activeShippingScope.selected_rate_names || [],
+        selected_method_definition_ids: rate.method_definition_id
+          ? [rate.method_definition_id]
+          : activeShippingScope.selected_method_definition_ids || [],
+      };
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        shipping_scope: nextScope,
+        profile_id: rate.profile_id || activeShippingConfig.profile_id || '',
+        zone_countries: countries,
+        delivery_method_names: rate.name
+          ? appendShippingListValue(activeShippingConfig.delivery_method_names, rate.name)
+          : activeShippingConfig.delivery_method_names,
+      });
+    };
+    const applyProfileScopeSelection = selectedProfileValue => {
+      const nextProfileValue = String(selectedProfileValue || '').trim();
+      if (!nextProfileValue) {
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          profile_id: '',
+          shipping_scope: {
+            ...activeShippingScope,
+            profile_id: '',
+            profile_name: '',
+            location_group_id: '',
+            zone_id: '',
+            zone_name: '',
+          },
+        });
+        return;
+      }
+      const matchedRate = shippingCurrentRates.find(rate => {
+        const profileId = String(rate?.profile_id || '').trim();
+        const profileName = String(rate?.profile_name || '').trim();
+        return profileId === nextProfileValue || profileName === nextProfileValue;
+      });
+      const selectedProfileOption = profileScopeOptions.find(
+        option => String(option?.value || '').trim() === nextProfileValue
+      );
+      const nextScope = {
+        ...activeShippingScope,
+        profile_id: matchedRate?.profile_id || nextProfileValue,
+        profile_name:
+          matchedRate?.profile_name ||
+          String(selectedProfileOption?.label || activeShippingScope.profile_name || '').trim(),
+        location_group_id: matchedRate?.profile_location_group_id || '',
+        zone_id: matchedRate?.zone_id || '',
+        zone_name: matchedRate?.zone_name || '',
+        countries: Array.isArray(matchedRate?.countries)
+          ? matchedRate.countries.map(code => String(code || '').toUpperCase()).filter(Boolean)
+          : activeShippingScope.countries || [],
+      };
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        profile_id: nextProfileValue,
+        shipping_scope: nextScope,
+        ...(Array.isArray(nextScope.countries) && nextScope.countries.length > 0
+          ? { zone_countries: nextScope.countries }
+          : {}),
+      });
+    };
+    const uniqueShippingValues = values => {
+      const out = [];
+      const seen = new Set();
+      values.forEach(value => {
+        const normalized = String(value || '').trim();
+        const key = normalized.toLowerCase();
+        if (normalized && !seen.has(key)) {
+          seen.add(key);
+          out.push(normalized);
+        }
+      });
+      return out;
+    };
+    const availableDeliveryMethodNames = uniqueShippingValues(
+      shippingCurrentRates.map(rate => rate?.name)
+    ).slice(0, 8);
+    const existingDeliveryMethodText =
+      availableDeliveryMethodNames.length > 0
+        ? availableDeliveryMethodNames.slice(0, 3).join(', ')
+        : 'existing Shopify rates';
+    const availableZoneCountries = uniqueShippingValues(
+      shippingCurrentRates.flatMap(rate => (Array.isArray(rate?.countries) ? rate.countries : []))
+    )
+      .map(code => code.toUpperCase())
+      .slice(0, 20);
+    const availableShippingProfiles = [];
+    const seenShippingProfileKeys = new Set();
+    shippingCurrentRates.forEach(rate => {
+      const profileId = String(rate?.profile_id || '').trim();
+      const profileName = String(rate?.profile_name || '').trim();
+      const profileValue = profileId || profileName;
+      if (!profileValue) {
+        return;
+      }
+      const dedupeKey = String(profileId || profileName).toLowerCase();
+      if (!dedupeKey || seenShippingProfileKeys.has(dedupeKey)) {
+        return;
+      }
+      seenShippingProfileKeys.add(dedupeKey);
+      availableShippingProfiles.push({
+        value: profileValue,
+        label:
+          profileId && profileName && profileName !== profileId
+            ? `${profileName} [ID-backed]`
+            : profileId && !profileName
+              ? `${profileId} [ID-backed]`
+              : profileName || profileId,
+      });
+    });
+    const shippingScopeStepItems = [
+      {
+        label: 'Choose Scope (profile + zone)',
+        done:
+          !['flat_rate', 'carrier_quote'].includes(activeStrategy) ||
+          hasShippingCarrierScopeSelection,
+      },
+      {
+        label: 'Set Method Targets',
+        done:
+          Array.isArray(activeShippingConfig.delivery_method_names) &&
+          activeShippingConfig.delivery_method_names.length > 0,
+      },
+      {
+        label: 'Set Variant Rate',
+        done:
+          hasShippingNumericValue(activeShippingConfig.amount) ||
+          activeConfiguredValidRates.length > 0,
+      },
+      {
+        label: 'Run Live Checkout QA',
+        done: shippingLiveCheckoutQaDone,
+      },
+    ];
+    const shippingChecklistDoneCount = shippingScopeStepItems.filter(item => item.done).length;
+    const shippingChecklistTotalCount = shippingScopeStepItems.length;
+    const shippingChecklistPending = shippingScopeStepItems.filter(item => !item.done);
+    const shippingChecklistPrimaryNext =
+      shippingChecklistPending[0]?.label || 'Run Live Checkout QA';
+    const shippingSetupCompletionPercent =
+      shippingChecklistTotalCount > 0
+        ? Math.round((shippingChecklistDoneCount / shippingChecklistTotalCount) * 100)
+        : 100;
+    const shippingCurrentSetupVisibleRates = shippingCurrentSetupExpanded
+      ? shippingCurrentRates.slice(0, 6)
+      : shippingCurrentRates.slice(0, 2);
+    const hasShippingBlocker = activeReadiness?.status === 'blocked';
+    const shippingBlockerMessage = activeReadiness?.issue || 'Configuration blocked.';
+    const canShowShippingOperations = canShowShippingExecution({
+      mode,
+      testType: formData.type,
+      testId: initialData?.id,
+    });
+    const shippingOperationsDisabled = shouldDisableShippingExecution({
+      shippingExecutionLoading: Boolean(shippingOperationLoading),
+      wizardLoading: loading,
+      submitLoading,
+      isDirty,
+    });
+    const shippingOperationsDisabledReason = isDirty
+      ? 'Save changes before running shipping operations.'
+      : loading || submitLoading
+        ? 'Wait for the current save to finish.'
+        : '';
+    const shippingApplyBlockedReason = isActiveControlLike
+      ? 'Control variants do not need Shopify apply actions.'
+      : hasShippingBlocker
+        ? `Fix before apply: ${shippingBlockerMessage}`
+        : '';
+    const shippingCurrentSetupCompactText = shippingCurrentSetupError
+      ? 'Could not read current Shopify setup.'
+      : shippingCurrentSetupLoading && shippingCurrentRates.length === 0
+        ? 'Reading current Shopify setup...'
+        : shippingCurrentRates.length > 0
+          ? `${shippingCurrentRates.length} Shopify shipping rate${
+              shippingCurrentRates.length === 1 ? '' : 's'
+            } detected.`
+          : 'No manual Shopify rates detected (carrier/app-calculated rates may be active).';
+    const profileScopeValue = String(activeShippingConfig.profile_id || '').trim();
+    const hasSelectedProfileOption = availableShippingProfiles.some(
+      option => option.value === profileScopeValue
+    );
+    const SHIPPING_PROFILE_AUTO_OPTION = '__ripx_profile_auto__';
+    const profileScopeOptions = [
+      {
+        label: 'Automatic (all matching Shopify profiles)',
+        value: SHIPPING_PROFILE_AUTO_OPTION,
+      },
+      ...availableShippingProfiles.slice(0, 20),
+      ...(profileScopeValue && !hasSelectedProfileOption
+        ? [{ label: `Custom profile (${profileScopeValue})`, value: profileScopeValue }]
+        : []),
+    ];
+    const profileScopeSelectedValue = profileScopeValue || SHIPPING_PROFILE_AUTO_OPTION;
+    const selectedProfileScopeOption =
+      profileScopeOptions.find(option => option.value === profileScopeSelectedValue) ||
+      profileScopeOptions[0];
+    const profileScopeSearchQuery = String(shippingProfileScopeSearch || '')
+      .trim()
+      .toLowerCase();
+    const shippingRateModelDocHref = `${ROUTES.DOCS}#shipping-tests`;
+    const visibleProfileScopeOptions = profileScopeOptions
+      .filter(option => {
+        if (!profileScopeSearchQuery) {
+          return true;
+        }
+        return (
+          String(option.label || '')
+            .toLowerCase()
+            .includes(profileScopeSearchQuery) ||
+          String(option.value || '')
+            .toLowerCase()
+            .includes(profileScopeSearchQuery)
+        );
+      })
+      .map(option => ({
+        value: option.value,
+        label: option.label,
+      }));
+    const slugifyShippingHandle = value =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    const buildReplacementServiceCode = (methodName, rateIndex = 0) => {
+      const slug =
+        slugifyShippingHandle(methodName).replace(/-/g, '_') || `method_${rateIndex + 1}`;
+      return `ripx_replace_${slug}`.slice(0, 64);
+    };
+    const availableMethodHandleSuggestions = uniqueShippingValues(
+      availableDeliveryMethodNames.map(slugifyShippingHandle)
+    ).slice(0, 8);
+    const appendShippingListValue = (currentValue, nextValue) => {
+      const current = normalizeCheckoutListInput(currentValue);
+      const normalizedNext = String(nextValue || '').trim();
+      if (!normalizedNext) return current;
+      if (current.some(item => item.toLowerCase() === normalizedNext.toLowerCase())) {
+        return current;
+      }
+      return [...current, normalizedNext];
+    };
+    const activeDeliveryMethodNames = normalizeCheckoutListInput(
+      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+    );
+    const activeSelectedMethodIds = [
+      ...(Array.isArray(activeShippingScope.selected_method_definition_ids)
+        ? activeShippingScope.selected_method_definition_ids
+        : []),
+      ...(Array.isArray(activeShippingScope.selected_rate_ids)
+        ? activeShippingScope.selected_rate_ids
+        : []),
+    ]
+      .map(id => String(id || '').trim())
+      .filter(Boolean);
+    const getReplacementSourceName = rate =>
+      String(
+        rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
+      ).trim();
+    const findReplacementRateForMethod = methodName => {
+      const normalizedName = String(methodName || '')
+        .trim()
+        .toLowerCase();
+      if (!normalizedName) return null;
+      return (
+        activeConfiguredRates.find(rate => {
+          const sourceName = getReplacementSourceName(rate).toLowerCase();
+          const visibleName = String(rate?.name || rate?.service_name || '')
+            .trim()
+            .toLowerCase();
+          return sourceName === normalizedName || visibleName === normalizedName;
+        }) || null
+      );
+    };
+    const buildReplacementRateForMethod = (
+      methodName,
+      sourceRate = null,
+      rateIndexOverride = null
+    ) => {
+      const normalizedName = String(methodName || '').trim();
+      if (!normalizedName) return null;
+      const sourceAmount = hasShippingNumericValue(sourceRate?.amount)
+        ? Number(sourceRate.amount)
+        : hasShippingNumericValue(amountValue)
+          ? Number(amountValue)
+          : null;
+      const nextRateIndex = Number.isInteger(rateIndexOverride)
+        ? rateIndexOverride
+        : activeConfiguredRates.length;
+      const sourceRateId = String(sourceRate?.id || '').trim();
+      const sourceMethodDefinitionId = String(sourceRate?.method_definition_id || '').trim();
+      const groupedSourceIds = Array.isArray(sourceRate?.source_ids)
+        ? sourceRate.source_ids.map(id => String(id || '').trim()).filter(Boolean)
+        : [];
+      return {
+        name: normalizedName,
+        service_code: buildReplacementServiceCode(normalizedName, nextRateIndex),
+        source_method_name: normalizedName,
+        source_rate_name: normalizedName,
+        source_rate_id: sourceRateId,
+        source_method_definition_id: sourceMethodDefinitionId,
+        source_method_ids: groupedSourceIds,
+        amount: sourceAmount,
+        currency: String(sourceRate?.currency || activeShippingConfig.currency || 'USD')
+          .trim()
+          .toUpperCase(),
+        priority: nextRateIndex + 1,
+        sort_order: nextRateIndex + 1,
+        description: '',
+        delivery_promise: { mode: 'none', preset: 'none' },
+      };
+    };
+    const updateActiveDeliveryMethodNames = (nextNames, { clearScopeTargets = false } = {}) => {
+      if (isActiveControlLike) return;
+      const patch = {
+        delivery_method_names: normalizeCheckoutListInput(nextNames),
+      };
+      if (clearScopeTargets && normalizeCheckoutListInput(nextNames).length === 0) {
+        patch.shipping_scope = {
+          ...activeShippingScope,
+          selected_rate_ids: [],
+          selected_rate_names: [],
+          selected_method_definition_ids: [],
+        };
+        if (selectedShippingCategory === 'replace_rate') {
+          patch.rates = [];
+          patch.amount = null;
+        }
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, patch);
+    };
+    const toggleActiveDeliveryMethodName = (methodName, sourceRate = null) => {
+      if (isActiveControlLike) return;
+      const normalizedName = String(methodName || '').trim();
+      if (!normalizedName) return;
+      const methodDefinitionId = String(sourceRate?.method_definition_id || '').trim();
+      const rateId = String(sourceRate?.id || '').trim();
+      const groupedSourceIds = Array.isArray(sourceRate?.source_ids)
+        ? sourceRate.source_ids.map(id => String(id || '').trim()).filter(Boolean)
+        : [];
+      const selectedDefinitionIds = Array.isArray(
+        activeShippingScope.selected_method_definition_ids
+      )
+        ? activeShippingScope.selected_method_definition_ids
+            .map(id => String(id || '').trim())
+            .filter(Boolean)
+        : [];
+      const selectedRateIds = Array.isArray(activeShippingScope.selected_rate_ids)
+        ? activeShippingScope.selected_rate_ids.map(id => String(id || '').trim()).filter(Boolean)
+        : [];
+      const selectedRateNames = Array.isArray(activeShippingScope.selected_rate_names)
+        ? activeShippingScope.selected_rate_names
+            .map(name => String(name || '').trim())
+            .filter(Boolean)
+        : [];
+      const existsByName = activeDeliveryMethodNames.some(
+        name => name.toLowerCase() === normalizedName.toLowerCase()
+      );
+      const existsById =
+        (methodDefinitionId && selectedDefinitionIds.includes(methodDefinitionId)) ||
+        (rateId && selectedRateIds.includes(rateId)) ||
+        groupedSourceIds.some(
+          id => selectedDefinitionIds.includes(id) || selectedRateIds.includes(id)
+        );
+      const exists = existsById || existsByName;
+      const nextNames = exists
+        ? activeDeliveryMethodNames.filter(
+            name => name.toLowerCase() !== normalizedName.toLowerCase()
+          )
+        : [...activeDeliveryMethodNames, normalizedName];
+      const removeValues = (items, values) => {
+        const removeSet = new Set(values.filter(Boolean));
+        return items.filter(item => !removeSet.has(item));
+      };
+      const addValue = (items, value) =>
+        value && !items.includes(value) ? [...items, value] : items;
+      const idsToRemove = [methodDefinitionId, rateId, ...groupedSourceIds];
+      let nextRates = activeConfiguredRates;
+      let nextAmountPatch = {};
+      if (selectedShippingCategory === 'replace_rate') {
+        if (exists) {
+          nextRates = activeConfiguredRates.filter(rate => {
+            const sourceName = getReplacementSourceName(rate);
+            const visibleName = String(rate?.name || rate?.service_name || '').trim();
+            return ![sourceName, visibleName].some(
+              name => name && name.toLowerCase() === normalizedName.toLowerCase()
+            );
+          });
+          if (nextRates.length === 0) {
+            nextAmountPatch = { amount: null };
+          }
+        } else if (!findReplacementRateForMethod(normalizedName)) {
+          const replacementRate = buildReplacementRateForMethod(normalizedName, sourceRate);
+          if (replacementRate) {
+            nextRates = renumberShippingRateOrdering([...activeConfiguredRates, replacementRate]);
+            if (
+              activeConfiguredRates.length === 0 &&
+              hasShippingNumericValue(replacementRate.amount)
+            ) {
+              nextAmountPatch = { amount: replacementRate.amount };
+            }
+          }
+        }
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        delivery_method_names: normalizeCheckoutListInput(nextNames),
+        ...(selectedShippingCategory === 'replace_rate'
+          ? { rates: renumberShippingRateOrdering(nextRates), ...nextAmountPatch }
+          : {}),
+        shipping_scope: {
+          ...activeShippingScope,
+          selected_method_definition_ids: exists
+            ? removeValues(selectedDefinitionIds, idsToRemove)
+            : addValue(selectedDefinitionIds, methodDefinitionId),
+          selected_rate_ids: exists
+            ? removeValues(selectedRateIds, idsToRemove)
+            : addValue(selectedRateIds, rateId),
+          selected_rate_names: exists
+            ? selectedRateNames.filter(name => name.toLowerCase() !== normalizedName.toLowerCase())
+            : addValue(selectedRateNames, normalizedName),
+        },
+      });
+    };
+    const selectAllActiveDeliveryMethods = () => {
+      if (isActiveControlLike) return;
+      const names = uniqueShippingValues(
+        shippingCurrentRates.map(rate => rate?.name).filter(Boolean)
+      );
+      const definitionIds = shippingCurrentRates
+        .map(rate => String(rate?.method_definition_id || '').trim())
+        .filter(Boolean);
+      const rateIds = shippingCurrentRates
+        .map(rate => String(rate?.id || '').trim())
+        .filter(Boolean);
+      const replacementRatesForSelection =
+        selectedShippingCategory === 'replace_rate'
+          ? renumberShippingRateOrdering(
+              names
+                .map(name => {
+                  const sourceRate = shippingCurrentRates.find(
+                    rate =>
+                      String(rate?.name || '')
+                        .trim()
+                        .toLowerCase() ===
+                      String(name || '')
+                        .trim()
+                        .toLowerCase()
+                  );
+                  return (
+                    findReplacementRateForMethod(name) ||
+                    buildReplacementRateForMethod(name, sourceRate)
+                  );
+                })
+                .filter(Boolean)
+            )
+          : [];
+      const firstReplacementAmount = replacementRatesForSelection.find(rate =>
+        hasShippingNumericValue(rate?.amount)
+      )?.amount;
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        delivery_method_names: normalizeCheckoutListInput(names),
+        ...(selectedShippingCategory === 'replace_rate'
+          ? {
+              rates: replacementRatesForSelection,
+              ...(hasShippingNumericValue(firstReplacementAmount)
+                ? { amount: firstReplacementAmount }
+                : {}),
+            }
+          : {}),
+        shipping_scope: {
+          ...activeShippingScope,
+          selected_method_definition_ids: Array.from(new Set(definitionIds)),
+          selected_rate_ids: Array.from(new Set(rateIds)),
+          selected_rate_names: names,
+        },
+      });
+    };
+    const addReplacementRateForMethod = (methodName, sourceRate = null) => {
+      if (isActiveControlLike) return;
+      const normalizedName = String(methodName || '').trim();
+      if (!normalizedName) return;
+      const alreadyExists = Boolean(findReplacementRateForMethod(normalizedName));
+      if (alreadyExists) return;
+      const methodDefinitionId = String(sourceRate?.method_definition_id || '').trim();
+      const rateId = String(sourceRate?.id || '').trim();
+      const selectedDefinitionIds = Array.isArray(
+        activeShippingScope.selected_method_definition_ids
+      )
+        ? activeShippingScope.selected_method_definition_ids
+            .map(id => String(id || '').trim())
+            .filter(Boolean)
+        : [];
+      const selectedRateIds = Array.isArray(activeShippingScope.selected_rate_ids)
+        ? activeShippingScope.selected_rate_ids.map(id => String(id || '').trim()).filter(Boolean)
+        : [];
+      const selectedRateNames = Array.isArray(activeShippingScope.selected_rate_names)
+        ? activeShippingScope.selected_rate_names
+            .map(name => String(name || '').trim())
+            .filter(Boolean)
+        : [];
+      const nextRate = buildReplacementRateForMethod(normalizedName, sourceRate);
+      if (!nextRate) return;
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        strategy: activeStrategy === 'control' ? 'flat_rate' : activeStrategy,
+        shipping_display_mode: 'replace_existing_methods',
+        replace_existing_rates: true,
+        delivery_action: activeShippingConfig.delivery_action || 'hide',
+        delivery_method_names: appendShippingListValue(activeDeliveryMethodNames, normalizedName),
+        ...(activeConfiguredRates.length === 0 && hasShippingNumericValue(nextRate.amount)
+          ? { amount: nextRate.amount }
+          : {}),
+        shipping_scope: {
+          ...activeShippingScope,
+          selected_method_definition_ids:
+            methodDefinitionId && !selectedDefinitionIds.includes(methodDefinitionId)
+              ? [...selectedDefinitionIds, methodDefinitionId]
+              : selectedDefinitionIds,
+          selected_rate_ids:
+            rateId && !selectedRateIds.includes(rateId)
+              ? [...selectedRateIds, rateId]
+              : selectedRateIds,
+          selected_rate_names: selectedRateNames.some(
+            name => name.toLowerCase() === normalizedName.toLowerCase()
+          )
+            ? selectedRateNames
+            : [...selectedRateNames, normalizedName],
+        },
+        rates: renumberShippingRateOrdering([...activeConfiguredRates, nextRate]),
+      });
+    };
+    const removeReplacementRateForMethod = methodName => {
+      if (isActiveControlLike) return;
+      const normalizedName = String(methodName || '')
+        .trim()
+        .toLowerCase();
+      if (!normalizedName) return;
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(
+          activeConfiguredRates.filter(rate => {
+            const sourceName = getReplacementSourceName(rate);
+            const visibleName = String(rate?.name || rate?.service_name || '').trim();
+            return ![sourceName, visibleName].some(
+              name => name && name.toLowerCase() === normalizedName
+            );
+          })
+        ),
+      });
+    };
+    const applyCurrentShippingSetupToTreatmentVariants = () => {
+      if (!activeShippingVariant || isActiveControlLike) return;
+      setIsDirty(true);
+      const activeShippingMetadataPatch = {
+        quote_provider: metadata.quote_provider || '',
+        quote_amount: metadata.quote_amount ?? null,
+        country_rates: metadata.country_rates || '',
+      };
+      const activeConfigPatch = {
+        strategy: activeStrategy,
+        shipping_strategy: activeStrategy,
+        execution_hint: activeShippingConfig.execution_hint || '',
+        shipping_display_mode:
+          activeShippingConfig.shipping_display_mode ||
+          activeShippingConfig.shippingDisplayMode ||
+          activeShippingConfig.display_mode ||
+          'add_preview_method',
+        replace_existing_rates: Boolean(activeShippingConfig.replace_existing_rates),
+        amount: activeShippingConfig.amount ?? activeShippingConfig.rate ?? null,
+        rate: activeShippingConfig.rate ?? activeShippingConfig.amount ?? null,
+        threshold_amount:
+          activeShippingConfig.threshold_amount ??
+          activeShippingConfig.free_shipping_threshold ??
+          activeShippingConfig.freeShippingThreshold ??
+          null,
+        free_shipping_threshold:
+          activeShippingConfig.free_shipping_threshold ??
+          activeShippingConfig.threshold_amount ??
+          activeShippingConfig.freeShippingThreshold ??
+          null,
+        percent_off:
+          activeShippingConfig.percent_off ?? activeShippingConfig.discount_percent ?? null,
+        discount_percent:
+          activeShippingConfig.discount_percent ?? activeShippingConfig.percent_off ?? null,
+        discount_type:
+          activeShippingConfig.discount_type || activeShippingConfig.discountType || '',
+        discount_value:
+          activeShippingConfig.discount_value ??
+          activeShippingConfig.discountValue ??
+          activeShippingConfig.amount ??
+          activeShippingConfig.rate ??
+          null,
+        rates: activeConfiguredRates,
+        currency: activeShippingConfig.currency || 'USD',
+        delivery_method_names: activeDeliveryMethodNames,
+        method_handles:
+          activeShippingConfig.method_handles || activeShippingConfig.methodHandles || [],
+        shipping_scope: activeShippingConfig.shipping_scope,
+        delivery_action: activeShippingConfig.delivery_action || 'hide',
+        delivery_rename_to: activeShippingConfig.delivery_rename_to || '',
+        profile_id: activeShippingConfig.profile_id || activeShippingConfig.profileId || '',
+        checkout_display: activeShippingConfig.checkout_display,
+      };
+      setFormData(currentFormData => {
+        const nextVariants = (currentFormData.variants || []).map((variant, index) => {
+          const controlLike = index === 0 || /^control(\s|$)/i.test(String(variant?.name || ''));
+          if (controlLike || index === activeShippingVariantIndex) return variant;
+          return {
+            ...variant,
+            config: {
+              ...(variant?.config || {}),
+              ...activeConfigPatch,
+              metadata: {
+                ...((variant?.config && variant.config.metadata) || {}),
+                ...activeShippingMetadataPatch,
+                shipping_config_revision: new Date().toISOString(),
+              },
+            },
+          };
+        });
+        const nextFormData = { ...currentFormData, variants: nextVariants };
+        formDataRef.current = nextFormData;
+        return nextFormData;
+      });
+    };
+    const guidedShippingSteps = [
+      {
+        key: 'category',
+        label: 'Choose change',
+        description: 'Pick the shipping outcome.',
+      },
+      ...(selectedCategoryNeedsMethods
+        ? [
+            {
+              key: 'methods',
+              label: 'Pick methods',
+              description: 'Choose live Shopify methods.',
+            },
+          ]
+        : []),
+      {
+        key: 'details',
+        label: 'Set details',
+        description: 'Enter the rate, discount, or rename.',
+      },
+      {
+        key: 'review',
+        label: 'Finish',
+        description: 'Review and save the setup.',
+      },
+    ];
+    const activeShippingGuidedStep = guidedShippingSteps.some(
+      step => step.key === shippingGuidedStep
+    )
+      ? shippingGuidedStep
+      : guidedShippingSteps[0].key;
+    const activeShippingGuidedStepIndex = Math.max(
+      0,
+      guidedShippingSteps.findIndex(step => step.key === activeShippingGuidedStep)
+    );
+    const activeGuidedStepLabel =
+      guidedShippingSteps[activeShippingGuidedStepIndex]?.label || 'Choose change';
+    const selectedShippingCategoryLabel =
+      selectedShippingCategory === 'replace_rate'
+        ? 'Replace rate'
+        : selectedShippingCategory === 'add_rate'
+          ? 'Add new rate'
+          : selectedShippingCategory === 'hide_method'
+            ? 'Hide method'
+            : selectedShippingCategory === 'rename_method'
+              ? 'Rename method'
+              : selectedShippingCategory === 'threshold_free_shipping'
+                ? 'Free over threshold'
+                : selectedShippingCategory === 'discount_percentage'
+                  ? 'Percent off'
+                  : selectedShippingCategory === 'discount_fixed'
+                    ? 'Fixed discount'
+                    : selectedShippingCategory === 'free_shipping'
+                      ? 'Free shipping'
+                      : selectedShippingCategory === 'carrier_quote'
+                        ? 'Carrier/app rate'
+                        : getShippingStrategyLabel(activeStrategy);
+    const guidedShippingMethodsMissing =
+      selectedCategoryNeedsMethods && activeDeliveryMethodNames.length === 0;
+    const guidedShippingDetailsMissing = Boolean(hasShippingBlocker);
+    const getGuidedShippingStepBlockedReason = stepKey => {
+      if ((stepKey === 'details' || stepKey === 'review') && guidedShippingMethodsMissing) {
+        return 'Complete method selection first.';
+      }
+      if (stepKey === 'review' && guidedShippingDetailsMissing) {
+        return (
+          shippingBlockerMessage || activeReadiness?.issue || 'Complete the setup details first.'
+        );
+      }
+      return '';
+    };
+    const goToGuidedShippingStep = index => {
+      const nextStep = guidedShippingSteps[index];
+      if (!nextStep) return;
+      if (getGuidedShippingStepBlockedReason(nextStep.key)) return;
+      setShippingGuidedStep(nextStep.key);
+    };
+    const goToNextGuidedShippingStep = () =>
+      goToGuidedShippingStep(
+        Math.min(activeShippingGuidedStepIndex + 1, guidedShippingSteps.length - 1)
+      );
+    const goToPreviousGuidedShippingStep = () =>
+      goToGuidedShippingStep(Math.max(activeShippingGuidedStepIndex - 1, 0));
+    const handleFinishGuidedShippingSetup = async () => {
+      setShippingRailTab('overview');
+      if (mode === 'edit') {
+        await handleSubmit();
+        return;
+      }
+      if (currentStep < steps.length) {
+        handleNext();
+      }
+    };
+    const renderGuidedShippingProgress = () => (
+      <div className={stepStyles.shippingGuidedProgress} aria-label="Shipping setup steps">
+        {guidedShippingSteps.map((step, index) => {
+          const active = step.key === activeShippingGuidedStep;
+          const complete = index < activeShippingGuidedStepIndex;
+          const blockedReason = getGuidedShippingStepBlockedReason(step.key);
+          const statusLabel = blockedReason
+            ? 'Locked'
+            : active
+              ? 'Current'
+              : complete
+                ? 'Done'
+                : 'Next';
           return (
-            <Card key={`shipping-${index}`} sectioned>
-              <FormLayout>
-                <Text variant="headingSm" as="h3">
-                  {variant.name}
-                </Text>
-                <Text variant="bodySm" tone="subdued" as="p">
-                  {strategyGuidance}
-                </Text>
-                <Select
-                  label="Shipping strategy"
-                  options={strategyOptions}
-                  value={strategy}
-                  onChange={value => updateShippingVariantConfig(index, { strategy: value })}
-                  disabled={isControlLike}
-                  helpText={
-                    isControlLike
-                      ? 'Control variant should stay unchanged.'
-                      : 'Choose how this variant should modify shipping behavior.'
-                  }
-                />
-
-                {strategy === 'flat_rate' && (
-                  <TextField
-                    label="Flat shipping amount"
-                    type="number"
-                    value={getShippingNumberValue(amountValue)}
-                    onChange={value =>
-                      updateShippingVariantConfig(index, {
-                        amount: value === '' ? null : Number(value),
-                      })
-                    }
-                    prefix="$"
-                    autoComplete="off"
-                  />
-                )}
-
-                {!isControlLike && strategy !== 'control' && (
-                  <>
-                    <TextField
-                      label="Profile scope (optional)"
-                      value={cfg.profile_id || ''}
-                      onChange={value => updateShippingVariantConfig(index, { profile_id: value })}
-                      placeholder="gid://shopify/DeliveryProfile/..."
-                      helpText="Use a delivery profile ID when this variant should only affect one shipping profile."
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Zone countries (optional)"
-                      value={zoneCountriesValue}
-                      onChange={value =>
-                        updateShippingVariantConfig(index, {
-                          zone_countries: value
-                            .split(',')
-                            .map(item => item.trim().toUpperCase())
-                            .filter(Boolean),
-                        })
-                      }
-                      helpText="Comma-separated ISO country codes for quick operator guidance and QA notes."
-                      autoComplete="off"
-                    />
-                  </>
-                )}
-
-                {strategy === 'threshold_free_shipping' && (
-                  <TextField
-                    label="Free shipping threshold"
-                    type="number"
-                    value={getShippingNumberValue(thresholdValue)}
-                    onChange={value =>
-                      updateShippingVariantConfig(index, {
-                        threshold_amount: value === '' ? null : Number(value),
-                      })
-                    }
-                    prefix="$"
-                    autoComplete="off"
-                  />
-                )}
-
-                {strategy === 'discount_percentage' && (
-                  <TextField
-                    label="Shipping discount percent"
-                    type="number"
-                    value={getShippingNumberValue(percentOffValue)}
-                    onChange={value =>
-                      updateShippingVariantConfig(index, {
-                        percent_off: value === '' ? null : Number(value),
-                      })
-                    }
-                    suffix="%"
-                    autoComplete="off"
-                  />
-                )}
-
-                {strategy === 'discount_fixed' && (
-                  <TextField
-                    label="Shipping discount amount"
-                    type="number"
-                    value={getShippingNumberValue(amountValue)}
-                    onChange={value =>
-                      updateShippingVariantConfig(index, {
-                        amount: value === '' ? null : Number(value),
-                      })
-                    }
-                    prefix="$"
-                    autoComplete="off"
-                  />
-                )}
-
-                {strategy === 'carrier_quote' && (
-                  <>
-                    <Select
-                      label="Quote provider"
-                      options={[
-                        { label: 'Select provider', value: '' },
-                        { label: 'Static rate', value: 'static_rate' },
-                        { label: 'Country table', value: 'country_table' },
-                      ]}
-                      value={quoteProvider}
-                      onChange={value => updateShippingMetadata(index, { quote_provider: value })}
-                      helpText="CarrierService automation requires a provider-ready quote source."
-                    />
-                    <TextField
-                      label="Method handles (comma separated, optional)"
-                      value={
-                        Array.isArray(cfg.method_handles)
-                          ? cfg.method_handles.join(', ')
-                          : String(cfg.method_handles || '')
-                      }
-                      onChange={value =>
-                        updateShippingVariantConfig(index, {
-                          method_handles: value
-                            .split(',')
-                            .map(item => item.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      autoComplete="off"
-                    />
-                    {quoteProvider === 'static_rate' && (
-                      <TextField
-                        label="Provider quote amount"
-                        type="number"
-                        value={getShippingNumberValue(metadata.quote_amount)}
-                        onChange={value =>
-                          updateShippingMetadata(index, {
-                            quote_amount: value === '' ? null : Number(value),
-                          })
-                        }
-                        prefix="$"
-                        autoComplete="off"
-                      />
-                    )}
-                    {quoteProvider === 'country_table' && (
-                      <TextField
-                        label="Country rates"
-                        value={String(metadata.country_rates || '')}
-                        onChange={value => updateShippingMetadata(index, { country_rates: value })}
-                        helpText="Use `US:5.00,CA:7.50,*:9.00` format for destination-aware fallback quotes."
-                        autoComplete="off"
-                      />
-                    )}
-                  </>
-                )}
-              </FormLayout>
-            </Card>
+            <button
+              key={step.key}
+              type="button"
+              disabled={Boolean(blockedReason)}
+              className={`${stepStyles.shippingGuidedStep} ${
+                active ? stepStyles.shippingGuidedStepActive : ''
+              } ${complete ? stepStyles.shippingGuidedStepComplete : ''} ${
+                blockedReason ? stepStyles.shippingGuidedStepBlocked : ''
+              }`}
+              onClick={() => goToGuidedShippingStep(index)}
+              aria-current={active ? 'step' : undefined}
+              title={blockedReason || step.description}
+            >
+              <span className={stepStyles.shippingGuidedStepIndex}>{index + 1}</span>
+              <span>
+                <strong>{step.label}</strong>
+                <small>{step.description}</small>
+                <em>{statusLabel}</em>
+              </span>
+            </button>
           );
         })}
+      </div>
+    );
+    const renderGuidedShippingFooter = () => {
+      const isFirst = activeShippingGuidedStepIndex === 0;
+      const isLast = activeShippingGuidedStepIndex === guidedShippingSteps.length - 1;
+      const methodsMissing = activeShippingGuidedStep === 'methods' && guidedShippingMethodsMissing;
+      const detailsMissing = activeShippingGuidedStep === 'details' && guidedShippingDetailsMissing;
+      const finishBlocked =
+        isLast && (guidedShippingMethodsMissing || guidedShippingDetailsMissing);
+      const nextStep = guidedShippingSteps[activeShippingGuidedStepIndex + 1];
+      const nextBlockedReason = nextStep ? getGuidedShippingStepBlockedReason(nextStep.key) : '';
+      return (
+        <div className={stepStyles.shippingGuidedFooter}>
+          <Button disabled={isFirst} onClick={goToPreviousGuidedShippingStep}>
+            Back
+          </Button>
+          <div className={stepStyles.shippingGuidedFooterHint}>
+            {methodsMissing
+              ? 'Select at least one Shopify method, or go back and choose a category that does not need method targeting.'
+              : detailsMissing
+                ? shippingBlockerMessage ||
+                  activeReadiness?.issue ||
+                  'Complete the required setup details.'
+                : nextBlockedReason
+                  ? nextBlockedReason
+                  : finishBlocked
+                    ? shippingBlockerMessage ||
+                      activeReadiness?.issue ||
+                      'Complete the setup before finishing.'
+                    : isLast
+                      ? mode === 'edit'
+                        ? 'Finish saves this setup. Apply live Shopify changes after review.'
+                        : 'Finish stores this setup and continues the test creation flow.'
+                      : 'Continue when this step looks right.'}
+          </div>
+          {isLast ? (
+            <Button
+              variant="primary"
+              onClick={handleFinishGuidedShippingSetup}
+              loading={loading || submitLoading}
+              disabled={finishBlocked}
+            >
+              {mode === 'edit' ? 'Finish and Save Setup' : 'Finish Setup'}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={goToNextGuidedShippingStep}
+              disabled={methodsMissing || detailsMissing || Boolean(nextBlockedReason)}
+            >
+              Next
+            </Button>
+          )}
+        </div>
+      );
+    };
+    const renderGuidedShippingReview = () =>
+      renderShippingSmartSection({
+        title: 'Review and finish',
+        description:
+          'Save the setup first, then run diagnostics or live apply from the preview rail.',
+        badges: [
+          renderShippingFieldBadge(
+            shippingChecklistPending.length === 0 ? 'Ready' : 'Draft',
+            shippingChecklistPending.length === 0 ? 'success' : 'attention'
+          ),
+        ],
+        children: (
+          <>
+            {hasShippingBlocker ? (
+              <div className={stepStyles.shippingInlineBlocker}>
+                <strong>Review Needed:</strong> {shippingBlockerMessage}
+              </div>
+            ) : (
+              <div className={stepStyles.shippingGuidedReviewHero}>
+                <span className={stepStyles.shippingStudioEyebrow}>Ready to save</span>
+                <strong>This variant setup is ready.</strong>
+                <span>
+                  Control stays unchanged. Save this draft, then run diagnostics or apply from the
+                  preview rail when you are ready.
+                </span>
+              </div>
+            )}
+            <div className={stepStyles.shippingFinishChecklist}>
+              <div>
+                <span>1</span>
+                <strong>Save setup</strong>
+                <small>Stores this variant configuration in RipX.</small>
+              </div>
+              <div>
+                <span>2</span>
+                <strong>Run diagnostics</strong>
+                <small>Check Shopify binding and the latest carrier callback assignment.</small>
+              </div>
+              <div>
+                <span>3</span>
+                <strong>Apply when ready</strong>
+                <small>
+                  Use a fresh preview cart so checkout receives this variant assignment.
+                </small>
+              </div>
+            </div>
+            <div className={stepStyles.shippingInlineNote}>
+              <strong>Preview tip:</strong> after changing a replacement rate, open the customer
+              link with a fresh cart or reset the cart session. Existing cart lines can keep old
+              checkout assignment properties until they are repaired or re-added.
+            </div>
+            <div className={stepStyles.shippingImpactInlineRow}>
+              <div className={stepStyles.shippingImpactInlineBlock}>
+                <span>{shippingBeforeAfter.beforeTitle}</span>
+                <strong>{shippingBeforeAfter.before}</strong>
+              </div>
+              <div className={stepStyles.shippingImpactArrow} aria-hidden>
+                →
+              </div>
+              <div className={stepStyles.shippingImpactInlineBlock}>
+                <span>{shippingBeforeAfter.afterTitle}</span>
+                <strong>{shippingBeforeAfter.after}</strong>
+              </div>
+            </div>
+            <div className={stepStyles.shippingGuidedReviewActions}>
+              <Button onClick={applyCurrentShippingSetupToTreatmentVariants} size="slim">
+                Copy setup to other treatment variants
+              </Button>
+              <Button onClick={() => setShippingRailTab('details')} size="slim" variant="tertiary">
+                Open readiness details
+              </Button>
+            </div>
+          </>
+        ),
+      });
+    const updateShippingRateAt = (rateIndex, patch) => {
+      setShippingLastAutoFixSnapshot(null);
+      const nextRates = [...activeConfiguredRates];
+      const currentRate =
+        nextRates[rateIndex] && typeof nextRates[rateIndex] === 'object'
+          ? nextRates[rateIndex]
+          : {};
+      nextRates[rateIndex] = {
+        ...currentRate,
+        ...patch,
+      };
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: nextRates,
+      });
+    };
+    const removeShippingRateAt = rateIndex => {
+      setShippingLastAutoFixSnapshot(null);
+      const nextRates = activeConfiguredRates.filter((_, index) => index !== rateIndex);
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(nextRates),
+      });
+    };
+    const focusShippingRateNameInput = rateIndex => {
+      setTimeout(() => {
+        if (typeof document === 'undefined') {
+          return;
+        }
+        const nameInput = document.getElementById(
+          `shipping-rate-name-${activeShippingVariantIndex}-${rateIndex}`
+        );
+        if (nameInput && typeof nameInput.focus === 'function') {
+          nameInput.focus();
+        }
+      }, 0);
+    };
+    const addShippingRateRow = () => {
+      setShippingLastAutoFixSnapshot(null);
+      const nextRateIndex = activeConfiguredRates.length;
+      const nextRates = [
+        ...activeConfiguredRates,
+        {
+          name: '',
+          amount: null,
+          currency: String(activeShippingConfig.currency || 'USD')
+            .trim()
+            .toUpperCase(),
+          priority: activeConfiguredRates.length + 1,
+          sort_order: activeConfiguredRates.length + 1,
+        },
+      ];
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(nextRates),
+      });
+      focusShippingRateNameInput(nextRateIndex);
+    };
+    const normalizeAllShippingRateCurrencies = () => {
+      if (activeConfiguredRates.length === 0) {
+        return;
+      }
+      setShippingLastAutoFixSnapshot(null);
+      const normalizedCurrency = String(
+        activeShippingConfig.currency || activeConfiguredRates[0]?.currency || 'USD'
+      )
+        .trim()
+        .toUpperCase();
+      const currencyCode = normalizedCurrency || 'USD';
+      const nextRates = activeConfiguredRates.map(rate => ({
+        ...rate,
+        currency: currencyCode,
+      }));
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: nextRates,
+      });
+      const nextSearch = {};
+      nextRates.forEach((_, index) => {
+        nextSearch[index] = currencyCode;
+      });
+      setShippingCurrencySearchByRate(nextSearch);
+      setShippingUiAdvancedOpen(true);
+    };
+    const fixAllShippingRateIssues = () => {
+      if (activeConfiguredRates.length === 0) {
+        return;
+      }
+      const previousRatesSnapshot = activeConfiguredRates.map(rate => ({ ...rate }));
+      const previousSearchSnapshot = { ...shippingCurrencySearchByRate };
+      const previousFixedAt = shippingRateLastFixedAt;
+      const normalizedCurrency =
+        String(activeShippingConfig.currency || activeConfiguredRates[0]?.currency || 'USD')
+          .trim()
+          .toUpperCase() || 'USD';
+      let fixedIssueCount = 0;
+      const nextRates = activeConfiguredRates.map((rate, index) => {
+        const currentName = String(rate?.name || '').trim();
+        const parsedAmount = Number(rate?.amount);
+        const hasNumericAmount =
+          hasShippingNumericValue(rate?.amount) && Number.isFinite(parsedAmount);
+        const amountNegative = hasNumericAmount && parsedAmount < 0;
+        const currencyMissing = String(rate?.currency || '').trim().length === 0;
+        if (!currentName) {
+          fixedIssueCount += 1;
+        }
+        if (currencyMissing) {
+          fixedIssueCount += 1;
+        }
+        if (amountNegative) {
+          fixedIssueCount += 1;
+        }
+        return {
+          ...rate,
+          name: currentName || `Rate ${index + 1}`,
+          currency:
+            String(
+              currencyMissing ? normalizedCurrency : rate?.currency || normalizedCurrency || 'USD'
+            )
+              .trim()
+              .toUpperCase() || 'USD',
+          amount: hasNumericAmount ? Math.max(0, parsedAmount) : rate?.amount,
+        };
+      });
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(nextRates),
+      });
+      const nextSearch = {};
+      nextRates.forEach((rate, index) => {
+        nextSearch[index] =
+          String(rate?.currency || normalizedCurrency || 'USD')
+            .trim()
+            .toUpperCase() || 'USD';
+      });
+      setShippingCurrencySearchByRate(nextSearch);
+      setShippingUiAdvancedOpen(true);
+      if (fixedIssueCount > 0) {
+        const nextFixedAt = Date.now();
+        setShippingLastAutoFixSnapshot({
+          variantIndex: activeShippingVariantIndex,
+          rates: previousRatesSnapshot,
+          currencySearchByRate: previousSearchSnapshot,
+          previousFixedAt,
+        });
+        setShippingRateLastFixedAt(nextFixedAt);
+        setShippingRateActionToast({
+          type: 'success',
+          message: `Fixed ${fixedIssueCount} row issue${fixedIssueCount === 1 ? '' : 's'}.`,
+        });
+        setTimeout(() => setShippingRateActionToast(null), 2400);
+      }
+    };
+    const undoLastShippingAutoFix = () => {
+      if (
+        !shippingLastAutoFixSnapshot ||
+        shippingLastAutoFixSnapshot.variantIndex !== activeShippingVariantIndex
+      ) {
+        return;
+      }
+      const restoredRates = Array.isArray(shippingLastAutoFixSnapshot.rates)
+        ? shippingLastAutoFixSnapshot.rates.map(rate => ({ ...rate }))
+        : [];
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(restoredRates),
+      });
+      setShippingCurrencySearchByRate({
+        ...(shippingLastAutoFixSnapshot.currencySearchByRate || {}),
+      });
+      setShippingRateLastFixedAt(shippingLastAutoFixSnapshot.previousFixedAt || null);
+      setShippingLastAutoFixSnapshot(null);
+      setShippingUiAdvancedOpen(true);
+      setShippingRateActionToast({
+        type: 'success',
+        message: 'Undid last auto-fix.',
+      });
+      setTimeout(() => setShippingRateActionToast(null), 2200);
+    };
+    const duplicateShippingRateAt = rateIndex => {
+      const sourceRate =
+        activeConfiguredRates[rateIndex] && typeof activeConfiguredRates[rateIndex] === 'object'
+          ? activeConfiguredRates[rateIndex]
+          : null;
+      if (!sourceRate) {
+        return;
+      }
+      setShippingLastAutoFixSnapshot(null);
+      const duplicatedName = String(sourceRate.name || '').trim();
+      const nextRates = [...activeConfiguredRates];
+      nextRates.splice(rateIndex + 1, 0, {
+        ...sourceRate,
+        name: duplicatedName ? `${duplicatedName} copy` : 'Copied rate',
+      });
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(nextRates),
+      });
+      setShippingUiAdvancedOpen(true);
+      focusShippingRateNameInput(rateIndex + 1);
+    };
+    const getShippingRateValidationIssues = rate => {
+      const issues = [];
+      const rateName = String(rate?.name || '').trim();
+      const currencyCode = String(rate?.currency || '').trim();
+      const amountValue = Number(rate?.amount);
+      if (!rateName) {
+        issues.push('Name missing');
+      }
+      if (!hasShippingNumericValue(rate?.amount)) {
+        issues.push('Amount required');
+      } else if (!Number.isFinite(amountValue) || amountValue < 0) {
+        issues.push('Amount must be 0 or greater');
+      }
+      if (!currencyCode) {
+        issues.push('Currency required');
+      }
+      if (String(rate?.description || '').trim().length > 200) {
+        issues.push('Subline too long');
+      }
+      const deliveryPromise = normalizeShippingDeliveryPromise(rate?.delivery_promise);
+      if (deliveryPromise.mode !== 'none' && !hasShippingNumericValue(rate?.amount)) {
+        issues.push('Promise needs amount');
+      }
+      if (
+        deliveryPromise.mode === 'custom' &&
+        deliveryPromise.min_delivery_date &&
+        deliveryPromise.max_delivery_date &&
+        deliveryPromise.min_delivery_date > deliveryPromise.max_delivery_date
+      ) {
+        issues.push('Delivery date range invalid');
+      }
+      return issues;
+    };
+    const handleAddShippingRateRow = () => {
+      if (shippingUiMode !== 'advanced') {
+        setShippingUiMode('advanced');
+      }
+      setShippingUiAdvancedOpen(true);
+      if (replacesExistingRates) {
+        setShippingReplacementExtraRowsOpen(true);
+      }
+      addShippingRateRow();
+    };
+    const handleShippingRateAmountKeyDown = (event, rateIndex) => {
+      if (event.key !== 'Enter') {
+        return;
+      }
+      if (event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        duplicateShippingRateAt(rateIndex);
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (rateIndex !== activeConfiguredRates.length - 1) {
+        return;
+      }
+      event.preventDefault();
+      handleAddShippingRateRow();
+    };
+    const renumberShippingRateOrdering = rates =>
+      rates.map((rate, index) => ({
+        ...rate,
+        priority: index + 1,
+        sort_order: index + 1,
+      }));
+    const moveShippingRateRow = (fromIndex, direction) => {
+      const toIndex = fromIndex + direction;
+      if (toIndex < 0 || toIndex >= activeConfiguredRates.length) {
+        return;
+      }
+      setShippingLastAutoFixSnapshot(null);
+      const nextRates = [...activeConfiguredRates];
+      const [moved] = nextRates.splice(fromIndex, 1);
+      nextRates.splice(toIndex, 0, moved);
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        rates: renumberShippingRateOrdering(nextRates),
+      });
+    };
+    const applyShippingFlatRatePreset = presetKey => {
+      const baseCurrency = String(activeShippingConfig.currency || 'USD')
+        .trim()
+        .toUpperCase();
+      if (presetKey === 'simple') {
+        if (replacesExistingRates) {
+          const replacementRows = activeDeliveryMethodNames
+            .map((methodName, index) => {
+              const sourceRate = shippingCurrentRates.find(
+                rate =>
+                  String(rate?.name || '')
+                    .trim()
+                    .toLowerCase() ===
+                  String(methodName || '')
+                    .trim()
+                    .toLowerCase()
+              );
+              return (
+                findReplacementRateForMethod(methodName) ||
+                buildReplacementRateForMethod(methodName, sourceRate, index)
+              );
+            })
+            .filter(Boolean);
+          const firstReplacementAmount = replacementRows.find(rate =>
+            hasShippingNumericValue(rate?.amount)
+          )?.amount;
+          updateShippingVariantConfig(activeShippingVariantIndex, {
+            rates: renumberShippingRateOrdering(replacementRows),
+            ...(hasShippingNumericValue(firstReplacementAmount)
+              ? { amount: firstReplacementAmount }
+              : {}),
+          });
+          return;
+        }
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          rates: [],
+        });
+        return;
+      }
+      if (presetKey === 'selected_methods') {
+        const suggestedMethodNames =
+          activeDeliveryMethodNames.length > 0
+            ? activeDeliveryMethodNames
+            : availableDeliveryMethodNames.slice(0, 2);
+        const suggestedRows = suggestedMethodNames
+          .map((methodName, index) => {
+            const sourceRate = shippingCurrentRates.find(
+              rate =>
+                String(rate?.name || '')
+                  .trim()
+                  .toLowerCase() ===
+                String(methodName || '')
+                  .trim()
+                  .toLowerCase()
+            );
+            const sourceAmount = hasShippingNumericValue(sourceRate?.amount)
+              ? Number(sourceRate.amount)
+              : hasShippingNumericValue(amountValue)
+                ? Number(amountValue)
+                : null;
+            return {
+              name: String(methodName || `Rate ${index + 1}`).trim(),
+              service_code: buildReplacementServiceCode(methodName, index),
+              amount: sourceAmount,
+              currency: String(sourceRate?.currency || baseCurrency)
+                .trim()
+                .toUpperCase(),
+              priority: index + 1,
+              sort_order: index + 1,
+              description: '',
+              delivery_promise: { mode: 'none', preset: 'none' },
+            };
+          })
+          .filter(rate => rate.name);
+        if (suggestedRows.length === 0) {
+          handleAddShippingRateRow();
+          return;
+        }
+        updateShippingVariantConfig(activeShippingVariantIndex, {
+          rates: renumberShippingRateOrdering(suggestedRows),
+        });
+      }
+    };
+    const renderShippingSuggestionChips = ({ label, values, selectedValues = [], onPick }) => {
+      const selectedSet = new Set(
+        normalizeCheckoutListInput(selectedValues).map(value => value.toLowerCase())
+      );
+      const visible = values.filter(value => !selectedSet.has(String(value).toLowerCase()));
+      if (visible.length === 0) return null;
+      return (
+        <div className={stepStyles.shippingSuggestionBlock}>
+          <span>{label}</span>
+          <div className={stepStyles.shippingSuggestionChips}>
+            {visible.map(value => (
+              <button
+                key={value}
+                type="button"
+                className={stepStyles.shippingSuggestionChip}
+                onClick={() => onPick(value)}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    };
+    const currentShippingRateText = hasShippingNumericValue(currentShippingRateValue)
+      ? inferredCurrentRate && !hasExplicitCurrentShippingRate
+        ? `Current Shopify setup: ${inferredCurrentRate.name || 'Shipping rate'} at ${inferredCurrentRate.formatted_amount || formatShippingMoney(currentShippingRateValue)}`
+        : `Current shipping rate: ${formatShippingMoney(currentShippingRateValue)}`
+      : shippingCurrentSetupSummary?.total_rates > 0
+        ? `Shopify has ${shippingCurrentSetupSummary.manual_rate_count || 0} manual rate${shippingCurrentSetupSummary.manual_rate_count === 1 ? '' : 's'} and ${shippingCurrentSetupSummary.calculated_rate_count || 0} calculated rate${shippingCurrentSetupSummary.calculated_rate_count === 1 ? '' : 's'} configured.`
+        : shippingCurrentSetupLoading
+          ? 'Loading Shopify’s configured shipping rates...'
+          : 'Shopify’s live rate depends on cart, address, profile, and carrier rules.';
+    const showCurrentShippingRatePreviewField =
+      !isActiveControlLike &&
+      [
+        'flat_rate',
+        'threshold_free_shipping',
+        'discount_percentage',
+        'discount_fixed',
+        'free_shipping',
+      ].includes(activeStrategy);
+    const targetedDeliveryMethods = normalizeCheckoutListInput(
+      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+    );
+    const checkoutPreviewSourceRate =
+      activeConfiguredValidRates[0] ||
+      (hasShippingNumericValue(amountValue)
+        ? {
+            name: String(activeShippingConfig.label || 'RipX Shipping').trim() || 'RipX Shipping',
+            amount: amountValue,
+            currency: activeShippingConfig.currency || 'USD',
+            description: '',
+            delivery_promise: { mode: 'none', preset: 'none' },
+          }
+        : null);
+    const checkoutPreviewTitle = (() => {
+      const rawName =
+        String(checkoutPreviewSourceRate?.name || 'RipX Shipping').trim() || 'RipX Shipping';
+      if (activeStrategy !== 'flat_rate' || replacesExistingRates) {
+        return rawName;
+      }
+      const prefix = previewLabelPrefix || 'RipX Preview';
+      return rawName.toLowerCase().startsWith(`${prefix.toLowerCase()}:`)
+        ? rawName
+        : `${prefix}: ${rawName}`;
+    })();
+    const checkoutPreviewDescription =
+      String(checkoutPreviewSourceRate?.description || '').trim() ||
+      String(activeCheckoutDisplay.default_description || '').trim();
+    const checkoutPreviewPromise =
+      normalizeShippingDeliveryPromise(checkoutPreviewSourceRate?.delivery_promise).mode === 'none'
+        ? activeCheckoutDeliveryPromise
+        : normalizeShippingDeliveryPromise(checkoutPreviewSourceRate?.delivery_promise);
+    const checkoutPreviewPromiseLabel = getShippingDeliveryPromiseLabel(checkoutPreviewPromise);
+    const checkoutPreviewPrice = hasShippingNumericValue(checkoutPreviewSourceRate?.amount)
+      ? `${formatShippingMoney(checkoutPreviewSourceRate.amount)} ${String(checkoutPreviewSourceRate.currency || activeShippingConfig.currency || 'USD').toUpperCase()}`
+      : 'Calculated at checkout';
+    const getShippingBeforeAfterPreview = () => {
+      if (isActiveControlLike || activeStrategy === 'control') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: 'Shopify shows the store’s existing delivery methods and prices.',
+          afterTitle: 'Control experience',
+          after: 'No shipping change is applied for this baseline variant.',
+        };
+      }
+      if (activeStrategy === 'flat_rate') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: currentShippingRateText,
+          afterTitle: 'Variant checkout',
+          after: hasShippingNumericValue(activePrimaryRateAmount)
+            ? replacesExistingRates
+              ? `After apply, RipX shows ${activeConfiguredValidRates.length > 1 ? `up to ${activeConfiguredValidRates.length} configured carrier rates (starting at ${formatShippingMoney(activePrimaryRateAmount)})` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`} and hides ${targetedDeliveryMethods.length > 0 ? targetedDeliveryMethods.join(', ') : existingDeliveryMethodText} for this variant.`
+              : `After apply, RipX can add ${activeConfiguredValidRates.length > 1 ? `${activeConfiguredValidRates.length} configured carrier rates` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`}${previewLabelPrefix ? ` labeled with "${previewLabelPrefix}"` : ' labeled as RipX Preview'}. Shopify may still show ${existingDeliveryMethodText} unless you switch display mode to replace existing methods.`
+            : 'Add a flat amount to preview the variant shipping rate.',
+        };
+      }
+      if (activeStrategy === 'threshold_free_shipping') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: currentShippingRateText,
+          afterTitle: 'Variant checkout',
+          after: hasShippingNumericValue(thresholdValue)
+            ? `Shipping becomes free when the cart reaches ${formatShippingMoney(thresholdValue)}.`
+            : 'Add a cart threshold to preview the free-shipping rule.',
+        };
+      }
+      if (activeStrategy === 'discount_percentage') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: currentShippingRateText,
+          afterTitle: 'Variant checkout',
+          after: hasShippingNumericValue(percentOffValue)
+            ? `${Number(percentOffValue)}% is discounted from matching shipping costs.`
+            : 'Add a percentage to preview the shipping discount.',
+        };
+      }
+      if (activeStrategy === 'discount_fixed') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: currentShippingRateText,
+          afterTitle: 'Variant checkout',
+          after: hasShippingNumericValue(amountValue)
+            ? `${formatShippingMoney(amountValue)} is discounted from matching shipping costs.`
+            : 'Add a fixed amount to preview the shipping discount.',
+        };
+      }
+      if (activeStrategy === 'free_shipping') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: currentShippingRateText,
+          afterTitle: 'Variant checkout',
+          after: 'Matching delivery groups become free for this variant.',
+        };
+      }
+      if (isDeliveryCustomizationPath) {
+        const methodText =
+          targetedDeliveryMethods.length > 0
+            ? targetedDeliveryMethods.join(', ')
+            : 'the delivery methods you enter';
+        const action = String(activeShippingConfig.delivery_action || 'hide');
+        const renamedTo = String(activeShippingConfig.delivery_rename_to || '').trim();
+        return {
+          beforeTitle: 'Current checkout',
+          before: `Shopify shows ${methodText} as configured in Shipping and delivery.`,
+          afterTitle: 'Variant checkout',
+          after:
+            action === 'rename'
+              ? renamedTo
+                ? `${methodText} is renamed to “${renamedTo}”.`
+                : `${methodText} will be renamed after you enter the new label.`
+              : action === 'reorder'
+                ? `${methodText} is moved into the order entered here.`
+                : `${methodText} is hidden from checkout.`,
+        };
+      }
+      if (activeStrategy === 'carrier_quote') {
+        return {
+          beforeTitle: 'Current checkout',
+          before: 'Shopify shows the existing carrier and manual rates.',
+          afterTitle: 'Variant checkout',
+          after:
+            quoteProvider === 'static_rate' && hasShippingNumericValue(metadata.quote_amount)
+              ? `RipX returns a ${formatShippingMoney(metadata.quote_amount)} provider quote.`
+              : quoteProvider === 'country_table'
+                ? 'RipX returns a destination-aware quote from the configured country table.'
+                : 'Choose a quote provider to preview the calculated rate behavior.',
+        };
+      }
+      return {
+        beforeTitle: 'Current checkout',
+        before: 'Shopify shows the existing shipping setup.',
+        afterTitle: 'Variant checkout',
+        after: 'Configure this variant to preview the shopper-facing shipping change.',
+      };
+    };
+    const shippingBeforeAfter = getShippingBeforeAfterPreview();
+    const renderShippingFieldBadge = (label, tone = 'info') => (
+      <span
+        key={`${tone}-${label}`}
+        className={`${stepStyles.shippingFieldBadge} ${
+          tone === 'attention' ? stepStyles.shippingFieldBadgeRequired : ''
+        }`}
+      >
+        {label}
+      </span>
+    );
+    const renderShippingSmartSection = ({ title, description, badges = [], children }) => (
+      <div className={stepStyles.shippingSmartSection}>
+        <div className={stepStyles.shippingSmartSectionHeader}>
+          <div>
+            <span>{title}</span>
+            {description && <small>{description}</small>}
+          </div>
+          {badges.length > 0 && <div className={stepStyles.shippingFieldBadgeRow}>{badges}</div>}
+        </div>
+        <div className={stepStyles.shippingSmartSectionBody}>{children}</div>
+      </div>
+    );
+    const renderShippingPrimaryFields = () => {
+      if (isActiveControlLike || activeStrategy === 'control') {
+        return renderShippingSmartSection({
+          title: 'Control baseline',
+          description: 'This variant intentionally keeps Shopify shipping unchanged.',
+          badges: [renderShippingFieldBadge('Baseline')],
+          children: (
+            <div className={stepStyles.shippingFieldNote}>
+              Control keeps Shopify shipping unchanged. Use the treatment variants to test rate,
+              discount, or delivery option changes.
+            </div>
+          ),
+        });
+      }
+      if (activeStrategy === 'flat_rate') {
+        const shouldShowInlineBlocker = activeReadiness?.status === 'blocked';
+        const isShippingUiAdvancedMode = shippingUiMode === 'advanced';
+        const showAdvancedRateRows = shippingUiAdvancedOpen;
+        const selectedReplacementMethodNames = new Set(
+          activeDeliveryMethodNames.map(name =>
+            String(name || '')
+              .trim()
+              .toLowerCase()
+          )
+        );
+        const replacementLinkedRateEntries = activeConfiguredRates
+          .map((rate, index) => ({ rate, index }))
+          .filter(({ rate }) => {
+            if (!replacesExistingRates) return true;
+            const sourceName = getReplacementSourceName(rate).toLowerCase();
+            const visibleName = String(rate?.name || rate?.service_name || '')
+              .trim()
+              .toLowerCase();
+            return (
+              selectedReplacementMethodNames.has(sourceName) ||
+              selectedReplacementMethodNames.has(visibleName)
+            );
+          });
+        const replacementFallbackRateEntries =
+          replacesExistingRates && replacementLinkedRateEntries.length === 0
+            ? activeConfiguredRates
+                .slice(0, Math.max(1, activeDeliveryMethodNames.length || 1))
+                .map((rate, index) => ({ rate, index }))
+            : [];
+        const replacementExtraRateEntries =
+          replacesExistingRates && activeConfiguredRates.length > 0
+            ? activeConfiguredRates
+                .map((rate, index) => ({ rate, index }))
+                .filter(({ index }) => {
+                  const visibleIndexes = new Set(
+                    [...replacementLinkedRateEntries, ...replacementFallbackRateEntries].map(
+                      entry => entry.index
+                    )
+                  );
+                  return !visibleIndexes.has(index);
+                })
+            : [];
+        const visibleShippingRateEntries = replacesExistingRates
+          ? [
+              ...replacementLinkedRateEntries,
+              ...replacementFallbackRateEntries,
+              ...(shippingReplacementExtraRowsOpen ? replacementExtraRateEntries : []),
+            ]
+          : activeConfiguredRates.map((rate, index) => ({ rate, index }));
+        const collapsedRatePreviewRows = visibleShippingRateEntries.slice(0, 3);
+        const normalizedRowCurrency = String(
+          activeShippingConfig.currency || activeConfiguredRates[0]?.currency || 'USD'
+        )
+          .trim()
+          .toUpperCase();
+        const hasMixedShippingRateCurrencies =
+          activeConfiguredRates.length > 0 &&
+          activeConfiguredRates.some(
+            rate =>
+              String(rate?.currency || normalizedRowCurrency || 'USD')
+                .trim()
+                .toUpperCase() !== (normalizedRowCurrency || 'USD')
+          );
+        const hasAutoFixableRateIssues = activeConfiguredRates.some(rate => {
+          const nameMissing = String(rate?.name || '').trim().length === 0;
+          const currencyMissing = String(rate?.currency || '').trim().length === 0;
+          const parsedAmount = Number(rate?.amount);
+          const amountNegative =
+            hasShippingNumericValue(rate?.amount) &&
+            Number.isFinite(parsedAmount) &&
+            parsedAmount < 0;
+          return nameMissing || currencyMissing || amountNegative;
+        });
+        const canUndoLastShippingAutoFix =
+          Boolean(shippingLastAutoFixSnapshot) &&
+          shippingLastAutoFixSnapshot.variantIndex === activeShippingVariantIndex;
+        const shippingLastFixText = shippingRateLastFixedAt
+          ? new Date(shippingRateLastFixedAt).toLocaleTimeString([], {
+              hour: 'numeric',
+              minute: '2-digit',
+            })
+          : null;
+        return renderShippingSmartSection({
+          title: replacesExistingRates ? 'Set the replacement rate' : 'Set the new rate',
+          description: replacesExistingRates
+            ? 'Use one linked replacement row for each selected Shopify method. Add more rows only when this variant should offer extra shopper choices.'
+            : 'Enter the shopper-facing rate first. Optional checkout copy and additional service rows stay below.',
+          badges: [renderShippingFieldBadge('Required', 'attention')],
+          children: (
+            <>
+              {shouldShowInlineBlocker && (
+                <div className={stepStyles.shippingInlineBlocker}>
+                  <strong>Fix Before Apply:</strong>{' '}
+                  {activeReadiness?.issue || 'Configuration blocked.'}
+                </div>
+              )}
+              <div className={stepStyles.shippingDetailsHero}>
+                <div>
+                  <span className={stepStyles.shippingStudioEyebrow}>Step 3 setup</span>
+                  <strong>
+                    {replacesExistingRates
+                      ? 'Create the replacement shoppers will see.'
+                      : 'Create the shopper-facing shipping offer.'}
+                  </strong>
+                  <small>
+                    {replacesExistingRates
+                      ? 'RipX hides the selected native method for this variant, then shows this linked replacement rate.'
+                      : 'Start with the required amount. Optional checkout copy and extra rows can stay closed.'}
+                  </small>
+                </div>
+                <div className={stepStyles.shippingDetailsRecipe}>
+                  <span>
+                    {replacesExistingRates ? 'Hide selected original' : 'Keep Shopify methods'}
+                  </span>
+                  <span>{replacesExistingRates ? 'Show linked replacement' : 'Add RipX rate'}</span>
+                  <span>Control unchanged</span>
+                </div>
+              </div>
+              <TextField
+                label="Flat shipping amount"
+                type="number"
+                value={getShippingNumberValue(amountValue)}
+                onChange={updateFlatShippingAmount}
+                prefix="$"
+                helpText={
+                  replacesExistingRates
+                    ? 'This is the rate shown after selected Shopify methods are hidden.'
+                    : 'This is the new RipX rate shown beside Shopify methods.'
+                }
+                autoComplete="off"
+              />
+              <div className={stepStyles.shippingFieldMicroNote}>
+                {replacesExistingRates
+                  ? 'Most replacement tests need one row: hide the selected native method and show its linked RipX replacement. Extra rows are only for offering more than one service choice.'
+                  : 'Most tests only need this amount. Use optional enhancements only when you need checkout copy, delivery promises, or multiple simulated rates.'}
+                <a href={shippingRateModelDocHref} target="_blank" rel="noopener noreferrer">
+                  Learn More In Docs
+                </a>
+              </div>
+              <div className={stepStyles.shippingAdvancedInlineHeader}>
+                <div>
+                  <strong>Optional checkout enhancements</strong>
+                  <span>
+                    {replacesExistingRates
+                      ? 'Edit the linked replacement label, subline, delivery promise, or add extra service choices.'
+                      : 'Add sublines, delivery promises, or multiple rate rows without changing the required setup above.'}
+                  </span>
+                </div>
+                <Button
+                  size="slim"
+                  variant={shippingUiAdvancedOpen ? 'secondary' : 'primary'}
+                  onClick={() => {
+                    const isOpeningOptionalSettings = !shippingUiAdvancedOpen;
+                    if (isOpeningOptionalSettings && shippingUiMode !== 'advanced') {
+                      setShippingUiMode('advanced');
+                    }
+                    if (isOpeningOptionalSettings && replacesExistingRates) {
+                      setShippingReplacementExtraRowsOpen(false);
+                    }
+                    setShippingUiAdvancedOpen(open => !open);
+                  }}
+                >
+                  {shippingUiAdvancedOpen ? 'Hide optional settings' : 'Add optional settings'}
+                </Button>
+              </div>
+              {shippingUiAdvancedOpen && (
+                <div className={stepStyles.shippingCheckoutDisplayControls}>
+                  <TextField
+                    label="Default checkout subline"
+                    value={String(activeCheckoutDisplay.default_description || '')}
+                    onChange={value =>
+                      updateShippingCheckoutDisplay({
+                        default_description: value,
+                      })
+                    }
+                    placeholder="Free tracking included"
+                    helpText="Optional. Used when a rate row does not have its own subline."
+                    maxLength={200}
+                    autoComplete="off"
+                  />
+                  <Select
+                    label="Default delivery promise"
+                    options={SHIPPING_DELIVERY_PROMISE_OPTIONS}
+                    value={getShippingDeliveryPromiseValue(activeCheckoutDeliveryPromise)}
+                    onChange={value =>
+                      updateShippingCheckoutDisplay({
+                        delivery_promise: buildShippingDeliveryPromisePatch(value),
+                      })
+                    }
+                    helpText="Optional. RipX sends dates only for CarrierService rates."
+                  />
+                  {activeCheckoutDeliveryPromise.mode === 'custom' && (
+                    <div className={stepStyles.shippingDeliveryDateGrid}>
+                      <TextField
+                        label="Earliest delivery date"
+                        type="date"
+                        value={String(activeCheckoutDeliveryPromise.min_delivery_date || '')}
+                        onChange={value =>
+                          updateShippingCheckoutDisplay({
+                            delivery_promise: {
+                              ...activeCheckoutDeliveryPromise,
+                              min_delivery_date: value,
+                            },
+                          })
+                        }
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label="Latest delivery date"
+                        type="date"
+                        value={String(activeCheckoutDeliveryPromise.max_delivery_date || '')}
+                        onChange={value =>
+                          updateShippingCheckoutDisplay({
+                            delivery_promise: {
+                              ...activeCheckoutDeliveryPromise,
+                              max_delivery_date: value,
+                            },
+                          })
+                        }
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              {isShippingUiAdvancedMode && shippingUiAdvancedOpen && (
+                <div className={stepStyles.shippingSuggestedSetupPanel}>
+                  <div>
+                    <span className={stepStyles.shippingStudioEyebrow}>Recommended setup</span>
+                    <strong>
+                      {replacesExistingRates
+                        ? 'Best practice: one linked replacement.'
+                        : 'Most tests should use one clear rate.'}
+                    </strong>
+                    <small>
+                      {replacesExistingRates
+                        ? 'Keep the generated replacement row unless this variant should show extra services, like Standard and Express.'
+                        : 'Add rows only when this variant needs separate shopper-visible services, like Standard and Express.'}
+                    </small>
+                  </div>
+                  <div className={stepStyles.shippingPresetRow}>
+                    <Button size="slim" onClick={() => applyShippingFlatRatePreset('simple')}>
+                      {replacesExistingRates ? 'Keep linked replacement only' : 'Use single rate'}
+                    </Button>
+                    {!replacesExistingRates && (
+                      <Button
+                        size="slim"
+                        onClick={() => applyShippingFlatRatePreset('selected_methods')}
+                        disabled={
+                          activeDeliveryMethodNames.length === 0 &&
+                          availableDeliveryMethodNames.length === 0
+                        }
+                      >
+                        Suggest rows from Shopify methods
+                      </Button>
+                    )}
+                    <Button size="slim" onClick={handleAddShippingRateRow}>
+                      {replacesExistingRates ? 'Add another service' : 'Add custom row'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {shippingUiAdvancedOpen && (
+                <>
+                  <div
+                    className={stepStyles.shippingAdvancedShell}
+                    onKeyDown={event => {
+                      if (event.key === 'Escape' && showAdvancedRateRows) {
+                        setShippingUiAdvancedOpen(false);
+                      }
+                    }}
+                  >
+                    <div className={stepStyles.shippingAdvancedHeader}>
+                      <div className={stepStyles.shippingAdvancedActions}>
+                        <Button
+                          icon={PlusIcon}
+                          size="slim"
+                          variant={activeConfiguredRates.length === 0 ? 'primary' : 'secondary'}
+                          onClick={handleAddShippingRateRow}
+                        >
+                          {activeConfiguredRates.length === 0
+                            ? 'Add First Rate Row'
+                            : replacesExistingRates
+                              ? 'Add another service'
+                              : 'Add Rate Row'}
+                        </Button>
+                        {visibleShippingRateEntries.length > 0 && (
+                          <span className={stepStyles.shippingAdvancedCount}>
+                            {visibleShippingRateEntries.length} visible row
+                            {visibleShippingRateEntries.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {replacesExistingRates && replacementExtraRateEntries.length > 0 && (
+                          <Button
+                            size="slim"
+                            variant="tertiary"
+                            onClick={() => {
+                              if (shippingReplacementExtraRowsOpen) {
+                                setShippingReplacementExtraRowsOpen(false);
+                                return;
+                              }
+                              applyShippingFlatRatePreset('simple');
+                            }}
+                          >
+                            {shippingReplacementExtraRowsOpen
+                              ? 'Hide extra services'
+                              : `Remove ${replacementExtraRateEntries.length} extra service${
+                                  replacementExtraRateEntries.length === 1 ? '' : 's'
+                                }`}
+                          </Button>
+                        )}
+                        {isShippingUiAdvancedMode && (
+                          <>
+                            <Button
+                              size="slim"
+                              variant="tertiary"
+                              disabled={!hasMixedShippingRateCurrencies}
+                              onClick={normalizeAllShippingRateCurrencies}
+                            >
+                              Normalize Currencies
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="tertiary"
+                              disabled={!hasAutoFixableRateIssues}
+                              onClick={fixAllShippingRateIssues}
+                            >
+                              Fix All Row Issues
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="tertiary"
+                              disabled={!canUndoLastShippingAutoFix}
+                              onClick={undoLastShippingAutoFix}
+                            >
+                              Undo Last Auto-Fix
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {isShippingUiAdvancedMode && (
+                      <div className={stepStyles.shippingAdvancedMetaRow}>
+                        {canUndoLastShippingAutoFix && (
+                          <span className={stepStyles.shippingUndoHint}>
+                            Undo Expires After Next Row Edit
+                          </span>
+                        )}
+                        <span className={stepStyles.shippingShortcutHint}>
+                          Esc Collapse · Shift+Enter Duplicate Row
+                        </span>
+                        {shippingLastFixText && (
+                          <span className={stepStyles.shippingLastFixChip}>
+                            Last Auto-Fix: {shippingLastFixText}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {visibleShippingRateEntries.length > 0 && (
+                    <div className={stepStyles.shippingCollapsedRatesSummary}>
+                      <strong>
+                        {visibleShippingRateEntries.length}{' '}
+                        {replacesExistingRates ? 'linked replacement row' : 'optional service rate'}
+                        {visibleShippingRateEntries.length === 1 ? '' : 's'}
+                      </strong>
+                      <div className={stepStyles.shippingCollapsedRatesList}>
+                        {collapsedRatePreviewRows.map(({ rate, index }) => (
+                          <span key={`${rate.name || 'rate'}-${index}`}>
+                            {rate.name || `Rate ${index + 1}`}: {formatShippingMoney(rate.amount)}{' '}
+                            {String(rate.currency || 'USD').toUpperCase()}
+                          </span>
+                        ))}
+                        {visibleShippingRateEntries.length > collapsedRatePreviewRows.length && (
+                          <span>
+                            +{visibleShippingRateEntries.length - collapsedRatePreviewRows.length}{' '}
+                            more
+                          </span>
+                        )}
+                        {replacesExistingRates &&
+                          !shippingReplacementExtraRowsOpen &&
+                          replacementExtraRateEntries.length > 0 && (
+                            <span>{replacementExtraRateEntries.length} extra ready to remove</span>
+                          )}
+                      </div>
+                    </div>
+                  )}
+                  <Collapsible open={showAdvancedRateRows} id="shipping-flat-rate-advanced">
+                    <div className={stepStyles.shippingFormSection}>
+                      <div className={stepStyles.shippingFormSectionHeader}>
+                        <span>
+                          {replacesExistingRates
+                            ? 'Linked replacement row'
+                            : 'Optional service rates'}
+                          <TooltipWrapper
+                            content={
+                              replacesExistingRates
+                                ? 'This row is the RipX rate shown after the selected native method is hidden. Add more rows only if shoppers should see additional service choices.'
+                                : 'Use these only when the variant should show multiple shopper-visible services. Otherwise the single flat amount above is better.'
+                            }
+                            accessibilityLabel={
+                              replacesExistingRates
+                                ? 'Linked replacement row help'
+                                : 'Optional service rates help'
+                            }
+                          >
+                            <span className={stepStyles.shippingInfoIcon} aria-hidden="true">
+                              <Icon source={InfoIcon} />
+                            </span>
+                          </TooltipWrapper>
+                        </span>
+                        <small>
+                          {replacesExistingRates
+                            ? 'Edit the replacement label, amount, and optional checkout copy here.'
+                            : 'Show multiple named services only when shoppers need choices.'}
+                        </small>
+                      </div>
+                      <div className={stepStyles.shippingConfigSummaryRow}>
+                        <span className={stepStyles.shippingConfigSummaryChip}>
+                          Rates: {activeConfiguredRates.length}
+                        </span>
+                        <span className={stepStyles.shippingConfigSummaryChip}>
+                          Mode: {replacesExistingRates ? 'Replace' : 'Compare'}
+                        </span>
+                        <span className={stepStyles.shippingConfigSummaryChip}>
+                          Prefix: {previewLabelPrefix || 'RipX Preview'}
+                        </span>
+                      </div>
+                      {visibleShippingRateEntries.length > 0 ? (
+                        <div className={stepStyles.shippingRateTable}>
+                          <div className={stepStyles.shippingRateTableHeader} aria-hidden="true">
+                            <span>Name</span>
+                            <span>Checkout subline</span>
+                            <span>Amount</span>
+                            <span>Currency</span>
+                            <span>Promise</span>
+                            <span>Actions</span>
+                          </div>
+                          {visibleShippingRateEntries.map(({ rate, index: rateIndex }) => {
+                            const rateLabel =
+                              String(rate.name || '').trim() || `rate ${rateIndex + 1}`;
+                            const rateValidationIssues = getShippingRateValidationIssues(rate);
+                            return (
+                              <div
+                                key={`shipping-rate-${rateIndex}`}
+                                className={stepStyles.shippingRateTableRow}
+                              >
+                                <div className={stepStyles.shippingRateTableCell}>
+                                  <TextField
+                                    id={`shipping-rate-name-${activeShippingVariantIndex}-${rateIndex}`}
+                                    label={`Rate name ${rateIndex + 1}`}
+                                    labelHidden
+                                    value={String(rate.name || '')}
+                                    onChange={value =>
+                                      updateShippingRateAt(rateIndex, { name: value })
+                                    }
+                                    placeholder="Standard Shipping"
+                                    autoComplete="off"
+                                  />
+                                </div>
+                                <div className={stepStyles.shippingRateTableCell}>
+                                  <TextField
+                                    label={`Checkout subline ${rateIndex + 1}`}
+                                    labelHidden
+                                    value={String(rate.description || '')}
+                                    onChange={value =>
+                                      updateShippingRateAt(rateIndex, { description: value })
+                                    }
+                                    placeholder="Includes tracking"
+                                    maxLength={200}
+                                    autoComplete="off"
+                                  />
+                                </div>
+                                <div className={stepStyles.shippingRateTableCell}>
+                                  <TextField
+                                    label={`Rate amount ${rateIndex + 1}`}
+                                    labelHidden
+                                    type="number"
+                                    value={getShippingNumberValue(rate.amount)}
+                                    onChange={value =>
+                                      updateShippingRateAt(rateIndex, {
+                                        amount: value === '' ? null : Number(value),
+                                      })
+                                    }
+                                    prefix="$"
+                                    autoComplete="off"
+                                    onKeyDown={event =>
+                                      handleShippingRateAmountKeyDown(event, rateIndex)
+                                    }
+                                  />
+                                </div>
+                                <div className={stepStyles.shippingRateTableCell}>
+                                  {(() => {
+                                    const selectedCurrency = String(rate.currency || '')
+                                      .trim()
+                                      .toUpperCase();
+                                    const isCurrencyPopoverOpen = Boolean(
+                                      shippingCurrencyEditByRate[rateIndex]
+                                    );
+                                    const selectedCurrencyName = (SHIPPING_CURRENCY_OPTIONS.find(
+                                      ([code]) => code === selectedCurrency
+                                    ) || [])[1];
+                                    const closeCurrencyPopover = () => {
+                                      setShippingCurrencySearchByRate(prev => ({
+                                        ...prev,
+                                        [rateIndex]: '',
+                                      }));
+                                      setShippingCurrencyEditByRate(prev => ({
+                                        ...prev,
+                                        [rateIndex]: false,
+                                      }));
+                                    };
+                                    return (
+                                      <div className={stepStyles.shippingCurrencyControlRow}>
+                                        <Popover
+                                          active={isCurrencyPopoverOpen}
+                                          onClose={closeCurrencyPopover}
+                                          preferredPosition="below"
+                                          activator={
+                                            <div
+                                              className={`${stepStyles.shippingCurrencyPill} ${
+                                                !selectedCurrency
+                                                  ? stepStyles.shippingCurrencyPillEmpty
+                                                  : ''
+                                              }`}
+                                            >
+                                              <button
+                                                type="button"
+                                                className={stepStyles.shippingCurrencyPillTrigger}
+                                                onClick={() =>
+                                                  setShippingCurrencyEditByRate(prev => ({
+                                                    ...prev,
+                                                    [rateIndex]: true,
+                                                  }))
+                                                }
+                                                aria-label={
+                                                  selectedCurrency
+                                                    ? `Selected currency ${selectedCurrency}. Click to change.`
+                                                    : 'Select currency'
+                                                }
+                                              >
+                                                <span
+                                                  className={stepStyles.shippingCurrencyPillLabel}
+                                                >
+                                                  {selectedCurrency
+                                                    ? `${selectedCurrency}${
+                                                        selectedCurrencyName
+                                                          ? ` · ${selectedCurrencyName}`
+                                                          : ''
+                                                      }`
+                                                    : 'Select Currency'}
+                                                </span>
+                                                <Icon source={ChevronDownIcon} />
+                                              </button>
+                                            </div>
+                                          }
+                                        >
+                                          <div className={stepStyles.shippingCurrencyPopoverPanel}>
+                                            <Autocomplete
+                                              options={SHIPPING_CURRENCY_OPTIONS.filter(
+                                                ([code, name]) => {
+                                                  const query = String(
+                                                    shippingCurrencySearchByRate[rateIndex] || ''
+                                                  )
+                                                    .trim()
+                                                    .toLowerCase();
+                                                  if (!query) return true;
+                                                  return (
+                                                    code.toLowerCase().includes(query) ||
+                                                    name.toLowerCase().includes(query)
+                                                  );
+                                                }
+                                              ).map(([code, name]) => ({
+                                                value: code,
+                                                label: `${code} — ${name}`,
+                                              }))}
+                                              selected={[]}
+                                              onSelect={selected => {
+                                                const picked = String(selected?.[0] || '')
+                                                  .trim()
+                                                  .toUpperCase();
+                                                if (!picked) return;
+                                                updateShippingRateAt(rateIndex, {
+                                                  currency: picked,
+                                                });
+                                                setShippingRecentCurrencies(prev => {
+                                                  const next = [
+                                                    picked,
+                                                    ...prev.filter(code => code !== picked),
+                                                  ];
+                                                  return next.slice(0, 3);
+                                                });
+                                                closeCurrencyPopover();
+                                              }}
+                                              textField={
+                                                <Autocomplete.TextField
+                                                  label={`Rate currency ${rateIndex + 1}`}
+                                                  labelHidden
+                                                  value={
+                                                    shippingCurrencySearchByRate[rateIndex] ?? ''
+                                                  }
+                                                  onChange={value => {
+                                                    const normalized = String(
+                                                      value || ''
+                                                    ).toUpperCase();
+                                                    setShippingCurrencySearchByRate(prev => ({
+                                                      ...prev,
+                                                      [rateIndex]: normalized,
+                                                    }));
+                                                  }}
+                                                  onKeyDown={event => {
+                                                    if (event.key === 'Escape') {
+                                                      event.preventDefault();
+                                                      closeCurrencyPopover();
+                                                    }
+                                                  }}
+                                                  placeholder="Search Currency"
+                                                  autoComplete="off"
+                                                />
+                                              }
+                                            />
+                                            {shippingRecentCurrencies.length > 0 && (
+                                              <div className={stepStyles.shippingCurrencyRecentRow}>
+                                                <span>Recent Currencies</span>
+                                                <div
+                                                  className={stepStyles.shippingCurrencyRecentChips}
+                                                >
+                                                  {shippingRecentCurrencies.map(code => {
+                                                    const currencyName =
+                                                      (SHIPPING_CURRENCY_OPTIONS.find(
+                                                        ([c]) => c === code
+                                                      ) || [])[1];
+                                                    return (
+                                                      <button
+                                                        key={`${rateIndex}-${code}`}
+                                                        type="button"
+                                                        className={
+                                                          stepStyles.shippingCurrencyRecentChip
+                                                        }
+                                                        onClick={() => {
+                                                          updateShippingRateAt(rateIndex, {
+                                                            currency: code,
+                                                          });
+                                                          closeCurrencyPopover();
+                                                        }}
+                                                      >
+                                                        {code}
+                                                        {currencyName ? ` · ${currencyName}` : ''}
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            )}
+                                            <div
+                                              className={stepStyles.shippingCurrencyPopoverActions}
+                                            >
+                                              <Button
+                                                size="slim"
+                                                variant="tertiary"
+                                                onClick={closeCurrencyPopover}
+                                              >
+                                                Cancel
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        </Popover>
+                                        {selectedCurrency && (
+                                          <button
+                                            type="button"
+                                            className={stepStyles.shippingCurrencyPillClear}
+                                            aria-label={`Clear Selected Currency For ${rateLabel}`}
+                                            onClick={() => {
+                                              updateShippingRateAt(rateIndex, { currency: '' });
+                                              setShippingCurrencySearchByRate(prev => ({
+                                                ...prev,
+                                                [rateIndex]: '',
+                                              }));
+                                              setShippingCurrencyEditByRate(prev => ({
+                                                ...prev,
+                                                [rateIndex]: true,
+                                              }));
+                                            }}
+                                          >
+                                            <Icon source={XIcon} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                                <div className={stepStyles.shippingRateTableCell}>
+                                  <Select
+                                    label={`Delivery promise ${rateIndex + 1}`}
+                                    labelHidden
+                                    options={SHIPPING_DELIVERY_PROMISE_OPTIONS}
+                                    value={getShippingDeliveryPromiseValue(rate.delivery_promise)}
+                                    onChange={value =>
+                                      updateShippingRateAt(rateIndex, {
+                                        delivery_promise: buildShippingDeliveryPromisePatch(value),
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div
+                                  className={`${stepStyles.shippingRateTableCell} ${stepStyles.shippingRateTableCellActions}`}
+                                >
+                                  <TooltipWrapper
+                                    content="Move rate up"
+                                    accessibilityLabel={`Move ${rateLabel} up`}
+                                  >
+                                    <Button
+                                      icon={ChevronUpIcon}
+                                      variant="plain"
+                                      size="slim"
+                                      accessibilityLabel={`Move ${rateLabel} up`}
+                                      disabled={rateIndex === 0}
+                                      onClick={() => moveShippingRateRow(rateIndex, -1)}
+                                    />
+                                  </TooltipWrapper>
+                                  <TooltipWrapper
+                                    content="Move rate down"
+                                    accessibilityLabel={`Move ${rateLabel} down`}
+                                  >
+                                    <Button
+                                      icon={ChevronDownIcon}
+                                      variant="plain"
+                                      size="slim"
+                                      accessibilityLabel={`Move ${rateLabel} down`}
+                                      disabled={rateIndex === activeConfiguredRates.length - 1}
+                                      onClick={() => moveShippingRateRow(rateIndex, 1)}
+                                    />
+                                  </TooltipWrapper>
+                                  <TooltipWrapper
+                                    content="Duplicate rate row"
+                                    accessibilityLabel={`Duplicate ${rateLabel}`}
+                                  >
+                                    <Button
+                                      icon={DuplicateIcon}
+                                      variant="plain"
+                                      size="slim"
+                                      accessibilityLabel={`Duplicate ${rateLabel}`}
+                                      onClick={() => duplicateShippingRateAt(rateIndex)}
+                                    />
+                                  </TooltipWrapper>
+                                  <TooltipWrapper
+                                    content="Remove rate"
+                                    accessibilityLabel={`Remove ${rateLabel}`}
+                                  >
+                                    <Button
+                                      icon={DeleteIcon}
+                                      tone="critical"
+                                      variant="plain"
+                                      size="slim"
+                                      accessibilityLabel={`Remove ${rateLabel}`}
+                                      onClick={() => removeShippingRateAt(rateIndex)}
+                                    />
+                                  </TooltipWrapper>
+                                </div>
+                                <div className={stepStyles.shippingRateTableRowMeta}>
+                                  <div className={stepStyles.shippingRateRowMetaStack}>
+                                    {getShippingDeliveryPromiseValue(rate.delivery_promise) ===
+                                      'custom' && (
+                                      <div className={stepStyles.shippingDeliveryDateGrid}>
+                                        <TextField
+                                          label={`Earliest delivery date ${rateIndex + 1}`}
+                                          type="date"
+                                          value={String(
+                                            rate.delivery_promise?.min_delivery_date || ''
+                                          )}
+                                          onChange={value =>
+                                            updateShippingRateAt(rateIndex, {
+                                              delivery_promise: {
+                                                ...normalizeShippingDeliveryPromise(
+                                                  rate.delivery_promise
+                                                ),
+                                                mode: 'custom',
+                                                preset: 'custom',
+                                                min_delivery_date: value,
+                                              },
+                                            })
+                                          }
+                                          autoComplete="off"
+                                        />
+                                        <TextField
+                                          label={`Latest delivery date ${rateIndex + 1}`}
+                                          type="date"
+                                          value={String(
+                                            rate.delivery_promise?.max_delivery_date || ''
+                                          )}
+                                          onChange={value =>
+                                            updateShippingRateAt(rateIndex, {
+                                              delivery_promise: {
+                                                ...normalizeShippingDeliveryPromise(
+                                                  rate.delivery_promise
+                                                ),
+                                                mode: 'custom',
+                                                preset: 'custom',
+                                                max_delivery_date: value,
+                                              },
+                                            })
+                                          }
+                                          autoComplete="off"
+                                        />
+                                      </div>
+                                    )}
+                                    {rateValidationIssues.length > 0 ? (
+                                      <div className={stepStyles.shippingRateHealthBadges}>
+                                        {rateValidationIssues.map(issue => (
+                                          <Badge
+                                            key={`${rateLabel}-${issue}`}
+                                            tone="attention"
+                                            size="small"
+                                          >
+                                            {issue}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <Badge tone="success" size="small">
+                                        Ready
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className={stepStyles.shippingFieldNote}>
+                          No explicit rate rows yet. Checkout returns the fallback amount above.
+                        </div>
+                      )}
+                    </div>
+                  </Collapsible>
+                </>
+              )}
+              {!shippingStudioEnhancementsEnabled && (
+                <Select
+                  label="Rate display mode"
+                  options={[
+                    {
+                      label: 'Add preview method (keep Shopify methods visible)',
+                      value: 'add_preview_method',
+                    },
+                    {
+                      label: 'Replace existing methods (hide selected Shopify methods)',
+                      value: 'replace_existing_methods',
+                    },
+                  ]}
+                  value={replacesExistingRates ? 'replace_existing_methods' : 'add_preview_method'}
+                  onChange={value =>
+                    updateShippingVariantConfig(activeShippingVariantIndex, {
+                      shipping_display_mode: value,
+                      replace_existing_rates: value === 'replace_existing_methods',
+                      delivery_action:
+                        value === 'replace_existing_methods'
+                          ? 'hide'
+                          : activeShippingConfig.delivery_action || 'hide',
+                      delivery_method_names:
+                        value === 'replace_existing_methods' && targetedDeliveryMethods.length === 0
+                          ? availableDeliveryMethodNames
+                          : targetedDeliveryMethods,
+                    })
+                  }
+                  helpText="Compare mode keeps methods. Replace mode hides selected methods."
+                />
+              )}
+              {shippingStudioEnhancementsEnabled && replacesExistingRates && (
+                <div className={stepStyles.shippingFieldNote}>
+                  Replacement is enabled from the selected category. Pick the Shopify methods to
+                  replace above, then set the new rate amount here.
+                </div>
+              )}
+              {!shippingStudioEnhancementsEnabled && replacesExistingRates ? (
+                <>
+                  <TextField
+                    label="Existing methods to hide"
+                    value={deliveryTargetsValue}
+                    onChange={value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        delivery_method_names: normalizeCheckoutListInput(value),
+                        delivery_action: 'hide',
+                      })
+                    }
+                    placeholder="Standard Delivery, Express"
+                    helpText="Methods hidden for this variant."
+                    autoComplete="off"
+                  />
+                  {renderShippingSuggestionChips({
+                    label: 'Pick current checkout methods',
+                    values: availableDeliveryMethodNames,
+                    selectedValues: activeShippingConfig.delivery_method_names,
+                    onPick: value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        delivery_method_names: appendShippingListValue(
+                          activeShippingConfig.delivery_method_names,
+                          value
+                        ),
+                        delivery_action: 'hide',
+                      }),
+                  })}
+                </>
+              ) : !shippingStudioEnhancementsEnabled ? (
+                <>
+                  <TextField
+                    label="Preview label prefix"
+                    value={previewLabelPrefix}
+                    onChange={value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        preview_label_prefix: value,
+                        shipping_display_mode: 'add_preview_method',
+                        replace_existing_rates: false,
+                      })
+                    }
+                    placeholder="RipX Preview"
+                    helpText="Prefix shown before additive rate labels."
+                    autoComplete="off"
+                  />
+                  <div className={stepStyles.shippingFieldNote}>
+                    Additive mode keeps {existingDeliveryMethodText} visible so shoppers can
+                    compare.
+                  </div>
+                </>
+              ) : null}
+            </>
+          ),
+        });
+      }
+      if (activeStrategy === 'threshold_free_shipping') {
+        return renderShippingSmartSection({
+          title: 'Free shipping threshold',
+          description: 'Choose the cart value that unlocks free shipping.',
+          badges: [renderShippingFieldBadge('Required', 'attention')],
+          children: (
+            <TextField
+              label="Free shipping threshold"
+              type="number"
+              value={getShippingNumberValue(thresholdValue)}
+              onChange={value =>
+                updateShippingVariantConfig(activeShippingVariantIndex, {
+                  threshold_amount: value === '' ? null : Number(value),
+                })
+              }
+              prefix="$"
+              autoComplete="off"
+            />
+          ),
+        });
+      }
+      if (activeStrategy === 'discount_percentage') {
+        return renderShippingSmartSection({
+          title: 'Percent shipping discount',
+          description: 'Discount matching shipping costs by a percentage.',
+          badges: [renderShippingFieldBadge('Required', 'attention')],
+          children: (
+            <TextField
+              label="Shipping discount percent"
+              type="number"
+              value={getShippingNumberValue(percentOffValue)}
+              onChange={value =>
+                updateShippingVariantConfig(activeShippingVariantIndex, {
+                  percent_off: value === '' ? null : Number(value),
+                })
+              }
+              suffix="%"
+              autoComplete="off"
+            />
+          ),
+        });
+      }
+      if (activeStrategy === 'discount_fixed') {
+        return renderShippingSmartSection({
+          title: 'Fixed shipping discount',
+          description: 'Subtract a fixed amount from matching shipping costs.',
+          badges: [renderShippingFieldBadge('Required', 'attention')],
+          children: (
+            <TextField
+              label="Shipping discount amount"
+              type="number"
+              value={getShippingNumberValue(amountValue)}
+              onChange={value =>
+                updateShippingVariantConfig(activeShippingVariantIndex, {
+                  amount: value === '' ? null : Number(value),
+                })
+              }
+              prefix="$"
+              autoComplete="off"
+            />
+          ),
+        });
+      }
+      if (activeStrategy === 'free_shipping') {
+        return renderShippingSmartSection({
+          title: 'Force free shipping',
+          description: 'No amount is needed for a 100% shipping discount path.',
+          badges: [renderShippingFieldBadge('Ready')],
+          children: (
+            <div className={stepStyles.shippingFieldNote}>
+              RipX applies a 100% shipping discount to matching delivery groups for this variant.
+            </div>
+          ),
+        });
+      }
+      if (isDeliveryCustomizationPath) {
+        const deliveryAction = String(activeShippingConfig.delivery_action || 'hide');
+        return renderShippingSmartSection({
+          title: deliveryAction === 'rename' ? 'Rename selected methods' : 'Hide selected methods',
+          description: shippingStudioEnhancementsEnabled
+            ? 'Selected Shopify methods are listed above. Configure only the action details here.'
+            : 'Edit delivery methods Shopify already shows at checkout.',
+          badges: [renderShippingFieldBadge('Target required', 'attention')],
+          children: (
+            <>
+              {!shippingStudioEnhancementsEnabled && (
+                <>
+                  <div
+                    className={stepStyles.shippingRadioCardGrid}
+                    role="radiogroup"
+                    aria-label="Delivery customization action"
+                  >
+                    {deliveryActionOptions.map(option => {
+                      const active =
+                        String(activeShippingConfig.delivery_action || 'hide') === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          className={`${stepStyles.shippingRadioCard} ${
+                            active ? stepStyles.shippingRadioCardActive : ''
+                          }`}
+                          onClick={() =>
+                            updateShippingVariantConfig(activeShippingVariantIndex, {
+                              delivery_action: option.value,
+                              strategy: 'carrier_quote',
+                              execution_hint: 'delivery_customization',
+                            })
+                          }
+                        >
+                          <span className={stepStyles.shippingStrategyRadio} aria-hidden />
+                          <span>
+                            <strong>{option.label}</strong>
+                            <small>{option.description}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <TextField
+                    label="Delivery method names"
+                    value={deliveryTargetsValue}
+                    onChange={value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        delivery_method_names: normalizeCheckoutListInput(value),
+                        strategy: 'carrier_quote',
+                        execution_hint: 'delivery_customization',
+                      })
+                    }
+                    placeholder="Express Shipping, Standard Shipping"
+                    helpText="Use exact customer-facing checkout delivery method labels."
+                    autoComplete="off"
+                  />
+                  {renderShippingSuggestionChips({
+                    label: 'Pick from current Shopify methods',
+                    values: availableDeliveryMethodNames,
+                    selectedValues: activeShippingConfig.delivery_method_names,
+                    onPick: value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        delivery_method_names: appendShippingListValue(
+                          activeShippingConfig.delivery_method_names,
+                          value
+                        ),
+                        strategy: 'carrier_quote',
+                        execution_hint: 'delivery_customization',
+                      }),
+                  })}
+                </>
+              )}
+              {shippingStudioEnhancementsEnabled && deliveryAction === 'hide' && (
+                <div className={stepStyles.shippingFieldNote}>
+                  No extra fields are needed. The selected Shopify methods above will be hidden for
+                  this variant only.
+                </div>
+              )}
+              {deliveryAction === 'rename' && (
+                <>
+                  <TextField
+                    label="Rename selected methods to"
+                    value={String(activeShippingConfig.delivery_rename_to || '')}
+                    onChange={value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        delivery_rename_to: value,
+                      })
+                    }
+                    placeholder="Tracked standard shipping"
+                    helpText="Shopify may keep the carrier/provider prefix in checkout."
+                    autoComplete="off"
+                  />
+                  {renderShippingSuggestionChips({
+                    label: 'Suggested rename labels',
+                    values: availableDeliveryMethodNames.map(name => `Tracked ${name}`),
+                    selectedValues: [activeShippingConfig.delivery_rename_to],
+                    onPick: value =>
+                      updateShippingVariantConfig(activeShippingVariantIndex, {
+                        delivery_rename_to: value,
+                      }),
+                  })}
+                </>
+              )}
+              {!shippingStudioEnhancementsEnabled && (
+                <div className={stepStyles.shippingFieldNote}>
+                  Delivery Customization cannot create new rates; it edits existing checkout
+                  options.
+                </div>
+              )}
+            </>
+          ),
+        });
+      }
+      if (activeStrategy === 'carrier_quote') {
+        return renderShippingSmartSection({
+          title: 'Carrier rate provider',
+          description: 'Choose how RipX should return calculated shipping quotes.',
+          badges: [renderShippingFieldBadge('Provider path')],
+          children: (
+            <>
+              <div
+                className={stepStyles.shippingRadioCardGrid}
+                role="radiogroup"
+                aria-label="Quote provider"
+              >
+                {quoteProviderOptions.map(option => {
+                  const active = quoteProvider === option.value;
+                  return (
+                    <button
+                      key={option.value || 'none'}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      className={`${stepStyles.shippingRadioCard} ${
+                        active ? stepStyles.shippingRadioCardActive : ''
+                      }`}
+                      onClick={() =>
+                        updateShippingMetadata(activeShippingVariantIndex, {
+                          quote_provider: option.value,
+                        })
+                      }
+                    >
+                      <span className={stepStyles.shippingStrategyRadio} aria-hidden />
+                      <span>
+                        <strong>{option.label}</strong>
+                        <small>{option.description}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {quoteProvider === 'static_rate' && (
+                <TextField
+                  label="Provider quote amount"
+                  type="number"
+                  value={getShippingNumberValue(metadata.quote_amount)}
+                  onChange={value =>
+                    updateShippingMetadata(activeShippingVariantIndex, {
+                      quote_amount: value === '' ? null : Number(value),
+                    })
+                  }
+                  prefix="$"
+                  autoComplete="off"
+                />
+              )}
+              {quoteProvider === 'country_table' && (
+                <TextField
+                  label="Country rates"
+                  value={String(metadata.country_rates || '')}
+                  onChange={value =>
+                    updateShippingMetadata(activeShippingVariantIndex, {
+                      country_rates: value,
+                    })
+                  }
+                  helpText="Use `US:5.00,CA:7.50,*:9.00` format for destination-aware fallback quotes."
+                  autoComplete="off"
+                />
+              )}
+            </>
+          ),
+        });
+      }
+      return null;
+    };
+    const renderShippingBaselineField = () => {
+      if (!showCurrentShippingRatePreviewField) return null;
+      const baselineOverrideNeeded =
+        hasExplicitCurrentShippingRate ||
+        !inferredCurrentRate ||
+        (shippingUiAdvancedOpen && shippingCurrentRates.length === 0);
+      if (!baselineOverrideNeeded) return null;
+      return renderShippingSmartSection({
+        title: 'Preview baseline override',
+        description:
+          'Optional fallback used only for the draft shopper preview. Shopify still calculates the live checkout rate.',
+        badges: [renderShippingFieldBadge('Preview only')],
+        children: (
+          <TextField
+            label="Current shipping rate for preview"
+            type="number"
+            value={getShippingNumberValue(currentShippingRateValue)}
+            onChange={value =>
+              updateShippingMetadata(activeShippingVariantIndex, {
+                current_shipping_rate: value === '' ? null : Number(value),
+              })
+            }
+            prefix="$"
+            autoComplete="off"
+            helpText={
+              inferredCurrentRate && !hasExplicitCurrentShippingRate
+                ? `Auto-filled from Shopify Admin${
+                    inferredCurrentRate?.name ? ` (${inferredCurrentRate.name})` : ''
+                  }. Override when you want preview to compare against a specific checkout situation.`
+                : 'Override when you want preview to compare against a specific checkout situation.'
+            }
+          />
+        ),
+      });
+    };
+    const renderShippingTargetingFields = () => {
+      if (isActiveControlLike || activeStrategy === 'control') return null;
+      return renderShippingSmartSection({
+        title: 'Targeting scope',
+        description:
+          activeStrategy === 'carrier_quote'
+            ? 'Target a profile or existing method handle so the adapter knows where to apply.'
+            : 'Optional operator notes for profile and zone scoping.',
+        badges: [
+          activeStrategy === 'carrier_quote' && !isDeliveryCustomizationPath
+            ? renderShippingFieldBadge('Target required', 'attention')
+            : renderShippingFieldBadge('Optional'),
+        ],
+        children: (
+          <>
+            {activeStrategy === 'carrier_quote' && !isDeliveryCustomizationPath && (
+              <>
+                <TextField
+                  label="Method handles"
+                  value={methodHandlesValue}
+                  onChange={value =>
+                    updateShippingVariantConfig(activeShippingVariantIndex, {
+                      method_handles: value
+                        .split(',')
+                        .map(item => item.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  placeholder="standard-shipping, express-shipping"
+                  helpText="Type exact Shopify handles, or start from suggested handle-style labels below and adjust if needed."
+                  autoComplete="off"
+                />
+                {renderShippingSuggestionChips({
+                  label: 'Suggested handle-style targets',
+                  values: availableMethodHandleSuggestions,
+                  selectedValues: activeShippingConfig.method_handles,
+                  onPick: value =>
+                    updateShippingVariantConfig(activeShippingVariantIndex, {
+                      method_handles: appendShippingListValue(
+                        activeShippingConfig.method_handles,
+                        value
+                      ),
+                    }),
+                })}
+              </>
+            )}
+            <div className={stepStyles.shippingSmartFieldGrid}>
+              <div className={stepStyles.shippingPickerField}>
+                <span>Profile Scope (required for CarrierService)</span>
+                <Autocomplete
+                  options={visibleProfileScopeOptions}
+                  selected={[profileScopeSelectedValue]}
+                  onSelect={selected => {
+                    const picked = String(selected?.[0] || SHIPPING_PROFILE_AUTO_OPTION);
+                    applyProfileScopeSelection(
+                      picked === SHIPPING_PROFILE_AUTO_OPTION ? '' : picked
+                    );
+                    setShippingProfileScopeSearch('');
+                  }}
+                  textField={
+                    <Autocomplete.TextField
+                      label="Profile Scope (required for CarrierService)"
+                      labelHidden
+                      value={
+                        shippingProfileScopeSearch !== ''
+                          ? shippingProfileScopeSearch
+                          : String(selectedProfileScopeOption?.label || '')
+                      }
+                      onChange={value => setShippingProfileScopeSearch(String(value || ''))}
+                      placeholder="Search Profile By Name Or ID"
+                      autoComplete="off"
+                    />
+                  }
+                />
+                <span className={stepStyles.shippingPickerHint}>
+                  Selecting one profile auto-maps the first matching Shopify zone for Save Changes
+                  shipping sync.
+                </span>
+              </div>
+              <div className={stepStyles.shippingCountryPickerField}>
+                <span>Zone Countries</span>
+                <AudienceCountryMultiSelect
+                  value={
+                    Array.isArray(activeShippingConfig.zone_countries)
+                      ? activeShippingConfig.zone_countries
+                      : []
+                  }
+                  onChange={countries =>
+                    updateShippingVariantConfig(activeShippingVariantIndex, {
+                      zone_countries: countries,
+                    })
+                  }
+                />
+                {renderShippingSuggestionChips({
+                  label: 'Countries from current shipping zones',
+                  values: availableZoneCountries,
+                  selectedValues: activeShippingConfig.zone_countries,
+                  onPick: value =>
+                    updateShippingVariantConfig(activeShippingVariantIndex, {
+                      zone_countries: appendShippingListValue(
+                        activeShippingConfig.zone_countries,
+                        value.toUpperCase()
+                      ),
+                    }),
+                })}
+              </div>
+            </div>
+          </>
+        ),
+      });
+    };
+    return (
+      <BlockStack gap="400">
+        {shippingVariants.length > 0 ? (
+          <div className={stepStyles.shippingVariantStudio}>
+            <div className={stepStyles.shippingVariantCommandBar}>
+              <div className={stepStyles.shippingVariantCommandCopy}>
+                <span className={stepStyles.shippingStudioEyebrow}>Shipping variant studio</span>
+                <strong>Configure each shipping experience without leaving the editor.</strong>
+                <span>
+                  Choose a shipping category, configure the variant-only changes, and use the
+                  preview rail for draft readiness.
+                </span>
+              </div>
+            </div>
+            <div className={stepStyles.shippingBrowserFrame}>
+              <div
+                className={stepStyles.shippingBrowserTabs}
+                role="tablist"
+                aria-label="Shipping test variants"
+              >
+                {shippingVariants.map((variant, index) => {
+                  const readiness = getShippingReadiness(variant, index);
+                  const active = index === activeShippingVariantIndex;
+                  const color = getVariantColor(index);
+                  return (
+                    <button
+                      key={`shipping-tab-${index}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      aria-controls={`shipping-variant-panel-${index}`}
+                      className={`${stepStyles.shippingBrowserTab} ${
+                        active ? stepStyles.shippingBrowserTabActive : ''
+                      }`}
+                      style={{
+                        '--shipping-variant-accent': color,
+                        '--shipping-variant-accent-soft': getVariantColorLight(color, 0.12),
+                      }}
+                      onClick={() => {
+                        setShippingVariantTabIndex(index);
+                        setShippingGuidedStep('category');
+                        setShippingRailTab('overview');
+                      }}
+                    >
+                      <span className={stepStyles.shippingBrowserTabTop}>
+                        <span className={stepStyles.shippingBrowserTabDot} aria-hidden />
+                        <strong>{variant?.name || `Variant ${index + 1}`}</strong>
+                      </span>
+                      <span className={stepStyles.shippingBrowserTabSummary}>
+                        {getShippingVariantSummary(variant, index)}
+                      </span>
+                      <span className={stepStyles.shippingBrowserTabMeta}>
+                        <Badge tone={readiness.tone} size="small">
+                          {readiness.label}
+                        </Badge>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                id={`shipping-variant-panel-${activeShippingVariantIndex}`}
+                role="tabpanel"
+                className={stepStyles.shippingVariantPanel}
+              >
+                <div className={stepStyles.shippingVariantPanelHeader}>
+                  <div>
+                    <span className={stepStyles.shippingStudioEyebrow}>Active tab</span>
+                    <Text variant="headingMd" as="h3" fontWeight="bold">
+                      {activeShippingVariant?.name || `Variant ${activeShippingVariantIndex + 1}`}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      {strategyGuidance}
+                    </Text>
+                  </div>
+                  <InlineStack gap="200" blockAlign="center" wrap>
+                    <Badge tone={activeReadiness?.tone || 'info'}>
+                      {activeReadiness?.label || 'Ready'}
+                    </Badge>
+                  </InlineStack>
+                </div>
+
+                <div className={stepStyles.shippingVariantWorkspace}>
+                  <div className={stepStyles.shippingVariantFormCard}>
+                    {isActiveControlLike ? (
+                      <ControlShippingBaselinePanel
+                        methods={shippingCurrentRates}
+                        loading={shippingCurrentSetupLoading}
+                        error={shippingCurrentSetupError}
+                        onRefresh={() => setShippingCurrentSetupRefreshKey(value => value + 1)}
+                      />
+                    ) : (
+                      <div
+                        className={`${stepStyles.shippingStrategyEditor} ${
+                          shippingStudioEnhancementsEnabled
+                            ? stepStyles.shippingStrategyEditorSingle
+                            : ''
+                        }`}
+                      >
+                        {!shippingStudioEnhancementsEnabled && (
+                          <fieldset className={stepStyles.shippingStrategySidebar}>
+                            <legend>Shipping strategy</legend>
+                            <div className={stepStyles.shippingStrategyHelp} aria-live="polite">
+                              <span>{selectedStrategyChoice?.label || 'Shipping strategy'}</span>
+                              <small>
+                                {selectedStrategyChoice?.description ||
+                                  'Choose how this variant should modify checkout shipping.'}
+                              </small>
+                            </div>
+                            {shippingStrategyGroups
+                              .filter(group => group.key !== 'baseline')
+                              .map(group => {
+                                const choices = shippingStrategyChoices.filter(
+                                  choice => choice.group === group.key && choice.value !== 'control'
+                                );
+                                if (choices.length === 0) return null;
+                                return (
+                                  <div className={stepStyles.shippingStrategyGroup} key={group.key}>
+                                    <span className={stepStyles.shippingStrategyGroupLabel}>
+                                      {group.label}
+                                    </span>
+                                    {choices.map(choice => {
+                                      const active = isStrategyChoiceActive(choice);
+                                      return (
+                                        <button
+                                          key={choice.key}
+                                          type="button"
+                                          role="radio"
+                                          aria-checked={active}
+                                          title={choice.description}
+                                          className={`${stepStyles.shippingStrategyOption} ${
+                                            active ? stepStyles.shippingStrategyOptionActive : ''
+                                          }`}
+                                          onClick={() => handleShippingStrategyChoice(choice.value)}
+                                        >
+                                          <span
+                                            className={stepStyles.shippingStrategyRadio}
+                                            aria-hidden
+                                          />
+                                          <span className={stepStyles.shippingStrategyOptionCopy}>
+                                            <strong>{choice.label}</strong>
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })}
+                          </fieldset>
+                        )}
+                        <div className={stepStyles.shippingSmartForm}>
+                          {shippingStudioEnhancementsEnabled ? (
+                            <>
+                              {renderGuidedShippingProgress()}
+                              <div className={stepStyles.shippingGuidedSlide}>
+                                {activeShippingGuidedStep === 'category' && (
+                                  <VariationBuilderPanel
+                                    selectedCategory={selectedShippingCategory}
+                                    disabled={false}
+                                    onCategorySelect={handleShippingCategorySelect}
+                                  />
+                                )}
+                                {activeShippingGuidedStep === 'methods' && (
+                                  <ControlMethodsPanel
+                                    methods={shippingCurrentRates}
+                                    selectedMethodNames={activeDeliveryMethodNames}
+                                    selectedMethodIds={activeSelectedMethodIds}
+                                    selectedCategory={selectedShippingCategory}
+                                    replacementRates={activeConfiguredRates}
+                                    loading={shippingCurrentSetupLoading}
+                                    error={shippingCurrentSetupError}
+                                    onToggleMethod={toggleActiveDeliveryMethodName}
+                                    onSelectAll={selectAllActiveDeliveryMethods}
+                                    onClear={() =>
+                                      updateActiveDeliveryMethodNames([], {
+                                        clearScopeTargets: true,
+                                      })
+                                    }
+                                    onAddReplacementRate={addReplacementRateForMethod}
+                                    onRemoveReplacementRate={removeReplacementRateForMethod}
+                                  />
+                                )}
+                                {activeShippingGuidedStep === 'details' && (
+                                  <>
+                                    {renderShippingPrimaryFields()}
+                                    {renderShippingBaselineField()}
+                                    {(selectedShippingCategory === 'carrier_quote' ||
+                                      shippingUiAdvancedOpen) &&
+                                      renderShippingTargetingFields()}
+                                  </>
+                                )}
+                                {activeShippingGuidedStep === 'review' &&
+                                  renderGuidedShippingReview()}
+                              </div>
+                              {renderGuidedShippingFooter()}
+                            </>
+                          ) : (
+                            <>
+                              {renderShippingPrimaryFields()}
+                              {renderShippingBaselineField()}
+                              {renderShippingTargetingFields()}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <aside className={stepStyles.shippingReadinessRail}>
+                    <div className={stepStyles.shippingSetupOverviewCard}>
+                      <div className={stepStyles.shippingSetupOverviewHeader}>
+                        <span className={stepStyles.shippingStudioEyebrow}>
+                          {shippingStudioEnhancementsEnabled
+                            ? 'Preview companion'
+                            : 'Action summary'}
+                        </span>
+                        <Badge
+                          tone={
+                            isActiveControlLike
+                              ? 'success'
+                              : shippingChecklistPending.length === 0
+                                ? 'success'
+                                : 'attention'
+                          }
+                          size="small"
+                        >
+                          {isActiveControlLike
+                            ? 'Baseline'
+                            : shippingChecklistPending.length === 0
+                              ? 'Ready'
+                              : 'Needs setup'}
+                        </Badge>
+                      </div>
+                      <div className={stepStyles.shippingSetupOverviewTitle}>
+                        {isActiveControlLike
+                          ? 'Control variant keeps Shopify shipping unchanged.'
+                          : shippingStudioEnhancementsEnabled
+                            ? shippingChecklistPending.length === 0
+                              ? 'Ready to preview and apply.'
+                              : `Next: ${shippingChecklistPrimaryNext}`
+                            : `Next: ${shippingChecklistPrimaryNext}`}
+                      </div>
+                      {!isActiveControlLike && (
+                        <>
+                          <div className={stepStyles.shippingSetupProgressTrack} aria-hidden>
+                            <span
+                              className={stepStyles.shippingSetupProgressFill}
+                              style={{ width: `${shippingSetupCompletionPercent}%` }}
+                            />
+                          </div>
+                          <div className={stepStyles.shippingSetupOverviewMeta}>
+                            {shippingStudioEnhancementsEnabled
+                              ? `${selectedShippingCategoryLabel} • Step ${activeShippingGuidedStepIndex + 1}/${guidedShippingSteps.length}: ${activeGuidedStepLabel}`
+                              : `${shippingChecklistDoneCount}/${shippingChecklistTotalCount} steps complete • ${getShippingStrategyLabel(activeStrategy)}`}
+                          </div>
+                        </>
+                      )}
+                      {isActiveControlLike && (
+                        <div className={stepStyles.shippingSetupOverviewMeta}>
+                          Read-only baseline • No RipX shipping actions
+                        </div>
+                      )}
+                    </div>
+                    <div className={stepStyles.shippingRailTabs}>
+                      <button
+                        type="button"
+                        className={`${stepStyles.shippingRailTabButton} ${
+                          shippingRailTab === 'overview'
+                            ? stepStyles.shippingRailTabButtonActive
+                            : ''
+                        }`}
+                        onClick={() => setShippingRailTab('overview')}
+                      >
+                        Overview
+                      </button>
+                      {shippingStudioEnhancementsEnabled &&
+                        !isActiveControlLike &&
+                        canShowShippingOperations && (
+                          <button
+                            type="button"
+                            className={`${stepStyles.shippingRailTabButton} ${
+                              shippingRailTab === 'diagnostics'
+                                ? stepStyles.shippingRailTabButtonActive
+                                : ''
+                            }`}
+                            onClick={() => setShippingRailTab('diagnostics')}
+                          >
+                            Diagnostics
+                          </button>
+                        )}
+                      <button
+                        type="button"
+                        className={`${stepStyles.shippingRailTabButton} ${
+                          shippingRailTab === 'details'
+                            ? stepStyles.shippingRailTabButtonActive
+                            : ''
+                        }`}
+                        onClick={() => setShippingRailTab('details')}
+                      >
+                        Details
+                      </button>
+                    </div>
+                    {shippingRailTab === 'overview' ? (
+                      <>
+                        {hasShippingBlocker && (
+                          <div className={stepStyles.shippingRailBlockerBanner} role="alert">
+                            <strong>Fix Before Apply:</strong> {shippingBlockerMessage}
+                          </div>
+                        )}
+                        <div className={stepStyles.shippingOverviewInsights}>
+                          {hasShippingBlocker ? (
+                            <button
+                              type="button"
+                              className={`${stepStyles.shippingOverviewInsightChip} ${stepStyles.shippingOverviewInsightChipAction}`}
+                              onClick={() => {
+                                setShippingRailTab('details');
+                                setShippingChecklistExpanded(true);
+                              }}
+                              title="Open details to resolve blocker"
+                            >
+                              Status: {shippingBlockerMessage}
+                            </button>
+                          ) : (
+                            <span className={stepStyles.shippingOverviewInsightChip}>
+                              Status: {activeReadiness?.issue || 'Ready'}
+                            </span>
+                          )}
+                          <span className={stepStyles.shippingOverviewInsightChip}>
+                            Setup: {shippingCurrentSetupCompactText}
+                          </span>
+                          {!isActiveControlLike && shippingStudioEnhancementsEnabled && (
+                            <span className={stepStyles.shippingOverviewInsightChip}>
+                              Change: {selectedShippingCategoryLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className={stepStyles.shippingImpactPreview}>
+                          <span className={stepStyles.shippingStudioEyebrow}>Shopper preview</span>
+                          <div className={stepStyles.shippingCheckoutMockCard}>
+                            <div className={stepStyles.shippingCheckoutMockHeader}>
+                              <div>
+                                <span className={stepStyles.shippingCheckoutMockTitle}>
+                                  {isActiveControlLike || activeStrategy === 'control'
+                                    ? 'Shopify live shipping method'
+                                    : checkoutPreviewTitle}
+                                </span>
+                                <span className={stepStyles.shippingCheckoutMockPrice}>
+                                  {isActiveControlLike || activeStrategy === 'control'
+                                    ? 'Current price'
+                                    : checkoutPreviewPrice}
+                                </span>
+                              </div>
+                              <span
+                                className={stepStyles.shippingCheckoutMockRadio}
+                                aria-hidden="true"
+                              />
+                            </div>
+                            <div className={stepStyles.shippingCheckoutMockLines}>
+                              <span>
+                                {isActiveControlLike || activeStrategy === 'control'
+                                  ? 'Control uses your live Shopify shipping labels.'
+                                  : checkoutPreviewDescription ||
+                                    'No checkout subline will be sent.'}
+                              </span>
+                              <span>
+                                {isActiveControlLike || activeStrategy === 'control'
+                                  ? 'Delivery promise comes from Shopify settings.'
+                                  : checkoutPreviewPromiseLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={stepStyles.shippingRailPreviewHint}>
+                            This preview is a draft estimate. Save changes, then run diagnostics
+                            before applying live Shopify updates.
+                          </div>
+                          <div className={stepStyles.shippingImpactInlineRow}>
+                            <div className={stepStyles.shippingImpactInlineBlock}>
+                              <span>{shippingBeforeAfter.beforeTitle}</span>
+                              <strong>{shippingBeforeAfter.before}</strong>
+                            </div>
+                            <div className={stepStyles.shippingImpactArrow} aria-hidden>
+                              →
+                            </div>
+                            <div className={stepStyles.shippingImpactInlineBlock}>
+                              <span>{shippingBeforeAfter.afterTitle}</span>
+                              <strong>{shippingBeforeAfter.after}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : shippingRailTab === 'diagnostics' ? (
+                      <>
+                        {shippingStudioEnhancementsEnabled &&
+                        !isActiveControlLike &&
+                        canShowShippingOperations ? (
+                          <ShippingOperationsPanel
+                            canRun={!shippingOperationsDisabled}
+                            canApply={
+                              !shippingOperationsDisabled &&
+                              !isActiveControlLike &&
+                              !hasShippingBlocker
+                            }
+                            disabledReason={shippingOperationsDisabledReason}
+                            applyDisabledReason={shippingApplyBlockedReason}
+                            loadingAction={shippingOperationLoading}
+                            latestResult={shippingOperationResult}
+                            activeVariantLabel={
+                              activeShippingVariant?.name ||
+                              `Variant ${activeShippingVariantIndex + 1}`
+                            }
+                            onRunDiagnostics={() => runShippingOperation('diagnostics')}
+                            onDryRun={() => runShippingOperation('dryRun')}
+                            onApply={() => runShippingOperation('apply')}
+                          />
+                        ) : (
+                          <div className={stepStyles.shippingCurrentSetupNote}>
+                            Diagnostics are available after this shipping test is saved.
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {!isActiveControlLike && (
+                          <div className={stepStyles.shippingScopeChecklist}>
+                            <span className={stepStyles.shippingStudioEyebrow}>Guided setup</span>
+                            <div className={stepStyles.shippingChecklistSummaryRow}>
+                              <strong>
+                                {shippingChecklistDoneCount}/{shippingChecklistTotalCount} Complete
+                              </strong>
+                              <span>
+                                {shippingChecklistPending.length === 0
+                                  ? 'All Setup Steps Ready'
+                                  : `${shippingChecklistPending.length} Step${
+                                      shippingChecklistPending.length === 1 ? '' : 's'
+                                    } Remaining`}
+                              </span>
+                            </div>
+                            <div className={stepStyles.shippingChecklistQaRow}>
+                              <Checkbox
+                                label="Run Live Checkout QA"
+                                checked={shippingLiveCheckoutQaDone}
+                                onChange={checked => {
+                                  updateShippingMetadata(activeShippingVariantIndex, {
+                                    shipping_live_checkout_qa_complete: Boolean(checked),
+                                    shipping_live_checkout_qa_checked_at: checked
+                                      ? new Date().toISOString()
+                                      : null,
+                                  });
+                                }}
+                                helpText="Mark this after one real storefront checkout confirms the expected variant rate."
+                              />
+                              {shippingLiveCheckoutQaDone &&
+                                shippingLiveCheckoutQaCheckedAtText && (
+                                  <span className={stepStyles.shippingChecklistQaMeta}>
+                                    Confirmed: {shippingLiveCheckoutQaCheckedAtText}
+                                  </span>
+                                )}
+                            </div>
+                            {shippingChecklistPending.length > 0 ? (
+                              <div className={stepStyles.shippingChecklistFocusList}>
+                                {(shippingChecklistExpanded
+                                  ? shippingChecklistPending
+                                  : shippingChecklistPending.slice(0, 1)
+                                ).map(item => (
+                                  <div
+                                    key={item.label}
+                                    className={stepStyles.shippingChecklistFocusItem}
+                                  >
+                                    <span aria-hidden>•</span>
+                                    <strong>{item.label}</strong>
+                                  </div>
+                                ))}
+                                {!shippingChecklistExpanded &&
+                                  shippingChecklistPending.length > 1 && (
+                                    <div className={stepStyles.shippingChecklistMoreHint}>
+                                      +{shippingChecklistPending.length - 1} more step
+                                      {shippingChecklistPending.length - 1 === 1 ? '' : 's'}
+                                    </div>
+                                  )}
+                                {shippingChecklistPending.length > 1 && (
+                                  <button
+                                    type="button"
+                                    className={stepStyles.shippingChecklistToggle}
+                                    onClick={() => setShippingChecklistExpanded(open => !open)}
+                                  >
+                                    {shippingChecklistExpanded
+                                      ? 'Show Fewer'
+                                      : 'Show Full Checklist'}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className={stepStyles.shippingChecklistReadyState}>
+                                Checklist complete. Run one real checkout before launching.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className={stepStyles.shippingCurrentSetupCard}>
+                          <div className={stepStyles.shippingCurrentSetupHeader}>
+                            <span className={stepStyles.shippingStudioEyebrow}>
+                              Current Shopify setup
+                            </span>
+                            <Button
+                              size="slim"
+                              disabled={shippingCurrentSetupLoading}
+                              onClick={() => setShippingCurrentSetupRefreshKey(value => value + 1)}
+                            >
+                              {shippingCurrentSetupLoading ? 'Loading' : 'Refresh'}
+                            </Button>
+                          </div>
+                          {shippingCurrentSetupError ? (
+                            <div className={stepStyles.shippingCurrentSetupNote}>
+                              {shippingCurrentSetupError}
+                            </div>
+                          ) : shippingCurrentSetupLoading && shippingCurrentRates.length === 0 ? (
+                            <div className={stepStyles.shippingCurrentSetupNote}>
+                              Reading delivery profiles and shipping zones from Shopify...
+                            </div>
+                          ) : shippingCurrentRates.length > 0 ? (
+                            <>
+                              <div className={stepStyles.shippingCurrentSetupSummary}>
+                                {shippingCurrentSetupSummary?.can_infer_single_flat_rate
+                                  ? 'One flat configured rate was found and used in the shopper preview.'
+                                  : 'Multiple or calculated rates found. Preview shows the configured current setup instead of one guessed rate.'}
+                              </div>
+                              <div className={stepStyles.shippingCurrentSetupActions}>
+                                <button
+                                  type="button"
+                                  className={stepStyles.shippingChecklistToggle}
+                                  onClick={() => setShippingCurrentSetupExpanded(open => !open)}
+                                >
+                                  {shippingCurrentSetupExpanded
+                                    ? 'Show Fewer Rates'
+                                    : 'Show Rate Details'}
+                                </button>
+                              </div>
+                              {activeStrategy === 'flat_rate' && !isActiveControlLike && (
+                                <div className={stepStyles.shippingCurrentSetupNote}>
+                                  These existing methods can still show in checkout beside the RipX
+                                  flat rate. Turn on replacement and pick every method this variant
+                                  should hide.
+                                </div>
+                              )}
+                              <div className={stepStyles.shippingCurrentSetupList}>
+                                {shippingCurrentSetupVisibleRates.map((rate, rateIndex) => (
+                                  <div
+                                    className={stepStyles.shippingCurrentSetupRate}
+                                    key={`${rate.id || rate.name || 'rate'}-${rateIndex}`}
+                                  >
+                                    <div>{getCurrentSetupRateLine(rate)}</div>
+                                    {getCurrentSetupRateMeta(rate) && (
+                                      <small className={stepStyles.shippingCurrentSetupMeta}>
+                                        {getCurrentSetupRateMeta(rate)}
+                                      </small>
+                                    )}
+                                    {!isActiveControlLike && (
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        onClick={() => applyCurrentSetupRateScope(rate)}
+                                      >
+                                        Use as scope
+                                      </Button>
+                                    )}
+                                  </div>
+                                ))}
+                                {!shippingCurrentSetupExpanded &&
+                                  shippingCurrentRates.length > 2 && (
+                                    <div className={stepStyles.shippingCurrentSetupNote}>
+                                      +{shippingCurrentRates.length - 2} more configured rate
+                                      {shippingCurrentRates.length - 2 === 1 ? '' : 's'}
+                                    </div>
+                                  )}
+                              </div>
+                            </>
+                          ) : (
+                            <div className={stepStyles.shippingCurrentSetupNote}>
+                              No configured manual rates were returned. The shop may rely on carrier
+                              or app-calculated rates.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </aside>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className={stepStyles.shippingComparisonStrip}
+              aria-label="Shipping variant comparison"
+            >
+              {shippingReadinessList.map(item => (
+                <button
+                  key={`shipping-compare-${item.index}`}
+                  type="button"
+                  className={`${stepStyles.shippingComparisonChip} ${
+                    item.index === activeShippingVariantIndex
+                      ? stepStyles.shippingComparisonChipActive
+                      : ''
+                  }`}
+                  onClick={() => setShippingVariantTabIndex(item.index)}
+                >
+                  <span>
+                    <strong>{item.variant?.name || `Variant ${item.index + 1}`}</strong>
+                    {item.summary}
+                  </span>
+                  <Badge tone={item.readiness.tone} size="small">
+                    {item.readiness.label}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className={stepStyles.shippingVariantEmpty}>
+            Add Control and at least one treatment variant before configuring shipping strategy.
+          </div>
+        )}
       </BlockStack>
     );
   };
@@ -11397,8 +15887,8 @@ function TestWizard({
             RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
             <strong>Discount Function</strong> that reads cart attributes, or create discount codes
             per variant and share them.{' '}
-            <a href={`${ROUTES.DOCS}#tests`} target="_blank" rel="noopener noreferrer">
-              Test types &amp; docs →
+            <a href={`${ROUTES.DOCS}#offer-testing`} target="_blank" rel="noopener noreferrer">
+              Offer testing guide →
             </a>
           </Text>
         </Banner>
@@ -11830,7 +16320,7 @@ function TestWizard({
       checkoutVariants.length > 0
         ? Math.min(checkoutStudioVariantIndex, checkoutVariants.length - 1)
         : 0;
-    const checkoutDocsPath = ROUTES.DOCS;
+    const checkoutDocsPath = `${ROUTES.DOCS}#checkout-studio`;
     const phaseActionOptions = [
       { label: 'Hide methods', value: 'hide' },
       { label: 'Rename methods', value: 'rename' },
@@ -14435,7 +18925,7 @@ function TestWizard({
                                                   </span>
                                                 </TooltipWrapper>
                                                 <a
-                                                  href={`${checkoutDocsPath}#tests`}
+                                                  href={checkoutDocsPath}
                                                   className={styles.checkoutInlineDocLink}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
@@ -14599,7 +19089,7 @@ function TestWizard({
                                                   </span>
                                                 </TooltipWrapper>
                                                 <a
-                                                  href={`${checkoutDocsPath}#tests`}
+                                                  href={checkoutDocsPath}
                                                   className={styles.checkoutInlineDocLink}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
@@ -16592,705 +21082,764 @@ function TestWizard({
         theme: 'Theme Variants',
       };
       return (
-        <Card>
-          <BlockStack gap="400">
-            <div
-              className={
-                variantConfigType === 'price'
-                  ? stepStyles.variantConfigHeadPrice
-                  : isCheckoutVariantConfig
-                    ? stepStyles.variantConfigHeadCheckout
-                    : undefined
-              }
-            >
-              <InlineStack gap="300" blockAlign="center" wrap>
-                <Text variant="headingLg" as="h2" fontWeight="bold">
-                  {moduleHeading}
+        <div className={stepStyles.variantConfigShell}>
+          <Card>
+            <BlockStack gap="400">
+              <div
+                className={
+                  variantConfigType === 'price'
+                    ? stepStyles.variantConfigHeadPrice
+                    : isCheckoutVariantConfig
+                      ? stepStyles.variantConfigHeadCheckout
+                      : undefined
+                }
+              >
+                <InlineStack gap="300" blockAlign="center" wrap>
+                  <Text variant="headingLg" as="h2" fontWeight="bold">
+                    {moduleHeading}
+                  </Text>
+                  {variantConfigType === 'price' && <Badge tone="info">Price test</Badge>}
+                  {isCheckoutVariantConfig && (
+                    <Badge tone="info">{checkoutConfigPhaseDetails.title}</Badge>
+                  )}
+                  {isCheckoutVariantConfig && <Badge tone="success">Structured contract</Badge>}
+                  {isCheckoutVariantConfig && (
+                    <TooltipWrapper
+                      content="This step is intentionally compact: surface selection stays at the top, while detailed rollout and readiness guidance lives in the related review and diagnostics surfaces."
+                      accessibilityLabel="Checkout variant studio help"
+                    >
+                      <span className={styles.checkoutStudioCompactInfo} aria-hidden>
+                        <Icon source={InfoIcon} />
+                      </span>
+                    </TooltipWrapper>
+                  )}
+                </InlineStack>
+                <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '0.25rem' }}>
+                  {moduleSubtitle || moduleTitles[variantConfigType]}
                 </Text>
-                {variantConfigType === 'price' && <Badge tone="info">Price test</Badge>}
-                {isCheckoutVariantConfig && (
-                  <Badge tone="info">{checkoutConfigPhaseDetails.title}</Badge>
-                )}
-                {isCheckoutVariantConfig && <Badge tone="success">Structured contract</Badge>}
-                {isCheckoutVariantConfig && (
-                  <TooltipWrapper
-                    content="This step is intentionally compact: surface selection stays at the top, while detailed rollout and readiness guidance lives in the related review and diagnostics surfaces."
-                    accessibilityLabel="Checkout variant studio help"
-                  >
-                    <span className={styles.checkoutStudioCompactInfo} aria-hidden>
-                      <Icon source={InfoIcon} />
-                    </span>
-                  </TooltipWrapper>
-                )}
-              </InlineStack>
-              <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '0.25rem' }}>
-                {moduleSubtitle || moduleTitles[variantConfigType]}
-              </Text>
-            </div>
-            {variantConfigType === 'url' && renderVariantUrlModule()}
-            {variantConfigType === 'price' && renderVariantPriceModule()}
-            {variantConfigType === 'shipping' && renderVariantShippingModule()}
-            {variantConfigType === 'offer' && renderVariantOfferModule()}
-            {variantConfigType === 'checkout' && renderVariantCheckoutModule()}
-            {variantConfigType === 'theme' && renderVariantThemeModule()}
-          </BlockStack>
-        </Card>
+              </div>
+              {variantConfigType === 'url' && renderVariantUrlModule()}
+              {variantConfigType === 'price' && renderVariantPriceModule()}
+              {variantConfigType === 'shipping' && renderVariantShippingModule()}
+              {variantConfigType === 'offer' && renderVariantOfferModule()}
+              {variantConfigType === 'checkout' && renderVariantCheckoutModule()}
+              {variantConfigType === 'theme' && renderVariantThemeModule()}
+            </BlockStack>
+          </Card>
+        </div>
       );
     }
 
     return (
-      <Card>
-        <BlockStack gap="400">
-          {variantCodesData.length > 0 ? (
-            <BlockStack gap="500">
-              <InlineStack align="space-between" blockAlign="center">
-                <div>
-                  <Text variant="headingLg" as="h2" fontWeight="bold">
-                    Variant Configuration
-                  </Text>
-                  <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '0.25rem' }}>
-                    Add custom CSS and JavaScript to customize each variant&apos;s appearance and
-                    behavior.
-                  </Text>
-                </div>
-                {mode === 'edit' && (
-                  <Button
-                    onClick={() =>
-                      onSaveCode ? handleSaveCodeOnly() : handleSubmit({ saveCodeOnly: true })
-                    }
-                    loading={loading || submitLoading}
-                  >
-                    Save Code
-                  </Button>
-                )}
-              </InlineStack>
+      <div className={stepStyles.variantConfigShell}>
+        <Card>
+          <BlockStack gap="400">
+            {variantCodesData.length > 0 ? (
+              <BlockStack gap="500">
+                <InlineStack align="space-between" blockAlign="center">
+                  <div>
+                    <Text variant="headingLg" as="h2" fontWeight="bold">
+                      Variant Configuration
+                    </Text>
+                    <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '0.25rem' }}>
+                      Add custom CSS and JavaScript to customize each variant&apos;s appearance and
+                      behavior.
+                    </Text>
+                  </div>
+                  {mode === 'edit' && (
+                    <Button
+                      onClick={() =>
+                        onSaveCode ? handleSaveCodeOnly() : handleSubmit({ saveCodeOnly: true })
+                      }
+                      loading={loading || submitLoading}
+                    >
+                      Save Code
+                    </Button>
+                  )}
+                </InlineStack>
 
-              <div className="config-editor-accordion">
-                <div className="config-editor-accordion-item">
-                  <button
-                    type="button"
-                    className="config-editor-accordion-head"
-                    onClick={() => {
-                      void (async () => {
-                        if (!visualEditorExpanded) {
-                          const ready = await ensureVisualPreviewSaved();
-                          if (!ready) {
-                            return;
+                <div className="config-editor-accordion">
+                  <div className="config-editor-accordion-item">
+                    <button
+                      type="button"
+                      className="config-editor-accordion-head"
+                      onClick={() => {
+                        void (async () => {
+                          if (!visualEditorExpanded) {
+                            const ready = await ensureVisualPreviewSaved();
+                            if (!ready) {
+                              return;
+                            }
                           }
-                        }
-                        const next = !visualEditorExpanded;
-                        setVisualEditorExpanded(next);
-                        if (next) setCodeEditorExpanded(false);
-                      })();
-                    }}
-                    aria-expanded={visualEditorExpanded}
-                    aria-controls="config-editor-accordion-visual-body"
-                    id="config-editor-accordion-visual-head"
-                  >
-                    <span className="config-editor-accordion-head-icon config-editor-accordion-head-icon--visual">
-                      <Icon source={ViewIcon} />
-                    </span>
-                    <span className="config-editor-accordion-head-label">Visual Editor</span>
-                    {visualEditorDirty && (
-                      <span
-                        className="config-editor-accordion-head-dirty"
-                        title="Unsaved changes"
-                        aria-hidden
-                      >
-                        •
+                          const next = !visualEditorExpanded;
+                          setVisualEditorExpanded(next);
+                          if (next) setCodeEditorExpanded(false);
+                        })();
+                      }}
+                      aria-expanded={visualEditorExpanded}
+                      aria-controls="config-editor-accordion-visual-body"
+                      id="config-editor-accordion-visual-head"
+                    >
+                      <span className="config-editor-accordion-head-icon config-editor-accordion-head-icon--visual">
+                        <Icon source={ViewIcon} />
                       </span>
-                    )}
-                    <span className="config-editor-accordion-head-chevron">
-                      {visualEditorExpanded ? (
-                        <Icon source={ChevronDownIcon} />
-                      ) : (
-                        <Icon source={ChevronRightIcon} />
+                      <span className="config-editor-accordion-head-label">Visual Editor</span>
+                      {visualEditorDirty && (
+                        <span
+                          className="config-editor-accordion-head-dirty"
+                          title="Unsaved changes"
+                          aria-hidden
+                        >
+                          •
+                        </span>
                       )}
-                    </span>
-                  </button>
-                  <Collapsible
-                    id="config-editor-accordion-visual-body"
-                    open={visualEditorExpanded}
-                    transition={{ duration: '200ms', timingFunction: 'ease' }}
-                  >
-                    <div className="config-editor-accordion-body config-editor-panel config-editor-panel--visual">
-                      <div className="variant-visual-editor-content">
-                        <BlockStack gap="400">
-                          <div className="variant-visual-editor-default-page">
-                            <Text as="span" variant="bodySm" fontWeight="semibold">
-                              Default target page
-                            </Text>
-                            <Text
-                              as="p"
-                              variant="bodySm"
-                              color="subdued"
-                              style={{ marginTop: '0.25rem' }}
-                            >
-                              {normalizeTextValue(formData.segments?.url_pattern)
-                                ? normalizeTextValue(formData.segments?.url_pattern)
-                                : (formData.segments?.page_rules?.length ?? 0) > 0
-                                  ? 'Page rules (from Targeting step)'
-                                  : 'All pages'}
-                            </Text>
-                          </div>
-                          <TextField
-                            label="Preview URL"
-                            value={formData.segments?.visual_editor_preview_url ?? ''}
-                            onChange={value => {
-                              setIsDirty(true);
-                              setVisualEditorDirty(true);
-                              setFormData(prev => ({
-                                ...prev,
-                                segments: {
-                                  ...(prev.segments || {}),
-                                  visual_editor_preview_url: value,
-                                },
-                              }));
-                              setVisualPreviewLoadState('idle');
-                            }}
-                            placeholder={(() => {
-                              const d =
+                      <span className="config-editor-accordion-head-chevron">
+                        {visualEditorExpanded ? (
+                          <Icon source={ChevronDownIcon} />
+                        ) : (
+                          <Icon source={ChevronRightIcon} />
+                        )}
+                      </span>
+                    </button>
+                    <Collapsible
+                      id="config-editor-accordion-visual-body"
+                      open={visualEditorExpanded}
+                      transition={{ duration: '200ms', timingFunction: 'ease' }}
+                    >
+                      <div className="config-editor-accordion-body config-editor-panel config-editor-panel--visual">
+                        <div className="variant-visual-editor-content">
+                          <BlockStack gap="400">
+                            <div className="variant-visual-editor-default-page">
+                              <Text as="span" variant="bodySm" fontWeight="semibold">
+                                Default target page
+                              </Text>
+                              <Text
+                                as="p"
+                                variant="bodySm"
+                                color="subdued"
+                                style={{ marginTop: '0.25rem' }}
+                              >
+                                {normalizeTextValue(formData.segments?.url_pattern)
+                                  ? normalizeTextValue(formData.segments?.url_pattern)
+                                  : (formData.segments?.page_rules?.length ?? 0) > 0
+                                    ? 'Page rules (from Targeting step)'
+                                    : 'All pages'}
+                              </Text>
+                            </div>
+                            <TextField
+                              label="Preview URL"
+                              value={formData.segments?.visual_editor_preview_url ?? ''}
+                              onChange={value => {
+                                setIsDirty(true);
+                                setVisualEditorDirty(true);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  segments: {
+                                    ...(prev.segments || {}),
+                                    visual_editor_preview_url: value,
+                                  },
+                                }));
+                                setVisualPreviewLoadState('idle');
+                              }}
+                              placeholder={(() => {
+                                const d =
+                                  routeDomain ||
+                                  getPreviewDomain() ||
+                                  getShopDomain() ||
+                                  initialData?.shop_domain;
+                                const path = getFirstTargetPreviewPath();
+                                const domainClean = d
+                                  ? d
+                                      .replace(/^https?:\/\//i, '')
+                                      .replace(/\/+$/, '')
+                                      .split('/')[0]
+                                  : '';
+                                return domainClean
+                                  ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
+                                  : 'https://your-site.com/';
+                              })()}
+                              helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
+                              autoComplete="url"
+                            />
+                            {(isShopifyStoreDomain(
+                              routeDomain ||
+                                getPreviewDomain() ||
+                                getShopDomain() ||
+                                initialData?.shop_domain ||
+                                ''
+                            ) ||
+                              isShopifyPreviewUrl(
+                                formData.segments?.visual_editor_preview_url ||
+                                  formData.segments?.url_pattern ||
+                                  ''
+                              )) && (
+                              <TextField
+                                label="Storefront password"
+                                type="password"
+                                value={visualEditorStorefrontPassword}
+                                onChange={handleVisualEditorStorefrontPasswordChange}
+                                autoComplete="off"
+                                helpText="For password-protected Shopify dev stores (e.g. dev storefront password). Saved for this browser session only; reloads preview when you enter it."
+                              />
+                            )}
+                            {isPriceTestType &&
+                            !(formData.segments?.visual_editor_preview_url ?? '').trim() ? (
+                              <Select
+                                label="Preview page"
+                                options={[
+                                  { label: 'Product (PDP)', value: 'pdp' },
+                                  { label: 'Collection (PLP)', value: 'plp' },
+                                  { label: 'Cart', value: 'cart' },
+                                  { label: 'Search', value: 'search' },
+                                  { label: 'Home', value: 'home' },
+                                ]}
+                                value={visualEditorPreviewSurface}
+                                onChange={value => {
+                                  setVisualEditorPreviewSurface(value);
+                                  setVisualPreviewLoadState('loading');
+                                }}
+                                helpText="Load the storefront surface you are mapping or editing."
+                              />
+                            ) : null}
+                            {(() => {
+                              const veUrl = (
+                                formData.segments?.visual_editor_preview_url ?? ''
+                              ).trim();
+                              const hasOverride = veUrl.length > 0;
+                              const domainForPreview =
                                 routeDomain ||
                                 getPreviewDomain() ||
                                 getShopDomain() ||
-                                initialData?.shop_domain;
-                              const path = getFirstTargetPreviewPath();
-                              const domainClean = d
-                                ? d
-                                    .replace(/^https?:\/\//i, '')
-                                    .replace(/\/+$/, '')
-                                    .split('/')[0]
-                                : '';
-                              return domainClean
-                                ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
-                                : 'https://your-site.com/';
-                            })()}
-                            helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
-                            autoComplete="url"
-                          />
-                          {(isShopifyStoreDomain(
-                            routeDomain ||
-                              getPreviewDomain() ||
-                              getShopDomain() ||
-                              initialData?.shop_domain ||
-                              ''
-                          ) ||
-                            isShopifyPreviewUrl(
-                              formData.segments?.visual_editor_preview_url ||
-                                formData.segments?.url_pattern ||
-                                ''
-                            )) && (
-                            <TextField
-                              label="Storefront password"
-                              type="password"
-                              value={visualEditorStorefrontPassword}
-                              onChange={handleVisualEditorStorefrontPasswordChange}
-                              autoComplete="off"
-                              helpText="For password-protected Shopify dev stores (e.g. dev storefront password). Saved for this browser session only; reloads preview when you enter it."
-                            />
-                          )}
-                          {isPriceTestType &&
-                          !(formData.segments?.visual_editor_preview_url ?? '').trim() ? (
-                            <Select
-                              label="Preview page"
-                              options={[
-                                { label: 'Product (PDP)', value: 'pdp' },
-                                { label: 'Collection (PLP)', value: 'plp' },
-                                { label: 'Cart', value: 'cart' },
-                                { label: 'Search', value: 'search' },
-                                { label: 'Home', value: 'home' },
-                              ]}
-                              value={visualEditorPreviewSurface}
-                              onChange={value => {
-                                setVisualEditorPreviewSurface(value);
-                                setVisualPreviewLoadState('loading');
-                              }}
-                              helpText="Load the storefront surface you are mapping or editing."
-                            />
-                          ) : null}
-                          {(() => {
-                            const veUrl = (
-                              formData.segments?.visual_editor_preview_url ?? ''
-                            ).trim();
-                            const hasOverride = veUrl.length > 0;
-                            const domainForPreview =
-                              routeDomain ||
-                              getPreviewDomain() ||
-                              getShopDomain() ||
-                              (initialData?.shop_domain && String(initialData.shop_domain).trim());
-                            const pathForPreview =
-                              !hasOverride && isPriceTestType
-                                ? buildPriceSurfacePickerPath(visualEditorPreviewSurface, {
-                                    productPath: getFirstTargetPreviewPath(),
-                                    collectionPath: getCollectionPreviewPath(),
-                                  })
-                                : getFirstTargetPreviewPath();
-                            const baseUrl = resolvePreviewBaseUrl({
-                              variantUrl: null,
-                              overrideUrl: hasOverride ? veUrl : null,
-                              domain: domainForPreview || undefined,
-                              path: pathForPreview,
-                            });
-                            const variants = formData.variants ?? [];
-                            const safeVisualIndex = Math.min(
-                              Math.max(0, visualPreviewVariantIndex),
-                              Math.max(0, variants.length - 1)
-                            );
-                            const previewVariant = resolvePricePreviewVariant(variants, {
-                              preferredIndex: safeVisualIndex,
-                            });
-                            const previewVariantSignature = [
-                              previewVariant?.config?.priceMode,
-                              previewVariant?.config?.price,
-                              previewVariant?.config?.priceDelta,
-                              previewVariant?.config?.pricePercent,
-                              previewVariant?.config?.roundTo,
-                            ].join('|');
-                            const testId = initialData?.id;
-                            const previewTenantDomain =
-                              normalizeTextValue(initialData?.shop_domain) || null;
-                            const fullPreviewUrl =
-                              baseUrl && testId
-                                ? buildPreviewUrlUtil({
-                                    baseUrl,
-                                    testId,
-                                    variantId:
-                                      previewVariant?.id ||
-                                      previewVariant?.name ||
-                                      (previewVariant ? `variant-${safeVisualIndex + 1}` : ''),
-                                    variantName:
-                                      previewVariant?.name ||
-                                      (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
-                                    tenantDomain: previewTenantDomain,
-                                    visualEditor: true,
-                                    resetPreviewSession: visualPreviewRetryKey > 0,
-                                    previewSessionId:
-                                      visualPreviewRetryKey > 0
-                                        ? `wizard-visual-${visualPreviewRetryKey}`
-                                        : undefined,
-                                  })
-                                : null;
-                            const directPreviewUrl = fullPreviewUrl || baseUrl || '';
-                            const previewStorefrontPassword = resolveStorefrontPasswordForPreview(
-                              scopedShopDomain || domainForPreview,
-                              visualEditorStorefrontPassword,
-                              [routeDomain, initialData?.shop_domain, getShopDomain()].filter(
-                                Boolean
-                              )
-                            );
-                            let iframeSrc = '';
-                            if (directPreviewUrl) {
-                              iframeSrc =
-                                buildPreviewDocumentUrl({
-                                  apiBaseUrl: getApiBaseUrl(),
-                                  previewUrl: fullPreviewUrl || directPreviewUrl,
-                                  visualEditor: true,
-                                  storefrontPassword: previewStorefrontPassword,
-                                  parentOrigin:
-                                    typeof window !== 'undefined' && window.location?.origin
-                                      ? window.location.origin
-                                      : undefined,
-                                }) || '';
-                            }
-                            const _previewWithoutTestId = Boolean(baseUrl && !testId);
-                            if (!baseUrl) {
-                              return (
-                                <div className="variant-visual-editor-empty">
-                                  <Text as="p" variant="bodySm" color="subdued">
-                                    Connect a shop or open this test from a store (e.g. My domains →
-                                    open store) so the preview can load the store URL. You can also
-                                    enter a Preview URL above.
-                                  </Text>
-                                  <Text
-                                    as="p"
-                                    variant="bodySm"
-                                    color="subdued"
-                                    style={{ marginTop: '0.5rem' }}
-                                  >
-                                    The preview loads your store page with the RipX script injected
-                                    so you can click to select elements. Add the script in App
-                                    settings → Installation for your live store.
-                                  </Text>
-                                </div>
+                                (initialData?.shop_domain &&
+                                  String(initialData.shop_domain).trim());
+                              const pathForPreview =
+                                !hasOverride && isPriceTestType
+                                  ? buildPriceSurfacePickerPath(visualEditorPreviewSurface, {
+                                      productPath: getFirstTargetPreviewPath(),
+                                      collectionPath: getCollectionPreviewPath(),
+                                    })
+                                  : getFirstTargetPreviewPath();
+                              const baseUrl = resolvePreviewBaseUrl({
+                                variantUrl: null,
+                                overrideUrl: hasOverride ? veUrl : null,
+                                domain: domainForPreview || undefined,
+                                path: pathForPreview,
+                              });
+                              const variants = formData.variants ?? [];
+                              const safeVisualIndex = Math.min(
+                                Math.max(0, visualPreviewVariantIndex),
+                                Math.max(0, variants.length - 1)
                               );
-                            }
-                            const showEmbedBlocked = visualPreviewLoadState === 'error';
-                            const rules = Array.from({ length: 5 }, (_, i) =>
-                              normalizeVisualEditorRule(
-                                (previewVariant?.config?.visual_editor_rules || [])[i]
-                              )
-                            );
-                            const selectedCount = rules.filter(r =>
-                              (r.selector || '').trim()
-                            ).length;
-                            const atLimit = selectedCount >= 5;
-                            const historyKey = String(safeVisualIndex);
-                            const visualHistory = visualRuleHistoryByVariant[historyKey] || {
-                              past: [],
-                              future: [],
-                            };
-                            const updateCurrentVariantRules = updater => {
-                              applyVisualRulesChange(safeVisualIndex, updater);
-                            };
-                            const positionButtons = [
-                              { label: 'After', value: 'after', title: 'Insert after element' },
-                              { label: 'Before', value: 'before', title: 'Insert before element' },
-                              {
-                                label: 'Inside (first)',
-                                value: 'afterbegin',
-                                title: 'Insert as first child',
-                              },
-                              {
-                                label: 'Inside (last)',
-                                value: 'beforeend',
-                                title: 'Insert as last child',
-                              },
-                            ];
-                            const snippetTabs = [
-                              { id: 'selector', label: 'Selector' },
-                              { id: 'generated', label: 'Generated code' },
-                              { id: 'css', label: 'CSS' },
-                              { id: 'js', label: 'JavaScript' },
-                            ];
-                            const mutationTypeOptions = [
-                              { label: 'No quick action', value: 'none' },
-                              { label: 'Hide element', value: 'hide' },
-                              { label: 'Show element', value: 'show' },
-                              { label: 'Replace text', value: 'set_text' },
-                              { label: 'Set attribute', value: 'set_attr' },
-                              { label: 'Set inline style', value: 'set_style' },
-                            ];
-                            return (
-                              <div className="variant-visual-editor-single-layout">
-                                <div className="variant-visual-editor-preview-section">
-                                  <div className="variant-visual-editor-preview-hint" role="status">
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      {!testId && 'Save the test to see variant styling. '}
-                                      The preview loads your store page with the RipX script so you
-                                      can click to select elements. For live tests, add the script
-                                      via App settings → Installation.
+                              const previewVariant = resolvePricePreviewVariant(variants, {
+                                preferredIndex: safeVisualIndex,
+                              });
+                              const previewVariantSignature = [
+                                previewVariant?.config?.priceMode,
+                                previewVariant?.config?.price,
+                                previewVariant?.config?.priceDelta,
+                                previewVariant?.config?.pricePercent,
+                                previewVariant?.config?.roundTo,
+                              ].join('|');
+                              const testId = initialData?.id;
+                              const previewTenantDomain =
+                                normalizeTextValue(initialData?.shop_domain) || null;
+                              const fullPreviewUrl =
+                                baseUrl && testId
+                                  ? buildPreviewUrlUtil({
+                                      baseUrl,
+                                      testId,
+                                      variantId:
+                                        previewVariant?.id ||
+                                        previewVariant?.name ||
+                                        (previewVariant ? `variant-${safeVisualIndex + 1}` : ''),
+                                      variantName:
+                                        previewVariant?.name ||
+                                        (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
+                                      tenantDomain: previewTenantDomain,
+                                      visualEditor: true,
+                                      resetPreviewSession: visualPreviewRetryKey > 0,
+                                      previewSessionId:
+                                        visualPreviewRetryKey > 0
+                                          ? `wizard-visual-${visualPreviewRetryKey}`
+                                          : undefined,
+                                    })
+                                  : null;
+                              const directPreviewUrl = fullPreviewUrl || baseUrl || '';
+                              const previewStorefrontPassword = resolveStorefrontPasswordForPreview(
+                                scopedShopDomain || domainForPreview,
+                                visualEditorStorefrontPassword,
+                                [routeDomain, initialData?.shop_domain, getShopDomain()].filter(
+                                  Boolean
+                                )
+                              );
+                              let iframeSrc = '';
+                              if (directPreviewUrl) {
+                                iframeSrc =
+                                  buildPreviewDocumentUrl({
+                                    apiBaseUrl: getApiBaseUrl(),
+                                    previewUrl: fullPreviewUrl || directPreviewUrl,
+                                    visualEditor: true,
+                                    storefrontPassword: previewStorefrontPassword,
+                                    parentOrigin:
+                                      typeof window !== 'undefined' && window.location?.origin
+                                        ? window.location.origin
+                                        : undefined,
+                                  }) || '';
+                              }
+                              const _previewWithoutTestId = Boolean(baseUrl && !testId);
+                              if (!baseUrl) {
+                                return (
+                                  <div className="variant-visual-editor-empty">
+                                    <Text as="p" variant="bodySm" color="subdued">
+                                      Connect a shop or open this test from a store (e.g. My domains
+                                      → open store) so the preview can load the store URL. You can
+                                      also enter a Preview URL above.
+                                    </Text>
+                                    <Text
+                                      as="p"
+                                      variant="bodySm"
+                                      color="subdued"
+                                      style={{ marginTop: '0.5rem' }}
+                                    >
+                                      The preview loads your store page with the RipX script
+                                      injected so you can click to select elements. Add the script
+                                      in App settings → Installation for your live store.
                                     </Text>
                                   </div>
-                                  {variants.length > 1 && (
-                                    <div className="variant-visual-editor-variant-tabs">
-                                      <Text as="span" variant="bodySm" fontWeight="semibold">
-                                        Variant:
-                                      </Text>
-                                      <div className="variant-visual-editor-variant-tabs-list">
-                                        {variants.map((v, idx) => (
-                                          <button
-                                            key={`visual-preview-${idx}-${v?.name ?? idx}`}
-                                            type="button"
-                                            className={`variant-visual-editor-variant-tab ${idx === safeVisualIndex ? 'variant-visual-editor-variant-tab--active' : ''}`}
-                                            onClick={() => {
-                                              setVisualPreviewVariantIndex(idx);
-                                              setVisualPreviewLoadState('loading');
-                                            }}
-                                          >
-                                            {v?.name || `Variant ${idx + 1}`}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                  {showEmbedBlocked && (
+                                );
+                              }
+                              const showEmbedBlocked = visualPreviewLoadState === 'error';
+                              const rules = Array.from({ length: 5 }, (_, i) =>
+                                normalizeVisualEditorRule(
+                                  (previewVariant?.config?.visual_editor_rules || [])[i]
+                                )
+                              );
+                              const selectedCount = rules.filter(r =>
+                                (r.selector || '').trim()
+                              ).length;
+                              const atLimit = selectedCount >= 5;
+                              const historyKey = String(safeVisualIndex);
+                              const visualHistory = visualRuleHistoryByVariant[historyKey] || {
+                                past: [],
+                                future: [],
+                              };
+                              const updateCurrentVariantRules = updater => {
+                                applyVisualRulesChange(safeVisualIndex, updater);
+                              };
+                              const positionButtons = [
+                                { label: 'After', value: 'after', title: 'Insert after element' },
+                                {
+                                  label: 'Before',
+                                  value: 'before',
+                                  title: 'Insert before element',
+                                },
+                                {
+                                  label: 'Inside (first)',
+                                  value: 'afterbegin',
+                                  title: 'Insert as first child',
+                                },
+                                {
+                                  label: 'Inside (last)',
+                                  value: 'beforeend',
+                                  title: 'Insert as last child',
+                                },
+                              ];
+                              const snippetTabs = [
+                                { id: 'selector', label: 'Selector' },
+                                { id: 'generated', label: 'Generated code' },
+                                { id: 'css', label: 'CSS' },
+                                { id: 'js', label: 'JavaScript' },
+                              ];
+                              const mutationTypeOptions = [
+                                { label: 'No quick action', value: 'none' },
+                                { label: 'Hide element', value: 'hide' },
+                                { label: 'Show element', value: 'show' },
+                                { label: 'Replace text', value: 'set_text' },
+                                { label: 'Set attribute', value: 'set_attr' },
+                                { label: 'Set inline style', value: 'set_style' },
+                              ];
+                              return (
+                                <div className="variant-visual-editor-single-layout">
+                                  <div className="variant-visual-editor-preview-section">
                                     <div
-                                      className="variant-visual-editor-embed-blocked-card"
-                                      role="alert"
+                                      className="variant-visual-editor-preview-hint"
+                                      role="status"
                                     >
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Preview could not be loaded. Check the preview URL above or
-                                        the store may be slow to respond.
+                                        {!testId && 'Save the test to see variant styling. '}
+                                        The preview loads your store page with the RipX script so
+                                        you can click to select elements. For live tests, add the
+                                        script via App settings → Installation.
                                       </Text>
-                                      <Button
-                                        size="slim"
-                                        onClick={() => {
-                                          setVisualPreviewLoadState('loading');
-                                          setVisualPreviewRetryKey(k => k + 1);
-                                        }}
-                                      >
-                                        Try again
-                                      </Button>
                                     </div>
-                                  )}
-                                  <div className="variant-visual-editor-preview-wrap">
-                                    {visualPreviewLoadState === 'loading' && (
+                                    {variants.length > 1 && (
+                                      <div className="variant-visual-editor-variant-tabs">
+                                        <Text as="span" variant="bodySm" fontWeight="semibold">
+                                          Variant:
+                                        </Text>
+                                        <div className="variant-visual-editor-variant-tabs-list">
+                                          {variants.map((v, idx) => (
+                                            <button
+                                              key={`visual-preview-${idx}-${v?.name ?? idx}`}
+                                              type="button"
+                                              className={`variant-visual-editor-variant-tab ${idx === safeVisualIndex ? 'variant-visual-editor-variant-tab--active' : ''}`}
+                                              onClick={() => {
+                                                setVisualPreviewVariantIndex(idx);
+                                                setVisualPreviewLoadState('loading');
+                                              }}
+                                            >
+                                              {v?.name || `Variant ${idx + 1}`}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {showEmbedBlocked && (
                                       <div
-                                        className="variant-visual-editor-preview-loading"
-                                        aria-hidden
+                                        className="variant-visual-editor-embed-blocked-card"
+                                        role="alert"
                                       >
-                                        <div className="variant-visual-editor-preview-spinner" />
                                         <Text as="p" variant="bodySm" tone="subdued">
-                                          Loading preview…
+                                          Preview could not be loaded. Check the preview URL above
+                                          or the store may be slow to respond.
                                         </Text>
-                                        {visualPreviewLoadingSlow && (
-                                          <Text as="p" variant="bodySm" tone="subdued">
-                                            Taking a while? Check the preview URL or try again in a
-                                            moment.
-                                          </Text>
-                                        )}
+                                        <Button
+                                          size="slim"
+                                          onClick={() => {
+                                            setVisualPreviewLoadState('loading');
+                                            setVisualPreviewRetryKey(k => k + 1);
+                                          }}
+                                        >
+                                          Try again
+                                        </Button>
                                       </div>
                                     )}
-                                    {isPriceTestType &&
-                                    previewPaintParity &&
-                                    Array.isArray(previewPaintParity.mismatches) &&
-                                    previewPaintParity.mismatches.length > 0 ? (
-                                      <div
-                                        className="variant-visual-editor-preview-hint"
-                                        role="status"
-                                      >
-                                        <Text as="p" variant="bodySm" tone="critical">
-                                          Preview paint mismatch: visible price still differs from
-                                          checkout target on {previewPaintParity.mismatches.length}{' '}
-                                          node
-                                          {previewPaintParity.mismatches.length === 1 ? '' : 's'}.
-                                        </Text>
-                                      </div>
-                                    ) : null}
-                                    {!showEmbedBlocked && (
-                                      <iframe
-                                        key={`visual-preview-iframe-${safeVisualIndex}-${visualEditorPreviewSurface}-${previewVariantSignature}-${iframeSrc}-${visualPreviewRetryKey}`}
-                                        title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
-                                        src={iframeSrc}
-                                        className="variant-visual-editor-preview-iframe"
-                                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                                        onLoad={() => setVisualPreviewLoadState('loaded')}
-                                        onError={() => setVisualPreviewLoadState('error')}
-                                      />
-                                    )}
-                                    {visualSnippetPanelExpanded && (
-                                      <div
-                                        className="variant-visual-editor-preview-blocking-overlay"
-                                        aria-hidden
-                                        role="presentation"
-                                        onClick={() => setVisualSnippetPanelExpanded(false)}
-                                        title="Click to close snippet panel"
-                                      >
-                                        <span className="variant-visual-editor-preview-blocking-text">
-                                          Click to close panel and select elements
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="variant-visual-editor-snippet-panel-wrap">
-                                  <div
-                                    className={`variant-visual-editor-bottom-bar ${changingSelectorIndex !== null && !visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar--change-mode' : ''}`}
-                                    style={{
-                                      paddingBottom: visualSnippetPanelExpanded ? 0 : undefined,
-                                    }}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="variant-visual-editor-bottom-bar-trigger"
-                                      onClick={() => setVisualSnippetPanelExpanded(prev => !prev)}
-                                      aria-expanded={visualSnippetPanelExpanded}
-                                      aria-label={
-                                        visualSnippetPanelExpanded
-                                          ? 'Collapse snippet panel'
-                                          : 'Expand snippet panel'
-                                      }
-                                    >
-                                      <div className="variant-visual-editor-bottom-bar-label-wrap">
-                                        <span className="variant-visual-editor-bottom-bar-count">
-                                          {selectedCount} element{selectedCount !== 1 ? 's' : ''}{' '}
-                                          selected
-                                        </span>
-                                        {changingSelectorIndex !== null &&
-                                          !visualSnippetPanelExpanded && (
-                                            <span className="variant-visual-editor-bottom-bar-change-hint">
-                                              Click in preview to replace selector
-                                            </span>
-                                          )}
-                                      </div>
-                                      <span
-                                        className={`variant-visual-editor-bottom-bar-chevron ${visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar-chevron--up' : ''}`}
-                                        aria-hidden
-                                      >
-                                        <Icon source={ChevronDownIcon} />
-                                      </span>
-                                    </button>
-                                  </div>
-                                  {visualSnippetPanelExpanded && (
-                                    <>
-                                      <div
-                                        ref={visualSnippetBackdropRef}
-                                        className="variant-visual-editor-snippet-backdrop"
-                                        role="presentation"
-                                        onClick={() => setVisualSnippetPanelExpanded(false)}
-                                        onKeyDown={e =>
-                                          e.key === 'Escape' && setVisualSnippetPanelExpanded(false)
-                                        }
-                                      />
-                                      <div
-                                        ref={visualSnippetPanelRef}
-                                        className="variant-visual-editor-snippet-overlay"
-                                        role="dialog"
-                                        aria-label={
-                                          variants.length > 1
-                                            ? `Element snippets for ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`
-                                            : 'Element snippets'
-                                        }
-                                      >
+                                    <div className="variant-visual-editor-preview-wrap">
+                                      {visualPreviewLoadState === 'loading' && (
                                         <div
-                                          className="variant-visual-editor-snippet-overlay-handle"
+                                          className="variant-visual-editor-preview-loading"
                                           aria-hidden
+                                        >
+                                          <div className="variant-visual-editor-preview-spinner" />
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            Loading preview…
+                                          </Text>
+                                          {visualPreviewLoadingSlow && (
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              Taking a while? Check the preview URL or try again in
+                                              a moment.
+                                            </Text>
+                                          )}
+                                        </div>
+                                      )}
+                                      {isPriceTestType &&
+                                      previewPaintParity &&
+                                      Array.isArray(previewPaintParity.mismatches) &&
+                                      previewPaintParity.mismatches.length > 0 ? (
+                                        <div
+                                          className="variant-visual-editor-preview-hint"
+                                          role="status"
+                                        >
+                                          <Text as="p" variant="bodySm" tone="critical">
+                                            Preview paint mismatch: visible price still differs from
+                                            checkout target on{' '}
+                                            {previewPaintParity.mismatches.length} node
+                                            {previewPaintParity.mismatches.length === 1 ? '' : 's'}.
+                                          </Text>
+                                        </div>
+                                      ) : null}
+                                      {!showEmbedBlocked && (
+                                        <iframe
+                                          key={`visual-preview-iframe-${safeVisualIndex}-${visualEditorPreviewSurface}-${previewVariantSignature}-${iframeSrc}-${visualPreviewRetryKey}`}
+                                          title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
+                                          src={iframeSrc}
+                                          className="variant-visual-editor-preview-iframe"
+                                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                          onLoad={() => setVisualPreviewLoadState('loaded')}
+                                          onError={() => setVisualPreviewLoadState('error')}
                                         />
-                                        <div className="variant-visual-editor-snippet-overlay-header">
-                                          <div className="variant-visual-editor-snippet-overlay-header-inner">
-                                            <div className="variant-visual-editor-snippet-overlay-header-title">
-                                              {variants.length > 1 ? (
-                                                <>
+                                      )}
+                                      {visualSnippetPanelExpanded && (
+                                        <div
+                                          className="variant-visual-editor-preview-blocking-overlay"
+                                          aria-hidden
+                                          role="presentation"
+                                          onClick={() => setVisualSnippetPanelExpanded(false)}
+                                          title="Click to close snippet panel"
+                                        >
+                                          <span className="variant-visual-editor-preview-blocking-text">
+                                            Click to close panel and select elements
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="variant-visual-editor-snippet-panel-wrap">
+                                    <div
+                                      className={`variant-visual-editor-bottom-bar ${changingSelectorIndex !== null && !visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar--change-mode' : ''}`}
+                                      style={{
+                                        paddingBottom: visualSnippetPanelExpanded ? 0 : undefined,
+                                      }}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="variant-visual-editor-bottom-bar-trigger"
+                                        onClick={() => setVisualSnippetPanelExpanded(prev => !prev)}
+                                        aria-expanded={visualSnippetPanelExpanded}
+                                        aria-label={
+                                          visualSnippetPanelExpanded
+                                            ? 'Collapse snippet panel'
+                                            : 'Expand snippet panel'
+                                        }
+                                      >
+                                        <div className="variant-visual-editor-bottom-bar-label-wrap">
+                                          <span className="variant-visual-editor-bottom-bar-count">
+                                            {selectedCount} element{selectedCount !== 1 ? 's' : ''}{' '}
+                                            selected
+                                          </span>
+                                          {changingSelectorIndex !== null &&
+                                            !visualSnippetPanelExpanded && (
+                                              <span className="variant-visual-editor-bottom-bar-change-hint">
+                                                Click in preview to replace selector
+                                              </span>
+                                            )}
+                                        </div>
+                                        <span
+                                          className={`variant-visual-editor-bottom-bar-chevron ${visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar-chevron--up' : ''}`}
+                                          aria-hidden
+                                        >
+                                          <Icon source={ChevronDownIcon} />
+                                        </span>
+                                      </button>
+                                    </div>
+                                    {visualSnippetPanelExpanded && (
+                                      <>
+                                        <div
+                                          ref={visualSnippetBackdropRef}
+                                          className="variant-visual-editor-snippet-backdrop"
+                                          role="presentation"
+                                          onClick={() => setVisualSnippetPanelExpanded(false)}
+                                          onKeyDown={e =>
+                                            e.key === 'Escape' &&
+                                            setVisualSnippetPanelExpanded(false)
+                                          }
+                                        />
+                                        <div
+                                          ref={visualSnippetPanelRef}
+                                          className="variant-visual-editor-snippet-overlay"
+                                          role="dialog"
+                                          aria-label={
+                                            variants.length > 1
+                                              ? `Element snippets for ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`
+                                              : 'Element snippets'
+                                          }
+                                        >
+                                          <div
+                                            className="variant-visual-editor-snippet-overlay-handle"
+                                            aria-hidden
+                                          />
+                                          <div className="variant-visual-editor-snippet-overlay-header">
+                                            <div className="variant-visual-editor-snippet-overlay-header-inner">
+                                              <div className="variant-visual-editor-snippet-overlay-header-title">
+                                                {variants.length > 1 ? (
+                                                  <>
+                                                    <Text
+                                                      as="span"
+                                                      variant="headingMd"
+                                                      fontWeight="semibold"
+                                                      className="variant-visual-editor-snippet-overlay-variant-title"
+                                                    >
+                                                      {previewVariant?.name ||
+                                                        `Variant ${safeVisualIndex + 1}`}
+                                                    </Text>
+                                                    <span
+                                                      className="variant-visual-editor-snippet-overlay-title-sep"
+                                                      aria-hidden
+                                                    >
+                                                      ·
+                                                    </span>
+                                                    <Text
+                                                      as="span"
+                                                      variant="bodySm"
+                                                      tone="subdued"
+                                                      className="variant-visual-editor-snippet-overlay-title-meta"
+                                                    >
+                                                      Element snippets
+                                                    </Text>
+                                                  </>
+                                                ) : (
                                                   <Text
                                                     as="span"
                                                     variant="headingMd"
                                                     fontWeight="semibold"
-                                                    className="variant-visual-editor-snippet-overlay-variant-title"
-                                                  >
-                                                    {previewVariant?.name ||
-                                                      `Variant ${safeVisualIndex + 1}`}
-                                                  </Text>
-                                                  <span
-                                                    className="variant-visual-editor-snippet-overlay-title-sep"
-                                                    aria-hidden
-                                                  >
-                                                    ·
-                                                  </span>
-                                                  <Text
-                                                    as="span"
-                                                    variant="bodySm"
-                                                    tone="subdued"
-                                                    className="variant-visual-editor-snippet-overlay-title-meta"
                                                   >
                                                     Element snippets
                                                   </Text>
-                                                </>
-                                              ) : (
-                                                <Text
-                                                  as="span"
-                                                  variant="headingMd"
-                                                  fontWeight="semibold"
-                                                >
-                                                  Element snippets
-                                                </Text>
-                                              )}
-                                              <Badge tone="info" size="small">
-                                                {selectedCount}/5
-                                              </Badge>
+                                                )}
+                                                <Badge tone="info" size="small">
+                                                  {selectedCount}/5
+                                                </Badge>
+                                              </div>
+                                              <Text
+                                                as="p"
+                                                variant="bodySm"
+                                                tone="subdued"
+                                                className="variant-visual-editor-snippet-overlay-subtitle"
+                                              >
+                                                Edit selectors, quick actions, CSS, and JS for each
+                                                selected element.
+                                              </Text>
                                             </div>
-                                            <Text
-                                              as="p"
-                                              variant="bodySm"
-                                              tone="subdued"
-                                              className="variant-visual-editor-snippet-overlay-subtitle"
-                                            >
-                                              Edit selectors, quick actions, CSS, and JS for each
-                                              selected element.
-                                            </Text>
+                                            <div className="variant-visual-editor-snippet-overlay-header-actions">
+                                              <button
+                                                type="button"
+                                                className="variant-visual-editor-history-btn"
+                                                disabled={!visualHistory.past?.length}
+                                                onClick={() => {
+                                                  if (undoVisualRuleChange(safeVisualIndex)) {
+                                                    setVisualPreviewToast({
+                                                      message: 'Visual edit undone',
+                                                      type: 'success',
+                                                    });
+                                                    setTimeout(
+                                                      () => setVisualPreviewToast(null),
+                                                      2000
+                                                    );
+                                                  }
+                                                }}
+                                                aria-label="Undo visual edit"
+                                                title="Undo last visual edit"
+                                              >
+                                                Undo
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="variant-visual-editor-history-btn"
+                                                disabled={!visualHistory.future?.length}
+                                                onClick={() => {
+                                                  if (redoVisualRuleChange(safeVisualIndex)) {
+                                                    setVisualPreviewToast({
+                                                      message: 'Visual edit redone',
+                                                      type: 'success',
+                                                    });
+                                                    setTimeout(
+                                                      () => setVisualPreviewToast(null),
+                                                      2000
+                                                    );
+                                                  }
+                                                }}
+                                                aria-label="Redo visual edit"
+                                                title="Redo visual edit"
+                                              >
+                                                Redo
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="variant-visual-editor-snippet-collapse-btn"
+                                                onClick={() => setVisualSnippetPanelExpanded(false)}
+                                                aria-label="Collapse panel"
+                                              >
+                                                <Icon source={ChevronDownIcon} />
+                                              </button>
+                                            </div>
                                           </div>
-                                          <div className="variant-visual-editor-snippet-overlay-header-actions">
-                                            <button
-                                              type="button"
-                                              className="variant-visual-editor-history-btn"
-                                              disabled={!visualHistory.past?.length}
-                                              onClick={() => {
-                                                if (undoVisualRuleChange(safeVisualIndex)) {
-                                                  setVisualPreviewToast({
-                                                    message: 'Visual edit undone',
-                                                    type: 'success',
-                                                  });
-                                                  setTimeout(
-                                                    () => setVisualPreviewToast(null),
-                                                    2000
-                                                  );
-                                                }
-                                              }}
-                                              aria-label="Undo visual edit"
-                                              title="Undo last visual edit"
-                                            >
-                                              Undo
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="variant-visual-editor-history-btn"
-                                              disabled={!visualHistory.future?.length}
-                                              onClick={() => {
-                                                if (redoVisualRuleChange(safeVisualIndex)) {
-                                                  setVisualPreviewToast({
-                                                    message: 'Visual edit redone',
-                                                    type: 'success',
-                                                  });
-                                                  setTimeout(
-                                                    () => setVisualPreviewToast(null),
-                                                    2000
-                                                  );
-                                                }
-                                              }}
-                                              aria-label="Redo visual edit"
-                                              title="Redo visual edit"
-                                            >
-                                              Redo
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="variant-visual-editor-snippet-collapse-btn"
-                                              onClick={() => setVisualSnippetPanelExpanded(false)}
-                                              aria-label="Collapse panel"
-                                            >
-                                              <Icon source={ChevronDownIcon} />
-                                            </button>
-                                          </div>
-                                        </div>
-                                        <div className="variant-visual-editor-snippet-overlay-body">
-                                          {(() => {
-                                            const ruleIndicesWithSelectors = rules
-                                              .map((r, i) => ((r.selector || '').trim() ? i : null))
-                                              .filter(i => i !== null && i !== undefined);
-                                            const effectiveActiveIndex =
-                                              ruleIndicesWithSelectors.includes(
-                                                visualSnippetActiveElementIndex
-                                              )
-                                                ? visualSnippetActiveElementIndex
-                                                : (ruleIndicesWithSelectors[0] ?? 0);
-                                            const idx = effectiveActiveIndex;
-                                            const rule = normalizeVisualEditorRule(rules[idx]);
-                                            const generatedCode =
-                                              buildGeneratedVisualRuleCode(rule);
-                                            const rawTab = visualRuleActiveTab[idx] || 'selector';
-                                            const activeTab =
-                                              rawTab === 'position' ? 'selector' : rawTab;
-                                            const handleRemoveElement = ruleIndexToRemove => {
-                                              updateCurrentVariantRules(nextRules => {
-                                                nextRules[ruleIndexToRemove] = {
-                                                  ...createEmptyVisualEditorRule(),
-                                                };
-                                              });
-                                              const remaining = ruleIndicesWithSelectors.filter(
-                                                i => i !== ruleIndexToRemove
-                                              );
-                                              setVisualSnippetActiveElementIndex(remaining[0] ?? 0);
-                                              setVisualRuleActiveTab(prev => {
-                                                const next = { ...prev };
-                                                delete next[ruleIndexToRemove];
-                                                return next;
-                                              });
-                                              if (changingSelectorIndex === ruleIndexToRemove)
-                                                setChangingSelectorIndex(null);
-                                            };
+                                          <div className="variant-visual-editor-snippet-overlay-body">
+                                            {(() => {
+                                              const ruleIndicesWithSelectors = rules
+                                                .map((r, i) =>
+                                                  (r.selector || '').trim() ? i : null
+                                                )
+                                                .filter(i => i !== null && i !== undefined);
+                                              const effectiveActiveIndex =
+                                                ruleIndicesWithSelectors.includes(
+                                                  visualSnippetActiveElementIndex
+                                                )
+                                                  ? visualSnippetActiveElementIndex
+                                                  : (ruleIndicesWithSelectors[0] ?? 0);
+                                              const idx = effectiveActiveIndex;
+                                              const rule = normalizeVisualEditorRule(rules[idx]);
+                                              const generatedCode =
+                                                buildGeneratedVisualRuleCode(rule);
+                                              const rawTab = visualRuleActiveTab[idx] || 'selector';
+                                              const activeTab =
+                                                rawTab === 'position' ? 'selector' : rawTab;
+                                              const handleRemoveElement = ruleIndexToRemove => {
+                                                updateCurrentVariantRules(nextRules => {
+                                                  nextRules[ruleIndexToRemove] = {
+                                                    ...createEmptyVisualEditorRule(),
+                                                  };
+                                                });
+                                                const remaining = ruleIndicesWithSelectors.filter(
+                                                  i => i !== ruleIndexToRemove
+                                                );
+                                                setVisualSnippetActiveElementIndex(
+                                                  remaining[0] ?? 0
+                                                );
+                                                setVisualRuleActiveTab(prev => {
+                                                  const next = { ...prev };
+                                                  delete next[ruleIndexToRemove];
+                                                  return next;
+                                                });
+                                                if (changingSelectorIndex === ruleIndexToRemove)
+                                                  setChangingSelectorIndex(null);
+                                              };
 
-                                            const handleChangeSelector = ruleIdx => {
-                                              setChangingSelectorIndex(ruleIdx);
-                                              setVisualSnippetActiveElementIndex(ruleIdx);
-                                              setVisualRuleActiveTab(prev => ({
-                                                ...prev,
-                                                [ruleIdx]: 'selector',
-                                              }));
-                                              setVisualSnippetPanelExpanded(false);
-                                            };
+                                              const handleChangeSelector = ruleIdx => {
+                                                setChangingSelectorIndex(ruleIdx);
+                                                setVisualSnippetActiveElementIndex(ruleIdx);
+                                                setVisualRuleActiveTab(prev => ({
+                                                  ...prev,
+                                                  [ruleIdx]: 'selector',
+                                                }));
+                                                setVisualSnippetPanelExpanded(false);
+                                              };
 
-                                            if (ruleIndicesWithSelectors.length === 0) {
+                                              if (ruleIndicesWithSelectors.length === 0) {
+                                                return (
+                                                  <div className="variant-visual-editor-snippet-empty">
+                                                    {changingSelectorIndex !== null && (
+                                                      <div className="variant-visual-editor-snippet-change-banner">
+                                                        <Text
+                                                          as="p"
+                                                          variant="bodySm"
+                                                          fontWeight="medium"
+                                                        >
+                                                          Click an element in the preview to replace
+                                                          the selector.
+                                                        </Text>
+                                                        <button
+                                                          type="button"
+                                                          className="variant-visual-editor-snippet-change-cancel"
+                                                          onClick={() =>
+                                                            setChangingSelectorIndex(null)
+                                                          }
+                                                        >
+                                                          Cancel
+                                                        </button>
+                                                      </div>
+                                                    )}
+                                                    <div
+                                                      className="variant-visual-editor-snippet-empty-icon"
+                                                      aria-hidden
+                                                    />
+                                                    <Text
+                                                      as="p"
+                                                      variant="bodyMd"
+                                                      fontWeight="medium"
+                                                      tone="subdued"
+                                                    >
+                                                      No elements selected
+                                                    </Text>
+                                                    <Text as="p" variant="bodySm" tone="subdued">
+                                                      Click an element in the preview above to add
+                                                      it (max 5 per variant).
+                                                    </Text>
+                                                  </div>
+                                                );
+                                              }
+
                                               return (
-                                                <div className="variant-visual-editor-snippet-empty">
+                                                <>
                                                   {changingSelectorIndex !== null && (
                                                     <div className="variant-visual-editor-snippet-change-banner">
                                                       <Text
@@ -17299,7 +21848,7 @@ function TestWizard({
                                                         fontWeight="medium"
                                                       >
                                                         Click an element in the preview to replace
-                                                        the selector.
+                                                        this selector.
                                                       </Text>
                                                       <button
                                                         type="button"
@@ -17312,917 +21861,886 @@ function TestWizard({
                                                       </button>
                                                     </div>
                                                   )}
-                                                  <div
-                                                    className="variant-visual-editor-snippet-empty-icon"
-                                                    aria-hidden
-                                                  />
-                                                  <Text
-                                                    as="p"
-                                                    variant="bodyMd"
-                                                    fontWeight="medium"
-                                                    tone="subdued"
-                                                  >
-                                                    No elements selected
-                                                  </Text>
-                                                  <Text as="p" variant="bodySm" tone="subdued">
-                                                    Click an element in the preview above to add it
-                                                    (max 5 per variant).
-                                                  </Text>
-                                                </div>
-                                              );
-                                            }
-
-                                            return (
-                                              <>
-                                                {changingSelectorIndex !== null && (
-                                                  <div className="variant-visual-editor-snippet-change-banner">
-                                                    <Text
-                                                      as="p"
-                                                      variant="bodySm"
-                                                      fontWeight="medium"
+                                                  {atLimit && (
+                                                    <div
+                                                      className="variant-visual-editor-snippet-limit-msg"
+                                                      role="alert"
                                                     >
-                                                      Click an element in the preview to replace
-                                                      this selector.
-                                                    </Text>
-                                                    <button
-                                                      type="button"
-                                                      className="variant-visual-editor-snippet-change-cancel"
-                                                      onClick={() => setChangingSelectorIndex(null)}
-                                                    >
-                                                      Cancel
-                                                    </button>
-                                                  </div>
-                                                )}
-                                                {atLimit && (
-                                                  <div
-                                                    className="variant-visual-editor-snippet-limit-msg"
-                                                    role="alert"
-                                                  >
-                                                    <Text
-                                                      as="p"
-                                                      variant="bodySm"
-                                                      fontWeight="medium"
-                                                      tone="critical"
-                                                    >
-                                                      Maximum 5 elements per variant. Remove one to
-                                                      add another.
-                                                    </Text>
-                                                  </div>
-                                                )}
-                                                <div className="variant-visual-editor-snippet-elements-section">
-                                                  <Text
-                                                    as="span"
-                                                    variant="bodySm"
-                                                    fontWeight="semibold"
-                                                    tone="subdued"
-                                                    className="variant-visual-editor-snippet-elements-label"
-                                                  >
-                                                    Selected elements ({selectedCount}/5)
-                                                  </Text>
-                                                  <div className="variant-visual-editor-snippet-element-tabs">
-                                                    {ruleIndicesWithSelectors.map(ruleIdx => (
-                                                      <div
-                                                        key={ruleIdx}
-                                                        className="variant-visual-editor-snippet-element-tab-wrap"
+                                                      <Text
+                                                        as="p"
+                                                        variant="bodySm"
+                                                        fontWeight="medium"
+                                                        tone="critical"
                                                       >
-                                                        <button
-                                                          type="button"
-                                                          className={`variant-visual-editor-snippet-element-tab ${effectiveActiveIndex === ruleIdx ? 'variant-visual-editor-snippet-element-tab--active' : ''}`}
-                                                          onClick={() =>
-                                                            setVisualSnippetActiveElementIndex(
-                                                              ruleIdx
-                                                            )
-                                                          }
-                                                        >
-                                                          Element {ruleIdx + 1}
-                                                        </button>
-                                                        <button
-                                                          type="button"
-                                                          className="variant-visual-editor-snippet-element-tab-remove"
-                                                          onClick={e => {
-                                                            e.stopPropagation();
-                                                            handleRemoveElement(ruleIdx);
-                                                          }}
-                                                          aria-label={`Remove element ${ruleIdx + 1}`}
-                                                          title="Remove element"
-                                                        >
-                                                          <Icon source={XIcon} />
-                                                        </button>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                </div>
-                                                <div className="variant-visual-editor-snippet-card">
-                                                  <div className="variant-visual-editor-snippet-card-header-row">
+                                                        Maximum 5 elements per variant. Remove one
+                                                        to add another.
+                                                      </Text>
+                                                    </div>
+                                                  )}
+                                                  <div className="variant-visual-editor-snippet-elements-section">
                                                     <Text
                                                       as="span"
-                                                      variant="bodyMd"
+                                                      variant="bodySm"
                                                       fontWeight="semibold"
+                                                      tone="subdued"
+                                                      className="variant-visual-editor-snippet-elements-label"
                                                     >
-                                                      Element {idx + 1}
+                                                      Selected elements ({selectedCount}/5)
                                                     </Text>
-                                                    <div className="variant-visual-editor-snippet-card-header-actions">
-                                                      <button
-                                                        type="button"
-                                                        className="variant-visual-editor-snippet-change-selector-btn"
-                                                        onClick={() => handleChangeSelector(idx)}
-                                                        aria-label="Change selector"
-                                                        title="Click in preview to pick a different element"
-                                                      >
-                                                        <span>Change</span>
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        className="variant-visual-editor-snippet-remove-element-btn"
-                                                        onClick={() => handleRemoveElement(idx)}
-                                                        aria-label="Remove this element"
-                                                      >
-                                                        <Icon source={XIcon} />
-                                                        <span>Remove</span>
-                                                      </button>
-                                                    </div>
-                                                  </div>
-                                                  <div className="variant-visual-editor-snippet-card-inner">
-                                                    <div className="variant-visual-editor-snippet-card-sidebar">
-                                                      {snippetTabs.map(tab => (
-                                                        <button
-                                                          key={tab.id}
-                                                          type="button"
-                                                          className={`variant-visual-editor-snippet-tab ${activeTab === tab.id ? 'variant-visual-editor-snippet-tab--active' : ''}`}
-                                                          onClick={() =>
-                                                            setVisualRuleActiveTab(prev => ({
-                                                              ...prev,
-                                                              [idx]: tab.id,
-                                                            }))
-                                                          }
+                                                    <div className="variant-visual-editor-snippet-element-tabs">
+                                                      {ruleIndicesWithSelectors.map(ruleIdx => (
+                                                        <div
+                                                          key={ruleIdx}
+                                                          className="variant-visual-editor-snippet-element-tab-wrap"
                                                         >
-                                                          {tab.label}
-                                                        </button>
+                                                          <button
+                                                            type="button"
+                                                            className={`variant-visual-editor-snippet-element-tab ${effectiveActiveIndex === ruleIdx ? 'variant-visual-editor-snippet-element-tab--active' : ''}`}
+                                                            onClick={() =>
+                                                              setVisualSnippetActiveElementIndex(
+                                                                ruleIdx
+                                                              )
+                                                            }
+                                                          >
+                                                            Element {ruleIdx + 1}
+                                                          </button>
+                                                          <button
+                                                            type="button"
+                                                            className="variant-visual-editor-snippet-element-tab-remove"
+                                                            onClick={e => {
+                                                              e.stopPropagation();
+                                                              handleRemoveElement(ruleIdx);
+                                                            }}
+                                                            aria-label={`Remove element ${ruleIdx + 1}`}
+                                                            title="Remove element"
+                                                          >
+                                                            <Icon source={XIcon} />
+                                                          </button>
+                                                        </div>
                                                       ))}
                                                     </div>
-                                                    <div className="variant-visual-editor-snippet-card-content">
-                                                      {activeTab === 'selector' && (
-                                                        <div className="variant-visual-editor-selector-tab-content">
-                                                          <div className="variant-visual-editor-selector-field-wrap">
-                                                            <Text
-                                                              as="label"
-                                                              variant="bodySm"
-                                                              fontWeight="medium"
-                                                              tone="subdued"
-                                                              className="variant-visual-editor-selector-label"
-                                                            >
-                                                              CSS selector
-                                                            </Text>
-                                                            <TextField
-                                                              label="Selector"
-                                                              labelHidden
-                                                              value={rule.selector}
-                                                              onChange={value => {
-                                                                updateCurrentVariantRules(
-                                                                  nextRules => {
-                                                                    nextRules[idx] = {
-                                                                      ...nextRules[idx],
-                                                                      selector: value,
-                                                                    };
-                                                                  }
-                                                                );
-                                                              }}
-                                                              placeholder="Click element in preview or type selector"
-                                                              autoComplete="off"
-                                                            />
-                                                          </div>
-                                                          <div className="variant-visual-editor-position-group">
-                                                            <Text
-                                                              as="span"
-                                                              variant="bodySm"
-                                                              fontWeight="medium"
-                                                              tone="subdued"
-                                                              className="variant-visual-editor-position-label"
-                                                            >
-                                                              Insert position
-                                                            </Text>
-                                                            <div
-                                                              className="variant-visual-editor-position-buttons"
-                                                              role="group"
-                                                              aria-label="Insert position"
-                                                            >
-                                                              {positionButtons.map(opt => (
-                                                                <button
-                                                                  key={opt.value}
-                                                                  type="button"
-                                                                  title={opt.title}
-                                                                  className={`variant-visual-editor-position-btn ${(rule.position || 'after') === opt.value ? 'variant-visual-editor-position-btn--active' : ''}`}
-                                                                  onClick={() => {
+                                                  </div>
+                                                  <div className="variant-visual-editor-snippet-card">
+                                                    <div className="variant-visual-editor-snippet-card-header-row">
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodyMd"
+                                                        fontWeight="semibold"
+                                                      >
+                                                        Element {idx + 1}
+                                                      </Text>
+                                                      <div className="variant-visual-editor-snippet-card-header-actions">
+                                                        <button
+                                                          type="button"
+                                                          className="variant-visual-editor-snippet-change-selector-btn"
+                                                          onClick={() => handleChangeSelector(idx)}
+                                                          aria-label="Change selector"
+                                                          title="Click in preview to pick a different element"
+                                                        >
+                                                          <span>Change</span>
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className="variant-visual-editor-snippet-remove-element-btn"
+                                                          onClick={() => handleRemoveElement(idx)}
+                                                          aria-label="Remove this element"
+                                                        >
+                                                          <Icon source={XIcon} />
+                                                          <span>Remove</span>
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                    <div className="variant-visual-editor-snippet-card-inner">
+                                                      <div className="variant-visual-editor-snippet-card-sidebar">
+                                                        {snippetTabs.map(tab => (
+                                                          <button
+                                                            key={tab.id}
+                                                            type="button"
+                                                            className={`variant-visual-editor-snippet-tab ${activeTab === tab.id ? 'variant-visual-editor-snippet-tab--active' : ''}`}
+                                                            onClick={() =>
+                                                              setVisualRuleActiveTab(prev => ({
+                                                                ...prev,
+                                                                [idx]: tab.id,
+                                                              }))
+                                                            }
+                                                          >
+                                                            {tab.label}
+                                                          </button>
+                                                        ))}
+                                                      </div>
+                                                      <div className="variant-visual-editor-snippet-card-content">
+                                                        {activeTab === 'selector' && (
+                                                          <div className="variant-visual-editor-selector-tab-content">
+                                                            <div className="variant-visual-editor-selector-field-wrap">
+                                                              <Text
+                                                                as="label"
+                                                                variant="bodySm"
+                                                                fontWeight="medium"
+                                                                tone="subdued"
+                                                                className="variant-visual-editor-selector-label"
+                                                              >
+                                                                CSS selector
+                                                              </Text>
+                                                              <TextField
+                                                                label="Selector"
+                                                                labelHidden
+                                                                value={rule.selector}
+                                                                onChange={value => {
+                                                                  updateCurrentVariantRules(
+                                                                    nextRules => {
+                                                                      nextRules[idx] = {
+                                                                        ...nextRules[idx],
+                                                                        selector: value,
+                                                                      };
+                                                                    }
+                                                                  );
+                                                                }}
+                                                                placeholder="Click element in preview or type selector"
+                                                                autoComplete="off"
+                                                              />
+                                                            </div>
+                                                            <div className="variant-visual-editor-position-group">
+                                                              <Text
+                                                                as="span"
+                                                                variant="bodySm"
+                                                                fontWeight="medium"
+                                                                tone="subdued"
+                                                                className="variant-visual-editor-position-label"
+                                                              >
+                                                                Insert position
+                                                              </Text>
+                                                              <div
+                                                                className="variant-visual-editor-position-buttons"
+                                                                role="group"
+                                                                aria-label="Insert position"
+                                                              >
+                                                                {positionButtons.map(opt => (
+                                                                  <button
+                                                                    key={opt.value}
+                                                                    type="button"
+                                                                    title={opt.title}
+                                                                    className={`variant-visual-editor-position-btn ${(rule.position || 'after') === opt.value ? 'variant-visual-editor-position-btn--active' : ''}`}
+                                                                    onClick={() => {
+                                                                      updateCurrentVariantRules(
+                                                                        nextRules => {
+                                                                          nextRules[idx] = {
+                                                                            ...nextRules[idx],
+                                                                            position: opt.value,
+                                                                          };
+                                                                        }
+                                                                      );
+                                                                    }}
+                                                                  >
+                                                                    {opt.label}
+                                                                  </button>
+                                                                ))}
+                                                              </div>
+                                                            </div>
+                                                            <div className="variant-visual-editor-mutation-group">
+                                                              <Select
+                                                                label="Quick action"
+                                                                options={mutationTypeOptions}
+                                                                value={rule.mutation_type || 'none'}
+                                                                onChange={value => {
+                                                                  updateCurrentVariantRules(
+                                                                    nextRules => {
+                                                                      const normalized =
+                                                                        normalizeVisualEditorRule(
+                                                                          nextRules[idx]
+                                                                        );
+                                                                      nextRules[idx] = {
+                                                                        ...normalized,
+                                                                        mutation_type: value,
+                                                                      };
+                                                                    }
+                                                                  );
+                                                                }}
+                                                                helpText="Use simple visual actions without writing custom JS."
+                                                              />
+                                                              {rule.mutation_type ===
+                                                                'set_text' && (
+                                                                <TextField
+                                                                  label="Replacement text"
+                                                                  value={rule.mutation_text || ''}
+                                                                  onChange={value => {
                                                                     updateCurrentVariantRules(
                                                                       nextRules => {
+                                                                        const normalized =
+                                                                          normalizeVisualEditorRule(
+                                                                            nextRules[idx]
+                                                                          );
                                                                         nextRules[idx] = {
-                                                                          ...nextRules[idx],
-                                                                          position: opt.value,
+                                                                          ...normalized,
+                                                                          mutation_text: value,
                                                                         };
                                                                       }
                                                                     );
                                                                   }}
-                                                                >
-                                                                  {opt.label}
-                                                                </button>
-                                                              ))}
+                                                                  placeholder="Text to render in the selected element"
+                                                                  autoComplete="off"
+                                                                />
+                                                              )}
+                                                              {rule.mutation_type ===
+                                                                'set_attr' && (
+                                                                <div className="variant-visual-editor-mutation-attr-grid">
+                                                                  <TextField
+                                                                    label="Attribute name"
+                                                                    value={
+                                                                      rule.mutation_attribute || ''
+                                                                    }
+                                                                    onChange={value => {
+                                                                      updateCurrentVariantRules(
+                                                                        nextRules => {
+                                                                          const normalized =
+                                                                            normalizeVisualEditorRule(
+                                                                              nextRules[idx]
+                                                                            );
+                                                                          nextRules[idx] = {
+                                                                            ...normalized,
+                                                                            mutation_attribute:
+                                                                              value,
+                                                                          };
+                                                                        }
+                                                                      );
+                                                                    }}
+                                                                    placeholder="e.g. aria-label"
+                                                                    autoComplete="off"
+                                                                  />
+                                                                  <TextField
+                                                                    label="Attribute value"
+                                                                    value={
+                                                                      rule.mutation_attribute_value ||
+                                                                      ''
+                                                                    }
+                                                                    onChange={value => {
+                                                                      updateCurrentVariantRules(
+                                                                        nextRules => {
+                                                                          const normalized =
+                                                                            normalizeVisualEditorRule(
+                                                                              nextRules[idx]
+                                                                            );
+                                                                          nextRules[idx] = {
+                                                                            ...normalized,
+                                                                            mutation_attribute_value:
+                                                                              value,
+                                                                          };
+                                                                        }
+                                                                      );
+                                                                    }}
+                                                                    placeholder="e.g. Buy now"
+                                                                    autoComplete="off"
+                                                                  />
+                                                                </div>
+                                                              )}
+                                                              {rule.mutation_type ===
+                                                                'set_style' && (
+                                                                <TextField
+                                                                  label="Inline style declarations"
+                                                                  value={rule.mutation_style || ''}
+                                                                  onChange={value => {
+                                                                    updateCurrentVariantRules(
+                                                                      nextRules => {
+                                                                        const normalized =
+                                                                          normalizeVisualEditorRule(
+                                                                            nextRules[idx]
+                                                                          );
+                                                                        nextRules[idx] = {
+                                                                          ...normalized,
+                                                                          mutation_style: value,
+                                                                        };
+                                                                      }
+                                                                    );
+                                                                  }}
+                                                                  placeholder="e.g. color: #111; font-weight: 700;"
+                                                                  multiline={3}
+                                                                  autoComplete="off"
+                                                                />
+                                                              )}
                                                             </div>
                                                           </div>
-                                                          <div className="variant-visual-editor-mutation-group">
-                                                            <Select
-                                                              label="Quick action"
-                                                              options={mutationTypeOptions}
-                                                              value={rule.mutation_type || 'none'}
-                                                              onChange={value => {
-                                                                updateCurrentVariantRules(
-                                                                  nextRules => {
-                                                                    const normalized =
-                                                                      normalizeVisualEditorRule(
-                                                                        nextRules[idx]
-                                                                      );
-                                                                    nextRules[idx] = {
-                                                                      ...normalized,
-                                                                      mutation_type: value,
-                                                                    };
+                                                        )}
+                                                        {activeTab === 'generated' && (
+                                                          <div className="variant-visual-editor-generated-tab-content">
+                                                            <div className="variant-visual-editor-generated-tab-header">
+                                                              <Text
+                                                                as="span"
+                                                                variant="bodySm"
+                                                                tone="subdued"
+                                                              >
+                                                                Read-only preview of generated
+                                                                mutation + snippets.
+                                                              </Text>
+                                                              <Button
+                                                                size="slim"
+                                                                onClick={async () => {
+                                                                  try {
+                                                                    await navigator.clipboard.writeText(
+                                                                      generatedCode
+                                                                    );
+                                                                    setVisualPreviewToast({
+                                                                      message:
+                                                                        'Generated code copied',
+                                                                      type: 'success',
+                                                                    });
+                                                                  } catch (_) {
+                                                                    setVisualPreviewToast({
+                                                                      message:
+                                                                        'Copy failed in this browser',
+                                                                      type: 'critical',
+                                                                    });
                                                                   }
-                                                                );
-                                                              }}
-                                                              helpText="Use simple visual actions without writing custom JS."
-                                                            />
-                                                            {rule.mutation_type === 'set_text' && (
-                                                              <TextField
-                                                                label="Replacement text"
-                                                                value={rule.mutation_text || ''}
-                                                                onChange={value => {
-                                                                  updateCurrentVariantRules(
-                                                                    nextRules => {
-                                                                      const normalized =
-                                                                        normalizeVisualEditorRule(
-                                                                          nextRules[idx]
-                                                                        );
-                                                                      nextRules[idx] = {
-                                                                        ...normalized,
-                                                                        mutation_text: value,
-                                                                      };
-                                                                    }
+                                                                  setTimeout(
+                                                                    () =>
+                                                                      setVisualPreviewToast(null),
+                                                                    2200
                                                                   );
                                                                 }}
-                                                                placeholder="Text to render in the selected element"
-                                                                autoComplete="off"
-                                                              />
-                                                            )}
-                                                            {rule.mutation_type === 'set_attr' && (
-                                                              <div className="variant-visual-editor-mutation-attr-grid">
-                                                                <TextField
-                                                                  label="Attribute name"
-                                                                  value={
-                                                                    rule.mutation_attribute || ''
-                                                                  }
-                                                                  onChange={value => {
-                                                                    updateCurrentVariantRules(
-                                                                      nextRules => {
-                                                                        const normalized =
-                                                                          normalizeVisualEditorRule(
-                                                                            nextRules[idx]
-                                                                          );
-                                                                        nextRules[idx] = {
-                                                                          ...normalized,
-                                                                          mutation_attribute: value,
-                                                                        };
-                                                                      }
-                                                                    );
-                                                                  }}
-                                                                  placeholder="e.g. aria-label"
-                                                                  autoComplete="off"
-                                                                />
-                                                                <TextField
-                                                                  label="Attribute value"
-                                                                  value={
-                                                                    rule.mutation_attribute_value ||
-                                                                    ''
-                                                                  }
-                                                                  onChange={value => {
-                                                                    updateCurrentVariantRules(
-                                                                      nextRules => {
-                                                                        const normalized =
-                                                                          normalizeVisualEditorRule(
-                                                                            nextRules[idx]
-                                                                          );
-                                                                        nextRules[idx] = {
-                                                                          ...normalized,
-                                                                          mutation_attribute_value:
-                                                                            value,
-                                                                        };
-                                                                      }
-                                                                    );
-                                                                  }}
-                                                                  placeholder="e.g. Buy now"
-                                                                  autoComplete="off"
-                                                                />
-                                                              </div>
-                                                            )}
-                                                            {rule.mutation_type === 'set_style' && (
-                                                              <TextField
-                                                                label="Inline style declarations"
-                                                                value={rule.mutation_style || ''}
-                                                                onChange={value => {
-                                                                  updateCurrentVariantRules(
-                                                                    nextRules => {
-                                                                      const normalized =
-                                                                        normalizeVisualEditorRule(
-                                                                          nextRules[idx]
-                                                                        );
-                                                                      nextRules[idx] = {
-                                                                        ...normalized,
-                                                                        mutation_style: value,
-                                                                      };
-                                                                    }
-                                                                  );
-                                                                }}
-                                                                placeholder="e.g. color: #111; font-weight: 700;"
-                                                                multiline={3}
-                                                                autoComplete="off"
-                                                              />
-                                                            )}
+                                                              >
+                                                                Copy
+                                                              </Button>
+                                                            </div>
+                                                            <pre className="variant-visual-editor-generated-code">
+                                                              {generatedCode}
+                                                            </pre>
                                                           </div>
-                                                        </div>
-                                                      )}
-                                                      {activeTab === 'generated' && (
-                                                        <div className="variant-visual-editor-generated-tab-content">
-                                                          <div className="variant-visual-editor-generated-tab-header">
-                                                            <Text
-                                                              as="span"
-                                                              variant="bodySm"
-                                                              tone="subdued"
-                                                            >
-                                                              Read-only preview of generated
-                                                              mutation + snippets.
-                                                            </Text>
-                                                            <Button
-                                                              size="slim"
-                                                              onClick={async () => {
-                                                                try {
-                                                                  await navigator.clipboard.writeText(
-                                                                    generatedCode
-                                                                  );
-                                                                  setVisualPreviewToast({
-                                                                    message:
-                                                                      'Generated code copied',
-                                                                    type: 'success',
-                                                                  });
-                                                                } catch (_) {
-                                                                  setVisualPreviewToast({
-                                                                    message:
-                                                                      'Copy failed in this browser',
-                                                                    type: 'critical',
-                                                                  });
+                                                        )}
+                                                        {activeTab === 'css' && (
+                                                          <TextField
+                                                            label="CSS"
+                                                            labelHidden
+                                                            value={rule.css}
+                                                            onChange={value => {
+                                                              updateCurrentVariantRules(
+                                                                nextRules => {
+                                                                  nextRules[idx] = {
+                                                                    ...nextRules[idx],
+                                                                    css: value,
+                                                                  };
                                                                 }
-                                                                setTimeout(
-                                                                  () => setVisualPreviewToast(null),
-                                                                  2200
-                                                                );
-                                                              }}
-                                                            >
-                                                              Copy
-                                                            </Button>
-                                                          </div>
-                                                          <pre className="variant-visual-editor-generated-code">
-                                                            {generatedCode}
-                                                          </pre>
-                                                        </div>
-                                                      )}
-                                                      {activeTab === 'css' && (
-                                                        <TextField
-                                                          label="CSS"
-                                                          labelHidden
-                                                          value={rule.css}
-                                                          onChange={value => {
-                                                            updateCurrentVariantRules(nextRules => {
-                                                              nextRules[idx] = {
-                                                                ...nextRules[idx],
-                                                                css: value,
-                                                              };
-                                                            });
-                                                          }}
-                                                          placeholder="/* CSS for this element */"
-                                                          multiline={5}
-                                                          autoComplete="off"
-                                                        />
-                                                      )}
-                                                      {activeTab === 'js' && (
-                                                        <TextField
-                                                          label="JavaScript"
-                                                          labelHidden
-                                                          value={rule.js}
-                                                          onChange={value => {
-                                                            updateCurrentVariantRules(nextRules => {
-                                                              nextRules[idx] = {
-                                                                ...nextRules[idx],
-                                                                js: value,
-                                                              };
-                                                            });
-                                                          }}
-                                                          placeholder="// JS for this element"
-                                                          multiline={5}
-                                                          autoComplete="off"
-                                                        />
-                                                      )}
+                                                              );
+                                                            }}
+                                                            placeholder="/* CSS for this element */"
+                                                            multiline={5}
+                                                            autoComplete="off"
+                                                          />
+                                                        )}
+                                                        {activeTab === 'js' && (
+                                                          <TextField
+                                                            label="JavaScript"
+                                                            labelHidden
+                                                            value={rule.js}
+                                                            onChange={value => {
+                                                              updateCurrentVariantRules(
+                                                                nextRules => {
+                                                                  nextRules[idx] = {
+                                                                    ...nextRules[idx],
+                                                                    js: value,
+                                                                  };
+                                                                }
+                                                              );
+                                                            }}
+                                                            placeholder="// JS for this element"
+                                                            multiline={5}
+                                                            autoComplete="off"
+                                                          />
+                                                        )}
+                                                      </div>
                                                     </div>
                                                   </div>
-                                                </div>
-                                              </>
+                                                </>
+                                              );
+                                            })()}
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </BlockStack>
+                        </div>
+                      </div>
+                    </Collapsible>
+                  </div>
+
+                  <div className="config-editor-accordion-item">
+                    <button
+                      type="button"
+                      className="config-editor-accordion-head"
+                      onClick={() => {
+                        const next = !codeEditorExpanded;
+                        setCodeEditorExpanded(next);
+                        if (next) setVisualEditorExpanded(false);
+                      }}
+                      aria-expanded={codeEditorExpanded}
+                      aria-controls="config-editor-accordion-code-body"
+                      id="config-editor-accordion-code-head"
+                    >
+                      <span className="config-editor-accordion-head-icon config-editor-accordion-head-icon--code">
+                        <Icon source={CodeIcon} />
+                      </span>
+                      <span className="config-editor-accordion-head-label">Code Editor</span>
+                      {codeEditorDirty && (
+                        <span
+                          className="config-editor-accordion-head-dirty"
+                          title="Unsaved changes"
+                          aria-hidden
+                        >
+                          •
+                        </span>
+                      )}
+                      <span className="config-editor-accordion-head-chevron">
+                        {codeEditorExpanded ? (
+                          <Icon source={ChevronDownIcon} />
+                        ) : (
+                          <Icon source={ChevronRightIcon} />
+                        )}
+                      </span>
+                    </button>
+                    <Collapsible
+                      id="config-editor-accordion-code-body"
+                      open={codeEditorExpanded}
+                      transition={{ duration: '200ms', timingFunction: 'ease' }}
+                    >
+                      <div className="config-editor-accordion-body config-editor-panel config-editor-panel--code">
+                        <div className="variant-code-pane">
+                          <div className="variant-code-toolbar">
+                            <div className="variant-code-toolbar-variant" ref={variantDropdownRef}>
+                              {(() => {
+                                const current = variantCodesData[selectedVariantIndex];
+                                const currentColor = getVariantColor(selectedVariantIndex);
+                                return (
+                                  <>
+                                    <div className="variant-code-dropdown">
+                                      <button
+                                        type="button"
+                                        className="variant-code-dropdown-trigger"
+                                        onClick={() => setVariantDropdownOpen(!variantDropdownOpen)}
+                                        aria-expanded={variantDropdownOpen}
+                                        aria-haspopup="listbox"
+                                        aria-label="Select variant to edit"
+                                        id="variant-code-dropdown-trigger"
+                                      >
+                                        <span
+                                          className="variant-code-dropdown-trigger-dot"
+                                          style={{ backgroundColor: currentColor }}
+                                        />
+                                        <span className="variant-code-dropdown-trigger-label">
+                                          {current?.name ?? `Variant ${selectedVariantIndex + 1}`}
+                                        </span>
+                                        <span className="variant-code-dropdown-trigger-chevron">
+                                          <Icon source={ChevronDownIcon} />
+                                        </span>
+                                      </button>
+                                      {variantDropdownOpen && (
+                                        <div
+                                          className="variant-code-dropdown-panel"
+                                          role="listbox"
+                                          aria-labelledby="variant-code-dropdown-trigger"
+                                          aria-activedescendant={`variant-code-option-${selectedVariantIndex}`}
+                                        >
+                                          {variantCodesData.map((v, i) => {
+                                            const isSelected = i === selectedVariantIndex;
+                                            const optionColor = getVariantColor(i);
+                                            const hasCode =
+                                              (v?.css && v.css.trim()) || (v?.js && v.js.trim());
+                                            return (
+                                              <button
+                                                key={`variant-opt-${i}`}
+                                                type="button"
+                                                role="option"
+                                                id={`variant-code-option-${i}`}
+                                                aria-selected={isSelected}
+                                                className={`variant-code-dropdown-option ${isSelected ? 'variant-code-dropdown-option--selected' : ''}`}
+                                                onClick={() => {
+                                                  hasVariantSelectionRef.current = true;
+                                                  setSelectedVariantIndex(i);
+                                                  setVariantDropdownOpen(false);
+                                                }}
+                                                style={{ '--option-color': optionColor }}
+                                              >
+                                                <span
+                                                  className="variant-code-dropdown-option-dot"
+                                                  style={{ backgroundColor: optionColor }}
+                                                />
+                                                <span className="variant-code-dropdown-option-label">
+                                                  {v.name}
+                                                </span>
+                                                {hasCode && (
+                                                  <Badge tone="success" size="small">
+                                                    Code
+                                                  </Badge>
+                                                )}
+                                                {isSelected && (
+                                                  <span className="variant-code-dropdown-option-check">
+                                                    <Icon source={CheckCircleIcon} />
+                                                  </span>
+                                                )}
+                                              </button>
                                             );
-                                          })()}
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                              {variantCodesData.length > 1 && (
+                                <div className="variant-code-toolbar-nav">
+                                  <Button
+                                    plain
+                                    size="slim"
+                                    onClick={() => handleVariantNavigation('prev')}
+                                    disabled={selectedVariantIndex === 0}
+                                    aria-label="Previous variant"
+                                    icon={ChevronLeftIcon}
+                                  />
+                                  <Text variant="bodySm" color="subdued" as="span">
+                                    {selectedVariantIndex + 1} / {variantCodesData.length}
+                                  </Text>
+                                  <Button
+                                    plain
+                                    size="slim"
+                                    onClick={() => handleVariantNavigation('next')}
+                                    disabled={selectedVariantIndex === variantCodesData.length - 1}
+                                    aria-label="Next variant"
+                                    icon={ChevronRightIcon}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const currentVariant = variantCodesData[selectedVariantIndex] ?? {
+                              name: `Variant ${selectedVariantIndex + 1}`,
+                              css: '',
+                              js: '',
+                              code: '',
+                            };
+                            const color = getVariantColor(selectedVariantIndex);
+                            const colorLight = getVariantColorLight(color, 0.06);
+                            const colorLightStrong = getVariantColorLight(color, 0.12);
+                            const cssLineCount = currentVariant.css
+                              ? currentVariant.css.split('\n').length
+                              : 0;
+                            const jsLineCount = currentVariant.js
+                              ? currentVariant.js.split('\n').length
+                              : 0;
+
+                            return (
+                              <div
+                                className="variant-code-editor-card"
+                                style={{
+                                  '--variant-color': color,
+                                  '--variant-color-light': colorLight,
+                                  '--variant-color-light-strong': colorLightStrong,
+                                }}
+                              >
+                                <Card sectioned>
+                                  <BlockStack gap="400">
+                                    <div className="variant-code-summary">
+                                      <span
+                                        className="variant-code-summary-dot"
+                                        style={{ backgroundColor: color }}
+                                      />
+                                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                        {currentVariant.name}
+                                      </Text>
+                                      <Text variant="bodySm" color="subdued" as="span">
+                                        CSS {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} ·
+                                        JS {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
+                                      </Text>
+                                    </div>
+
+                                    <div className="variant-code-tabbed">
+                                      <div
+                                        className="variant-code-tab-bar"
+                                        role="tablist"
+                                        aria-label="CSS or JavaScript"
+                                      >
+                                        <button
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={codeEditorSubTab === 'css'}
+                                          aria-controls="variant-code-panel-css"
+                                          id="variant-code-tab-css"
+                                          className={`variant-code-tab ${codeEditorSubTab === 'css' ? 'variant-code-tab--active' : ''}`}
+                                          onClick={() => setCodeEditorSubTab('css')}
+                                        >
+                                          <span className="code-type-icon css-icon">
+                                            <svg
+                                              width="18"
+                                              height="18"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                            >
+                                              <path
+                                                d="M4 2L5.5 19.5L12 22L18.5 19.5L20 2H4Z"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                              <path
+                                                d="M7 8H17M7 12H15M7 16H16"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                              />
+                                              <path
+                                                d="M12 8L10 10L12 12"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                            </svg>
+                                          </span>
+                                          <span>CSS</span>
+                                          {cssLineCount > 0 && (
+                                            <span className="variant-code-tab-meta">
+                                              {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'}
+                                            </span>
+                                          )}
+                                          {cssValidationErrors.length > 0 && (
+                                            <Badge tone="critical" size="small">
+                                              {cssValidationErrors.length}
+                                            </Badge>
+                                          )}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={codeEditorSubTab === 'js'}
+                                          aria-controls="variant-code-panel-js"
+                                          id="variant-code-tab-js"
+                                          className={`variant-code-tab ${codeEditorSubTab === 'js' ? 'variant-code-tab--active' : ''}`}
+                                          onClick={() => setCodeEditorSubTab('js')}
+                                        >
+                                          <span className="code-type-icon js-icon">
+                                            <svg
+                                              width="18"
+                                              height="18"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                            >
+                                              <rect
+                                                x="2"
+                                                y="2"
+                                                width="20"
+                                                height="20"
+                                                rx="2"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                              <path
+                                                d="M8 8C8 8 9 7 10 7C11 7 12 8 12 9C12 10 11 11 10 11C9 11 8 12 8 13C8 14 9 15 10 15C11 15 12 14 12 14"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                              <path
+                                                d="M16 8L16 14M16 11L18 11"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                              />
+                                            </svg>
+                                          </span>
+                                          <span>JavaScript</span>
+                                          {jsLineCount > 0 && (
+                                            <span className="variant-code-tab-meta">
+                                              {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
+                                            </span>
+                                          )}
+                                          {jsValidationErrors.length > 0 && (
+                                            <Badge tone="critical" size="small">
+                                              {jsValidationErrors.length}
+                                            </Badge>
+                                          )}
+                                        </button>
+                                      </div>
+                                      <div
+                                        id="variant-code-panel-css"
+                                        role="tabpanel"
+                                        aria-labelledby="variant-code-tab-css"
+                                        hidden={codeEditorSubTab !== 'css'}
+                                        className={`variant-code-tab-panel ${codeEditorSubTab === 'css' ? 'variant-code-tab-panel--active' : ''}`}
+                                      >
+                                        <div className="variant-code-editor-wrapper">
+                                          <CodeEditorIDE
+                                            value={currentVariant.css || ''}
+                                            onChange={value =>
+                                              handleVariantCodeChange(
+                                                'css',
+                                                value,
+                                                selectedVariantIndex
+                                              )
+                                            }
+                                            language="css"
+                                            placeholder="/* Enter your CSS */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
+                                            error={
+                                              cssValidationErrors.length > 0
+                                                ? cssValidationErrors[0]
+                                                : undefined
+                                            }
+                                            minHeight={360}
+                                            aria-label="CSS code"
+                                          />
+                                          {cssValidationErrors.length > 0 && (
+                                            <div className="code-validation-errors">
+                                              <BlockStack gap="200">
+                                                {cssValidationErrors.map((errorItem, idx) => (
+                                                  <div key={idx} className="validation-error-item">
+                                                    <InlineStack gap="200" align="start">
+                                                      <svg
+                                                        width="16"
+                                                        height="16"
+                                                        viewBox="0 0 16 16"
+                                                        fill="none"
+                                                      >
+                                                        <circle
+                                                          cx="8"
+                                                          cy="8"
+                                                          r="7"
+                                                          stroke="currentColor"
+                                                          strokeWidth="1.5"
+                                                        />
+                                                        <path
+                                                          d="M8 5V8M8 11H8.01"
+                                                          stroke="currentColor"
+                                                          strokeWidth="1.5"
+                                                          strokeLinecap="round"
+                                                        />
+                                                      </svg>
+                                                      <Text
+                                                        variant="bodySm"
+                                                        color="critical"
+                                                        as="span"
+                                                      >
+                                                        {errorItem}
+                                                      </Text>
+                                                    </InlineStack>
+                                                  </div>
+                                                ))}
+                                              </BlockStack>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
-                                    </>
-                                  )}
-                                </div>
+                                      <div
+                                        id="variant-code-panel-js"
+                                        role="tabpanel"
+                                        aria-labelledby="variant-code-tab-js"
+                                        hidden={codeEditorSubTab !== 'js'}
+                                        className={`variant-code-tab-panel ${codeEditorSubTab === 'js' ? 'variant-code-tab-panel--active' : ''}`}
+                                      >
+                                        <div className="variant-code-editor-wrapper">
+                                          <CodeEditorIDE
+                                            value={currentVariant.js || ''}
+                                            onChange={value =>
+                                              handleVariantCodeChange(
+                                                'js',
+                                                value,
+                                                selectedVariantIndex
+                                              )
+                                            }
+                                            language="javascript"
+                                            placeholder="// Enter your JavaScript&#10;&#10;console.log('Hello');&#10;document.querySelector('.my-class').style.display = 'block';"
+                                            error={
+                                              jsValidationErrors.length > 0
+                                                ? jsValidationErrors[0]
+                                                : undefined
+                                            }
+                                            minHeight={360}
+                                            aria-label="JavaScript code"
+                                          />
+                                          {jsValidationErrors.length > 0 && (
+                                            <div className="code-validation-errors">
+                                              <BlockStack gap="200">
+                                                {jsValidationErrors.map((errorItem, idx) => (
+                                                  <div key={idx} className="validation-error-item">
+                                                    <InlineStack gap="200" align="start">
+                                                      <svg
+                                                        width="16"
+                                                        height="16"
+                                                        viewBox="0 0 16 16"
+                                                        fill="none"
+                                                      >
+                                                        <circle
+                                                          cx="8"
+                                                          cy="8"
+                                                          r="7"
+                                                          stroke="currentColor"
+                                                          strokeWidth="1.5"
+                                                        />
+                                                        <path
+                                                          d="M8 5V8M8 11H8.01"
+                                                          stroke="currentColor"
+                                                          strokeWidth="1.5"
+                                                          strokeLinecap="round"
+                                                        />
+                                                      </svg>
+                                                      <Text
+                                                        variant="bodySm"
+                                                        color="critical"
+                                                        as="span"
+                                                      >
+                                                        {errorItem}
+                                                      </Text>
+                                                    </InlineStack>
+                                                  </div>
+                                                ))}
+                                              </BlockStack>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="variant-code-help-text">
+                                      <Text variant="bodySm" color="subdued" as="p">
+                                        💡 CSS and JavaScript are wrapped in &lt;style&gt; and
+                                        &lt;script&gt; tags when saved.
+                                      </Text>
+                                    </div>
+                                  </BlockStack>
+                                </Card>
                               </div>
                             );
                           })()}
-                        </BlockStack>
-                      </div>
-                    </div>
-                  </Collapsible>
-                </div>
-
-                <div className="config-editor-accordion-item">
-                  <button
-                    type="button"
-                    className="config-editor-accordion-head"
-                    onClick={() => {
-                      const next = !codeEditorExpanded;
-                      setCodeEditorExpanded(next);
-                      if (next) setVisualEditorExpanded(false);
-                    }}
-                    aria-expanded={codeEditorExpanded}
-                    aria-controls="config-editor-accordion-code-body"
-                    id="config-editor-accordion-code-head"
-                  >
-                    <span className="config-editor-accordion-head-icon config-editor-accordion-head-icon--code">
-                      <Icon source={CodeIcon} />
-                    </span>
-                    <span className="config-editor-accordion-head-label">Code Editor</span>
-                    {codeEditorDirty && (
-                      <span
-                        className="config-editor-accordion-head-dirty"
-                        title="Unsaved changes"
-                        aria-hidden
-                      >
-                        •
-                      </span>
-                    )}
-                    <span className="config-editor-accordion-head-chevron">
-                      {codeEditorExpanded ? (
-                        <Icon source={ChevronDownIcon} />
-                      ) : (
-                        <Icon source={ChevronRightIcon} />
-                      )}
-                    </span>
-                  </button>
-                  <Collapsible
-                    id="config-editor-accordion-code-body"
-                    open={codeEditorExpanded}
-                    transition={{ duration: '200ms', timingFunction: 'ease' }}
-                  >
-                    <div className="config-editor-accordion-body config-editor-panel config-editor-panel--code">
-                      <div className="variant-code-pane">
-                        <div className="variant-code-toolbar">
-                          <div className="variant-code-toolbar-variant" ref={variantDropdownRef}>
-                            {(() => {
-                              const current = variantCodesData[selectedVariantIndex];
-                              const currentColor = getVariantColor(selectedVariantIndex);
-                              return (
-                                <>
-                                  <div className="variant-code-dropdown">
-                                    <button
-                                      type="button"
-                                      className="variant-code-dropdown-trigger"
-                                      onClick={() => setVariantDropdownOpen(!variantDropdownOpen)}
-                                      aria-expanded={variantDropdownOpen}
-                                      aria-haspopup="listbox"
-                                      aria-label="Select variant to edit"
-                                      id="variant-code-dropdown-trigger"
-                                    >
-                                      <span
-                                        className="variant-code-dropdown-trigger-dot"
-                                        style={{ backgroundColor: currentColor }}
-                                      />
-                                      <span className="variant-code-dropdown-trigger-label">
-                                        {current?.name ?? `Variant ${selectedVariantIndex + 1}`}
-                                      </span>
-                                      <span className="variant-code-dropdown-trigger-chevron">
-                                        <Icon source={ChevronDownIcon} />
-                                      </span>
-                                    </button>
-                                    {variantDropdownOpen && (
-                                      <div
-                                        className="variant-code-dropdown-panel"
-                                        role="listbox"
-                                        aria-labelledby="variant-code-dropdown-trigger"
-                                        aria-activedescendant={`variant-code-option-${selectedVariantIndex}`}
-                                      >
-                                        {variantCodesData.map((v, i) => {
-                                          const isSelected = i === selectedVariantIndex;
-                                          const optionColor = getVariantColor(i);
-                                          const hasCode =
-                                            (v?.css && v.css.trim()) || (v?.js && v.js.trim());
-                                          return (
-                                            <button
-                                              key={`variant-opt-${i}`}
-                                              type="button"
-                                              role="option"
-                                              id={`variant-code-option-${i}`}
-                                              aria-selected={isSelected}
-                                              className={`variant-code-dropdown-option ${isSelected ? 'variant-code-dropdown-option--selected' : ''}`}
-                                              onClick={() => {
-                                                hasVariantSelectionRef.current = true;
-                                                setSelectedVariantIndex(i);
-                                                setVariantDropdownOpen(false);
-                                              }}
-                                              style={{ '--option-color': optionColor }}
-                                            >
-                                              <span
-                                                className="variant-code-dropdown-option-dot"
-                                                style={{ backgroundColor: optionColor }}
-                                              />
-                                              <span className="variant-code-dropdown-option-label">
-                                                {v.name}
-                                              </span>
-                                              {hasCode && (
-                                                <Badge tone="success" size="small">
-                                                  Code
-                                                </Badge>
-                                              )}
-                                              {isSelected && (
-                                                <span className="variant-code-dropdown-option-check">
-                                                  <Icon source={CheckCircleIcon} />
-                                                </span>
-                                              )}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                </>
-                              );
-                            })()}
-                            {variantCodesData.length > 1 && (
-                              <div className="variant-code-toolbar-nav">
-                                <Button
-                                  plain
-                                  size="slim"
-                                  onClick={() => handleVariantNavigation('prev')}
-                                  disabled={selectedVariantIndex === 0}
-                                  aria-label="Previous variant"
-                                  icon={ChevronLeftIcon}
-                                />
-                                <Text variant="bodySm" color="subdued" as="span">
-                                  {selectedVariantIndex + 1} / {variantCodesData.length}
-                                </Text>
-                                <Button
-                                  plain
-                                  size="slim"
-                                  onClick={() => handleVariantNavigation('next')}
-                                  disabled={selectedVariantIndex === variantCodesData.length - 1}
-                                  aria-label="Next variant"
-                                  icon={ChevronRightIcon}
-                                />
-                              </div>
-                            )}
-                          </div>
                         </div>
-
-                        {(() => {
-                          const currentVariant = variantCodesData[selectedVariantIndex] ?? {
-                            name: `Variant ${selectedVariantIndex + 1}`,
-                            css: '',
-                            js: '',
-                            code: '',
-                          };
-                          const color = getVariantColor(selectedVariantIndex);
-                          const colorLight = getVariantColorLight(color, 0.06);
-                          const colorLightStrong = getVariantColorLight(color, 0.12);
-                          const cssLineCount = currentVariant.css
-                            ? currentVariant.css.split('\n').length
-                            : 0;
-                          const jsLineCount = currentVariant.js
-                            ? currentVariant.js.split('\n').length
-                            : 0;
-
-                          return (
-                            <div
-                              className="variant-code-editor-card"
-                              style={{
-                                '--variant-color': color,
-                                '--variant-color-light': colorLight,
-                                '--variant-color-light-strong': colorLightStrong,
-                              }}
-                            >
-                              <Card sectioned>
-                                <BlockStack gap="400">
-                                  <div className="variant-code-summary">
-                                    <span
-                                      className="variant-code-summary-dot"
-                                      style={{ backgroundColor: color }}
-                                    />
-                                    <Text variant="bodyMd" fontWeight="semibold" as="span">
-                                      {currentVariant.name}
-                                    </Text>
-                                    <Text variant="bodySm" color="subdued" as="span">
-                                      CSS {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} ·
-                                      JS {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
-                                    </Text>
-                                  </div>
-
-                                  <div className="variant-code-tabbed">
-                                    <div
-                                      className="variant-code-tab-bar"
-                                      role="tablist"
-                                      aria-label="CSS or JavaScript"
-                                    >
-                                      <button
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={codeEditorSubTab === 'css'}
-                                        aria-controls="variant-code-panel-css"
-                                        id="variant-code-tab-css"
-                                        className={`variant-code-tab ${codeEditorSubTab === 'css' ? 'variant-code-tab--active' : ''}`}
-                                        onClick={() => setCodeEditorSubTab('css')}
-                                      >
-                                        <span className="code-type-icon css-icon">
-                                          <svg
-                                            width="18"
-                                            height="18"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                          >
-                                            <path
-                                              d="M4 2L5.5 19.5L12 22L18.5 19.5L20 2H4Z"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                            <path
-                                              d="M7 8H17M7 12H15M7 16H16"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                            />
-                                            <path
-                                              d="M12 8L10 10L12 12"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                          </svg>
-                                        </span>
-                                        <span>CSS</span>
-                                        {cssLineCount > 0 && (
-                                          <span className="variant-code-tab-meta">
-                                            {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'}
-                                          </span>
-                                        )}
-                                        {cssValidationErrors.length > 0 && (
-                                          <Badge tone="critical" size="small">
-                                            {cssValidationErrors.length}
-                                          </Badge>
-                                        )}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={codeEditorSubTab === 'js'}
-                                        aria-controls="variant-code-panel-js"
-                                        id="variant-code-tab-js"
-                                        className={`variant-code-tab ${codeEditorSubTab === 'js' ? 'variant-code-tab--active' : ''}`}
-                                        onClick={() => setCodeEditorSubTab('js')}
-                                      >
-                                        <span className="code-type-icon js-icon">
-                                          <svg
-                                            width="18"
-                                            height="18"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                          >
-                                            <rect
-                                              x="2"
-                                              y="2"
-                                              width="20"
-                                              height="20"
-                                              rx="2"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                            <path
-                                              d="M8 8C8 8 9 7 10 7C11 7 12 8 12 9C12 10 11 11 10 11C9 11 8 12 8 13C8 14 9 15 10 15C11 15 12 14 12 14"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                            <path
-                                              d="M16 8L16 14M16 11L18 11"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                            />
-                                          </svg>
-                                        </span>
-                                        <span>JavaScript</span>
-                                        {jsLineCount > 0 && (
-                                          <span className="variant-code-tab-meta">
-                                            {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
-                                          </span>
-                                        )}
-                                        {jsValidationErrors.length > 0 && (
-                                          <Badge tone="critical" size="small">
-                                            {jsValidationErrors.length}
-                                          </Badge>
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div
-                                      id="variant-code-panel-css"
-                                      role="tabpanel"
-                                      aria-labelledby="variant-code-tab-css"
-                                      hidden={codeEditorSubTab !== 'css'}
-                                      className={`variant-code-tab-panel ${codeEditorSubTab === 'css' ? 'variant-code-tab-panel--active' : ''}`}
-                                    >
-                                      <div className="variant-code-editor-wrapper">
-                                        <CodeEditorIDE
-                                          value={currentVariant.css || ''}
-                                          onChange={value =>
-                                            handleVariantCodeChange(
-                                              'css',
-                                              value,
-                                              selectedVariantIndex
-                                            )
-                                          }
-                                          language="css"
-                                          placeholder="/* Enter your CSS */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
-                                          error={
-                                            cssValidationErrors.length > 0
-                                              ? cssValidationErrors[0]
-                                              : undefined
-                                          }
-                                          minHeight={360}
-                                          aria-label="CSS code"
-                                        />
-                                        {cssValidationErrors.length > 0 && (
-                                          <div className="code-validation-errors">
-                                            <BlockStack gap="200">
-                                              {cssValidationErrors.map((errorItem, idx) => (
-                                                <div key={idx} className="validation-error-item">
-                                                  <InlineStack gap="200" align="start">
-                                                    <svg
-                                                      width="16"
-                                                      height="16"
-                                                      viewBox="0 0 16 16"
-                                                      fill="none"
-                                                    >
-                                                      <circle
-                                                        cx="8"
-                                                        cy="8"
-                                                        r="7"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.5"
-                                                      />
-                                                      <path
-                                                        d="M8 5V8M8 11H8.01"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.5"
-                                                        strokeLinecap="round"
-                                                      />
-                                                    </svg>
-                                                    <Text
-                                                      variant="bodySm"
-                                                      color="critical"
-                                                      as="span"
-                                                    >
-                                                      {errorItem}
-                                                    </Text>
-                                                  </InlineStack>
-                                                </div>
-                                              ))}
-                                            </BlockStack>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div
-                                      id="variant-code-panel-js"
-                                      role="tabpanel"
-                                      aria-labelledby="variant-code-tab-js"
-                                      hidden={codeEditorSubTab !== 'js'}
-                                      className={`variant-code-tab-panel ${codeEditorSubTab === 'js' ? 'variant-code-tab-panel--active' : ''}`}
-                                    >
-                                      <div className="variant-code-editor-wrapper">
-                                        <CodeEditorIDE
-                                          value={currentVariant.js || ''}
-                                          onChange={value =>
-                                            handleVariantCodeChange(
-                                              'js',
-                                              value,
-                                              selectedVariantIndex
-                                            )
-                                          }
-                                          language="javascript"
-                                          placeholder="// Enter your JavaScript&#10;&#10;console.log('Hello');&#10;document.querySelector('.my-class').style.display = 'block';"
-                                          error={
-                                            jsValidationErrors.length > 0
-                                              ? jsValidationErrors[0]
-                                              : undefined
-                                          }
-                                          minHeight={360}
-                                          aria-label="JavaScript code"
-                                        />
-                                        {jsValidationErrors.length > 0 && (
-                                          <div className="code-validation-errors">
-                                            <BlockStack gap="200">
-                                              {jsValidationErrors.map((errorItem, idx) => (
-                                                <div key={idx} className="validation-error-item">
-                                                  <InlineStack gap="200" align="start">
-                                                    <svg
-                                                      width="16"
-                                                      height="16"
-                                                      viewBox="0 0 16 16"
-                                                      fill="none"
-                                                    >
-                                                      <circle
-                                                        cx="8"
-                                                        cy="8"
-                                                        r="7"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.5"
-                                                      />
-                                                      <path
-                                                        d="M8 5V8M8 11H8.01"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.5"
-                                                        strokeLinecap="round"
-                                                      />
-                                                    </svg>
-                                                    <Text
-                                                      variant="bodySm"
-                                                      color="critical"
-                                                      as="span"
-                                                    >
-                                                      {errorItem}
-                                                    </Text>
-                                                  </InlineStack>
-                                                </div>
-                                              ))}
-                                            </BlockStack>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="variant-code-help-text">
-                                    <Text variant="bodySm" color="subdued" as="p">
-                                      💡 CSS and JavaScript are wrapped in &lt;style&gt; and
-                                      &lt;script&gt; tags when saved.
-                                    </Text>
-                                  </div>
-                                </BlockStack>
-                              </Card>
-                            </div>
-                          );
-                        })()}
                       </div>
-                    </div>
-                  </Collapsible>
+                    </Collapsible>
+                  </div>
                 </div>
-              </div>
-            </BlockStack>
-          ) : (
-            <Card sectioned>
-              <div className="variant-codes-empty-state">
-                <Text variant="bodyMd" color="subdued" as="p" alignment="center">
-                  No variants configured for this test.
-                </Text>
-                <Text
-                  variant="bodySm"
-                  color="subdued"
-                  as="p"
-                  alignment="center"
-                  style={{ marginTop: '0.5rem' }}
-                >
-                  Add variants in the Traffic Allocation step to start editing codes.
-                </Text>
-              </div>
-            </Card>
-          )}
-        </BlockStack>
-      </Card>
+              </BlockStack>
+            ) : (
+              <Card sectioned>
+                <div className="variant-codes-empty-state">
+                  <Text variant="bodyMd" color="subdued" as="p" alignment="center">
+                    No variants configured for this test.
+                  </Text>
+                  <Text
+                    variant="bodySm"
+                    color="subdued"
+                    as="p"
+                    alignment="center"
+                    style={{ marginTop: '0.5rem' }}
+                  >
+                    Add variants in the Traffic Allocation step to start editing codes.
+                  </Text>
+                </div>
+              </Card>
+            )}
+          </BlockStack>
+        </Card>
+      </div>
     );
   };
 
@@ -18239,8 +22757,6 @@ function TestWizard({
     const isPriceReview = isPriceLikeTestType(formData.type || initialData?.type);
     const isCheckoutReview =
       String(formData.type || initialData?.type || '').toLowerCase() === 'checkout';
-    const isShippingReview =
-      String(formData.type || initialData?.type || '').toLowerCase() === 'shipping';
     const checkoutReviewPhase = normalizeCheckoutPhase(
       formData.goal?.checkout_phase || initialData?.goal?.checkout_phase
     );
@@ -18262,179 +22778,6 @@ function TestWizard({
         )
       : null;
     const checkoutExperienceSummary = checkoutExperienceDiagnostics?.summary || null;
-    const canExecuteShippingFromReview = canShowShippingExecution({
-      mode,
-      testType: formData.type || initialData?.type,
-      testId: initialData?.id,
-    });
-    const shippingExecSummary = shippingExecutionReport?.execution_result?.summary || null;
-    const shippingExecActions = Array.isArray(shippingExecutionReport?.execution_result?.actions)
-      ? shippingExecutionReport.execution_result.actions
-      : [];
-    const shippingDiagnostics = shippingDiagnosticsReport?.diagnostics || null;
-    const shippingCapabilityReport = shippingDiagnosticsReport?.capability_report || null;
-    const shippingExecutionPlanDiagnostics = shippingDiagnosticsReport?.execution_plan || null;
-    const reviewShippingTargetType = String(formData.target_type || initialData?.target_type || '')
-      .trim()
-      .toLowerCase();
-    const isShippingStorewideReview =
-      isShippingReview &&
-      (reviewShippingTargetType === 'all-products' || reviewShippingTargetType === 'all_products');
-    const shippingDiagnosticsConflictCount = Number(
-      shippingDiagnostics?.readiness?.running_shipping_conflicts || 0
-    );
-    const shippingExecutionDisabled = shouldDisableShippingExecution({
-      shippingExecutionLoading,
-      wizardLoading: loading,
-      submitLoading,
-      isDirty,
-    });
-    const shippingReviewApplyDisabled =
-      shippingExecutionDisabled || (isShippingStorewideReview && !shippingStorewideApplyConfirmed);
-    const actionableShippingVariants = isShippingReview
-      ? (formData.variants || []).map((variant, index) => ({
-          variant,
-          index,
-          strategy:
-            String(variant?.config?.strategy || '')
-              .trim()
-              .toLowerCase() || 'control',
-        }))
-      : [];
-    const shippingReviewSafetyChecklist = isShippingReview
-      ? [
-          {
-            label: 'Holdout is 10% or higher for safer live exposure',
-            passed: Number(reviewHoldout || 0) >= 10,
-          },
-          {
-            label: 'Excluded products are configured for carve-outs',
-            passed: excludedScopeProductIds.length > 0,
-          },
-          {
-            label: 'Shipping diagnostics have been run in this session',
-            passed: Boolean(shippingDiagnostics),
-          },
-          {
-            label: 'No live shipping conflicts are currently reported',
-            passed: Boolean(shippingDiagnostics) && shippingDiagnosticsConflictCount === 0,
-          },
-        ]
-      : [];
-    const shippingDiagnosticsInsights = (() => {
-      if (!shippingDiagnostics) {
-        return [];
-      }
-
-      const insights = [];
-      const planVariants = Array.isArray(shippingExecutionPlanDiagnostics?.variants)
-        ? shippingExecutionPlanDiagnostics.variants
-        : [];
-      const manualRequiredVariants = planVariants.filter(
-        variant => variant?.status === 'manual_required'
-      );
-      const carrierVariants = planVariants.filter(
-        variant => variant?.execution_adapter === 'carrier_service' && variant?.actionable
-      );
-      const discountFunctionVariants = planVariants.filter(
-        variant => variant?.execution_adapter === 'discount_function' && variant?.actionable
-      );
-      const capabilityWarnings = Array.isArray(shippingCapabilityReport?.capabilities?.warnings)
-        ? shippingCapabilityReport.capabilities.warnings
-        : [];
-      const adapterSupport = shippingCapabilityReport?.capabilities?.adapter_support || {};
-
-      if (shippingDiagnosticsConflictCount > 0) {
-        insights.push({
-          tone: 'critical',
-          title: 'Another managed shipping test is already active',
-          body:
-            shippingDiagnosticsConflictCount === 1
-              ? 'RipX found 1 other running shipping test with managed resources. Launching another one can create overlapping carrier or delivery behavior.'
-              : `RipX found ${shippingDiagnosticsConflictCount} other running shipping tests with managed resources. Launching another one can create overlapping carrier or delivery behavior.`,
-          fix: 'Stop or clean up the other managed shipping test before applying this one, or keep this test in dry-run/manual mode until the overlap is removed.',
-          actions: ['rerun-diagnostics', 'jump-to-targeting'],
-        });
-      }
-
-      if (carrierVariants.length > 0 && !shippingDiagnostics.urls?.carrier_callback_url) {
-        insights.push({
-          tone: 'critical',
-          title: 'Carrier callback URL is missing',
-          body: 'At least one actionable variant plans to use CarrierService, but no carrier callback URL is configured. Carrier-based shipping actions will not be provisioned correctly until that URL is set.',
-          fix: 'Set `RIPX_SHIPPING_CARRIER_CALLBACK_URL` or make `APP_URL/api/track/shipping-carrier-rates` publicly reachable, then rerun shipping diagnostics.',
-          actions: ['rerun-diagnostics', 'open-docs'],
-        });
-      }
-
-      if (
-        discountFunctionVariants.length > 0 &&
-        !shippingDiagnostics.urls?.shipping_resolve_batch_url
-      ) {
-        insights.push({
-          tone: 'critical',
-          title: 'Shipping resolve endpoint is missing',
-          body: 'At least one actionable variant plans to use the checkout discount-function path, but the shipping batch resolve URL is not configured.',
-          fix: 'Set `RIPX_SHIPPING_RESOLVE_BATCH_URL` or ensure `APP_URL/api/track/shipping-resolve-batch` is reachable from Shopify, then rerun diagnostics.',
-          actions: ['rerun-diagnostics', 'open-docs'],
-        });
-      }
-
-      if (manualRequiredVariants.length > 0) {
-        const names = manualRequiredVariants
-          .slice(0, 3)
-          .map(variant => variant?.name || `Variant ${Number(variant?.index || 0) + 1}`);
-        const extraCount = manualRequiredVariants.length - names.length;
-        const adapterLabels = Array.from(
-          new Set(manualRequiredVariants.map(variant => variant?.execution_adapter).filter(Boolean))
-        );
-        const adapterReason = adapterLabels
-          .map(label => adapterSupport?.[label]?.reason)
-          .find(Boolean);
-        insights.push({
-          tone: 'warning',
-          title: 'Some variants still require manual rollout',
-          body: `${names.join(', ')}${extraCount > 0 ? ` +${extraCount} more` : ''} cannot be auto-applied with the current shop capabilities.${adapterReason ? ` ${adapterReason}` : ''}`,
-          fix: 'Switch those variants to a supported execution path, use a compatible store plan, or proceed with manual setup for the blocked variants only.',
-          actions: ['jump-to-targeting', 'open-docs'],
-        });
-      }
-
-      capabilityWarnings.forEach(message => {
-        insights.push({
-          tone: 'warning',
-          title: 'Shopify capability gap detected',
-          body: message,
-          fix: 'Update app scopes or shop capabilities, then reopen RipX from Shopify Admin and rerun diagnostics to confirm the gap is resolved.',
-          actions: ['rerun-diagnostics', 'open-docs'],
-        });
-      });
-
-      if (shippingDiagnostics.readiness?.assignment_signature_required) {
-        insights.push({
-          tone: 'info',
-          title: 'Signed assignment markers are required',
-          body: 'Checkout resolution expects signed `_ripx_*` assignment markers on cart lines. Verify the storefront script is live before you rely on shipping execution in checkout.',
-          fix: 'Confirm the latest storefront script is published and live on the store, then test a cart flow to verify `_ripx_*` assignment attributes are being injected.',
-          actions: ['open-docs'],
-        });
-      }
-
-      if (
-        shippingExecutionPlanDiagnostics?.recommended_execution_path &&
-        shippingExecutionPlanDiagnostics.recommended_execution_path === 'manual'
-      ) {
-        insights.push({
-          tone: 'info',
-          title: 'Manual execution is the current recommended path',
-          body: 'RipX diagnostics suggest a manual rollout path for this store right now. Use dry run output and diagnostics to confirm what can be automated versus what needs manual setup.',
-          fix: 'Run a dry run, review each actionable variant, and apply only the supported pieces automatically while following up manually on the rest.',
-          actions: ['jump-to-exclusions', 'open-docs'],
-        });
-      }
-
-      return insights;
-    })();
     const reviewTargetProductIds =
       (formData.target_type || initialData?.target_type) === 'product'
         ? formData.target_ids?.length
@@ -19224,283 +23567,6 @@ function TestWizard({
           </div>
         )}
 
-        {isShippingReview && canExecuteShippingFromReview && (
-          <div className={stepStyles.reviewSection}>
-            <div className={stepStyles.reviewSectionTitle}>
-              <span className={stepStyles.reviewSectionTitleIcon}>
-                <Icon source={CartIcon} />
-              </span>
-              Shipping Execution
-            </div>
-            <BlockStack gap="300">
-              {isShippingStorewideReview && (
-                <Banner tone="warning" title="Storewide shipping safety check">
-                  <BlockStack gap="300">
-                    <Text as="p" variant="bodySm">
-                      This test is configured for <strong>storewide shipping qualification</strong>.
-                      Dry runs remain available, but live apply is gated until you acknowledge the
-                      broader impact below.
-                    </Text>
-                    <div className={styles.bannerChecklist}>
-                      {shippingReviewSafetyChecklist.map(item => (
-                        <div key={item.label} className={styles.bannerChecklistItem}>
-                          <span className={styles.bannerChecklistIcon}>
-                            <Icon
-                              source={item.passed ? CheckCircleIcon : AlertTriangleIcon}
-                              tone={item.passed ? 'success' : 'warning'}
-                            />
-                          </span>
-                          <Text as="span" variant="bodySm" className={styles.bannerChecklistLabel}>
-                            {item.label}
-                          </Text>
-                        </div>
-                      ))}
-                    </div>
-                    <Checkbox
-                      label="I understand this will apply shipping actions to storewide-qualified carts, and I have reviewed holdout, exclusions, and diagnostics."
-                      checked={shippingStorewideApplyConfirmed}
-                      onChange={setShippingStorewideApplyConfirmed}
-                    />
-                  </BlockStack>
-                </Banner>
-              )}
-              <Text variant="bodySm" as="p">
-                Run a dry run to preview adapter actions, then apply when the plan looks correct.
-              </Text>
-              <InlineStack gap="200" wrap>
-                <Button
-                  size="slim"
-                  onClick={handleRunShippingDiagnostics}
-                  disabled={shippingDiagnosticsLoading || loading}
-                  loading={shippingDiagnosticsLoading}
-                  title="Check shipping readiness, assignment visibility, and live conflicts"
-                >
-                  Shipping diagnostics
-                </Button>
-                <Button
-                  size="slim"
-                  onClick={() => handleExecuteShippingFromReview(false)}
-                  disabled={shippingExecutionDisabled}
-                  loading={shippingExecutionLoading && shippingExecutionAction === 'dry_run'}
-                  title={
-                    isDirty
-                      ? 'Save pending changes before running shipping execution.'
-                      : 'Preview shipping adapter actions without creating/updating resources'
-                  }
-                >
-                  Shipping dry run
-                </Button>
-                <Button
-                  size="slim"
-                  variant="primary"
-                  onClick={() => handleExecuteShippingFromReview(true)}
-                  disabled={shippingReviewApplyDisabled}
-                  loading={shippingExecutionLoading && shippingExecutionAction === 'apply'}
-                  title={
-                    isShippingStorewideReview && !shippingStorewideApplyConfirmed
-                      ? 'Confirm the storewide shipping safety acknowledgment before applying.'
-                      : isDirty
-                        ? 'Save pending changes before applying shipping actions.'
-                        : 'Apply shipping adapter actions for actionable variants'
-                  }
-                >
-                  Apply shipping
-                </Button>
-              </InlineStack>
-              {actionableShippingVariants.some(item => item.strategy !== 'control') && (
-                <div className={stepStyles.reviewShippingVariantActions}>
-                  {actionableShippingVariants
-                    .filter(item => item.index > 0 && item.strategy !== 'control')
-                    .map(item => (
-                      <div
-                        key={`shipping-variant-action-${item.index}`}
-                        className={stepStyles.reviewShippingVariantActionRow}
-                      >
-                        <Text variant="bodySm" as="span">
-                          {item.variant?.name || `Variant ${item.index + 1}`} ({item.strategy})
-                        </Text>
-                        <InlineStack gap="200" wrap>
-                          <Button
-                            size="slim"
-                            onClick={() => handleExecuteShippingFromReview(false, item.index)}
-                            disabled={shippingExecutionDisabled}
-                          >
-                            Dry run
-                          </Button>
-                          <Button
-                            size="slim"
-                            variant="primary"
-                            onClick={() => handleExecuteShippingFromReview(true, item.index)}
-                            disabled={shippingReviewApplyDisabled}
-                            title={
-                              isShippingStorewideReview && !shippingStorewideApplyConfirmed
-                                ? 'Confirm the storewide shipping safety acknowledgment before applying.'
-                                : undefined
-                            }
-                          >
-                            Apply
-                          </Button>
-                        </InlineStack>
-                      </div>
-                    ))}
-                </div>
-              )}
-              {isDirty && (
-                <Text
-                  variant="bodySm"
-                  tone="subdued"
-                  as="p"
-                  className={stepStyles.reviewShippingHint}
-                >
-                  Save pending changes first so execution uses your latest variant strategies.
-                </Text>
-              )}
-              {shippingDiagnostics && (
-                <div className={stepStyles.reviewShippingDiagnostics}>
-                  <div className={stepStyles.reviewShippingHeader}>
-                    <span className={stepStyles.reviewShippingTitle}>Shipping diagnostics</span>
-                    <span className={stepStyles.reviewShippingMode}>
-                      Conflicts:{' '}
-                      {Number(shippingDiagnostics.readiness?.running_shipping_conflicts || 0)}
-                    </span>
-                  </div>
-                  <Banner
-                    tone={
-                      shippingDiagnostics.readiness?.running_shipping_conflicts > 0
-                        ? 'warning'
-                        : 'info'
-                    }
-                  >
-                    <Text as="p" variant="bodySm">
-                      Resolve URL:{' '}
-                      {shippingDiagnostics.urls?.shipping_resolve_batch_url
-                        ? 'configured'
-                        : 'missing'}{' '}
-                      | Carrier callback:{' '}
-                      {shippingDiagnostics.urls?.carrier_callback_url ? 'configured' : 'missing'} |
-                      Signed assignments:{' '}
-                      {shippingDiagnostics.readiness?.assignment_signature_required
-                        ? 'required'
-                        : 'optional'}
-                    </Text>
-                  </Banner>
-                  {shippingDiagnosticsInsights.map((insight, index) => (
-                    <Banner
-                      key={`${insight.title}-${index}`}
-                      tone={insight.tone}
-                      title={insight.title}
-                    >
-                      <BlockStack gap="100">
-                        <Text as="p" variant="bodySm">
-                          {insight.body}
-                        </Text>
-                        {insight.fix ? (
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            <strong>Recommended fix:</strong> {insight.fix}
-                          </Text>
-                        ) : null}
-                        {Array.isArray(insight.actions) && insight.actions.length > 0 ? (
-                          <InlineStack gap="200" wrap>
-                            {insight.actions.includes('rerun-diagnostics') ? (
-                              <Button
-                                size="slim"
-                                onClick={handleRunShippingDiagnostics}
-                                disabled={shippingDiagnosticsLoading || loading}
-                                loading={shippingDiagnosticsLoading}
-                              >
-                                Rerun diagnostics
-                              </Button>
-                            ) : null}
-                            {insight.actions.includes('jump-to-targeting') ? (
-                              <Button
-                                size="slim"
-                                onClick={() => jumpToShippingTargeting('targeting-scope')}
-                              >
-                                Review qualification
-                              </Button>
-                            ) : null}
-                            {insight.actions.includes('jump-to-exclusions') ? (
-                              <Button
-                                size="slim"
-                                onClick={() => jumpToShippingTargeting('shipping-exclusions-card')}
-                              >
-                                Review exclusions
-                              </Button>
-                            ) : null}
-                            {insight.actions.includes('open-docs') ? (
-                              <Button size="slim" onClick={openShippingDocs}>
-                                Open shipping docs
-                              </Button>
-                            ) : null}
-                          </InlineStack>
-                        ) : null}
-                      </BlockStack>
-                    </Banner>
-                  ))}
-                </div>
-              )}
-              {shippingExecSummary && (
-                <div className={stepStyles.reviewShippingReport}>
-                  <div className={stepStyles.reviewShippingHeader}>
-                    <span className={stepStyles.reviewShippingTitle}>
-                      Latest shipping execution
-                    </span>
-                    <span className={stepStyles.reviewShippingMode}>
-                      Mode: {shippingExecSummary.apply_mode || 'dry_run'}
-                    </span>
-                  </div>
-                  <Banner
-                    tone={
-                      Number(shippingExecSummary.failed_count || 0) > 0
-                        ? 'critical'
-                        : Number(shippingExecSummary.manual_required_count || 0) > 0
-                          ? 'warning'
-                          : 'success'
-                    }
-                  >
-                    <Text as="p" variant="bodySm">
-                      {Number(shippingExecSummary.success_count || 0)} success,{' '}
-                      {Number(shippingExecSummary.manual_required_count || 0)} manual-required,{' '}
-                      {Number(shippingExecSummary.failed_count || 0)} failed.
-                    </Text>
-                  </Banner>
-                  <div className={stepStyles.reviewShippingList}>
-                    {shippingExecActions.map((action, index) => (
-                      <div
-                        key={`${action?.variant_index ?? index}-${action?.variant_id || action?.variant_name || index}`}
-                        className={stepStyles.reviewShippingItem}
-                      >
-                        <div className={stepStyles.reviewShippingItemHead}>
-                          <span className={stepStyles.reviewShippingVariantName}>
-                            {action?.variant_name || `Variant ${index + 1}`}
-                          </span>
-                          <span className={stepStyles.reviewShippingStatus}>
-                            {action?.status || 'unknown'}
-                          </span>
-                        </div>
-                        <p className={stepStyles.reviewShippingMeta}>
-                          Strategy: {action?.strategy || 'n/a'} | Adapter:{' '}
-                          {action?.execution_adapter || 'n/a'}
-                        </p>
-                        {action?.details?.message ? (
-                          <p className={stepStyles.reviewShippingDetail}>
-                            {action.details.message}
-                          </p>
-                        ) : null}
-                        {action?.details?.title ? (
-                          <p className={stepStyles.reviewShippingDetail}>
-                            Resource title: {action.details.title}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </BlockStack>
-          </div>
-        )}
-
         <div className={stepStyles.reviewSchedulingSection}>
           <div className={stepStyles.reviewSchedulingTitle}>
             <Icon source={ClockIcon} />
@@ -19709,20 +23775,20 @@ function TestWizard({
           duration={2500}
         />
       )}
-      {shippingExecutionToast && (
-        <Toast
-          message={shippingExecutionToast.message}
-          type={shippingExecutionToast.type || 'success'}
-          onClose={() => setShippingExecutionToast(null)}
-          duration={3200}
-        />
-      )}
       {checkoutCustomizationToast && (
         <Toast
           message={checkoutCustomizationToast.message}
           type={checkoutCustomizationToast.type || 'success'}
           onClose={() => setCheckoutCustomizationToast(null)}
           duration={3200}
+        />
+      )}
+      {shippingRateActionToast && (
+        <Toast
+          message={shippingRateActionToast.message}
+          type={shippingRateActionToast.type || 'success'}
+          onClose={() => setShippingRateActionToast(null)}
+          duration={2400}
         />
       )}
 
@@ -19765,7 +23831,7 @@ function TestWizard({
             </div>
 
             <div className="wizard-actions">
-              {mode === 'edit' ? (
+              {mode === 'edit' || (mode === 'create' && onSaveDraft) ? (
                 <div className="wizard-save-status">
                   {isDirty && (
                     <span className="wizard-save-pill wizard-save-unsaved">
@@ -19776,7 +23842,7 @@ function TestWizard({
                   {!isDirty && autosaveState === 'saved' && (
                     <span className="wizard-save-pill wizard-save-saved">
                       <Icon source={CheckCircleIcon} />
-                      All changes saved
+                      {mode === 'create' ? 'Draft saved' : 'All changes saved'}
                     </span>
                   )}
                   {autosaveState === 'saving' && (
@@ -19823,7 +23889,16 @@ function TestWizard({
                       loading={loading || submitLoading}
                       icon={SaveIcon}
                     >
-                      Save Changes
+                      {submitLabel || 'Save Changes'}
+                    </Button>
+                  )}
+                  {mode === 'create' && onSaveDraft && (
+                    <Button
+                      onClick={handleSaveDraft}
+                      loading={loading || draftSaveLoading}
+                      icon={SaveIcon}
+                    >
+                      Save Draft
                     </Button>
                   )}
                   {currentStep < steps.length ? (

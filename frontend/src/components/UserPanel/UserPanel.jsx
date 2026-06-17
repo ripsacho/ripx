@@ -16,6 +16,7 @@ import {
   BookIcon,
   NotificationIcon,
   ChevronRightIcon,
+  PlusIcon,
 } from '@shopify/polaris-icons';
 import { PageShell, LegalFooter } from '../Shared';
 import { ROUTES, STORAGE_KEYS } from '../../constants';
@@ -134,6 +135,7 @@ function UserPanel() {
     () => (Array.isArray(domainsData?.domains) ? domainsData.domains : []),
     [domainsData]
   );
+  const canAddDomains = useEmailDomains;
   const { getState: getShopifyInstallStateFromHook, getMessage: getShopifyInstallMessage } =
     useShopifyInstallStatus(domains, 'user-panel');
   const greeting = getTimeGreeting();
@@ -585,6 +587,23 @@ function UserPanel() {
               </div>
             </div>
             <div className={styles.quickActions}>
+              {canAddDomains && (
+                <Link
+                  to={getNavigateToWithEmbed(ROUTES.DOMAINS, { action: 'add' })}
+                  className={styles.quickActionCard}
+                >
+                  <span className={styles.quickActionIcon}>
+                    <Icon source={PlusIcon} tone="base" />
+                  </span>
+                  <span className={styles.quickActionText}>
+                    <span className={styles.quickActionLabel}>Add domain</span>
+                    <span className={styles.quickActionDesc}>Connect a website</span>
+                  </span>
+                  <span className={styles.quickActionArrow}>
+                    <Icon source={ChevronRightIcon} tone="subdued" />
+                  </span>
+                </Link>
+              )}
               <Link to={getNavigateToWithEmbed(ROUTES.DOMAINS)} className={styles.quickActionCard}>
                 <span className={styles.quickActionIcon}>
                   <Icon source={GlobeIcon} tone="base" />

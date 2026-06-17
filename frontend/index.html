@@ -17,8 +17,45 @@
     <link rel="apple-touch-icon" sizes="64x64" href="/favicon-64.png" />
     <link rel="apple-touch-icon" sizes="32x32" href="/favicon-32.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0891b2" />
+    <meta name="theme-color" content="#0891b2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
+    <style>
+      html[data-theme='dark'] {
+        color-scheme: dark;
+        background: #111827;
+        color: #f1f5f9;
+      }
+      html[data-theme='light'] {
+        color-scheme: light;
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('ripx_preferences');
+          if (!saved) return;
+          var prefs = JSON.parse(saved);
+          var theme = prefs.theme || 'light';
+          var resolved = theme === 'dark' ? 'dark' : 'light';
+          if (theme === 'auto' || theme === 'custom') {
+            var hour = new Date().getHours();
+            var start =
+              theme === 'custom' && prefs.customThemeStart != null ? prefs.customThemeStart : 7;
+            var end = theme === 'custom' && prefs.customThemeEnd != null ? prefs.customThemeEnd : 19;
+            if (start < end) {
+              resolved = hour >= start && hour < end ? 'light' : 'dark';
+            } else {
+              resolved = hour >= start || hour < end ? 'light' : 'dark';
+            }
+          }
+          document.documentElement.setAttribute('data-theme', resolved);
+          document.documentElement.style.colorScheme = resolved;
+        } catch (e) {
+          /* ignore malformed preferences */
+        }
+      })();
+    </script>
     <meta name="description" content="RipX - Enterprise A/B testing for Shopify and standalone sites. Run experiments, analyze results, and optimize conversions." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -27,6 +64,7 @@
   </head>
   <body>
     <div id="root"><p style="padding:1rem;font-family:system-ui,sans-serif;">Loading RipX…</p></div>
+    <div id="ripx-overlay-root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -236,8 +236,40 @@ async function serveScript(req, res) {
     tests,
     req,
     goalMetricDefinitions,
-    { shopMappings: shopPriceSurfaceMappings }
+    { shopMappings: shopPriceSurfaceMappings },
+    { runtimeSource: 'app_proxy' }
   );
+  logger.info('Storefront script test set (app_proxy)', {
+    shop: normalizedShop,
+    totalTests: Array.isArray(tests) ? tests.length : 0,
+    servedTests: (Array.isArray(tests) ? tests : []).slice(0, 25).map(test => ({
+      id: test?.id || null,
+      type: test?.type || null,
+      status: test?.status || null,
+      personalizationMode: test?.personalization_mode || null,
+    })),
+  });
+  const nonRunningShippingTests = (Array.isArray(tests) ? tests : []).filter(test => {
+    const type = String(test?.type || '')
+      .trim()
+      .toLowerCase();
+    const status = String(test?.status || '')
+      .trim()
+      .toLowerCase();
+    return type === 'shipping' && status !== 'running';
+  });
+  if (nonRunningShippingTests.length > 0) {
+    logger.warn('Non-running shipping tests served to storefront (app_proxy)', {
+      shop: normalizedShop,
+      count: nonRunningShippingTests.length,
+      tests: nonRunningShippingTests.slice(0, 25).map(test => ({
+        id: test?.id || null,
+        type: test?.type || null,
+        status: test?.status || null,
+        personalizationMode: test?.personalization_mode || null,
+      })),
+    });
+  }
   const scriptPath = getStorefrontScriptPath();
 
   let scriptContents;
@@ -259,6 +291,8 @@ async function serveScript(req, res) {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Script-Version', versionLabel);
   res.set('Cache-Control', getStorefrontScriptCacheControl());
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   res.send(
     `window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n` +
       buildEarlyStorefrontAntiFlickerBootstrap(
@@ -283,6 +317,11 @@ async function servePreviewBootstrap(req, res) {
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
     `&ripx_preview_bust=${previewScriptBust}`;
+  const directScriptUrl = process.env.APP_URL
+    ? `${String(process.env.APP_URL).replace(/\/+$/, '')}/api/track/script.js?shop=${encodeURIComponent(
+        normalizedShop
+      )}&v=${SCRIPT_VERSION}&ripx_preview_bust=${previewScriptBust}`
+    : '';
   const html = `<!doctype html>
 <html lang="en">
   <head>
@@ -299,6 +338,7 @@ async function servePreviewBootstrap(req, res) {
       (function () {
         var target = ${JSON.stringify(targetUrl)};
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+        var directScriptUrl = ${JSON.stringify(directScriptUrl)};
         var mounted = false;
         var redirected = false;
         var retryCount = 0;
@@ -457,6 +497,7 @@ async function servePreviewBootstrap(req, res) {
             '<script>(function(){' +
             'var attempts=0;' +
             'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
+            'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
             'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
             'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
             'function injectOnce(src){' +
@@ -480,7 +521,7 @@ async function servePreviewBootstrap(req, res) {
                 'return;' +
               '}' +
               'attempts+=1;' +
-              'injectOnce(appSrc);' +
+              'injectOnce(attempts<=2?appSrc:directSrc||appSrc);' +
               'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
               'else if(!hasRipx()&&hasBootstrap()){' +
                 'try{' +
@@ -692,9 +733,15 @@ async function servePreviewBootstrapLoader(req, res) {
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
     `&ripx_preview_bust=${previewScriptBust}`;
+  const directScriptUrl = process.env.APP_URL
+    ? `${String(process.env.APP_URL).replace(/\/+$/, '')}/api/track/script.js?shop=${encodeURIComponent(
+        normalizedShop
+      )}&v=${SCRIPT_VERSION}&ripx_preview_bust=${previewScriptBust}`
+    : '';
   const js = `(function () {
   var target = ${JSON.stringify(targetUrl)};
   var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+  var directScriptUrl = ${JSON.stringify(directScriptUrl)};
   var redirected = false;
   var mounted = false;
   var fallbackTimer = null;
@@ -858,6 +905,7 @@ async function servePreviewBootstrapLoader(req, res) {
       '<script>(function(){' +
       'var attempts=0;' +
       'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
+      'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
       'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
       'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
       'function injectOnce(src){' +
@@ -881,7 +929,7 @@ async function servePreviewBootstrapLoader(req, res) {
           'return;' +
         '}' +
         'attempts+=1;' +
-        'injectOnce(appSrc);' +
+        'injectOnce(attempts<=2?appSrc:directSrc||appSrc);' +
         'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
         'else if(!hasRipx()&&hasBootstrap()){' +
           'try{' +

@@ -1,14 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-# Local/dev Shopify CLI config.
-# IMPORTANT:
-# - Keep this file pointed at your active dev tunnel/app, never the production app host.
-# - `shopify app dev --config shopify.app.local.toml` can update these URLs automatically.
-# - If the tunnel changes, update `application_url`, `redirect_urls`, and `app_proxy.url`
-#   together so storefront script loads stay on the same environment.
 
-client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
+client_id = "9ad954016142e0baa9973c085ab8f7db"
 name = "RipperX"
-application_url = "https://window-reservoir-ratings-centuries.trycloudflare.com/home"
+application_url = "https://127.0.0.1/"
 embedded = true
 
 [build]
@@ -32,10 +26,10 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://window-reservoir-ratings-centuries.trycloudflare.com/api/auth/callback" ]
+redirect_urls = [ ]
 
 [app_proxy]
-url = "https://window-reservoir-ratings-centuries.trycloudflare.com/api/proxy/script.js"
+url = "/api/proxy/script.js"
 subpath = "ripx"
 prefix = "apps"
 

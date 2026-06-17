@@ -28,7 +28,7 @@ const {
 const { buildShopifyFunctionsInventory } = require('../services/shopifyFunctionsInventory');
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 const shopifyService = require('../services/shopifyService');
-const { getShopSession } = require('../models/shopSession');
+const { getShopSession, deleteShopSession } = require('../models/shopSession');
 const { HTTP_STATUS } = require('../constants');
 const { getTestTypeControlSnapshot } = require('../services/testTypeControlService');
 const { buildCheckoutExperienceStoreDiagnostics } = require('../services/checkoutReadinessService');
@@ -742,6 +742,49 @@ ${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpr
 });
 
 /**
+ * POST /api/settings/shop-session/reset
+ * Delete stored Shopify OAuth session for the current shop so reinstall can issue a fresh token.
+ */
+router.post(
+  '/shop-session/reset',
+  asyncHandler(async (req, res) => {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+    if (!/\.myshopify\.com$/i.test(shopDomain)) {
+      return sendError(
+        res,
+        400,
+        'Shop session reset is available only for Shopify domains (*.myshopify.com).'
+      );
+    }
+
+    const existingSession = await getShopSession(shopDomain);
+    const deleted = await deleteShopSession(shopDomain);
+    clearShopInstallStateCaches(shopDomain);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      {
+        shop_domain: shopDomain,
+        had_session: Boolean(existingSession),
+        deleted: Boolean(deleted),
+        next_steps: [
+          'Uninstall RipX/RipperX from Shopify Admin for this store.',
+          'Reinstall RipX from your Domains install link and complete OAuth.',
+          'Run installation checklist diagnostics again.',
+        ],
+      },
+      deleted
+        ? 'Shopify session reset. Reinstall the app to re-authorize this store.'
+        : 'No stored Shopify session found. Reinstall the app to re-authorize this store.'
+    );
+  })
+);
+
+/**
  * GET /api/settings/shopify-functions-inventory
  * Lists shopifyFunctions for this app on the store + RipX manifest expectations (discount + cart transform).
  */
@@ -830,11 +873,13 @@ router.get(
     let shopifyFunctions = [];
     let shopifyCartTransforms = null;
     let cartTransformsLookupStatus = accessToken ? 'error' : 'not_checked';
+    let shopifyFunctionsQueryError = null;
     if (accessToken) {
       try {
         shopifyFunctions = await fetchShopifyFunctions(shopDomain, accessToken);
-      } catch (_error) {
+      } catch (functionsError) {
         shopifyFunctions = [];
+        shopifyFunctionsQueryError = functionsError?.message || 'Failed to query shopifyFunctions';
       }
       try {
         shopifyCartTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
@@ -855,6 +900,7 @@ router.get(
       shopifyFunctions,
       shopifyCartTransforms,
       cartTransformsLookupStatus,
+      shopifyFunctionsQueryError,
     });
 
     res.set('Cache-Control', 'no-store');
@@ -1832,7 +1878,7 @@ router.get(
       return sendError(res, 401, 'Shop domain required');
     }
     const { getShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
-    const mappings = await getShopPriceSurfaceMappings(shopDomain);
+    const mappings = await getShopPriceSurfaceMappings(shopDomain, { allowEmptySelector: true });
     return sendSuccess(res, HTTP_STATUS.OK, { mappings });
   })
 );
@@ -1849,7 +1895,9 @@ router.put(
       return sendError(res, 401, 'Shop domain required');
     }
     const { saveShopPriceSurfaceMappings } = require('../services/priceSurfaceRegistryService');
-    const mappings = await saveShopPriceSurfaceMappings(shopDomain, req.body?.mappings);
+    const mappings = await saveShopPriceSurfaceMappings(shopDomain, req.body?.mappings, {
+      allowEmptySelector: true,
+    });
     return sendSuccess(res, HTTP_STATUS.OK, { mappings });
   })
 );

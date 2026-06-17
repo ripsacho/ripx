@@ -1164,8 +1164,8 @@ router.post(
       if (insertErr.message && /metadata|column.*does not exist/i.test(insertErr.message)) {
         result = await query(
           `INSERT INTO support_tickets (user_id, email, subject, category, message, tenant_id, shop_domain)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, created_at`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, created_at`,
           [userId, rawEmail, rawSubject, categoryVal, rawMessage, tenantId, shopDomain]
         );
       } else {

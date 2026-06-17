@@ -15,6 +15,7 @@ jest.mock('../tenant', () => ({
 
 const { query } = require('../../utils/database');
 const {
+  createTest,
   getTestById,
   getTestsByIds,
   getActiveTestsForStorefront,
@@ -56,6 +57,46 @@ describe('test model shop_domain lookup hardening', () => {
     expect(out.goal).toEqual({ type: 'purchase' });
     expect(Array.isArray(out.variants)).toBe(true);
     expect(out.target_ids).toEqual(['gid://shopify/Product/123']);
+  });
+
+  it('createTest hydrates JSON response fields used by draft saves', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ column_name: 'scheduled_start_at' }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            shop_domain: 'MakRipon.MyShopify.com',
+            name: 'Draft test',
+            type: 'content',
+            status: 'draft',
+            goal: '{"type":"conversion","metric":"revenue"}',
+            variants: '[{"name":"Control","allocation":50},{"name":"Variant A","allocation":50}]',
+            segments: '{"device":"mobile","traffic_ramp_percent":25}',
+            target_ids: '["gid://shopify/Product/456"]',
+          },
+        ],
+        rowCount: 1,
+      });
+
+    const out = await createTest({
+      shop_domain: 'MakRipon.MyShopify.com',
+      name: 'Draft test',
+      type: 'content',
+      goal: { type: 'conversion', metric: 'revenue' },
+      variants: [
+        { name: 'Control', allocation: 50 },
+        { name: 'Variant A', allocation: 50 },
+      ],
+      segments: { device: 'mobile', traffic_ramp_percent: 25 },
+      target_ids: ['gid://shopify/Product/456'],
+    });
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(out.goal).toEqual({ type: 'conversion', metric: 'revenue' });
+    expect(out.segments).toEqual({ device: 'mobile', traffic_ramp_percent: 25 });
+    expect(out.target_ids).toEqual(['gid://shopify/Product/456']);
+    expect(out.variants[0].id).toBe('Control');
   });
 
   it('getTestsByIds uses normalized shop_domain SQL filter', async () => {
@@ -139,18 +180,26 @@ describe('test model shop_domain lookup hardening', () => {
           goal: '{}',
           variants: '[]',
           segments: '{}',
+          target_ids: '["gid://shopify/Product/789"]',
         },
       ],
       rowCount: 1,
     });
 
-    await updateTest('11111111-1111-4111-8111-111111111111', ' MakRipon.MyShopify.com ', {
-      name: 'Updated test name',
-    });
+    const out = await updateTest(
+      '11111111-1111-4111-8111-111111111111',
+      ' MakRipon.MyShopify.com ',
+      {
+        name: 'Updated test name',
+        tenant_id: '99999999-9999-4999-8999-999999999999',
+      }
+    );
 
     expect(query).toHaveBeenCalledTimes(1);
     const [sql] = query.mock.calls[0];
     expect(sql).toContain('LOWER(TRIM(shop_domain)) = LOWER(TRIM($');
+    expect(sql).not.toContain('tenant_id =');
+    expect(out.target_ids).toEqual(['gid://shopify/Product/789']);
   });
 
   it('deleteTest uses normalized shop_domain SQL filter', async () => {

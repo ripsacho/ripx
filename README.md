@@ -238,7 +238,7 @@ Rollback (no rebuild):
 
 **Local admin:** In `.env` set `RIPX_ADMIN_SHOP_DOMAINS=your-store.myshopify.com` to access the Admin panel at `/admin` without setting DB roles. Production: see [docs/getting-started/ADMIN_SETUP.md](docs/getting-started/ADMIN_SETUP.md).
 
-**Shopify app dev:** Run `npm run shopify:dev` (or `shopify app dev`). If the Cloudflare tunnel fails ("Could not start Cloudflare tunnel: max retries reached"), use localhost instead: `npm run shopify:dev:localhost` or `shopify app dev --use-localhost`. Localhost mode uses a local HTTPS proxy (no webhooks from Shopify to your machine).
+**Shopify app dev:** Prefer `npm run shopify:dev:local:safe` (cleanup + sanitize stale tunnel URLs + config checks). If dev preview fails, see [docs/SHOPIFY_DEV_PREVIEW_FIX.md](docs/SHOPIFY_DEV_PREVIEW_FIX.md) and run `npm run shopify:dev:local:verbose`. When the tunnel host changes, run `npm run shopify:print:partner-urls -- https://YOUR-TUNNEL-HOST` and update Partner Dashboard URLs. **Activate latest app version:** use `npm run shopify:deploy:local:safe` (not `shopify app release` on dev-only versions). Cloudflare tunnel failures: retry later or use `shopify app dev --tunnel-url https://YOUR-PUBLIC-URL`.
 
 **Storefront script (`script.js`):** The file embeds the current `activeTests` list. It is served with a **short cache** (default 120s, `RIPX_SCRIPT_CACHE_MAX_AGE` in `.env`) so new/updated tests show up quickly—older builds used a 1-year immutable cache and could hide live tests. After upgrading, do a hard refresh on the shop or wait for cache expiry.
 

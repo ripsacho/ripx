@@ -1020,9 +1020,9 @@ function EventExplorer({
           <>
             <div className={styles.eventsSetupCode}>
               <pre>{`// Add to cart
-document.querySelector('[name="add"]').addEventListener('click', () => {
+          document.querySelector('[name="add"]').addEventListener('click', () => {
   RipX.trackEvent('${testId || 'TEST_ID'}', 'add_to_cart');
-});`}</pre>
+          });`}</pre>
             </div>
             <p className={styles.eventsSetupHint}>
               Select event goals in the Test Wizard to get per-event reporting health and snippets.

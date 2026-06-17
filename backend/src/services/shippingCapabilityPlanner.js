@@ -90,14 +90,18 @@ async function fetchShopPlan(shopDomain, accessToken) {
     );
     return response?.data?.shop || null;
   } catch (_error) {
-    const fallback = await shopifyService.requestAdminGraphql(
-      shopDomain,
-      accessToken,
-      fallbackQuery,
-      {},
-      { apiVersion: '2025-04' }
-    );
-    return fallback?.data?.shop || null;
+    try {
+      const fallback = await shopifyService.requestAdminGraphql(
+        shopDomain,
+        accessToken,
+        fallbackQuery,
+        {},
+        { apiVersion: '2025-04' }
+      );
+      return fallback?.data?.shop || null;
+    } catch {
+      return null;
+    }
   }
 }
 

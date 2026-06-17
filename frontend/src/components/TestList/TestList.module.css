@@ -12,8 +12,7 @@
   max-width: none;
   margin: 0;
   margin-bottom: -32px;
-  padding: 0 var(--ripx-page-inline-pad, clamp(16px, 3vw, 40px))
-    var(--ripx-page-bottom-pad, 32px);
+  padding: 0 var(--ripx-page-inline-pad, clamp(16px, 3vw, 40px)) var(--ripx-page-bottom-pad, 32px);
   position: relative;
 }
 
@@ -130,11 +129,8 @@
   );
   border: 1px solid rgba(6, 182, 212, 0.18);
   border-radius: var(--ripx-surface-radius-lg, 20px);
-  box-shadow: var(
-      --ripx-surface-shadow,
-      0 4px 20px rgba(0, 0, 0, 0.04),
-      0 0 0 1px rgba(0, 0, 0, 0.02)
-    ),
+  box-shadow:
+    var(--ripx-surface-shadow, 0 4px 20px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02)),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   position: relative;
   overflow: hidden;
@@ -147,7 +143,13 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   opacity: 0.9;
 }
 
@@ -572,6 +574,45 @@
   flex-wrap: wrap;
 }
 
+[data-theme='dark'] .testListCardBadges :global(.Polaris-Badge),
+[data-theme='dark'] .testListCardMetaRow :global(.Polaris-Badge) {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(30, 41, 59, 0.28) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .testListCardBadges :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .testListCardMetaRow :global(.Polaris-Badge--toneSuccess) {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .testListCardBadges :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .testListCardMetaRow :global(.Polaris-Badge--toneInfo) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .testListCardBadges :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .testListCardMetaRow :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .testListCardBadges :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .testListCardMetaRow :global(.Polaris-Badge--toneAttention) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .testListCardBadges :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .testListCardMetaRow :global(.Polaris-Badge--toneCritical) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
+}
+
 .testListCardMetrics {
   padding: 1rem 1.25rem;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, var(--bg-tertiary) 100%);
@@ -871,6 +912,11 @@
 .status-filter-button.active .viewChipBadge {
   background: rgba(255, 255, 255, 0.3);
   color: inherit;
+}
+
+[data-theme='dark'] .status-filter-button.active .viewChipBadge {
+  background: rgba(30, 41, 59, 0.42);
+  color: rgba(226, 232, 240, 0.96);
 }
 
 .preflightCheckRow {

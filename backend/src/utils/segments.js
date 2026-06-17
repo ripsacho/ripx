@@ -4,7 +4,14 @@
  * Normalizes and validates targeting segment data for AB tests.
  */
 
-const { normalizePriceSurfaceMappings } = require('./priceSurfaceRegistry');
+const {
+  normalizePriceSurfaceMappings,
+  normalizePriceSurface,
+  normalizePriceSurfaceRole,
+  PRICE_MATCH_STRATEGIES,
+  PRICE_PRODUCT_BINDINGS,
+  PRICE_MAPPING_SOURCES,
+} = require('./priceSurfaceRegistry');
 
 /** Values the wizard + storefront can persist on `segments.traffic_source` (keep aligned with TestWizard AUDIENCE_SOURCE_OPTIONS + legacy buckets). */
 const AUDIENCE_TRAFFIC_SOURCE_VALUES = new Set([
@@ -70,6 +77,54 @@ function normalizeProductIds(input) {
         })
     )
   );
+}
+
+function normalizePriceSurfaceMappingsForSegments(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const out = [];
+  input.slice(0, 25).forEach((raw, index) => {
+    if (!raw || typeof raw !== 'object') {
+      return;
+    }
+    const selector = String(raw.selector || '').trim();
+    if (selector) {
+      const normalized = normalizePriceSurfaceMappings([raw])[0];
+      if (normalized) {
+        out.push(normalized);
+      }
+      return;
+    }
+    const containerSelector = String(raw.containerSelector || raw.container_selector || '').trim();
+    const matchStrategyRaw = String(raw.matchStrategy || raw.match_strategy || 'global_unique')
+      .trim()
+      .toLowerCase();
+    const productBindingRaw = String(raw.productBinding || raw.product_binding || 'data_product_id')
+      .trim()
+      .toLowerCase();
+    const sourceRaw = String(raw.source || 'merchant')
+      .trim()
+      .toLowerCase();
+    const priorityRaw = Number(raw.priority);
+    out.push({
+      id: String(raw.id || `mapping-${index + 1}`).trim() || `mapping-${index + 1}`,
+      surface: normalizePriceSurface(raw.surface),
+      role: normalizePriceSurfaceRole(raw.role),
+      selector: '',
+      containerSelector: containerSelector || null,
+      matchStrategy: PRICE_MATCH_STRATEGIES.includes(matchStrategyRaw)
+        ? matchStrategyRaw
+        : 'global_unique',
+      productBinding: PRICE_PRODUCT_BINDINGS.includes(productBindingRaw)
+        ? productBindingRaw
+        : 'data_product_id',
+      priority: Number.isFinite(priorityRaw) ? priorityRaw : 0,
+      source: PRICE_MAPPING_SOURCES.includes(sourceRaw) ? sourceRaw : 'merchant',
+      enabled: raw.enabled === false ? false : true,
+    });
+  });
+  return out;
 }
 
 function normalizeSegments(segments) {
@@ -331,10 +386,10 @@ function normalizeSegments(segments) {
     result.visual_editor_selector = segments.visual_editor_selector.trim();
   }
 
-  const normalizedPriceSurfaceMappings = normalizePriceSurfaceMappings(
+  const normalizedPriceSurfaceMappings = normalizePriceSurfaceMappingsForSegments(
     segments.price_surface_mappings
-  ).slice(0, 25);
-  if (normalizedPriceSurfaceMappings.length > 0) {
+  );
+  if (Array.isArray(segments.price_surface_mappings)) {
     result.price_surface_mappings = normalizedPriceSurfaceMappings;
   }
 

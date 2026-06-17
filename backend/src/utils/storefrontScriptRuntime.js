@@ -4,7 +4,7 @@
  */
 
 /** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
-const SCRIPT_VERSION = '1.0.46';
+const SCRIPT_VERSION = '1.0.47';
 
 /**
  * DB/API may use "pricing"; storefront logic expects "price".
@@ -166,19 +166,23 @@ function buildStorefrontRuntimeConfig(
   tests,
   req,
   goalMetricDefinitions = [],
-  priceSurfaceRegistry = {}
+  priceSurfaceRegistry = {},
+  options = {}
 ) {
   const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
     /\/+$/,
     ''
   );
   const shopMappings = normalizePriceSurfaceMappings(priceSurfaceRegistry.shopMappings);
+  const runtimeSource = String(options.runtimeSource || 'unknown').trim() || 'unknown';
 
   return {
     apiUrl: `${appUrl}/api`,
     featureFlagUrl: `${appUrl}/api/feature-flags/evaluate`,
+    scriptHealthUrl: `${appUrl}/api/track/storefront-script-health`,
     shopDomain: shop,
     version: SCRIPT_VERSION,
+    runtimeSource,
     consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
     heatmapCollection: getHeatmapCollectionRuntimeConfig(),
     activeTests: (tests || []).map(mapTestToStorefrontPayload),

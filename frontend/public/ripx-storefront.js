@@ -450,6 +450,79 @@
       console.log.apply(console, ['[RipX]'].concat(Array.prototype.slice.call(arguments)));
     }
   }
+  function getShippingDebugStorageKey() {
+    return '__ripx_shipping_debug_trail_v1__';
+  }
+  function readShippingDebugTrail() {
+    try {
+      if (!window.sessionStorage) return [];
+      var raw = window.sessionStorage.getItem(getShippingDebugStorageKey());
+      var parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_e) {
+      return [];
+    }
+  }
+  function writeShippingDebugTrail(trail) {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(getShippingDebugStorageKey(), JSON.stringify(trail.slice(-80)));
+    } catch (_e) {}
+  }
+  function recordShippingDebugStep(step, details) {
+    var entry = {
+      at: new Date().toISOString(),
+      step: String(step || 'unknown'),
+      path: window.location ? window.location.pathname : null,
+      preview: Boolean(PREVIEW_MODE),
+      testId:
+        (_ripxCartAttributeState && _ripxCartAttributeState._ripx_price_test) ||
+        PREVIEW_TEST_ID ||
+        null,
+      variant: (_ripxCartAttributeState && _ripxCartAttributeState._ripx_variant) || null,
+      hasLineState: Boolean(getRipxLinePropertiesPayload(_ripxCartAttributeState)),
+      details: details || {},
+    };
+    var trail = readShippingDebugTrail();
+    trail.push(entry);
+    writeShippingDebugTrail(trail);
+    if (DEBUG) debugLog('shipping trace:', entry.step, entry);
+    return entry;
+  }
+  function clearShippingDebugTrail() {
+    try {
+      if (window.sessionStorage) window.sessionStorage.removeItem(getShippingDebugStorageKey());
+    } catch (_e) {}
+  }
+  async function debugShippingFlow(options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    var cartSnapshot = await debugCartSnapshot({ log: false });
+    var desiredProps = getRipxLinePropertiesPayload(_ripxCartAttributeState);
+    var out = {
+      ok: true,
+      scriptVersion: SCRIPT_VERSION,
+      location: window.location ? window.location.href : null,
+      preview: Boolean(PREVIEW_MODE),
+      previewTestId: PREVIEW_TEST_ID || null,
+      lineState: _ripxCartAttributeState || null,
+      desiredLineProperties: desiredProps,
+      cart: cartSnapshot,
+      trail: readShippingDebugTrail(),
+      nextChecks: [
+        'Run this on the storefront product/cart page before checkout.',
+        'After add-to-cart, cart.items[].properties should include _ripx_price_test and _ripx_variant.',
+        'Before checkout navigation, trail should include checkout_handoff_started and checkout_handoff_repair_result.',
+        'In backend logs, checkout rate loading should show POST /api/track/shipping-carrier-rates.',
+      ],
+    };
+    if (opts.log !== false && typeof console !== 'undefined') {
+      if (console.groupCollapsed) console.groupCollapsed('[RipX] shipping debug flow');
+      if (console.log) console.log(out);
+      if (console.table) console.table(out.trail || []);
+      if (console.groupEnd) console.groupEnd();
+    }
+    return out;
+  }
   async function debugCartSnapshot(options) {
     var opts = options && typeof options === 'object' ? options : {};
     try {
@@ -772,10 +845,15 @@
         var resetTestId = getPreviewParam('ab_preview_test');
         if (resetTestId) {
           window.sessionStorage.removeItem('ripx_preview_variant_cache_' + String(resetTestId));
+          window.sessionStorage.removeItem('ripx_preview_variant_cache_v2_' + String(resetTestId));
         }
         for (var i = window.sessionStorage.length - 1; i >= 0; i -= 1) {
           var key = window.sessionStorage.key(i);
-          if (key && key.indexOf('ripx_preview_variant_cache_') === 0) {
+          if (
+            key &&
+            (key.indexOf('ripx_preview_variant_cache_') === 0 ||
+              key.indexOf('ripx_preview_variant_cache_v2_') === 0)
+          ) {
             window.sessionStorage.removeItem(key);
           }
         }
@@ -1278,6 +1356,14 @@
       if (DEBUG) debugLog('preview early cart-attr seed failed:', eSeed && eSeed.message);
     }
   }
+  function prewarmPreviewVariantFetch() {
+    if (!(PREVIEW_MODE && PREVIEW_TEST_ID) || !hasValidConfig) return;
+    try {
+      var cached = readPreviewVariantCache(PREVIEW_TEST_ID);
+      if (cached && cached.config && typeof cached.config === 'object') return;
+      getPreviewVariantSingleFlight(PREVIEW_TEST_ID).catch(function () {});
+    } catch (_ePrewarm) {}
+  }
   function withPreviewQueryParams(urlValue) {
     var raw = urlValue ? String(urlValue).trim() : '';
     if (!raw) return '';
@@ -1370,6 +1456,7 @@
     }, 25);
   }
   seedPreviewCartAttributesEarly();
+  prewarmPreviewVariantFetch();
 
   const VISUAL_PICKER_MODE = getPreviewParam('ab_visual_picker') === '1';
   const PRICE_SURFACE_PICK_MODE = getPreviewParam('ab_price_surface_pick') === '1';
@@ -1806,6 +1893,7 @@
   var _ripxCartPropsRepairInFlight = null;
   var _ripxCartPropsRepairLastAt = 0;
   var _ripxCartPropsRepairTimers = [];
+  var _ripxCheckoutNavigationGuardsInstalled = false;
   var _ripxCartNativeState = {
     cart: null,
     fetchedAt: 0,
@@ -2494,6 +2582,7 @@
         CONFIG.apiUrl + '/track',
         {
           method: 'POST',
+          keepalive: true,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             test_id: testId,
@@ -2541,6 +2630,7 @@
         CONFIG.apiUrl + '/track',
         {
           method: 'POST',
+          keepalive: true,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             test_id: testId,
@@ -2631,6 +2721,40 @@
       trackEvent(test.id, eventName, value, metadata);
     });
     if (DEBUG) debugLog('catalog event fired', eventName, source, matchingTests.length);
+  }
+
+  var _ripxAutomaticGoalLastFiredAt = {};
+
+  function getCatalogDefinitionForEvent(eventName) {
+    var normalized = normalizeRipxCatalogEventName(eventName);
+    var definitions = getCatalogDefinitionsForRuntime();
+    for (var i = 0; i < definitions.length; i += 1) {
+      if (
+        normalizeRipxCatalogEventName(definitions[i] && definitions[i].eventName) === normalized
+      ) {
+        return definitions[i];
+      }
+    }
+    return { eventName: normalized, triggerType: 'automatic', triggerConfig: {} };
+  }
+
+  function fireAutomaticGoalEvent(eventName, source, payload, element, tests, dedupeMs) {
+    var normalized = normalizeRipxCatalogEventName(eventName);
+    if (!normalized) return;
+    if (!getTestsUsingGoalEvent(normalized, tests).length) return;
+    var now = Date.now();
+    var dedupeWindow = typeof dedupeMs === 'number' ? dedupeMs : 0;
+    if (dedupeWindow > 0 && now - (_ripxAutomaticGoalLastFiredAt[normalized] || 0) < dedupeWindow) {
+      return;
+    }
+    _ripxAutomaticGoalLastFiredAt[normalized] = now;
+    fireCatalogEvent(
+      getCatalogDefinitionForEvent(normalized),
+      source,
+      payload || {},
+      element,
+      tests
+    );
   }
 
   function wildcardToRegExp(pattern) {
@@ -3059,11 +3183,69 @@
     });
   }
 
+  function findCartViewControl(node) {
+    if (!node || typeof node.closest !== 'function') return null;
+    return node.closest(
+      'a[href*="/cart"], button[name="cart"], [data-cart-toggle], [data-cart-drawer-toggle], [data-ripx-view-cart], .cart-link, .header__icon--cart'
+    );
+  }
+
+  function installAutomaticCartGoalTriggers(tests) {
+    if (!document || typeof document.addEventListener !== 'function') return;
+    if (window.__RIPX_AUTOMATIC_CART_GOAL_TRIGGERS__) return;
+    window.__RIPX_AUTOMATIC_CART_GOAL_TRIGGERS__ = true;
+
+    document.addEventListener(
+      'click',
+      function (event) {
+        var control = findCartViewControl(event && event.target);
+        if (!control) return;
+        fireAutomaticGoalEvent(
+          'view_cart',
+          'cart_control_click',
+          { metadata: getLinkTriggerMetadata(control) },
+          control,
+          tests,
+          2000
+        );
+      },
+      true
+    );
+
+    if (typeof MutationObserver === 'function') {
+      var lastCartVisibleAt = 0;
+      var observer = new MutationObserver(function () {
+        var root = cartUiRoot();
+        if (!root) return;
+        var now = Date.now();
+        if (now - lastCartVisibleAt < 2000) return;
+        lastCartVisibleAt = now;
+        fireAutomaticGoalEvent(
+          'view_cart',
+          'cart_ui_visible',
+          { metadata: { cart_ui_detected: true } },
+          root,
+          tests,
+          2000
+        );
+      });
+      try {
+        observer.observe(document.documentElement || document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['class', 'open', 'aria-hidden', 'style'],
+        });
+      } catch (_eCartObserver) {}
+    }
+  }
+
   function installGoalMetricCatalogTriggers(tests) {
     if (PREVIEW_MODE || !hasValidConfig || window.__RIPX_GOAL_METRIC_TRIGGERS__) return;
     window.__RIPX_GOAL_METRIC_TRIGGERS__ = true;
     installCatalogDataLayerBridge(tests);
     installCatalogDomTriggers(tests);
+    installAutomaticCartGoalTriggers(tests);
   }
 
   function debugGoalMetrics(eventName) {
@@ -3450,6 +3632,42 @@
     return out;
   }
 
+  var RIPX_LINE_PROPERTY_KEYS = [
+    '_ripx_price_test',
+    '_ripx_variant',
+    '_ripx_shop',
+    '_ripx_assignment_sig',
+    '_ripx_assignment_ts',
+    '_ripx_assignment_user',
+    '_ripx_target_unit',
+    '_ripx_discount_unit',
+    '_ripx_price_method',
+    '_ripx_offer_discount_type',
+    '_ripx_offer_discount_value',
+    '_ripx_offer_code_name',
+  ];
+  var RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY = 'RipX';
+  var RIPX_BUYER_VISIBLE_PROPERTY_KEY = '_ripx_summary';
+  var RIPX_PUBLIC_LINE_PROPERTY_KEYS = RIPX_LINE_PROPERTY_KEYS.map(function (key) {
+    return getRipxPublicLinePropertyKey(key);
+  });
+  function getRipxPublicLinePropertyKey(key) {
+    return String(key || '').charAt(0) === '_' ? String(key).slice(1) : String(key || '');
+  }
+  function getRipxBuyerVisibleLineSummary(payload) {
+    var variant = payload && payload._ripx_variant ? String(payload._ripx_variant).trim() : '';
+    return variant ? 'Price Test: ' + variant : 'Price Test Applied';
+  }
+  function forEachRipxLineProperty(payload, callback) {
+    if (!payload || typeof callback !== 'function') return;
+    for (var i = 0; i < RIPX_LINE_PROPERTY_KEYS.length; i++) {
+      var privateKey = RIPX_LINE_PROPERTY_KEYS[i];
+      var value = payload[privateKey];
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      callback(privateKey, value);
+    }
+  }
+
   function setRipxAttrValueOnFormData(formData, key, value, preserveExisting) {
     if (!formData || !key) return;
     if (value === undefined || value === null || String(value).trim() === '') return;
@@ -3466,6 +3684,7 @@
 
   function applyRipxCartAttrsToFormData(formData, payload, preserveExisting) {
     if (!formData || !payload) return false;
+    var buyerVisibleSummary = getRipxBuyerVisibleLineSummary(payload);
     function collectItemIndexes() {
       var idxMap = {};
       var idxList = [];
@@ -3496,25 +3715,40 @@
       }
       formData.set(itemKey, value);
     }
+    function removeLegacyPublicProps() {
+      if (typeof formData.delete !== 'function') return;
+      RIPX_PUBLIC_LINE_PROPERTY_KEYS.forEach(function (publicKey) {
+        formData.delete('properties[' + publicKey + ']');
+      });
+      formData.delete('properties[' + RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY + ']');
+      var indexes = collectItemIndexes();
+      indexes.forEach(function (index) {
+        RIPX_PUBLIC_LINE_PROPERTY_KEYS.forEach(function (publicKey) {
+          formData.delete('items[' + index + '][properties][' + publicKey + ']');
+        });
+        formData.delete(
+          'items[' + index + '][properties][' + RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY + ']'
+        );
+      });
+    }
     function applyToItemIndexes() {
       var indexes = collectItemIndexes();
       if (!indexes.length) return false;
       indexes.forEach(function (index) {
-        setItemProperty(index, '_ripx_price_test', payload._ripx_price_test);
-        setItemProperty(index, '_ripx_variant', payload._ripx_variant);
-        setItemProperty(index, '_ripx_shop', payload._ripx_shop);
-        setItemProperty(index, '_ripx_assignment_sig', payload._ripx_assignment_sig);
-        setItemProperty(index, '_ripx_assignment_ts', payload._ripx_assignment_ts);
-        setItemProperty(index, '_ripx_assignment_user', payload._ripx_assignment_user);
-        setItemProperty(index, '_ripx_target_unit', payload._ripx_target_unit);
-        setItemProperty(index, '_ripx_discount_unit', payload._ripx_discount_unit);
-        setItemProperty(index, '_ripx_price_method', payload._ripx_price_method);
-        setItemProperty(index, '_ripx_offer_discount_type', payload._ripx_offer_discount_type);
-        setItemProperty(index, '_ripx_offer_discount_value', payload._ripx_offer_discount_value);
-        setItemProperty(index, '_ripx_offer_code_name', payload._ripx_offer_code_name);
+        setItemProperty(index, RIPX_BUYER_VISIBLE_PROPERTY_KEY, buyerVisibleSummary);
+        forEachRipxLineProperty(payload, function (propKey, value) {
+          setItemProperty(index, propKey, value);
+        });
       });
       return true;
     }
+    removeLegacyPublicProps();
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[' + RIPX_BUYER_VISIBLE_PROPERTY_KEY + ']',
+      buyerVisibleSummary,
+      preserveExisting
+    );
     setRipxAttrValueOnFormData(
       formData,
       'properties[_ripx_price_test]',
@@ -3587,6 +3821,9 @@
       payload._ripx_offer_code_name,
       preserveExisting
     );
+    forEachRipxLineProperty(payload, function (propKey, value) {
+      setRipxAttrValueOnFormData(formData, 'properties[' + propKey + ']', value, preserveExisting);
+    });
     applyToItemIndexes();
     return true;
   }
@@ -3602,6 +3839,7 @@
 
   function applyRipxCartAttrsToSearchParams(params, payload, preserveExisting) {
     if (!params || !payload) return false;
+    var buyerVisibleSummary = getRipxBuyerVisibleLineSummary(payload);
     function collectItemIndexes() {
       var idxMap = {};
       var idxList = [];
@@ -3631,25 +3869,39 @@
       }
       params.set(itemKey, value);
     }
+    function removeLegacyPublicProps() {
+      RIPX_PUBLIC_LINE_PROPERTY_KEYS.forEach(function (publicKey) {
+        params.delete('properties[' + publicKey + ']');
+      });
+      params.delete('properties[' + RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY + ']');
+      var indexes = collectItemIndexes();
+      indexes.forEach(function (index) {
+        RIPX_PUBLIC_LINE_PROPERTY_KEYS.forEach(function (publicKey) {
+          params.delete('items[' + index + '][properties][' + publicKey + ']');
+        });
+        params.delete(
+          'items[' + index + '][properties][' + RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY + ']'
+        );
+      });
+    }
     function applyToItemIndexes() {
       var indexes = collectItemIndexes();
       if (!indexes.length) return false;
       indexes.forEach(function (index) {
-        setItemProperty(index, '_ripx_price_test', payload._ripx_price_test);
-        setItemProperty(index, '_ripx_variant', payload._ripx_variant);
-        setItemProperty(index, '_ripx_shop', payload._ripx_shop);
-        setItemProperty(index, '_ripx_assignment_sig', payload._ripx_assignment_sig);
-        setItemProperty(index, '_ripx_assignment_ts', payload._ripx_assignment_ts);
-        setItemProperty(index, '_ripx_assignment_user', payload._ripx_assignment_user);
-        setItemProperty(index, '_ripx_target_unit', payload._ripx_target_unit);
-        setItemProperty(index, '_ripx_discount_unit', payload._ripx_discount_unit);
-        setItemProperty(index, '_ripx_price_method', payload._ripx_price_method);
-        setItemProperty(index, '_ripx_offer_discount_type', payload._ripx_offer_discount_type);
-        setItemProperty(index, '_ripx_offer_discount_value', payload._ripx_offer_discount_value);
-        setItemProperty(index, '_ripx_offer_code_name', payload._ripx_offer_code_name);
+        setItemProperty(index, RIPX_BUYER_VISIBLE_PROPERTY_KEY, buyerVisibleSummary);
+        forEachRipxLineProperty(payload, function (propKey, value) {
+          setItemProperty(index, propKey, value);
+        });
       });
       return true;
     }
+    removeLegacyPublicProps();
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[' + RIPX_BUYER_VISIBLE_PROPERTY_KEY + ']',
+      buyerVisibleSummary,
+      preserveExisting
+    );
     setRipxAttrValueOnSearchParams(
       params,
       'properties[_ripx_price_test]',
@@ -3722,6 +3974,14 @@
       payload._ripx_offer_code_name,
       preserveExisting
     );
+    forEachRipxLineProperty(payload, function (propKey, value) {
+      setRipxAttrValueOnSearchParams(
+        params,
+        'properties[' + propKey + ']',
+        value,
+        preserveExisting
+      );
+    });
     applyToItemIndexes();
     return true;
   }
@@ -3990,17 +4250,42 @@
             function mergedRipxProps(existing, linePayload) {
               var propsPayload = linePayload || objectRootPayload;
               var nextProps = Object.assign({}, existing || {});
+              RIPX_PUBLIC_LINE_PROPERTY_KEYS.forEach(function (publicKey) {
+                if (Object.prototype.hasOwnProperty.call(nextProps, publicKey)) {
+                  delete nextProps[publicKey];
+                }
+              });
+              if (
+                Object.prototype.hasOwnProperty.call(
+                  nextProps,
+                  RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY
+                )
+              ) {
+                delete nextProps[RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY];
+              }
               function setPropIfMissing(key, value) {
                 if (value === undefined || value === null || String(value).trim() === '') return;
                 if (nextProps[key] != null && String(nextProps[key]).trim() !== '') return;
                 nextProps[key] = value;
               }
-              setPropIfMissing('_ripx_price_test', propsPayload._ripx_price_test);
-              setPropIfMissing('_ripx_variant', propsPayload._ripx_variant);
-              setPropIfMissing('_ripx_shop', propsPayload._ripx_shop);
-              setPropIfMissing('_ripx_assignment_sig', propsPayload._ripx_assignment_sig);
-              setPropIfMissing('_ripx_assignment_ts', propsPayload._ripx_assignment_ts);
-              setPropIfMissing('_ripx_assignment_user', propsPayload._ripx_assignment_user);
+              function setRipxAssignmentProp(key, value) {
+                if (value === undefined || value === null || String(value).trim() === '') return;
+                nextProps[key] = value;
+              }
+              var overwriteRipxAssignmentProps = propsPayload && propsPayload.__ripx_shipping_test;
+              var setAssignmentProp = overwriteRipxAssignmentProps
+                ? setRipxAssignmentProp
+                : setPropIfMissing;
+              setPropIfMissing(
+                RIPX_BUYER_VISIBLE_PROPERTY_KEY,
+                getRipxBuyerVisibleLineSummary(propsPayload)
+              );
+              setAssignmentProp('_ripx_price_test', propsPayload._ripx_price_test);
+              setAssignmentProp('_ripx_variant', propsPayload._ripx_variant);
+              setAssignmentProp('_ripx_shop', propsPayload._ripx_shop);
+              setAssignmentProp('_ripx_assignment_sig', propsPayload._ripx_assignment_sig);
+              setAssignmentProp('_ripx_assignment_ts', propsPayload._ripx_assignment_ts);
+              setAssignmentProp('_ripx_assignment_user', propsPayload._ripx_assignment_user);
               setPropIfMissing('_ripx_target_unit', propsPayload._ripx_target_unit);
               setPropIfMissing('_ripx_discount_unit', propsPayload._ripx_discount_unit);
               setPropIfMissing('_ripx_price_method', propsPayload._ripx_price_method);
@@ -4010,6 +4295,7 @@
                 propsPayload._ripx_offer_discount_value
               );
               setPropIfMissing('_ripx_offer_code_name', propsPayload._ripx_offer_code_name);
+              forEachRipxLineProperty(propsPayload, setPropIfMissing);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -4124,24 +4410,14 @@
     var src = state || _ripxCartAttributeState;
     if (!src || !src._ripx_price_test || !src._ripx_variant) return null;
     var out = {};
-    function put(key) {
-      if (!src[key]) return;
-      var v = String(src[key]).trim();
+    function put(key, value) {
+      if (!value) return;
+      var v = String(value).trim();
       if (!v) return;
       out[key] = v;
     }
-    put('_ripx_price_test');
-    put('_ripx_variant');
-    put('_ripx_shop');
-    put('_ripx_assignment_sig');
-    put('_ripx_assignment_ts');
-    put('_ripx_assignment_user');
-    put('_ripx_target_unit');
-    put('_ripx_discount_unit');
-    put('_ripx_price_method');
-    put('_ripx_offer_discount_type');
-    put('_ripx_offer_discount_value');
-    put('_ripx_offer_code_name');
+    forEachRipxLineProperty(src, put);
+    put(RIPX_BUYER_VISIBLE_PROPERTY_KEY, getRipxBuyerVisibleLineSummary(src));
     return out._ripx_price_test && out._ripx_variant ? out : null;
   }
 
@@ -4153,6 +4429,16 @@
       var key = keys[i];
       if (!key) continue;
       if (current[key] == null || String(current[key]).trim() === '') return true;
+      if (
+        (key === '_ripx_price_test' ||
+          key === '_ripx_variant' ||
+          key === '_ripx_assignment_sig' ||
+          key === '_ripx_assignment_ts' ||
+          key === '_ripx_assignment_user') &&
+        String(current[key]).trim() !== String(desiredProps[key]).trim()
+      ) {
+        return true;
+      }
     }
     return false;
   }
@@ -4185,11 +4471,28 @@
 
   function maybeRepairRipxCartLineProperties(reason) {
     var desiredProps = getRipxLinePropertiesPayload(_ripxCartAttributeState);
-    if (!desiredProps || !_ripxNativeFetch) return Promise.resolve(false);
-    if (_ripxCartPropsRepairInFlight) return _ripxCartPropsRepairInFlight;
+    if (!desiredProps || !_ripxNativeFetch) {
+      recordShippingDebugStep('cart_repair_skipped', {
+        reason: reason || 'unknown',
+        hasDesiredProps: Boolean(desiredProps),
+        hasNativeFetch: Boolean(_ripxNativeFetch),
+      });
+      return Promise.resolve(false);
+    }
+    if (_ripxCartPropsRepairInFlight) {
+      recordShippingDebugStep('cart_repair_joined_inflight', { reason: reason || 'unknown' });
+      return _ripxCartPropsRepairInFlight;
+    }
     var now = Date.now();
-    if (now - _ripxCartPropsRepairLastAt < 300) return Promise.resolve(false);
+    if (now - _ripxCartPropsRepairLastAt < 300) {
+      recordShippingDebugStep('cart_repair_throttled', { reason: reason || 'unknown' });
+      return Promise.resolve(false);
+    }
     _ripxCartPropsRepairLastAt = now;
+    recordShippingDebugStep('cart_repair_started', {
+      reason: reason || 'unknown',
+      desiredKeys: Object.keys(desiredProps || {}),
+    });
     _ripxCartPropsRepairInFlight = _ripxNativeFetch('/cart.js', {
       method: 'GET',
       credentials: 'same-origin',
@@ -4204,6 +4507,10 @@
       .then(function (cartState) {
         var lineIndex = findRipxRepairLineIndex(cartState, desiredProps);
         if (lineIndex < 0) {
+          recordShippingDebugStep('cart_repair_no_matching_line', {
+            reason: reason || 'unknown',
+            itemCount: Array.isArray(cartState && cartState.items) ? cartState.items.length : 0,
+          });
           if (DEBUG) {
             debugLog('cart props repair skipped:', reason || 'unknown', 'no matching line');
           }
@@ -4224,6 +4531,10 @@
         })
           .then(function (res) {
             if (!res || !res.ok) {
+              recordShippingDebugStep('cart_repair_failed', {
+                reason: reason || 'unknown',
+                status: res && res.status ? res.status : null,
+              });
               if (DEBUG) {
                 debugLog(
                   'cart props repair failed:',
@@ -4233,6 +4544,11 @@
               }
               return false;
             }
+            recordShippingDebugStep('cart_repair_succeeded', {
+              reason: reason || 'unknown',
+              line: lineIndex + 1,
+              keys: Object.keys(mergedProps || {}),
+            });
             if (DEBUG) {
               debugLog('cart props repaired:', reason || 'unknown', 'line', lineIndex + 1);
             }
@@ -4240,16 +4556,136 @@
             return true;
           })
           .catch(function () {
+            recordShippingDebugStep('cart_repair_change_exception', {
+              reason: reason || 'unknown',
+            });
             return false;
           });
       })
       .catch(function () {
+        recordShippingDebugStep('cart_repair_exception', { reason: reason || 'unknown' });
         return false;
       })
       .finally(function () {
         _ripxCartPropsRepairInFlight = null;
       });
     return _ripxCartPropsRepairInFlight;
+  }
+
+  function shouldRepairRipxCartBeforeCheckout() {
+    return !!(getRipxLinePropertiesPayload(_ripxCartAttributeState) && _ripxNativeFetch);
+  }
+
+  function isCheckoutPath(url) {
+    var path = pathnameFromCartUrl(url || '');
+    return path === '/checkout' || path.indexOf('/checkout/') === 0;
+  }
+
+  function isCheckoutForm(form) {
+    if (!form || typeof form.getAttribute !== 'function') return false;
+    return isCheckoutPath(form.getAttribute('action') || '');
+  }
+
+  function findCheckoutControl(node) {
+    if (!node || typeof node.closest !== 'function') return null;
+    return node.closest(
+      'a[href*="/checkout"], button[name="checkout"], input[name="checkout"], [data-ripx-checkout], [data-checkout-button]'
+    );
+  }
+
+  function isCheckoutSubmitControl(control) {
+    if (!control || typeof control.getAttribute !== 'function') return false;
+    var name = String(control.getAttribute('name') || '')
+      .trim()
+      .toLowerCase();
+    if (name === 'checkout') return true;
+    if (control.hasAttribute && control.hasAttribute('data-checkout-button')) return true;
+    if (control.hasAttribute && control.hasAttribute('data-ripx-checkout')) return true;
+    return false;
+  }
+
+  function continueCheckoutAfterRepair(control, form) {
+    try {
+      if (form) {
+        form.__ripxCheckoutRepairSubmitting = true;
+        if (
+          control &&
+          control.form === form &&
+          typeof form.requestSubmit === 'function' &&
+          (control.tagName === 'BUTTON' || control.tagName === 'INPUT')
+        ) {
+          // Preserve submitter semantics (e.g., name="checkout") so Shopify routes to checkout
+          // instead of plain /cart form submission.
+          form.requestSubmit(control);
+          return;
+        }
+        if (typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+          return;
+        }
+        if (typeof form.submit === 'function') {
+          form.submit();
+          return;
+        }
+      }
+      if (control && control.href) {
+        window.location.href = control.href;
+      }
+    } catch (e) {}
+  }
+
+  function installRipxCheckoutNavigationGuards() {
+    if (_ripxCheckoutNavigationGuardsInstalled) return;
+    _ripxCheckoutNavigationGuardsInstalled = true;
+    if (!document || typeof document.addEventListener !== 'function') return;
+    function guard(event, control, form) {
+      if (!shouldRepairRipxCartBeforeCheckout()) {
+        recordShippingDebugStep('checkout_handoff_no_repair_state', {
+          hasControl: Boolean(control),
+          hasForm: Boolean(form),
+        });
+        return false;
+      }
+      if (form && form.__ripxCheckoutRepairSubmitting) return false;
+      recordShippingDebugStep('checkout_handoff_started', {
+        href: control && control.href ? control.href : null,
+        formAction: form && form.getAttribute ? form.getAttribute('action') : null,
+      });
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      if (event && typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      } else if (event && typeof event.stopPropagation === 'function') {
+        event.stopPropagation();
+      }
+      maybeRepairRipxCartLineProperties('checkout-start').finally(function (result) {
+        recordShippingDebugStep('checkout_handoff_repair_result', { repaired: Boolean(result) });
+        continueCheckoutAfterRepair(control, form);
+      });
+      return true;
+    }
+    document.addEventListener(
+      'submit',
+      function (event) {
+        var form = event && event.target;
+        if (!isCheckoutForm(form)) return;
+        guard(event, null, form);
+      },
+      true
+    );
+    document.addEventListener(
+      'click',
+      function (event) {
+        var control = findCheckoutControl(event && event.target);
+        if (!control) return;
+        var controlForm = control.form || (control.closest && control.closest('form'));
+        var form = null;
+        if (controlForm && (isCheckoutForm(controlForm) || isCheckoutSubmitControl(control))) {
+          form = controlForm;
+        }
+        guard(event, control, form);
+      },
+      true
+    );
   }
 
   function scheduleRipxCartPropsRepairBurst(reason) {
@@ -4271,6 +4707,7 @@
     if (_ripxCartAddInterceptorsInstalled) return;
     _ripxCartAddInterceptorsInstalled = true;
     installRipxCartSubmitGuards();
+    installRipxCheckoutNavigationGuards();
 
     // Intercept fetch('/cart/add(.js)') theme flows (no HTML form submit path).
     if (typeof window.fetch === 'function') {
@@ -4278,6 +4715,14 @@
       function finishRipxCartAddFetch(input, init, patchReason) {
         return nativeFetch(input, init).then(function (response) {
           if (response && response.ok) {
+            fireAutomaticGoalEvent(
+              'add_to_cart',
+              'cart_add_fetch',
+              { metadata: { cart_add_reason: patchReason || 'fetch' } },
+              null,
+              CONFIG.activeTests || [],
+              1500
+            );
             scheduleRipxCartNativeStateRefreshBurst();
             scheduleRipxCartPropsRepairBurst(patchReason || 'fetch');
             schedulePreviewBootstrapReloadAfterCartAdd(patchReason || 'fetch');
@@ -4297,6 +4742,11 @@
               setHeaderValue(nextInit.headers, 'Content-Type', patch.contentType);
             }
           }
+          recordShippingDebugStep('cart_add_fetch_patch_result', {
+            path: ripxCartPath,
+            changed: Boolean(patch.changed),
+            bodyShape: debugDescribeCartAddBody(nextInit.body),
+          });
           if (DEBUG) {
             debugLog(
               'cart intercept fetch:',
@@ -4376,6 +4826,10 @@
 
           if (method === 'POST' && isCartAddPath(url)) {
             var ripxCartPath = pathnameFromCartUrl(url);
+            recordShippingDebugStep('cart_add_fetch_seen', {
+              path: ripxCartPath,
+              hasLineState: isRipxCartAddStateReady(_ripxCartAttributeState),
+            });
             if (DEBUG && !_ripxCartAttributeState) {
               debugLog('cart intercept fetch:', ripxCartPath, '— waiting for RipX line state');
             }
@@ -4383,12 +4837,21 @@
               !isRipxCartAddStateReady(_ripxCartAttributeState) &&
               !shouldWaitForRipxCartAddState()
             ) {
+              recordShippingDebugStep('cart_add_fetch_no_candidate_state', { path: ripxCartPath });
               return finishRipxCartAddFetch(input, init, 'fetch-no-ripx-candidate');
             }
             return waitForRipxCartAttributeStateBeforeAdd('fetch').then(function (state) {
               if (!state) {
+                recordShippingDebugStep('cart_add_fetch_no_state_after_wait', {
+                  path: ripxCartPath,
+                });
                 return finishRipxCartAddFetch(input, init, 'fetch-no-state');
               }
+              recordShippingDebugStep('cart_add_fetch_state_ready', {
+                path: ripxCartPath,
+                testId: state._ripx_price_test || null,
+                variant: state._ripx_variant || null,
+              });
               return sendRipxPatchedCartAddFetch(input, init, state, ripxCartPath, 'fetch');
             });
           } else if (PRICE_PREVIEW_FRAME && method === 'POST' && isCartUpdateOrChangePath(url)) {
@@ -4487,12 +4950,24 @@
           var method = String(this.__ripxMethod || 'GET').toUpperCase();
           var xhrCartPath = pathnameFromCartUrl(this.__ripxUrl);
           if (method === 'POST' && isCartAddPath(this.__ripxUrl)) {
+            recordShippingDebugStep('cart_add_xhr_seen', {
+              path: xhrCartPath,
+              hasLineState: isRipxCartAddStateReady(_ripxCartAttributeState),
+            });
             var self = this;
             try {
               self.addEventListener(
                 'loadend',
                 function () {
                   if (self.status >= 200 && self.status < 300) {
+                    fireAutomaticGoalEvent(
+                      'add_to_cart',
+                      'cart_add_xhr',
+                      { metadata: { cart_add_reason: 'xhr' } },
+                      null,
+                      CONFIG.activeTests || [],
+                      1500
+                    );
                     scheduleRipxCartNativeStateRefreshBurst();
                     scheduleRipxCartPropsRepairBurst('xhr');
                     schedulePreviewBootstrapReloadAfterCartAdd('xhr');
@@ -4503,6 +4978,7 @@
             } catch (eAdd) {}
             if (!isRipxCartAddStateReady(_ripxCartAttributeState)) {
               if (!shouldWaitForRipxCartAddState()) {
+                recordShippingDebugStep('cart_add_xhr_no_candidate_state', { path: xhrCartPath });
                 return origSend.call(this, body);
               }
               if (DEBUG) {
@@ -4513,6 +4989,10 @@
                 if (state) {
                   var delayedHeaderObj = { 'content-type': self.__ripxContentType || '' };
                   var delayedPatch = patchCartAddBodyForRipx(body, delayedHeaderObj, state);
+                  recordShippingDebugStep('cart_add_xhr_patch_after_wait', {
+                    path: xhrCartPath,
+                    changed: Boolean(delayedPatch.changed),
+                  });
                   delayedBody = delayedPatch.body;
                   if (delayedPatch.contentType && !self.__ripxContentType) {
                     self.setRequestHeader('Content-Type', delayedPatch.contentType);
@@ -4527,6 +5007,10 @@
                       delayedPatch.changed ? '' : debugDescribeCartAddBody(body)
                     );
                   }
+                } else {
+                  recordShippingDebugStep('cart_add_xhr_no_state_after_wait', {
+                    path: xhrCartPath,
+                  });
                 }
                 return origSend.call(self, delayedBody);
               });
@@ -4535,6 +5019,10 @@
               var bodyBeforeXhr = body;
               var headerObj = { 'content-type': this.__ripxContentType || '' };
               var patch = patchCartAddBodyForRipx(body, headerObj, _ripxCartAttributeState);
+              recordShippingDebugStep('cart_add_xhr_patch_result', {
+                path: xhrCartPath,
+                changed: Boolean(patch.changed),
+              });
               body = patch.body;
               if (patch.contentType && !this.__ripxContentType) {
                 this.setRequestHeader('Content-Type', patch.contentType);
@@ -4581,12 +5069,25 @@
   }
 
   function stampRipxCartAddFormsNow(reason, scopedForm) {
-    if (!isRipxCartAddStateReady(_ripxCartAttributeState)) return false;
+    if (!isRipxCartAddStateReady(_ripxCartAttributeState)) {
+      recordShippingDebugStep('cart_add_form_stamp_skipped', {
+        reason: reason || 'unknown',
+        hasLineState: Boolean(_ripxCartAttributeState),
+      });
+      return false;
+    }
     try {
       applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
       if (scopedForm && isRipxCartAddForm(scopedForm)) {
         applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
       }
+      if (!stateLooksLikePriceCartState(_ripxCartAttributeState)) {
+        clearRipxPriceOnlyCartHints();
+      }
+      recordShippingDebugStep('cart_add_form_stamped', {
+        reason: reason || 'unknown',
+        scoped: Boolean(scopedForm),
+      });
       if (DEBUG) debugLog('cart form stamp:', reason || 'event');
       return true;
     } catch (e) {
@@ -4605,6 +5106,14 @@
         function (event) {
           var form = event && event.target;
           if (!isRipxCartAddForm(form)) return;
+          fireAutomaticGoalEvent(
+            'add_to_cart',
+            'cart_add_form_submit',
+            { metadata: getElementTriggerMetadata(form, { cart_add_reason: 'form_submit' }) },
+            form,
+            CONFIG.activeTests || [],
+            1500
+          );
           if (form.__ripxResubmittingCartAdd) {
             if (stampRipxCartAddFormsNow('submit-resume', form)) {
               scheduleRipxCartPropsRepairBurst('submit-resume');
@@ -5241,6 +5750,18 @@
     forms.forEach(function (form) {
       if (!form) return;
       if (!formMatchesTargetProductIds(form, targetProductIds)) return;
+      function removeHiddenInputByName(inputName) {
+        if (!inputName) return;
+        var inputs = form.querySelectorAll('input[type="hidden"]');
+        for (var hi = 0; hi < inputs.length; hi++) {
+          if (inputs[hi].name === inputName) {
+            if (inputs[hi].parentNode) {
+              inputs[hi].parentNode.removeChild(inputs[hi]);
+            }
+            hi -= 1;
+          }
+        }
+      }
       function setHiddenInputByName(inputName, value) {
         if (!inputName) return;
         if (value === undefined || value === null || String(value).trim() === '') return;
@@ -5259,12 +5780,18 @@
       }
       function setProperty(propKey, value) {
         if (value === undefined || value === null || String(value).trim() === '') return;
+        removeHiddenInputByName('properties[' + getRipxPublicLinePropertyKey(propKey) + ']');
         var fullName = 'properties[' + propKey + ']';
         setHiddenInputByName(fullName, value);
       }
       setProperty(keyTest, valueTest);
       setProperty(keyVariant, valueVariant);
       if (valueShop) setProperty(keyShop, valueShop);
+      setHiddenInputByName(
+        'properties[' + RIPX_BUYER_VISIBLE_PROPERTY_KEY + ']',
+        getRipxBuyerVisibleLineSummary(state)
+      );
+      removeHiddenInputByName('properties[' + RIPX_LEGACY_BUYER_VISIBLE_PROPERTY_KEY + ']');
       if (state._ripx_assignment_sig) {
         setProperty('_ripx_assignment_sig', state._ripx_assignment_sig);
       }
@@ -5298,6 +5825,7 @@
       if (state._ripx_offer_code_name) {
         setProperty('_ripx_offer_code_name', state._ripx_offer_code_name);
       }
+      forEachRipxLineProperty(state, setProperty);
       var swapState = getRipxNativeVariantSwapState(state);
       if (swapState) {
         var variantIdInput =
@@ -5327,6 +5855,50 @@
         }
       }
     });
+  }
+
+  function clearRipxPriceOnlyCartHints() {
+    if (_ripxCartAttributeState && typeof _ripxCartAttributeState === 'object') {
+      delete _ripxCartAttributeState._ripx_target_unit;
+      delete _ripxCartAttributeState._ripx_discount_unit;
+      delete _ripxCartAttributeState._ripx_price_method;
+      delete _ripxCartAttributeState.ripx_target_unit;
+      delete _ripxCartAttributeState.ripx_discount_unit;
+      delete _ripxCartAttributeState.ripx_price_method;
+      delete _ripxCartAttributeState.__ripx_price_application_method;
+      delete _ripxCartAttributeState.__ripx_native_variant_id;
+      delete _ripxCartAttributeState.__ripx_source_variant_id;
+    }
+    _ripxTargetUnitByProductId = {};
+    _ripxDiscountUnitByProductId = {};
+    _ripxPriceMethodByProductId = {};
+    _ripxTargetUnitByVariantId = {};
+    _ripxDiscountUnitByVariantId = {};
+    _ripxPriceMethodByVariantId = {};
+    try {
+      var forms = document.querySelectorAll(
+        'form[action*="cart/add"], form[action*="/cart/add"], form[data-ajax-cart-form], form[data-cart-add]'
+      );
+      Array.prototype.forEach.call(forms || [], function (form) {
+        ['_ripx_target_unit', '_ripx_discount_unit', '_ripx_price_method'].forEach(function (key) {
+          var publicKey = getRipxPublicLinePropertyKey(key);
+          var inputs = form.querySelectorAll('input[type="hidden"]');
+          Array.prototype.forEach.call(inputs || [], function (input) {
+            if (
+              input &&
+              (input.name === 'properties[' + key + ']' ||
+                input.name === 'properties[' + publicKey + ']')
+            ) {
+              if (input.parentNode) input.parentNode.removeChild(input);
+              else if (Array.isArray(form.__hiddenInputs)) {
+                var idx = form.__hiddenInputs.indexOf(input);
+                if (idx !== -1) form.__hiddenInputs.splice(idx, 1);
+              }
+            }
+          });
+        });
+      });
+    } catch (e) {}
   }
 
   function installRipxCartFormObserver() {
@@ -5529,9 +6101,51 @@
     var vid = variant.variantId != null ? variant.variantId : variant.id;
     if (vid == null || String(vid).trim() === '') vid = PREVIEW_VARIANT_ID;
     if (vid == null || String(vid).trim() === '') return;
-    injectPriceTestCartAttributes(testId, vid, getAssignmentProofFromVariant(variant), null, null, {
-      applicationMethod: 'direct_price_override',
-    });
+    injectPriceTestCartAttributes(
+      testId,
+      vid,
+      getAssignmentProofFromVariant(variant),
+      null,
+      null,
+      null
+    );
+  }
+
+  function configLooksLikeShipping(config) {
+    if (!config || typeof config !== 'object') return false;
+    var strategy = String(config.strategy || config.shipping_strategy || '')
+      .trim()
+      .toLowerCase();
+    if (
+      strategy === 'flat_rate' ||
+      strategy === 'threshold_free_shipping' ||
+      strategy === 'discount_percentage' ||
+      strategy === 'discount_fixed' ||
+      strategy === 'free_shipping' ||
+      strategy === 'carrier_quote'
+    ) {
+      return true;
+    }
+    return !!(
+      config.replace_existing_rates ||
+      config.delivery_method_names ||
+      config.deliveryMethodNames ||
+      config.method_handles ||
+      config.methodHandles ||
+      config.zone_countries ||
+      config.zoneCountries
+    );
+  }
+
+  function makeSyntheticPreviewShippingTest() {
+    if (!(PREVIEW_MODE && PREVIEW_TEST_ID)) return null;
+    return {
+      id: PREVIEW_TEST_ID,
+      type: 'shipping',
+      targetType: 'all-products',
+      targetIds: null,
+      targetId: null,
+    };
   }
 
   /**
@@ -5765,15 +6379,9 @@
 
   function stateLooksLikePriceCartState(state) {
     if (!state || !state._ripx_price_test) return false;
+    if (state.__ripx_shipping_test) return false;
     var activeTest = getActiveTestById(state._ripx_price_test);
     if (testTypeIsPrice(activeTest)) return true;
-    if (
-      PREVIEW_MODE &&
-      PREVIEW_TEST_ID &&
-      String(state._ripx_price_test) === String(PREVIEW_TEST_ID)
-    ) {
-      return true;
-    }
     return normalizePriceApplicationMethod(state._ripx_price_method) === 'direct_price_override';
   }
 
@@ -5828,7 +6436,11 @@
         .then(function (variant) {
           if (!variant) return _ripxCartAttributeState || null;
           var test = getActiveTestById(PREVIEW_TEST_ID);
-          if (!test && variant.config) test = makeSyntheticPreviewPriceTest();
+          if (!test && variant.config) {
+            test = configLooksLikeShipping(variant.config)
+              ? makeSyntheticPreviewShippingTest()
+              : makeSyntheticPreviewPriceTest();
+          }
           if (test && testTypeIsPrice(test)) {
             seedFixedPriceCartAttributesWithoutProductId(
               test,
@@ -5841,6 +6453,8 @@
             } else {
               injectPreviewCartAttributesWhenConfigMissing(PREVIEW_TEST_ID, variant);
             }
+          } else if (test && testTypeIsShipping(test)) {
+            injectShippingTestCartAttributes(test, variant);
           } else {
             var previewVariantId =
               variant.variantId != null && String(variant.variantId).trim()
@@ -5855,7 +6469,7 @@
                 getAssignmentProofFromVariant(variant),
                 null,
                 null,
-                { applicationMethod: 'direct_price_override' }
+                null
               );
             }
           }
@@ -8230,6 +8844,59 @@
     );
   }
 
+  function rewriteAnchorHrefsForSimplePreview(root) {
+    if (!(PREVIEW_MODE && PREVIEW_SIMPLE_MODE)) return;
+    var scope = root && root.querySelectorAll ? root : document;
+    try {
+      scope.querySelectorAll('a[href]').forEach(function (anchor) {
+        var rawHref = anchor.getAttribute('href');
+        if (!rawHref || rawHref.charAt(0) === '#') return;
+        var lowered = String(rawHref).trim().toLowerCase();
+        if (
+          lowered.indexOf('javascript:') === 0 ||
+          lowered.indexOf('mailto:') === 0 ||
+          lowered.indexOf('tel:') === 0
+        ) {
+          return;
+        }
+        try {
+          var resolved = new URL(rawHref, document.baseURI || window.location.href);
+          if (
+            String(resolved.protocol || '') !== 'http:' &&
+            String(resolved.protocol || '') !== 'https:'
+          ) {
+            return;
+          }
+          // Keep checkout URLs clean; preview context is only for storefront surfaces.
+          var path = String(resolved.pathname || '').toLowerCase();
+          if (path === '/checkout' || path.indexOf('/checkout/') === 0) return;
+          var withCtx = withPreviewQueryParams(resolved.toString());
+          if (!withCtx) return;
+          anchor.setAttribute('href', withCtx);
+        } catch (_eRewriteSimple) {}
+      });
+    } catch (_eSimpleScope) {}
+  }
+
+  function installSimplePreviewNavigationPersistence() {
+    if (!(PREVIEW_MODE && PREVIEW_SIMPLE_MODE)) return;
+    if (window.__RIPX_SIMPLE_PREVIEW_NAV__) return;
+    window.__RIPX_SIMPLE_PREVIEW_NAV__ = true;
+    rewriteAnchorHrefsForSimplePreview(document);
+    try {
+      var rewriteTimer = null;
+      var observer = new MutationObserver(function () {
+        if (rewriteTimer) clearTimeout(rewriteTimer);
+        rewriteTimer = setTimeout(function () {
+          rewriteAnchorHrefsForSimplePreview(document);
+        }, 120);
+      });
+      if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (_eSimpleObserver) {}
+  }
+
   function initVisualPicker() {
     if (
       !IN_IFRAME &&
@@ -9392,7 +10059,6 @@
   function injectShippingTestCartAttributes(test, variant) {
     if (!test || !variant || !testTypeIsShipping(test)) return;
     var tt = getNormalizedTargetType(test);
-    if (!isProductScopeTargetType(tt)) return;
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     if (variantIdForCart == null || String(variantIdForCart).trim() === '') return;
     injectPriceTestCartAttributes(
@@ -9401,6 +10067,17 @@
       getAssignmentProofFromVariant(variant),
       getShippingTargetProductIdsForCartAttrs(test)
     );
+    if (_ripxCartAttributeState && typeof _ripxCartAttributeState === 'object') {
+      _ripxCartAttributeState.__ripx_shipping_test = true;
+    }
+    clearRipxPriceOnlyCartHints();
+    recordShippingDebugStep('shipping_assignment_injected', {
+      testId: test.id || null,
+      variant: variantIdForCart,
+      targetType: tt,
+      targetProductIds: getShippingTargetProductIdsForCartAttrs(test),
+    });
+    scheduleRipxCartPropsRepairBurst('shipping-assignment');
   }
 
   var OFFER_CODE_APPLY_STATE_KEY = '__ripx_offer_code_apply_v1__';
@@ -10633,6 +11310,9 @@
     if (PREVIEW_DOCUMENT_PROXY) {
       installPreviewDocumentProxyNavigation();
     }
+    if (PREVIEW_SIMPLE_MODE) {
+      installSimplePreviewNavigationPersistence();
+    }
     if (VISUAL_PICKER_ACTIVE) {
       initVisualPicker();
     }
@@ -10705,28 +11385,15 @@
               return String(t.id) === String(PREVIEW_TEST_ID);
             }),
             previewStorefrontTestFetched: false,
+            previewStorefrontTestFetchDeferred: false,
             usedSyntheticFallback: false,
           };
           var hasPreview = testsToRun.some(function (t) {
             return String(t.id) === String(PREVIEW_TEST_ID);
           });
           if (!hasPreview) {
-            var extraTest = await fetchPreviewStorefrontTestShape(PREVIEW_TEST_ID);
-            if (extraTest) {
-              testsToRun.push(extraTest);
-              mergeMeta.previewStorefrontTestFetched = true;
-            } else if (DEBUG) {
-              debugLog(
-                'Preview: test not in activeTests and preview-storefront-test fetch failed — is the test saved for this shop? Open DevTools → Network for /track/preview-storefront-test.'
-              );
-            }
-          }
-          // Draft/offline/CORS: API may not return a row; without any test, getVariant/reapply never run.
-          if (
-            !testsToRun.some(function (t) {
-              return String(t.id) === String(PREVIEW_TEST_ID);
-            })
-          ) {
+            // Start preview immediately with a synthetic fallback test and fetch the exact
+            // storefront test shape in background so first paint is not blocked on network.
             testsToRun.push({
               id: PREVIEW_TEST_ID,
               type: 'price',
@@ -10735,6 +11402,50 @@
               targetId: null,
             });
             mergeMeta.usedSyntheticFallback = true;
+            mergeMeta.previewStorefrontTestFetchDeferred = true;
+            fetchPreviewStorefrontTestShape(PREVIEW_TEST_ID)
+              .then(function (extraTest) {
+                if (!extraTest || !extraTest.id) return;
+                var current = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests.slice() : [];
+                var replaced = false;
+                for (var i = 0; i < current.length; i += 1) {
+                  if (String(current[i] && current[i].id) === String(PREVIEW_TEST_ID)) {
+                    current[i] = extraTest;
+                    replaced = true;
+                    break;
+                  }
+                }
+                if (!replaced) current.push(extraTest);
+                CONFIG.activeTests = current.filter(function (t) {
+                  return String(t && t.id) === String(PREVIEW_TEST_ID);
+                });
+                try {
+                  window.__RIPX_PREVIEW_MERGE__ = Object.assign(
+                    {},
+                    typeof window.__RIPX_PREVIEW_MERGE__ === 'object'
+                      ? window.__RIPX_PREVIEW_MERGE__
+                      : {},
+                    {
+                      previewStorefrontTestFetched: true,
+                      previewStorefrontTestFetchDeferred: true,
+                    }
+                  );
+                } catch (_eMergeUpdate) {}
+                if (window.RipX && typeof window.RipX.reapplyPriceTests === 'function') {
+                  setTimeout(function () {
+                    try {
+                      window.RipX.reapplyPriceTests();
+                    } catch (_eReapplyPreview) {}
+                  }, 0);
+                }
+              })
+              .catch(function () {
+                if (DEBUG) {
+                  debugLog(
+                    'Preview: deferred preview-storefront-test fetch failed — using synthetic fallback.'
+                  );
+                }
+              });
           }
           testsToRun = testsToRun.filter(function (t) {
             return String(t && t.id) === String(PREVIEW_TEST_ID);
@@ -10967,14 +11678,26 @@
                 previewVariantIdForCart != null &&
                 String(previewVariantIdForCart).trim() !== ''
               ) {
-                injectPriceTestCartAttributes(
-                  PREVIEW_TEST_ID,
-                  previewVariantIdForCart,
-                  getAssignmentProofFromVariant(variant),
-                  null,
-                  null,
-                  { applicationMethod: 'direct_price_override' }
-                );
+                var previewTestForCart = getActiveTestById(PREVIEW_TEST_ID);
+                if (
+                  !previewTestForCart &&
+                  variant.config &&
+                  configLooksLikeShipping(variant.config)
+                ) {
+                  previewTestForCart = makeSyntheticPreviewShippingTest();
+                }
+                if (previewTestForCart && testTypeIsShipping(previewTestForCart)) {
+                  injectShippingTestCartAttributes(previewTestForCart, variant);
+                } else {
+                  injectPriceTestCartAttributes(
+                    PREVIEW_TEST_ID,
+                    previewVariantIdForCart,
+                    getAssignmentProofFromVariant(variant),
+                    null,
+                    null,
+                    { applicationMethod: 'direct_price_override' }
+                  );
+                }
               } else {
                 injectPreviewCartAttributesWhenConfigMissing(PREVIEW_TEST_ID, variant);
               }
@@ -11241,6 +11964,8 @@
       return next;
     },
     debugCart: debugCartSnapshot,
+    debugShippingFlow,
+    clearShippingDebugTrail,
     debugStatus,
     debugGoalMetrics,
     testGoalMetricEvent,

@@ -103,10 +103,13 @@ describe('ABTestEngine sticky live assignments', () => {
     jest.doMock('../services/experimentationPolicyService', () => ({
       getGlobalHoldoutPercent: jest.fn().mockResolvedValue(0),
     }));
+    jest.doMock('../services/featureFlagService', () => ({
+      evaluateFlags: jest.fn().mockResolvedValue({ enabled: true, reason: 'test' }),
+    }));
     return require('../services/abTestEngine');
   }
 
-  it('returns an existing assignment before changed targeting can exclude the user', async () => {
+  it('does not return an existing assignment when current targeting excludes the user', async () => {
     const test = {
       id: '11111111-1111-4111-8111-111111111111',
       status: 'running',
@@ -126,15 +129,10 @@ describe('ABTestEngine sticky live assignments', () => {
       device: 'desktop',
     });
 
-    expect(variant).toMatchObject({
-      variantId: 'v-a',
-      variantName: 'Variant A',
-      isNewAssignment: false,
-      config: { html: '<b>A</b>' },
-    });
+    expect(variant).toBeNull();
   });
 
-  it('batch assignment returns existing assignments before changed targeting can exclude the user', async () => {
+  it('batch assignment does not return existing assignments when current targeting excludes the user', async () => {
     const test = {
       id: '22222222-2222-4222-8222-222222222222',
       status: 'running',
@@ -159,12 +157,7 @@ describe('ABTestEngine sticky live assignments', () => {
       device: 'desktop',
     });
 
-    expect(variants[test.id]).toMatchObject({
-      variantId: 'v-b',
-      variantName: 'Variant B',
-      isNewAssignment: false,
-      config: { css: '.x{}' },
-    });
+    expect(variants[test.id]).toBeUndefined();
   });
 });
 

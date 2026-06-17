@@ -52,7 +52,7 @@ function persistPreviewCtx(targetWindow) {
 `;
 }
 
-function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
+function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl, directScriptUrl }) {
   const previewContextScript = buildPreviewContextScript(targetUrl);
   const simplePreview = (() => {
     try {
@@ -122,6 +122,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
       (function () {
         var target = ${JSON.stringify(targetUrl)};
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+        var directScriptUrl = ${JSON.stringify(directScriptUrl || '')};
         var simplePreview = ${JSON.stringify(simplePreview)};
         var statusEl = document.getElementById('ripx-price-preview-status');
         var dotEl = document.getElementById('ripx-price-preview-dot');
@@ -189,6 +190,15 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
 
         function hasRipxRuntime() {
           try {
+            var cfg = window.AB_TEST_RUNTIME_CONFIG || {};
+            return !!(window.RipX && window.RipX.version && cfg.apiUrl && String(cfg.apiUrl).trim());
+          } catch (_e) {
+            return false;
+          }
+        }
+
+        function hasRipxVersionOnly() {
+          try {
             return !!(window.RipX && window.RipX.version);
           } catch (_e) {
             return false;
@@ -208,33 +218,9 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
         }
 
         function cleanSimplePreviewAddressBar() {
-          if (!simplePreview || !window.history || typeof window.history.replaceState !== 'function') return;
-          try {
-            var clean = new URL(target, window.location.origin);
-            [
-              'ab_preview',
-              'ab_preview_simple',
-              'ab_preview_test',
-              'ab_preview_variant',
-              'ab_preview_variant_name',
-              'ab_preview_domain',
-              'ab_preview_reset',
-              'ab_preview_session'
-            ].forEach(function (key) {
-              clean.searchParams.delete(key);
-            });
-            window.history.replaceState(
-              window.history.state || null,
-              document.title || '',
-              clean.pathname + clean.search + clean.hash
-            );
-            window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__ = {
-              cleaned: true,
-              at: Date.now(),
-              href: clean.toString(),
-              source: 'price-preview-bootstrap'
-            };
-          } catch (_eClean) {}
+          // Keep ab_preview* params on simple preview URLs so manual refresh preserves
+          // preview assignment even when sessionStorage is unavailable/cleared.
+          if (!simplePreview) return;
         }
 
         function buildPriceBootstrapUrl(urlValue) {
@@ -286,6 +272,10 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
             target: target,
             mounted: mounted,
             ripxVersion: window.RipX ? window.RipX.version || null : null,
+            runtimeConfigApiUrl:
+              window.AB_TEST_RUNTIME_CONFIG && window.AB_TEST_RUNTIME_CONFIG.apiUrl
+                ? String(window.AB_TEST_RUNTIME_CONFIG.apiUrl)
+                : null,
             lastError: lastError,
             previewCtx: (function () {
               try { return window.sessionStorage.getItem('__ripx_preview_ctx_v1__'); } catch (_e) { return null; }
@@ -325,9 +315,24 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
           try {
             window.__RIPX_PRICE_PREVIEW_FRAME__ = true;
             var existing = Array.prototype.slice.call(document.scripts || []).some(function (script) {
-              return script && script.src && script.src.indexOf('/apps/ripx/script.js') !== -1;
+              return script && script.src && (script.src.indexOf('/apps/ripx/script.js') !== -1 || script.src.indexOf('/api/track/script.js') !== -1);
             });
-            if (!existing) {
+            if (!existing || hasRipxVersionOnly()) {
+              if (existing && hasRipxVersionOnly()) {
+                try {
+                  Array.prototype.slice.call(document.scripts || []).forEach(function (scriptNode) {
+                    if (
+                      scriptNode &&
+                      scriptNode.src &&
+                      (scriptNode.src.indexOf('/apps/ripx/script.js') !== -1 ||
+                        scriptNode.src.indexOf('/api/track/script.js') !== -1) &&
+                      scriptNode.parentNode
+                    ) {
+                      scriptNode.parentNode.removeChild(scriptNode);
+                    }
+                  });
+                } catch (_eRemoveScript) {}
+              }
               var script = document.createElement('script');
               script.src = appProxyScriptUrl + '&price_preview_frame=1';
               script.async = false;
@@ -339,6 +344,20 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
                 } catch (_eScriptsAfterRipx) {}
               };
               script.onerror = function () {
+                if (directScriptUrl && script.src !== directScriptUrl + '&price_preview_frame=1') {
+                  lastError = 'app_proxy_script_failed_trying_direct';
+                  setStatus('App proxy script failed; trying direct RipX runtime...', false);
+                  var fallback = document.createElement('script');
+                  fallback.src = directScriptUrl + '&price_preview_frame=1';
+                  fallback.async = false;
+                  fallback.onload = script.onload;
+                  fallback.onerror = function () {
+                    lastError = 'direct_ripx_script_failed';
+                    setStatus('RipX runtime failed to load', false);
+                  };
+                  (document.head || document.documentElement || document.body).appendChild(fallback);
+                  return;
+                }
                 lastError = 'ripx_script_failed';
                 setStatus('RipX runtime failed to load', false);
               };
@@ -434,13 +453,20 @@ function createPricePreviewBootstrapHandlers({ validatePreviewBootstrapRequest, 
     const appProxyScriptUrl =
       `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
       `&ripx_preview_bust=${previewScriptBust}`;
+    const directScriptUrl = process.env.APP_URL
+      ? `${String(process.env.APP_URL).replace(/\/+$/, '')}/api/track/script.js?shop=${encodeURIComponent(
+          normalizedShop
+        )}&v=${SCRIPT_VERSION}&ripx_preview_bust=${previewScriptBust}`
+      : '';
 
     res.set('Cache-Control', 'no-store');
     res.set(
       'Content-Security-Policy',
       "default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src 'self' https:; connect-src 'self' https:; base-uri 'self'"
     );
-    return res.type('html').send(buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }));
+    return res
+      .type('html')
+      .send(buildPricePreviewHtml({ targetUrl, appProxyScriptUrl, directScriptUrl }));
   }
 
   return {

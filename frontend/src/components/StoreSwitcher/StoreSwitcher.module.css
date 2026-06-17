@@ -18,7 +18,11 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--store-switcher-time-200) ease, border-color var(--store-switcher-time-200) ease, color var(--store-switcher-time-200) ease, box-shadow var(--store-switcher-time-200) ease;
+  transition:
+    background var(--store-switcher-time-200) ease,
+    border-color var(--store-switcher-time-200) ease,
+    color var(--store-switcher-time-200) ease,
+    box-shadow var(--store-switcher-time-200) ease;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
@@ -30,7 +34,9 @@
 
 .storeSwitcher:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-primary, #fff), 0 0 0 4px var(--futuristic-cyan, #06b6d4);
+  box-shadow:
+    0 0 0 2px var(--bg-primary, #fff),
+    0 0 0 4px var(--futuristic-cyan, #06b6d4);
 }
 
 .storeSwitcher.active {
@@ -59,21 +65,30 @@
 
 /* Brief pulse after switching store (paired with store-switch toast) */
 .storeSwitcher.justSwitched {
-  animation: storeSwitcherPulse var(--store-switcher-time-2800) ease-out var(--store-switcher-time-50) both;
+  animation: storeSwitcherPulse var(--store-switcher-time-2800) ease-out
+    var(--store-switcher-time-50) both;
   border-color: rgba(6, 182, 212, 0.55);
   background: rgba(6, 182, 212, 0.12);
-  box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.35), 0 2px 12px rgba(6, 182, 212, 0.2);
+  box-shadow:
+    0 0 0 0 rgba(6, 182, 212, 0.35),
+    0 2px 12px rgba(6, 182, 212, 0.2);
 }
 
 @keyframes storeSwitcherPulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.45), 0 2px 12px rgba(6, 182, 212, 0.25);
+    box-shadow:
+      0 0 0 0 rgba(6, 182, 212, 0.45),
+      0 2px 12px rgba(6, 182, 212, 0.25);
   }
   35% {
-    box-shadow: 0 0 0 14px rgba(6, 182, 212, 0), 0 2px 14px rgba(6, 182, 212, 0.18);
+    box-shadow:
+      0 0 0 14px rgba(6, 182, 212, 0),
+      0 2px 14px rgba(6, 182, 212, 0.18);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0), 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow:
+      0 0 0 0 rgba(6, 182, 212, 0),
+      0 1px 2px rgba(0, 0, 0, 0.03);
   }
 }
 
@@ -98,7 +113,9 @@
   max-width: min(360px, calc(100vw - 24px));
   border-radius: 12px;
   border: 1px solid rgba(6, 182, 212, 0.15);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   overflow: hidden;
   background: var(--bg-secondary, #fff);
 }
@@ -127,6 +144,48 @@
 }
 
 [data-theme='dark'] .storePopover {
+  background: var(--surface-slate-solid);
   border-color: rgba(6, 182, 212, 0.2);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .storePopoverHeader {
+  border-bottom-color: rgba(6, 182, 212, 0.16);
+}
+
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList) {
+  background: transparent;
+}
+
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Item) {
+  background: transparent;
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Item:hover),
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Item:focus-visible),
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Item--active) {
+  background: rgba(6, 182, 212, 0.14);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Text),
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Content),
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Prefix),
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Suffix) {
+  color: inherit;
+}
+
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__Description),
+[data-theme='dark'] .storePopover :global(.Polaris-ActionList__HelpText) {
+  color: rgba(203, 213, 225, 0.74);
+}
+
+[data-theme='dark'] .storePopover :global(.Polaris-Badge) {
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(74, 222, 128, 0.34);
+  color: #86efac;
+  box-shadow: 0 0 0 1px rgba(30, 41, 59, 0.28) inset;
 }

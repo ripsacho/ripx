@@ -1106,7 +1106,7 @@ function Support() {
             <span className={styles.quickLinksLabel}>Popular topics</span>
             <div className={styles.quickLinksList}>
               <a
-                href={ROUTES.DOCS}
+                href={`${ROUTES.DOCS}#support-agent`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.quickLinkPill}

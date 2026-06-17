@@ -30,6 +30,7 @@ function TrafficAllocationSlider({
   onCopyPreviewVariant,
   pricePreviewMode = false,
   compact = false,
+  minVariants = 2,
 }) {
   const [localVariants, setLocalVariants] = useState(variants || []);
   const [draggingIndex, setDraggingIndex] = useState(null);
@@ -72,6 +73,10 @@ function TrafficAllocationSlider({
   }, [variants]);
 
   const normalizeAllocations = vars => {
+    if (!Array.isArray(vars) || vars.length === 0) return vars;
+    if (vars.length === 1) {
+      return [{ ...vars[0], allocation: 100 }];
+    }
     const total = vars.reduce((sum, v) => sum + (v.allocation || 0), 0);
     if (total === 0) return vars;
 
@@ -242,10 +247,38 @@ function TrafficAllocationSlider({
     }
   }, [editingVariantIndex]);
 
-  /** Next default name: Variant A, Variant B, Variant C, ... (based on current count) */
+  const getVariantLetter = index => {
+    let n = index;
+    let label = '';
+    do {
+      label = String.fromCharCode(65 + (n % 26)) + label;
+      n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+    return label;
+  };
+
+  /** Next default name: first unused treatment label, excluding Control from the count. */
   const getDefaultVariantName = () => {
-    const letter = String.fromCharCode(65 + localVariants.length);
-    return `Variant ${letter}`;
+    const existingNames = new Set(
+      localVariants
+        .map(variant =>
+          String(variant?.name || '')
+            .trim()
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    );
+
+    let index = 0;
+    while (index < 1000) {
+      const candidate = `Variant ${getVariantLetter(index)}`;
+      if (!existingNames.has(candidate.toLowerCase())) {
+        return candidate;
+      }
+      index += 1;
+    }
+
+    return `Variant ${localVariants.length + 1}`;
   };
 
   const handleAddVariant = () => {
@@ -275,8 +308,8 @@ function TrafficAllocationSlider({
   };
 
   const handleRemoveVariant = index => {
-    if (localVariants.length <= 2) {
-      setErrorMessage('You need at least 2 variants.');
+    if (localVariants.length <= minVariants) {
+      setErrorMessage(`You need at least ${minVariants} variant${minVariants === 1 ? '' : 's'}.`);
       return;
     }
 
@@ -303,7 +336,7 @@ function TrafficAllocationSlider({
     setLocalVariants(normalized);
     if (onRemoveVariant) {
       pendingCountRef.current = normalized.length;
-      onRemoveVariant(index);
+      onRemoveVariant(index, normalized);
     }
   };
 
@@ -404,8 +437,8 @@ function TrafficAllocationSlider({
 
   const content = (
     <div className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}>
-      <Toast message={errorMessage} type="error" onClose={clearErrorMessage} duration={3000} />
       <Toast message={copySuccess} type="success" onClose={clearCopySuccess} duration={2500} />
+      <Toast message={errorMessage} type="error" onClose={clearErrorMessage} duration={3000} />
       {!compact && (
         <div className={styles.nonCompactHeader}>
           <Text variant="headingLg" as="h2">
@@ -572,10 +605,10 @@ function TrafficAllocationSlider({
           const priceControlVariant = isPriceControlVariant(variant, index);
           const customerTooltip = priceControlVariant
             ? 'Control has no changed price. Open a treatment variant to test cart and checkout price changes.'
-            : 'Customer view: opens clean preview without debug UI';
+            : 'Customer view: opens storefront-domain preview link (no debug overlay).';
           const copyTooltip = priceControlVariant
             ? 'Control has no changed price. Copy a treatment variant link instead.'
-            : 'Copy customer-view preview link';
+            : 'Copy storefront-domain customer-view preview link.';
 
           return (
             <div key={index} className={styles.variantCard} style={{ '--variant-color': color }}>
@@ -619,7 +652,7 @@ function TrafficAllocationSlider({
                       </span>
                     </button>
                   )}
-                  {localVariants.length > 2 && index !== 0 && (
+                  {localVariants.length > minVariants && index !== 0 && (
                     <Tooltip content="Remove variant" preferredPosition="below">
                       <button
                         type="button"

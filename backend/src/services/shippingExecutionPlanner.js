@@ -45,6 +45,21 @@ function hasDeliveryCustomizationTargets(config = {}) {
   });
 }
 
+function shouldReplaceExistingRates(config = {}) {
+  const displayMode = String(
+    config.shipping_display_mode || config.shippingDisplayMode || config.display_mode || ''
+  )
+    .trim()
+    .toLowerCase();
+  if (displayMode === 'replace_existing_methods') {
+    return true;
+  }
+  if (displayMode === 'add_preview_method') {
+    return false;
+  }
+  return Boolean(config.replace_existing_rates || config.replaceExistingRates);
+}
+
 function resolveExecutionAdapter(
   strategy,
   executionHint = 'auto',
@@ -54,8 +69,17 @@ function resolveExecutionAdapter(
   const hint = String(executionHint || 'auto')
     .trim()
     .toLowerCase();
+  const hasDeliveryTargets = hasDeliveryCustomizationTargets(config);
   if (hint === 'manual') {
     return 'manual';
+  }
+  if (strategy === 'flat_rate') {
+    return 'carrier_service';
+  }
+  if (strategy === 'carrier_quote' && hasDeliveryTargets) {
+    return isAdapterAvailable(capabilityReport, 'delivery_customization')
+      ? 'delivery_customization'
+      : 'manual';
   }
   if (hint === 'carrier_service') {
     return 'carrier_service';
@@ -85,16 +109,27 @@ function buildShippingExecutionPlan(test, capabilityReport) {
   const variants = Array.isArray(normalizedTest?.variants) ? normalizedTest.variants : [];
   const variantPlans = variants.map((variant, index) => {
     const config = normalizeShippingVariantConfig(variant?.config || {});
+    const requiresReplacement =
+      config.strategy === 'flat_rate' && shouldReplaceExistingRates(config);
+    const hasReplacementRate =
+      config.amount !== null || config.rates.some(rate => rate.amount !== null && rate.amount >= 0);
+    const actionable =
+      isActionableShippingConfig(config) || (requiresReplacement && hasReplacementRate);
     const adapter = resolveExecutionAdapter(
       config.strategy,
       config.execution_hint,
       capabilityReport,
       config
     );
-    const actionable = isActionableShippingConfig(config);
-    const adapterAvailable = adapter === 'manual' || isAdapterAvailable(capabilityReport, adapter);
+    const adapterAvailable =
+      adapter === 'manual' ||
+      (requiresReplacement
+        ? isAdapterAvailable(capabilityReport, 'carrier_service') &&
+          isAdapterAvailable(capabilityReport, 'delivery_customization')
+        : isAdapterAvailable(capabilityReport, adapter));
     const adapterConfigured =
-      adapter !== 'delivery_customization' || hasDeliveryCustomizationTargets(config);
+      (adapter !== 'delivery_customization' || hasDeliveryCustomizationTargets(config)) &&
+      (!requiresReplacement || hasDeliveryCustomizationTargets(config));
     const status = actionable ? (adapterAvailable ? 'ready' : 'manual_required') : 'control';
     const resolvedStatus =
       actionable && status === 'ready' && !adapterConfigured ? 'manual_required' : status;
@@ -111,6 +146,10 @@ function buildShippingExecutionPlan(test, capabilityReport) {
       name: variant?.name || `Variant ${index + 1}`,
       strategy: config.strategy,
       execution_adapter: adapter,
+      execution_adapters: requiresReplacement
+        ? ['carrier_service', 'delivery_customization']
+        : [adapter],
+      replace_existing_rates: requiresReplacement,
       execution_mode: executionMode,
       execution_mode_label:
         executionMode === 'automatic'

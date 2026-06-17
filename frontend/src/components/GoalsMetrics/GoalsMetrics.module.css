@@ -22,7 +22,7 @@
     radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 32%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(6, 182, 212, 0.06));
   box-shadow:
-    0 22px 58px rgba(15, 23, 42, 0.08),
+    0 22px 58px rgba(30, 41, 59, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -150,7 +150,7 @@
   border: 1px solid rgba(6, 182, 212, 0.13);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.055);
+  box-shadow: 0 16px 40px rgba(30, 41, 59, 0.055);
   backdrop-filter: blur(14px);
 }
 
@@ -399,8 +399,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin: calc(clamp(0.85rem, 1.15vw, 1.15rem) * -1)
-    calc(clamp(0.85rem, 1.15vw, 1.15rem) * -1) 0;
+  margin: calc(clamp(0.85rem, 1.15vw, 1.15rem) * -1) calc(clamp(0.85rem, 1.15vw, 1.15rem) * -1) 0;
   padding: 0.9rem clamp(1rem, 1.35vw, 1.35rem);
   border-bottom: 1px solid rgba(6, 182, 212, 0.12);
   background:
@@ -474,7 +473,7 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(124, 58, 237, 0.035)),
     rgba(255, 255, 255, 0.62);
   box-shadow:
-    0 14px 34px rgba(15, 23, 42, 0.045),
+    0 14px 34px rgba(30, 41, 59, 0.045),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -505,7 +504,7 @@
 .catalogHeaderActions :global(.Polaris-Button),
 .sideActionStack :global(.Polaris-Button) {
   border-radius: 999px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.06);
 }
 
 .searchControl {
@@ -524,7 +523,7 @@
 .searchControl,
 .toolbarFilter {
   box-shadow:
-    0 10px 22px rgba(15, 23, 42, 0.035),
+    0 10px 22px rgba(30, 41, 59, 0.035),
     inset 0 1px 0 rgba(255, 255, 255, 0.62);
   transition:
     border-color 160ms ease,
@@ -726,7 +725,7 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(6, 182, 212, 0.035)),
     rgba(255, 255, 255, 0.58);
   box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.045),
+    0 12px 28px rgba(30, 41, 59, 0.045),
     inset 0 1px 0 rgba(255, 255, 255, 0.68);
 }
 
@@ -769,7 +768,7 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(6, 182, 212, 0.045)),
     rgba(255, 255, 255, 0.6);
   box-shadow:
-    0 14px 32px rgba(15, 23, 42, 0.05),
+    0 14px 32px rgba(30, 41, 59, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -878,6 +877,34 @@
   background: rgba(255, 255, 255, 0.72);
 }
 
+[data-theme='dark'] .quickFilterButton,
+[data-theme='dark'] .activeFilterBar button,
+[data-theme='dark'] .densityToggle button {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(203, 213, 225, 0.92);
+}
+
+[data-theme='dark'] .quickFilterButton:hover,
+[data-theme='dark'] .activeFilterBar button:hover,
+[data-theme='dark'] .densityToggle button:hover {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.38);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .quickFilterButtonActive,
+[data-theme='dark'] .densityButtonActive {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(124, 58, 237, 0.16)) !important;
+  border-color: rgba(6, 182, 212, 0.44) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .quickFilterButtonActive strong {
+  background: rgba(6, 182, 212, 0.16);
+  color: #a5f3fc;
+}
+
 .activeFilterBar {
   padding: 0.75rem;
   border: 1px dashed rgba(6, 182, 212, 0.16);
@@ -907,6 +934,11 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+[data-theme='dark'] .densityToggle {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
 .densityToggle button {
   padding: 0.28rem 0.55rem;
   border-color: transparent;
@@ -923,7 +955,7 @@
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.72)),
     rgba(255, 255, 255, 0.64);
   box-shadow:
-    0 22px 58px rgba(15, 23, 42, 0.07),
+    0 22px 58px rgba(30, 41, 59, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
@@ -951,7 +983,7 @@
     rgba(255, 255, 255, 0.68);
   color: var(--text-secondary);
   box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.045),
+    0 8px 18px rgba(30, 41, 59, 0.045),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
@@ -1006,7 +1038,7 @@
   overflow: hidden;
   border: 1px solid rgba(6, 182, 212, 0.13);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
 }
 
 .loadMoreProgress span {
@@ -1163,8 +1195,12 @@
   max-width: 100%;
   overflow: hidden;
   border-radius: 999px;
-  background:
-    linear-gradient(90deg, rgba(226, 232, 240, 0.55), rgba(6, 182, 212, 0.12), rgba(226, 232, 240, 0.55));
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.55),
+    rgba(6, 182, 212, 0.12),
+    rgba(226, 232, 240, 0.55)
+  );
   background-size: 220% 100%;
   animation: goalMetricSkeleton 1.4s ease-in-out infinite;
 }
@@ -1229,7 +1265,7 @@
   overflow: hidden;
   border: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.035);
+  background: rgba(30, 41, 59, 0.035);
   color: var(--text-secondary);
   font-size: 0.68rem;
   font-weight: 800;
@@ -1286,7 +1322,7 @@
   letter-spacing: 0.08em;
   line-height: 1;
   box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.06),
+    0 8px 18px rgba(30, 41, 59, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
   transition:
     background 160ms ease,
@@ -1316,7 +1352,7 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
     rgba(255, 255, 255, 0.98);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 18px 44px rgba(30, 41, 59, 0.14);
 }
 
 .actionCell :global(.Polaris-ActionList) {
@@ -1422,7 +1458,7 @@
   padding: 0.85rem;
   overflow: auto;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--surface-slate-panel);
   color: #d1fae5;
   font-size: 0.78rem;
   line-height: 1.55;
@@ -1488,7 +1524,7 @@
   overflow: hidden;
   border: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.04);
+  background: rgba(30, 41, 59, 0.04);
   color: var(--text-secondary);
   font-size: 0.74rem;
   font-weight: 700;
@@ -1612,15 +1648,24 @@
     radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.08), transparent 30%),
     radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.08), transparent 32%),
     rgba(255, 255, 255, 0.96) !important;
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16) !important;
+  box-shadow: 0 28px 80px rgba(30, 41, 59, 0.16) !important;
 }
 
 :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header
+),
 :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal__Header),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) [class*='Modal__Header']),
-:global(.Polaris-Modal-Dialog:has([data-ripx-goal-builder-modal]) [class*='Modal'][class*='Header']),
-:global(div[class*='Polaris-Modal'][class*='Dialog']:has([data-ripx-goal-builder-modal]) [class*='Modal'][class*='Header']) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) [class*='Modal__Header']
+),
+:global(
+  .Polaris-Modal-Dialog:has([data-ripx-goal-builder-modal]) [class*='Modal'][class*='Header']
+),
+:global(
+  div[class*='Polaris-Modal'][class*='Dialog']:has([data-ripx-goal-builder-modal])
+    [class*='Modal'][class*='Header']
+) {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
@@ -1637,8 +1682,12 @@
     rgba(255, 255, 255, 0.88);
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title
+),
 :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) [class*='Title']),
 :global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) [class*='Title']),
 :global(.Polaris-Modal-Dialog:has([data-ripx-goal-builder-modal]) [class*='Title']) {
@@ -1652,19 +1701,35 @@
   text-align: left !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title *),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title *),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header__Title *
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal])
+    .Polaris-Modal-Header__Title
+    *
+),
 :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) [class*='Title'] *),
 :global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) [class*='Title'] *),
 :global(.Polaris-Modal-Dialog:has([data-ripx-goal-builder-modal]) [class*='Title'] *) {
   text-align: left !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-CloseButton),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-CloseButton),
-:global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal__CloseButton),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) [class*='CloseButton']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) button[class*='Close']),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-CloseButton
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-CloseButton
+),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal__CloseButton
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) [class*='CloseButton']
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) button[class*='Close']
+),
 :global(.Polaris-Modal-Dialog:has([data-ripx-goal-builder-modal]) [class*='CloseButton']),
 :global(.Polaris-Modal-Dialog:has([data-ripx-goal-builder-modal]) button[class*='Close']) {
   position: static !important;
@@ -1674,7 +1739,9 @@
 }
 
 :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal__Body),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal__Body) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal__Body
+) {
   max-height: calc(min(92vh, 980px) - 72px) !important;
   overflow-y: auto !important;
   scroll-padding-bottom: 132px;
@@ -1684,7 +1751,9 @@
 }
 
 :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Section),
-:global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Section) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Section
+) {
   padding: clamp(0.85rem, 1.15vw, 1.15rem) clamp(0.85rem, 1.15vw, 1.15rem) 0 !important;
 }
 
@@ -1752,7 +1821,7 @@
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.58);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.035);
+  box-shadow: 0 10px 20px rgba(30, 41, 59, 0.035);
 }
 
 .builderProgressItem::after,
@@ -1798,7 +1867,7 @@
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   color: var(--text-secondary);
   font-size: 0.68rem;
   font-weight: 900;
@@ -1875,7 +1944,7 @@
     radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(6, 182, 212, 0.035)),
     rgba(255, 255, 255, 0.74);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.045);
+  box-shadow: 0 10px 26px rgba(30, 41, 59, 0.045);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -1973,7 +2042,7 @@
   width: 26px;
   height: 26px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.045);
+  background: rgba(30, 41, 59, 0.045);
   color: var(--text-secondary);
   font-size: 0.9rem;
   font-weight: 900;
@@ -2344,7 +2413,7 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(6, 182, 212, 0.035)),
     rgba(255, 255, 255, 0.56);
   box-shadow:
-    0 10px 22px rgba(15, 23, 42, 0.035),
+    0 10px 22px rgba(30, 41, 59, 0.035),
     inset 0 1px 0 rgba(255, 255, 255, 0.62);
   transition:
     border-color 160ms ease,
@@ -2538,8 +2607,7 @@
 .variableSetupPanel pre {
   overflow-x: auto;
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.94)),
-    rgba(15, 23, 42, 0.92);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(30, 41, 59, 0.94)), var(--surface-slate-panel);
   color: #d1fae5;
   font-size: 0.72rem;
   line-height: 1.48;
@@ -2758,7 +2826,7 @@
   background:
     linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(124, 58, 237, 0.055)),
     rgba(255, 255, 255, 0.68);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.055);
+  box-shadow: 0 14px 32px rgba(30, 41, 59, 0.055);
 }
 
 .aiAssistantCard {
@@ -2817,8 +2885,7 @@
   padding: 2px;
   border-radius: 999px;
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.07), rgba(6, 182, 212, 0.08)),
-    rgba(15, 23, 42, 0.06);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.07), rgba(6, 182, 212, 0.08)), rgba(30, 41, 59, 0.06);
 }
 
 .readinessMeter span {
@@ -2876,8 +2943,7 @@
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 14px;
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.94)),
-    rgba(15, 23, 42, 0.92);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(30, 41, 59, 0.94)), var(--surface-slate-panel);
   color: #d1fae5;
   font-size: 0.74rem;
   line-height: 1.55;
@@ -2896,11 +2962,9 @@
   border: 0;
   border-top: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 0 0 24px 24px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.995), rgba(6, 182, 212, 0.08)),
-    #fff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.995), rgba(6, 182, 212, 0.08)), #fff;
   box-shadow:
-    0 -16px 34px rgba(15, 23, 42, 0.11),
+    0 -16px 34px rgba(30, 41, 59, 0.11),
     0 -1px 0 rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(14px);
 }
@@ -2957,8 +3021,7 @@
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 16px;
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.94)),
-    rgba(15, 23, 42, 0.92);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(30, 41, 59, 0.94)), var(--surface-slate-panel);
   color: #d1fae5;
   font-size: 0.78rem;
   line-height: 1.55;
@@ -3051,7 +3114,9 @@
   }
 
   :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Section),
-  :global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Section) {
+  :global(
+    div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Section
+  ) {
     padding: 0.85rem !important;
   }
 
@@ -3136,20 +3201,20 @@
   background:
     radial-gradient(circle at 92% 12%, rgba(124, 58, 237, 0.16), transparent 31%),
     radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.12), transparent 32%),
-    linear-gradient(145deg, rgba(15, 23, 42, 0.86), rgba(6, 182, 212, 0.055));
+    linear-gradient(145deg, rgba(30, 41, 59, 0.86), rgba(6, 182, 212, 0.055));
   border-color: rgba(6, 182, 212, 0.2);
 }
 
 [data-theme='dark'] .heroStats {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.58), rgba(6, 182, 212, 0.045)),
-    rgba(15, 23, 42, 0.38);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.58), rgba(6, 182, 212, 0.045)),
+    rgba(30, 41, 59, 0.38);
   border-color: rgba(6, 182, 212, 0.16);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 [data-theme='dark'] .heroHelpPill {
-  background: rgba(15, 23, 42, 0.58);
+  background: rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
@@ -3161,51 +3226,49 @@
 [data-theme='dark'] .snippetCard,
 [data-theme='dark'] .businessMetricStrip,
 [data-theme='dark'] .businessMetricStripGrid > div {
-  background: rgba(15, 23, 42, 0.58);
+  background: rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .automationCard {
   background:
     linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(124, 58, 237, 0.12)),
-    rgba(15, 23, 42, 0.58);
+    rgba(30, 41, 59, 0.58);
 }
 
-[data-theme='dark']
-  :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal])),
-[data-theme='dark']
-  :global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal])) {
+[data-theme='dark'] :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal])),
+[data-theme='dark'] :global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal])) {
   background:
     radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.1), transparent 30%),
     radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.1), transparent 32%),
-    rgba(15, 23, 42, 0.94) !important;
+    rgba(30, 41, 59, 0.94) !important;
   border-color: rgba(6, 182, 212, 0.22) !important;
 }
 
 [data-theme='dark']
   :global(.Polaris-Modal-Dialog__Modal:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header),
 [data-theme='dark']
-  :global(div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header) {
+  :global(
+    div[class*='Modal-Dialog__Modal']:has([data-ripx-goal-builder-modal]) .Polaris-Modal-Header
+  ) {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(6, 182, 212, 0.07)),
-    rgba(15, 23, 42, 0.9);
+    linear-gradient(135deg, var(--surface-slate-solid), rgba(6, 182, 212, 0.07)), rgba(30, 41, 59, 0.9);
   border-bottom-color: rgba(6, 182, 212, 0.2);
 }
 
 [data-theme='dark'] .builderCard {
-  background: rgba(15, 23, 42, 0.66);
+  background: rgba(30, 41, 59, 0.66);
   border-color: transparent;
 }
 
 [data-theme='dark'] .builderModalHeader {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(6, 182, 212, 0.07)),
-    rgba(15, 23, 42, 0.9);
+    linear-gradient(135deg, var(--surface-slate-solid), rgba(6, 182, 212, 0.07)), rgba(30, 41, 59, 0.9);
   border-bottom-color: rgba(6, 182, 212, 0.2);
 }
 
 [data-theme='dark'] .builderModalHeader button {
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--surface-glass);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
@@ -3225,25 +3288,23 @@
 [data-theme='dark'] .aiAssistantCard,
 [data-theme='dark'] .nextActionBox {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(6, 182, 212, 0.055)),
-    rgba(15, 23, 42, 0.58);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(6, 182, 212, 0.055)), rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .builderMetaRow span {
-  background: rgba(15, 23, 42, 0.68);
+  background: var(--surface-glass);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .formSectionHeader span {
-  background: rgba(15, 23, 42, 0.58);
+  background: rgba(30, 41, 59, 0.58);
   border-color: rgba(34, 211, 238, 0.2);
 }
 
 [data-theme='dark'] .smartField {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(6, 182, 212, 0.05)),
-    rgba(15, 23, 42, 0.56);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.78), rgba(6, 182, 212, 0.05)), rgba(30, 41, 59, 0.56);
   border-color: rgba(6, 182, 212, 0.16);
   box-shadow:
     0 12px 26px rgba(0, 0, 0, 0.16),
@@ -3260,23 +3321,23 @@
 [data-theme='dark'] .smartFieldFeatured {
   background:
     radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.14), transparent 34%),
-    linear-gradient(135deg, rgba(6, 182, 212, 0.095), rgba(15, 23, 42, 0.76)),
-    rgba(15, 23, 42, 0.58);
+    linear-gradient(135deg, rgba(6, 182, 212, 0.095), rgba(30, 41, 59, 0.76)),
+    rgba(30, 41, 59, 0.58);
 }
 
 [data-theme='dark'] .fieldInsight,
 [data-theme='dark'] .keyHelperButton,
 [data-theme='dark'] .parameterPresetGrid button,
 [data-theme='dark'] .variableSetupPanel > div {
-  background: rgba(15, 23, 42, 0.62);
+  background: var(--surface-scrim);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .variableSetupPanel {
   background:
     radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(124, 58, 237, 0.05)),
-    rgba(15, 23, 42, 0.56);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.78), rgba(124, 58, 237, 0.05)),
+    rgba(30, 41, 59, 0.56);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
@@ -3287,14 +3348,13 @@
 [data-theme='dark'] .trackingPlanPanel {
   background:
     radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.14), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(6, 182, 212, 0.05)),
-    rgba(15, 23, 42, 0.56);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.78), rgba(6, 182, 212, 0.05)), rgba(30, 41, 59, 0.56);
   border-color: rgba(124, 58, 237, 0.2);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 [data-theme='dark'] .trackingPlanPanel > div {
-  background: rgba(15, 23, 42, 0.62);
+  background: var(--surface-scrim);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
@@ -3309,15 +3369,14 @@
 [data-theme='dark'] .eventTagRow span,
 [data-theme='dark'] .variableRecipeGrid button {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(6, 182, 212, 0.06)),
-    rgba(15, 23, 42, 0.58);
+    linear-gradient(135deg, var(--surface-slate-soft), rgba(6, 182, 212, 0.06)), rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .actionMenuButton[aria-expanded='true'] {
   background:
     linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(124, 58, 237, 0.12)),
-    rgba(15, 23, 42, 0.72);
+    var(--surface-glass);
   border-color: rgba(34, 211, 238, 0.34);
   box-shadow:
     0 14px 28px rgba(6, 182, 212, 0.14),
@@ -3327,9 +3386,30 @@
 [data-theme='dark'] .actionCell :global(.Polaris-Popover__Content) {
   background:
     radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.1), transparent 34%),
-    rgba(15, 23, 42, 0.98);
+    rgba(30, 41, 59, 0.98);
   border-color: rgba(6, 182, 212, 0.22);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList) {
+  background: transparent;
+}
+
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList__Item) {
+  background: transparent;
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList__Item:hover),
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList__Item:focus-visible),
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList__Item--active) {
+  background: rgba(6, 182, 212, 0.14);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList__Text),
+[data-theme='dark'] .actionCell :global(.Polaris-ActionList__Content) {
+  color: inherit;
 }
 
 [data-theme='dark'] .builderProgressRail {
@@ -3351,40 +3431,37 @@
 [data-theme='dark'] .railAccordionItem {
   background:
     radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(6, 182, 212, 0.06)),
-    rgba(15, 23, 42, 0.7);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(6, 182, 212, 0.06)), rgba(30, 41, 59, 0.7);
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
 }
 
 [data-theme='dark'] .railAccordionItem:nth-child(2) {
   background:
     radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.16), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(124, 58, 237, 0.08)),
-    rgba(15, 23, 42, 0.7);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(124, 58, 237, 0.08)), rgba(30, 41, 59, 0.7);
   border-color: rgba(167, 139, 250, 0.2);
 }
 
 [data-theme='dark'] .railAccordionItem:nth-child(3) {
   background:
     radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.15), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(16, 185, 129, 0.075)),
-    rgba(15, 23, 42, 0.7);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(16, 185, 129, 0.075)),
+    rgba(30, 41, 59, 0.7);
   border-color: rgba(52, 211, 153, 0.2);
 }
 
 [data-theme='dark'] .railAccordionItem:nth-child(4) {
   background:
     radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.15), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(245, 158, 11, 0.075)),
-    rgba(15, 23, 42, 0.7);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(245, 158, 11, 0.075)),
+    rgba(30, 41, 59, 0.7);
   border-color: rgba(251, 191, 36, 0.2);
 }
 
 [data-theme='dark'] .railAccordionItem:nth-child(5) {
   background:
     radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.16), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(14, 165, 233, 0.08)),
-    rgba(15, 23, 42, 0.7);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(14, 165, 233, 0.08)), rgba(30, 41, 59, 0.7);
   border-color: rgba(56, 189, 248, 0.2);
 }
 
@@ -3402,7 +3479,7 @@
 [data-theme='dark'] .railAccordionHeader::before {
   background:
     linear-gradient(135deg, rgba(34, 211, 238, 0.16), rgba(124, 58, 237, 0.12)),
-    rgba(15, 23, 42, 0.72);
+    var(--surface-glass);
   border-color: rgba(34, 211, 238, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   color: #67e8f9;
@@ -3411,7 +3488,7 @@
 [data-theme='dark'] .railAccordionItem:nth-child(2) .railAccordionHeader::before {
   background:
     linear-gradient(135deg, rgba(167, 139, 250, 0.18), rgba(34, 211, 238, 0.1)),
-    rgba(15, 23, 42, 0.72);
+    var(--surface-glass);
   border-color: rgba(167, 139, 250, 0.24);
   color: #c4b5fd;
 }
@@ -3419,7 +3496,7 @@
 [data-theme='dark'] .railAccordionItem:nth-child(3) .railAccordionHeader::before {
   background:
     linear-gradient(135deg, rgba(52, 211, 153, 0.18), rgba(34, 211, 238, 0.1)),
-    rgba(15, 23, 42, 0.72);
+    var(--surface-glass);
   border-color: rgba(52, 211, 153, 0.24);
   color: #6ee7b7;
 }
@@ -3427,7 +3504,7 @@
 [data-theme='dark'] .railAccordionItem:nth-child(4) .railAccordionHeader::before {
   background:
     linear-gradient(135deg, rgba(251, 191, 36, 0.18), rgba(167, 139, 250, 0.1)),
-    rgba(15, 23, 42, 0.72);
+    var(--surface-glass);
   border-color: rgba(251, 191, 36, 0.26);
   color: #fcd34d;
 }
@@ -3435,7 +3512,7 @@
 [data-theme='dark'] .railAccordionItem:nth-child(5) .railAccordionHeader::before {
   background:
     linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(34, 211, 238, 0.1)),
-    rgba(15, 23, 42, 0.72);
+    var(--surface-glass);
   border-color: rgba(56, 189, 248, 0.26);
   color: #7dd3fc;
 }
@@ -3444,7 +3521,7 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.18), transparent 34%),
     linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(124, 58, 237, 0.11)),
-    rgba(15, 23, 42, 0.78);
+    rgba(30, 41, 59, 0.78);
 }
 
 [data-theme='dark'] .railAccordionHeader[aria-expanded='true']::before {
@@ -3465,7 +3542,7 @@
 [data-theme='dark'] .railAccordionPanel {
   background:
     radial-gradient(circle at 8% 0%, rgba(34, 211, 238, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.28), rgba(15, 23, 42, 0.18));
+    linear-gradient(180deg, rgba(2, 6, 23, 0.28), rgba(30, 41, 59, 0.18));
   border-top-color: rgba(6, 182, 212, 0.14);
 }
 
@@ -3479,27 +3556,25 @@
 [data-theme='dark'] .readinessItemReady,
 [data-theme='dark'] .triggerPreviewRail {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(6, 182, 212, 0.055)),
-    rgba(15, 23, 42, 0.58);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(6, 182, 212, 0.055)), rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.16);
 }
 
 [data-theme='dark'] .nextActionBox {
   background:
     radial-gradient(circle at 100% 0%, rgba(52, 211, 153, 0.14), transparent 35%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(16, 185, 129, 0.07)),
-    rgba(15, 23, 42, 0.62);
+    linear-gradient(135deg, var(--surface-slate-soft), rgba(16, 185, 129, 0.07)),
+    var(--surface-scrim);
   border-color: rgba(52, 211, 153, 0.2);
 }
 
 [data-theme='dark'] .readinessMeter {
   background:
-    linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(6, 182, 212, 0.1)),
-    rgba(2, 6, 23, 0.42);
+    linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(6, 182, 212, 0.1)), rgba(2, 6, 23, 0.42);
 }
 
 [data-theme='dark'] .triggerPill {
-  background: rgba(15, 23, 42, 0.42);
+  background: rgba(30, 41, 59, 0.42);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
@@ -3518,25 +3593,24 @@
 [data-theme='dark'] .searchControl,
 [data-theme='dark'] .toolbarFilter {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(6, 182, 212, 0.055)),
-    rgba(15, 23, 42, 0.58);
+    linear-gradient(135deg, rgba(30, 41, 59, 0.78), rgba(6, 182, 212, 0.055)),
+    rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .searchInputShell > button {
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--surface-glass);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
 [data-theme='dark'] .testBreakdownItem {
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(30, 41, 59, 0.5);
   border-color: rgba(6, 182, 212, 0.18);
 }
 
 [data-theme='dark'] .catalogTable th {
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(8, 47, 73, 0.72)),
-    rgba(15, 23, 42, 0.94);
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(8, 47, 73, 0.72)), rgba(30, 41, 59, 0.94);
   border-bottom-color: rgba(6, 182, 212, 0.18);
 }
 
@@ -3556,7 +3630,7 @@
 [data-theme='dark'] .smartPresetButton,
 [data-theme='dark'] .readinessPanel {
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(6, 182, 212, 0.065)),
-    rgba(15, 23, 42, 0.58);
+    linear-gradient(135deg, var(--surface-slate-soft), rgba(6, 182, 212, 0.065)),
+    rgba(30, 41, 59, 0.58);
   border-color: rgba(6, 182, 212, 0.18);
 }

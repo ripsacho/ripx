@@ -214,7 +214,7 @@ For a full list of signature-failure causes and the exact verification algorithm
 
 - **Application URL** in Partner Dashboard must be exactly `https://splitter.echologyx.com` (same origin as the iframe).
 - Backend must serve the **production** frontend from `frontend/dist` (run `npm run build` in frontend and serve from backend).
-- See [EMBED_TUNNEL.md](../EMBED_TUNNEL.md) for more.
+- See [EMBED_TUNNEL.md](./EMBED_TUNNEL.md) for more.
 
 ---
 

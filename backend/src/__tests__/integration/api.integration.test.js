@@ -444,6 +444,132 @@ describe('API integration', () => {
       });
     });
 
+    it('returns configured multi-rate flat-rate carrier quotes for a real test variant', async () => {
+      const testId = '131bdc89-4f54-41ec-ba73-8e296b357865';
+      database.query.mockImplementation(sql => {
+        const normalizedSql = String(sql || '').toLowerCase();
+        if (normalizedSql.includes('from tests')) {
+          return {
+            rows: [
+              {
+                id: testId,
+                shop_domain: 'test.myshopify.com',
+                type: 'shipping',
+                status: 'running',
+                variants: JSON.stringify([
+                  { name: 'Control', config: { strategy: 'control' } },
+                  {
+                    id: 'Variant A',
+                    name: 'Variant A',
+                    config: {
+                      strategy: 'flat_rate',
+                      amount: 44,
+                      rates: [
+                        {
+                          name: 'Economy',
+                          description: 'Economy shipping',
+                          amount: 4.5,
+                          currency: 'USD',
+                          service_code: 'economy',
+                        },
+                        {
+                          name: 'Express',
+                          amount: 9,
+                          currency: 'USD',
+                          service_code: 'express',
+                        },
+                      ],
+                    },
+                  },
+                ]),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      });
+
+      const res = await request(app)
+        .post(
+          `/api/track/shipping-carrier-rates?strategy=flat_rate&amount=44&shop_domain=test.myshopify.com&test_id=${testId}&variant_id=Variant%20A`
+        )
+        .send({ rate: { currency: 'USD' } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.rates).toEqual([
+        expect.objectContaining({
+          service_name: 'RipX Preview: Economy',
+          description: 'Economy shipping',
+          service_code: 'economy',
+          total_price: '450',
+          currency: 'USD',
+        }),
+        expect.objectContaining({
+          service_name: 'RipX Preview: Express',
+          description: '',
+          service_code: 'express',
+          total_price: '900',
+          currency: 'USD',
+        }),
+      ]);
+    });
+
+    it('uses the latest saved flat amount over stale callback URL amount', async () => {
+      const testId = '131bdc89-4f54-41ec-ba73-8e296b357866';
+      database.query.mockImplementation(sql => {
+        const normalizedSql = String(sql || '').toLowerCase();
+        if (normalizedSql.includes('from tests')) {
+          return {
+            rows: [
+              {
+                id: testId,
+                shop_domain: 'test.myshopify.com',
+                type: 'shipping',
+                status: 'running',
+                variants: JSON.stringify([
+                  { name: 'Control', config: { strategy: 'control' } },
+                  {
+                    id: 'Variant A',
+                    name: 'Variant A',
+                    config: {
+                      strategy: 'flat_rate',
+                      amount: 43,
+                      metadata: {
+                        shipping_config_revision: '2026-06-02T01:02:03.456Z',
+                      },
+                      rates: [
+                        {
+                          name: 'RipX Shipping',
+                          amount: 44,
+                          currency: 'USD',
+                          service_code: 'ripx_flat_rate',
+                        },
+                      ],
+                    },
+                  },
+                ]),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      });
+
+      const res = await request(app)
+        .post(
+          `/api/track/shipping-carrier-rates?strategy=flat_rate&amount=44&shop_domain=test.myshopify.com&test_id=${testId}&variant_id=Variant%20A`
+        )
+        .send({ rate: { currency: 'USD' } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.rates).toEqual([
+        expect.objectContaining({
+          total_price: '4300',
+          service_code: 'ripx_flat_VariantA_2026-06-02T01020_1',
+        }),
+      ]);
+    });
+
     it('returns provider-backed carrier_quote rates when quote_provider is configured', async () => {
       const res = await request(app)
         .post(
@@ -456,12 +582,42 @@ describe('API integration', () => {
         rates: [
           {
             service_name: expect.any(String),
+            description: '',
             service_code: expect.stringContaining('ripx_quote_'),
             total_price: '925',
             currency: 'USD',
           },
         ],
       });
+    });
+
+    it('preserves delivery dates from rates_json fallback carrier rates', async () => {
+      const ratesJson = encodeURIComponent(
+        JSON.stringify([
+          {
+            name: 'Custom ETA',
+            amount: 7,
+            currency: 'USD',
+            service_code: 'custom_eta',
+            min_delivery_date: '2026-07-04',
+            max_delivery_date: '2026-07-05',
+          },
+        ])
+      );
+      const res = await request(app)
+        .post(`/api/track/shipping-carrier-rates?strategy=flat_rate&rates_json=${ratesJson}`)
+        .send({ rate: { currency: 'USD' } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.rates).toEqual([
+        expect.objectContaining({
+          service_name: 'RipX Preview: Custom ETA',
+          service_code: 'custom_eta',
+          total_price: '700',
+          min_delivery_date: '2026-07-04',
+          max_delivery_date: '2026-07-05',
+        }),
+      ]);
     });
 
     it('returns empty rates array for carrier_quote strategy (manual quote source)', async () => {
@@ -475,10 +631,25 @@ describe('API integration', () => {
   });
 
   describe('GET /api/track variant assignment cache policy', () => {
+    it('answers storefront CORS preflight for tracking endpoints', async () => {
+      const res = await request(app)
+        .options('/api/track/preview')
+        .set('Origin', 'https://test.myshopify.com')
+        .set('Access-Control-Request-Method', 'GET');
+
+      expect(res.status).toBe(204);
+      expect(res.headers['access-control-allow-origin']).toBe('https://test.myshopify.com');
+      expect(res.headers['access-control-allow-methods']).toContain('GET');
+    });
+
     it('marks batched variant assignment responses as no-store even on validation errors', async () => {
-      const res = await request(app).get('/api/track/variants');
+      const res = await request(app)
+        .get('/api/track/variants')
+        .set('Origin', 'https://test.myshopify.com');
       expect(res.status).toBe(400);
       expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.headers['access-control-allow-origin']).toBe('https://test.myshopify.com');
+      expect(res.headers['cross-origin-resource-policy']).toBe('cross-origin');
     });
 
     it('marks single variant assignment responses as no-store even on validation errors', async () => {
@@ -533,6 +704,8 @@ describe('API integration', () => {
       expect(res.headers['content-type']).toMatch(/application\/javascript/);
       expect(res.headers['cache-control']).toMatch(/must-revalidate/);
       expect(res.headers['x-script-version']).toBe(SCRIPT_VERSION);
+      expect(res.headers['access-control-allow-origin']).toBe('*');
+      expect(res.headers['cross-origin-resource-policy']).toBe('cross-origin');
       expect(res.text).toContain('window.AB_TEST_RUNTIME_CONFIG=');
 
       const runtimeJson = res.text.split('window.AB_TEST_RUNTIME_CONFIG=')[1].split(';\n')[0];
@@ -583,6 +756,13 @@ describe('API integration', () => {
       const res = await request(app).get(
         '/api/tests/00000000-0000-4000-8000-000000000001/shipping/capabilities'
       );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/tests/shipping/current-setup returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/tests/shipping/current-setup');
       expect(res.status).toBe(401);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body).toHaveProperty('error');

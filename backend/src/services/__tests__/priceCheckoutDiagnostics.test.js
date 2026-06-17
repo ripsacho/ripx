@@ -89,6 +89,20 @@ describe('priceCheckoutDiagnostics', () => {
     expect(installed.checklist.find(c => c.id === 'cart_transform_installed')?.ok).toBe(true);
   });
 
+  it('surfaces invalid Shopify token when Admin API returns 401', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics({
+      shopifyFunctions: [],
+      shopifyFunctionsQueryError: 'Shopify Admin GraphQL failed (401) for ripx-plus.myshopify.com',
+    });
+    expect(d.infrastructure.shopify_admin_api_status).toBe('auth_failed');
+    expect(d.checklist.find(c => c.id === 'shopify_admin_api_auth')?.ok).toBe(false);
+    expect(d.checklist.find(c => c.id === 'shopify_admin_api_auth')?.severity).toBe('error');
+    expect(d.summary.overall_status).toBe('error');
+    expect(d.recommendations[0]).toMatch(/OAuth/i);
+  });
+
   it('reports install check as unknown when read_cart_transforms scope is missing', () => {
     process.env.APP_URL = 'https://api.example.com';
     const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');

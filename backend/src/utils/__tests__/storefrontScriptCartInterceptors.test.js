@@ -4,6 +4,12 @@ const vm = require('vm');
 
 function createDocumentStub(opts = {}) {
   const documentElementAttrs = {};
+  const listeners = {};
+  const addEventListener = jest.fn((eventName, handler) => {
+    const key = String(eventName || '');
+    listeners[key] = listeners[key] || [];
+    listeners[key].push(handler);
+  });
   return {
     readyState: opts.readyState || 'loading',
     cookie: '',
@@ -26,7 +32,7 @@ function createDocumentStub(opts = {}) {
       appendChild: jest.fn(),
     },
     getElementById: jest.fn(() => null),
-    addEventListener: jest.fn(),
+    addEventListener,
     removeEventListener: jest.fn(),
     querySelector: jest.fn(selector =>
       typeof opts.querySelector === 'function' ? opts.querySelector(selector) : null
@@ -41,6 +47,7 @@ function createDocumentStub(opts = {}) {
       querySelectorAll: jest.fn(() => []),
       closest: jest.fn(() => null),
     })),
+    __listeners: listeners,
   };
 }
 
@@ -246,15 +253,10 @@ function getCartChangeFetchCalls(fetchCalls) {
   );
 }
 
-async function waitForCartChangeCall(fetchCalls) {
-  for (let i = 0; i < 10; i++) {
-    const calls = getCartChangeFetchCalls(fetchCalls);
-    if (calls.length > 0) {
-      return calls[0];
-    }
-    await new Promise(resolve => setTimeout(resolve, 0));
-  }
-  return getCartChangeFetchCalls(fetchCalls)[0] || null;
+function getTrackCalls(fetchCalls) {
+  return (Array.isArray(fetchCalls) ? fetchCalls : []).filter(call =>
+    /\/track(?:[?#]|$)/i.test(getFetchInputUrl(call))
+  );
 }
 
 function createCartAddFormStub() {
@@ -280,6 +282,14 @@ function createCartAddFormStub() {
   };
 }
 
+function createCheckoutFormStub() {
+  return {
+    getAttribute: jest.fn(name => (name === 'action' ? '/checkout' : '')),
+    submit: jest.fn(),
+    closest: jest.fn(() => null),
+  };
+}
+
 async function waitForVariantRequestCount(fetchCalls, count) {
   for (let i = 0; i < 10; i++) {
     const variantRequests = fetchCalls.filter(call =>
@@ -291,6 +301,22 @@ async function waitForVariantRequestCount(fetchCalls, count) {
     await new Promise(resolve => setTimeout(resolve, 0));
   }
   return fetchCalls.filter(call => /\/track\/variants\?/.test(getFetchInputUrl(call)));
+}
+
+async function waitForTrackEvent(fetchCalls, eventName) {
+  for (let i = 0; i < 20; i++) {
+    const match = getTrackCalls(fetchCalls).find(call => {
+      try {
+        const body = JSON.parse(call.init?.body || '{}');
+        return body.event_name === eventName;
+      } catch (_error) {
+        return false;
+      }
+    });
+    if (match) {return match;}
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return undefined;
 }
 
 describe('storefront script cart/add interceptors', () => {
@@ -386,6 +412,100 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.isCartAddPath('/en-us/cart/add')).toBe(true);
     expect(hooks.isCartAddPath('/de/fr/cart/add.js')).toBe(true);
     expect(hooks.isCartAddPath('/collections/all')).toBe(false);
+  });
+
+  it('automatically tracks add_to_cart after a successful cart add fetch', async () => {
+    const testId = 'add-cart-test';
+    const { fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [{ id: testId, goalEvents: [{ eventName: 'add_to_cart' }] }],
+        goalMetricDefinitions: [
+          {
+            id: 'builtin-add-to-cart',
+            eventName: 'add_to_cart',
+            triggerType: 'custom_event',
+            triggerConfig: {},
+          },
+        ],
+      },
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (url.includes('/track/variants')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ variants: { [testId]: { variantId: 'variant-a' } } }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      },
+    });
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    const addToCartCall = await waitForTrackEvent(fetchCalls, 'add_to_cart');
+    expect(addToCartCall).toBeTruthy();
+    expect(JSON.parse(addToCartCall.init.body)).toMatchObject({
+      test_id: testId,
+      variant_id: 'variant-a',
+      event_type: 'custom',
+      event_name: 'add_to_cart',
+    });
+  });
+
+  it('automatically tracks view_cart when a cart control is clicked', async () => {
+    const testId = 'view-cart-test';
+    const cartLink = {
+      href: 'https://example.com/cart',
+      getAttribute: jest.fn(name => (name === 'href' ? '/cart' : '')),
+    };
+    const target = {
+      closest: jest.fn(selector => (String(selector).includes('/cart') ? cartLink : null)),
+    };
+    const { fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [{ id: testId, goalEvents: [{ eventName: 'view_cart' }] }],
+        goalMetricDefinitions: [
+          {
+            id: 'builtin-view-cart',
+            eventName: 'view_cart',
+            triggerType: 'url_match',
+            triggerConfig: { urlPattern: '*/cart*' },
+          },
+        ],
+      },
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (url.includes('/track/variants')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ variants: { [testId]: { variantId: 'variant-a' } } }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      },
+    });
+
+    const clickListeners = windowObj.document.__listeners.click || [];
+    clickListeners.forEach(listener => listener({ target }));
+
+    const viewCartCall = await waitForTrackEvent(fetchCalls, 'view_cart');
+    expect(viewCartCall).toBeTruthy();
+    expect(JSON.parse(viewCartCall.init.body)).toMatchObject({
+      test_id: testId,
+      variant_id: 'variant-a',
+      event_type: 'custom',
+      event_name: 'view_cart',
+    });
   });
 
   it('chunks live assignment requests so every active test can bucket', async () => {
@@ -828,6 +948,36 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.getRipxCartFormTargetProductIds()).toEqual(['gid://shopify/Product/200']);
   });
 
+  it('injects shipping cart assignment for all-products shipping previews', () => {
+    const { hooks } = bootStorefrontScriptHarness({
+      pathname: '/cart',
+    });
+
+    hooks.injectShippingTestCartAttributes(
+      {
+        id: 'shipping-test-all-products',
+        type: 'shipping',
+        targetType: 'all-products',
+      },
+      {
+        id: 'shipping-variant-all',
+        assignment_sig: 'sig-all-products',
+        assignment_ts: '1712600000000',
+        assignment_user: 'user-all-products',
+      }
+    );
+
+    expect(hooks.getRipxCartAttributeState()).toMatchObject({
+      _ripx_price_test: 'shipping-test-all-products',
+      _ripx_variant: 'shipping-variant-all',
+      _ripx_assignment_sig: 'sig-all-products',
+      _ripx_assignment_ts: '1712600000000',
+      _ripx_assignment_user: 'user-all-products',
+      __ripx_shipping_test: true,
+    });
+    expect(hooks.getRipxCartFormTargetProductIds()).toBeNull();
+  });
+
   it('does not qualify excluded-only carts for all-products shipping tests', () => {
     const cartRoot = createCartRoot(['gid://shopify/Product/999']);
     const { hooks } = bootStorefrontScriptHarness({
@@ -1075,6 +1225,77 @@ describe('storefront script cart/add interceptors', () => {
     expect(hiddenByName.get('properties[_ripx_target_unit]')).toBe('45.00');
     expect(hiddenByName.get('properties[_ripx_price_method]')).toBe('direct_price_override');
     expect(hiddenByName.get('properties[_ripx_assignment_sig]')).toBe('g'.repeat(64));
+    expect(form.requestSubmit).toHaveBeenCalled();
+  });
+
+  it('hydrates simple-preview shipping state before native cart submit', async () => {
+    const testId = '25252525-2525-4252-8252-252525252525';
+    const form = createCartAddFormStub();
+    form.requestSubmit = jest.fn();
+    const { windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      search:
+        `?ab_preview=1&ab_preview_simple=1&ab_preview_test=${testId}` +
+        '&ab_preview_variant=Variant%20A',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+      documentQuerySelectorAll: selector =>
+        String(selector || '').includes('form[action*="cart/add"]') ? [form] : [],
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/preview$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variant: {
+                  variantId: 'Variant A',
+                  variantName: 'Variant A',
+                  assignment_sig: 'i'.repeat(64),
+                  assignment_ts: '1710000000000',
+                  assignment_user: 'preview-user-shipping',
+                  config: {
+                    strategy: 'flat_rate',
+                    amount: 44,
+                    replace_existing_rates: true,
+                    delivery_method_names: ['Standard Delivery', 'Express'],
+                  },
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+
+    const submitRegistration = windowObj.document.addEventListener.mock.calls.find(
+      call => call[0] === 'submit'
+    );
+    expect(submitRegistration).toBeTruthy();
+    const event = {
+      target: form,
+      preventDefault: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+    };
+    submitRegistration[1](event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    for (let i = 0; i < 8 && form.requestSubmit.mock.calls.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const hiddenByName = new Map(form.__hiddenInputs.map(input => [input.name, input.value]));
+    expect(hiddenByName.get('properties[_ripx_price_test]')).toBe(testId);
+    expect(hiddenByName.get('properties[_ripx_variant]')).toBe('Variant A');
+    expect(hiddenByName.get('properties[_ripx_assignment_sig]')).toBe('i'.repeat(64));
+    expect(hiddenByName.get('properties[_ripx_target_unit]')).toBeUndefined();
     expect(form.requestSubmit).toHaveBeenCalled();
   });
 
@@ -1423,6 +1644,41 @@ describe('storefront script cart/add interceptors', () => {
     expect(body.items[1].properties._ripx_target_unit).toBeUndefined();
   });
 
+  it('overwrites stale RipX assignment properties in JSON cart adds', () => {
+    const { hooks } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '27272727-2727-4272-8272-272727272727',
+      'variant-canonical-id',
+      'ripx-plus.myshopify.com',
+      { sig: 'k'.repeat(64), ts: '1710000000000', user: 'user-shipping' },
+      null,
+      null
+    );
+    attrs.__ripx_shipping_test = true;
+
+    const patch = hooks.patchCartAddBodyForRipx(
+      JSON.stringify({
+        id: 222,
+        quantity: 1,
+        properties: {
+          _ripx_price_test: '27272727-2727-4272-8272-272727272727',
+          _ripx_variant: 'Variant A',
+          _ripx_assignment_sig: 'old-signature',
+          gift_note: 'keep me',
+        },
+      }),
+      { 'content-type': 'application/json' },
+      attrs
+    );
+    const body = JSON.parse(patch.body);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '27272727-2727-4272-8272-272727272727',
+      _ripx_variant: 'variant-canonical-id',
+      _ripx_assignment_sig: 'k'.repeat(64),
+      gift_note: 'keep me',
+    });
+  });
+
   it('does not swap add-to-cart variant id when native swap source does not match', async () => {
     const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
     const attrs = hooks.getRipxCartAttrsPayload(
@@ -1492,7 +1748,8 @@ describe('storefront script cart/add interceptors', () => {
       body: JSON.stringify({ id: 123, quantity: 1 }),
     });
 
-    const changeCall = await waitForCartChangeCall(fetchCalls);
+    await new Promise(resolve => setTimeout(resolve, 160));
+    const changeCall = getCartChangeFetchCalls(fetchCalls)[0] || null;
     expect(changeCall).toBeTruthy();
     const body = JSON.parse(changeCall.init.body);
     expect(body.line).toBe(1);
@@ -1501,6 +1758,189 @@ describe('storefront script cart/add interceptors', () => {
       _ripx_variant: 'variant-repair',
       _ripx_target_unit: '66.00',
       _ripx_price_method: 'direct_price_override',
+    });
+  });
+
+  it('repairs existing shipping cart line before checkout submit', async () => {
+    const checkoutForm = createCheckoutFormStub();
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      documentQuerySelectorAll: () => [],
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (/\/cart\.js(?:[?#]|$)/i.test(url)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [{ variant_id: 123, quantity: 4, properties: {} }],
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '26262626-2626-4262-8262-262626262626',
+      'Variant A',
+      'ripx-plus.myshopify.com',
+      { sig: 'j'.repeat(64), ts: '1710000000000', user: 'user-shipping' },
+      null,
+      null
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      __ripx_shipping_test: true,
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    const submitRegistrations = windowObj.document.addEventListener.mock.calls.filter(
+      call => call[0] === 'submit'
+    );
+    expect(submitRegistrations.length).toBeGreaterThan(0);
+    const event = {
+      target: checkoutForm,
+      preventDefault: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+    };
+    submitRegistrations.forEach(call => call[1](event));
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const changeCall = getCartChangeFetchCalls(fetchCalls)[0] || null;
+    expect(changeCall).toBeTruthy();
+    const body = JSON.parse(changeCall.init.body);
+    expect(body.line).toBe(1);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '26262626-2626-4262-8262-262626262626',
+      _ripx_variant: 'Variant A',
+      _ripx_assignment_sig: 'j'.repeat(64),
+    });
+    expect(checkoutForm.submit).toHaveBeenCalled();
+  });
+
+  it('repairs stale shipping assignment values before checkout submit', async () => {
+    const checkoutForm = createCheckoutFormStub();
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      documentQuerySelectorAll: () => [],
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (/\/cart\.js(?:[?#]|$)/i.test(url)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    variant_id: 123,
+                    quantity: 1,
+                    properties: {
+                      _ripx_price_test: '28282828-2828-4282-8282-282828282828',
+                      _ripx_variant: 'Variant A',
+                      _ripx_assignment_sig: 'old-signature',
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '28282828-2828-4282-8282-282828282828',
+      'variant-canonical-id',
+      'ripx-plus.myshopify.com',
+      { sig: 'm'.repeat(64), ts: '1710000000000', user: 'user-shipping' },
+      null,
+      null
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      __ripx_shipping_test: true,
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    const submitRegistrations = windowObj.document.addEventListener.mock.calls.filter(
+      call => call[0] === 'submit'
+    );
+    const event = {
+      target: checkoutForm,
+      preventDefault: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+    };
+    submitRegistrations.forEach(call => call[1](event));
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const changeCall = getCartChangeFetchCalls(fetchCalls)[0] || null;
+    expect(changeCall).toBeTruthy();
+    const body = JSON.parse(changeCall.init.body);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '28282828-2828-4282-8282-282828282828',
+      _ripx_variant: 'variant-canonical-id',
+      _ripx_assignment_sig: 'm'.repeat(64),
+    });
+    expect(checkoutForm.submit).toHaveBeenCalled();
+  });
+
+  it('auto-repairs existing cart line when shipping preview assignment hydrates', async () => {
+    const testId = '27272727-2727-4272-8272-272727272727';
+    const { hooks, fetchCalls } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (/\/cart\.js(?:[?#]|$)/i.test(url)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [{ variant_id: 123, quantity: 4, properties: {} }],
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+    hooks.installRipxCartAddInterceptors();
+    hooks.injectShippingTestCartAttributes(
+      {
+        id: testId,
+        type: 'shipping',
+        targetType: 'all-products',
+      },
+      {
+        variantId: 'Variant A',
+        assignment_sig: 'k'.repeat(64),
+        assignment_ts: '1710000000000',
+        assignment_user: 'user-preview-shipping',
+      }
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const changeCall = getCartChangeFetchCalls(fetchCalls)[0] || null;
+    expect(changeCall).toBeTruthy();
+    const body = JSON.parse(changeCall.init.body);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: testId,
+      _ripx_variant: 'Variant A',
+      _ripx_assignment_sig: 'k'.repeat(64),
     });
   });
 

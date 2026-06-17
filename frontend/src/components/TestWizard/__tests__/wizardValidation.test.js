@@ -875,6 +875,265 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(false);
       });
 
+      it('accepts flat-rate variant when actionable configured rates are present', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: null,
+                  rates: [
+                    { name: 'Economy', amount: 5, priority: 1, sort_order: 1 },
+                    { name: 'Express', amount: 9, priority: 2, sort_order: 2 },
+                  ],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(false);
+        expect(errors.some(e => e.includes('flat rate requires'))).toBe(false);
+      });
+
+      it('rejects negative configured shipping rate amounts', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: null,
+                  rates: [{ name: 'Economy', amount: -1, priority: 1, sort_order: 1 }],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('configured rate amounts'))).toBe(true);
+      });
+
+      it('requires a configured rate amount when delivery promise is set', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: 5,
+                  rates: [
+                    {
+                      name: 'Promised row',
+                      delivery_promise: { mode: 'preset', preset: 'next_business_day' },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('delivery promise requires a rate amount'))).toBe(true);
+      });
+
+      it('accepts delivery method targets as actionable shipping configuration', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'carrier_quote',
+                  execution_hint: 'delivery_customization',
+                  delivery_method_names: ['Standard Shipping'],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(false);
+        expect(errors.some(e => e.includes('carrier quote requires'))).toBe(false);
+      });
+
+      it('requires delivery method targets for replacement flat rates', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: 44,
+                  replace_existing_rates: true,
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(true);
+      });
+
+      it('accepts replacement flat rates with delivery method targets', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: 44,
+                  replace_existing_rates: true,
+                  delivery_method_names: ['Standard Delivery', 'Express'],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(false);
+        expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(false);
+      });
+
+      it('treats replace display mode as replacement validation path', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: 44,
+                  shipping_display_mode: 'replace_existing_methods',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(true);
+      });
+
+      it('rejects replacement flat rates that do not hide existing methods', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'flat_rate',
+                  amount: 44,
+                  replace_existing_rates: true,
+                  delivery_method_names: ['Standard Delivery'],
+                  delivery_action: 'rename',
+                  delivery_rename_to: 'Tracked Standard',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('can only hide'))).toBe(true);
+      });
+
+      it('requires rename target for delivery rename actions', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'carrier_quote',
+                  execution_hint: 'delivery_customization',
+                  delivery_method_names: ['Standard Delivery'],
+                  delivery_action: 'rename',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('delivery rename action requires'))).toBe(true);
+      });
+
+      it('rejects shipping percent discounts above 100', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              { name: 'Variant A', config: { strategy: 'discount_percentage', percent_off: 150 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('between 0 and 100'))).toBe(true);
+      });
+
       it('returns error on targeting step when selected and excluded products overlap', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
           stepIds: stepIdsWithTemplate,

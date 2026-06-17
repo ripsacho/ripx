@@ -13,6 +13,106 @@
 require('@shopify/shopify-api/adapters/node');
 const { shopifyApi, ApiVersion } = require('@shopify/shopify-api');
 const logger = require('../utils/logger');
+const ADMIN_GRAPHQL_UNAVAILABLE_CACHE = new Map();
+const ADMIN_REST_UNAVAILABLE_CACHE = new Map();
+
+function getPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getUnavailableCacheTtlMs() {
+  return getPositiveInteger(process.env.SHOPIFY_ADMIN_UNAVAILABLE_CACHE_TTL_MS, 60000);
+}
+
+function getAdminRequestTimeoutMs() {
+  return getPositiveInteger(process.env.SHOPIFY_ADMIN_REQUEST_TIMEOUT_MS, 8000);
+}
+
+function getAdminVersionFallbackLimit() {
+  // Keep fallback short to avoid long multi-version stalls on persistent 404s.
+  return getPositiveInteger(process.env.SHOPIFY_ADMIN_VERSION_FALLBACK_LIMIT, 2);
+}
+
+function getCachedUnavailable(map, key) {
+  const entry = map.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() > entry.expiresAt) {
+    map.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setUnavailable(map, key, reason) {
+  map.set(key, {
+    reason,
+    expiresAt: Date.now() + getUnavailableCacheTtlMs(),
+  });
+}
+
+function clearUnavailable(map, key) {
+  map.delete(key);
+}
+
+function formatShopifyErrorPayload(payload, fallback = 'Shopify API request failed') {
+  if (!payload) {
+    return fallback;
+  }
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  if (Array.isArray(payload)) {
+    return payload.map(item => formatShopifyErrorPayload(item, '')).filter(Boolean).join('; ');
+  }
+  if (typeof payload === 'object') {
+    if (payload.message) {
+      return formatShopifyErrorPayload(payload.message, fallback);
+    }
+    if (payload.error) {
+      return formatShopifyErrorPayload(payload.error, fallback);
+    }
+    if (payload.errors) {
+      const errors = payload.errors;
+      if (Array.isArray(errors)) {
+        return formatShopifyErrorPayload(errors, fallback);
+      }
+      if (typeof errors === 'object') {
+        const messages = Object.entries(errors)
+          .flatMap(([field, value]) => {
+            const text = formatShopifyErrorPayload(value, '');
+            return text ? [`${field}: ${text}`] : [];
+          })
+          .filter(Boolean);
+        if (messages.length > 0) {
+          return messages.join('; ');
+        }
+      }
+      return formatShopifyErrorPayload(errors, fallback);
+    }
+    try {
+      return JSON.stringify(payload);
+    } catch {
+      return fallback;
+    }
+  }
+  return String(payload);
+}
+
+function createShopifyApiError({ message, status, payload, method, path, shopDomain, apiVersion }) {
+  const error = new Error(message || formatShopifyErrorPayload(payload));
+  error.name = 'ShopifyApiError';
+  error.status = status;
+  error.statusCode = status;
+  error.payload = payload;
+  error.method = method;
+  error.path = path;
+  error.shopDomain = shopDomain;
+  error.apiVersion = apiVersion;
+  return error;
+}
 
 class ShopifyService {
   constructor() {
@@ -49,33 +149,107 @@ class ShopifyService {
    * `discountAutomaticAppCreate` had issues on Admin API versions before 2025-04.
    */
   async requestAdminGraphql(shopDomain, accessToken, query, variables = {}, opts = {}) {
-    const apiVersion = String(opts.apiVersion || '2025-04').trim();
-    const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': accessToken,
-      },
-      body: JSON.stringify({ query, variables }),
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      logger.error('Admin GraphQL request failed', {
+    const unavailableKey = String(shopDomain || '').trim().toLowerCase();
+    const cachedUnavailable = getCachedUnavailable(ADMIN_GRAPHQL_UNAVAILABLE_CACHE, unavailableKey);
+    if (cachedUnavailable) {
+      throw createShopifyApiError({
+        message: `Shopify Admin GraphQL is temporarily unavailable for ${shopDomain} (${cachedUnavailable.reason})`,
+        status: 404,
+        payload: { reason: cachedUnavailable.reason, cached: true },
+        method: 'POST',
+        path: 'graphql.json',
         shopDomain,
-        apiVersion,
-        status: response.status,
-        errors: payload?.errors || null,
       });
-      throw new Error(
-        payload?.errors?.[0]?.message ||
-          `Shopify Admin GraphQL failed (${response.status}) for ${shopDomain}`
-      );
     }
-    if (payload?.errors?.length) {
-      throw new Error(payload.errors[0]?.message || 'Shopify Admin GraphQL returned errors');
+
+    const requestedVersion = String(
+      opts.apiVersion || process.env.SHOPIFY_ADMIN_API_VERSION || '2025-04'
+    ).trim();
+    const fallbackVersions = [
+      String(process.env.SHOPIFY_ADMIN_API_VERSION_FALLBACK || '').trim(),
+      '2026-04',
+      '2026-01',
+      '2025-10',
+      '2025-07',
+    ].filter(Boolean);
+    const versionsToTry = [requestedVersion, ...fallbackVersions].filter(
+      (version, idx, list) => version && list.indexOf(version) === idx
+    );
+    const maxAttempts = Math.min(versionsToTry.length, getAdminVersionFallbackLimit());
+    const limitedVersions = versionsToTry.slice(0, maxAttempts);
+    const timeoutMs = getAdminRequestTimeoutMs();
+
+    let lastStatus = null;
+    let lastPayload = null;
+    let lastVersion = requestedVersion;
+    for (const apiVersion of limitedVersions) {
+      lastVersion = apiVersion;
+      const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`;
+      let response;
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': accessToken,
+          },
+          body: JSON.stringify({ query, variables }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        if (String(error?.name || '').toLowerCase() === 'timeouterror') {
+          throw createShopifyApiError({
+            message: `Shopify Admin GraphQL request timed out after ${timeoutMs}ms for ${shopDomain}`,
+            status: 504,
+            payload: { error: 'timeout', timeoutMs, apiVersion },
+            method: 'POST',
+            path: 'graphql.json',
+            shopDomain,
+            apiVersion,
+          });
+        }
+        throw error;
+      }
+      const payload = await response.json().catch(() => null);
+      lastStatus = response.status;
+      lastPayload = payload;
+
+      if (!response.ok && response.status === 404 && apiVersion !== limitedVersions.at(-1)) {
+        logger.warn('Admin GraphQL version fallback triggered', {
+          shopDomain,
+          apiVersion,
+          status: response.status,
+        });
+        continue;
+      }
+
+      if (!response.ok) {
+        logger.error('Admin GraphQL request failed', {
+          shopDomain,
+          apiVersion,
+          status: response.status,
+          errors: payload?.errors || null,
+        });
+        throw new Error(
+          payload?.errors?.[0]?.message ||
+            `Shopify Admin GraphQL failed (${response.status}) for ${shopDomain}`
+        );
+      }
+      if (payload?.errors?.length) {
+        throw new Error(payload.errors[0]?.message || 'Shopify Admin GraphQL returned errors');
+      }
+      clearUnavailable(ADMIN_GRAPHQL_UNAVAILABLE_CACHE, unavailableKey);
+      return payload;
     }
-    return payload;
+
+    if (lastStatus === 404) {
+      setUnavailable(ADMIN_GRAPHQL_UNAVAILABLE_CACHE, unavailableKey, `all_attempts_404:${lastVersion}`);
+    }
+
+    throw new Error(
+      lastPayload?.errors?.[0]?.message ||
+        `Shopify Admin GraphQL failed (${lastStatus || 'unknown'}) for ${shopDomain} (api ${lastVersion})`
+    );
   }
 
   /**
@@ -83,7 +257,19 @@ class ShopifyService {
    * Useful for resources that are not available through the GraphQL paths we use.
    */
   async requestAdminRest(shopDomain, accessToken, opts = {}) {
-    const apiVersion = String(opts.apiVersion || '2025-04').trim();
+    const requestedVersion = String(
+      opts.apiVersion || process.env.SHOPIFY_ADMIN_API_VERSION || '2025-04'
+    ).trim();
+    const fallbackVersions = [
+      String(process.env.SHOPIFY_ADMIN_API_VERSION_FALLBACK || '').trim(),
+      '2026-04',
+      '2026-01',
+      '2025-10',
+      '2025-07',
+    ].filter(Boolean);
+    const versionsToTry = [requestedVersion, ...fallbackVersions].filter(
+      (version, idx, list) => version && list.indexOf(version) === idx
+    );
     const method = String(opts.method || 'GET')
       .trim()
       .toUpperCase();
@@ -93,43 +279,104 @@ class ShopifyService {
     if (!rawPath) {
       throw new Error('requestAdminRest requires a non-empty path');
     }
-    const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/${rawPath}`;
-    const hasBody = opts.body !== undefined && opts.body !== null;
-    const response = await fetch(endpoint, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': accessToken,
-        ...(opts.headers || {}),
-      },
-      body: hasBody ? JSON.stringify(opts.body) : undefined,
-    });
-
-    const rawText = await response.text();
-    let payload = null;
-    if (rawText) {
-      try {
-        payload = JSON.parse(rawText);
-      } catch {
-        payload = { raw: rawText };
-      }
-    }
-    if (!response.ok) {
-      logger.error('Admin REST request failed', {
-        shopDomain,
-        apiVersion,
+    const unavailableKey = `${String(shopDomain || '').trim().toLowerCase()}::${method}::${rawPath}`;
+    const cachedUnavailable = getCachedUnavailable(ADMIN_REST_UNAVAILABLE_CACHE, unavailableKey);
+    if (cachedUnavailable) {
+      throw createShopifyApiError({
+        message: `Shopify Admin REST is temporarily unavailable for ${shopDomain} (${cachedUnavailable.reason})`,
+        status: 404,
+        payload: { reason: cachedUnavailable.reason, cached: true },
         method,
         path: rawPath,
-        status: response.status,
-        body: payload,
+        shopDomain,
       });
-      throw new Error(
-        payload?.errors ||
-          payload?.error ||
-          `Shopify Admin REST failed (${response.status}) for ${shopDomain}`
-      );
     }
-    return payload;
+    const hasBody = opts.body !== undefined && opts.body !== null;
+    const timeoutMs = getAdminRequestTimeoutMs();
+    const maxAttempts = Math.min(versionsToTry.length, getAdminVersionFallbackLimit());
+    const limitedVersions = versionsToTry.slice(0, maxAttempts);
+    let lastError = null;
+    for (const apiVersion of limitedVersions) {
+      const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/${rawPath}`;
+      let response;
+      try {
+        response = await fetch(endpoint, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': accessToken,
+            ...(opts.headers || {}),
+          },
+          body: hasBody ? JSON.stringify(opts.body) : undefined,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        if (String(error?.name || '').toLowerCase() === 'timeouterror') {
+          throw createShopifyApiError({
+            message: `Shopify Admin REST request timed out after ${timeoutMs}ms for ${shopDomain}`,
+            status: 504,
+            payload: { error: 'timeout', timeoutMs, apiVersion },
+            method,
+            path: rawPath,
+            shopDomain,
+            apiVersion,
+          });
+        }
+        throw error;
+      }
+
+      const rawText = await response.text();
+      let payload = null;
+      if (rawText) {
+        try {
+          payload = JSON.parse(rawText);
+        } catch {
+          payload = { raw: rawText };
+        }
+      }
+
+      if (!response.ok && response.status === 404 && apiVersion !== limitedVersions.at(-1)) {
+        logger.warn('Admin REST version fallback triggered', {
+          shopDomain,
+          apiVersion,
+          method,
+          path: rawPath,
+        });
+        continue;
+      }
+
+      if (!response.ok) {
+        const message = formatShopifyErrorPayload(
+          payload,
+          `Shopify Admin REST failed (${response.status}) for ${shopDomain}`
+        );
+        logger.error('Admin REST request failed', {
+          shopDomain,
+          apiVersion,
+          method,
+          path: rawPath,
+          status: response.status,
+          body: payload,
+        });
+        lastError = createShopifyApiError({
+          message,
+          status: response.status,
+          payload,
+          method,
+          path: rawPath,
+          shopDomain,
+          apiVersion,
+        });
+        throw lastError;
+      }
+      clearUnavailable(ADMIN_REST_UNAVAILABLE_CACHE, unavailableKey);
+      return payload;
+    }
+    if (lastError?.status === 404 || lastError?.statusCode === 404) {
+      setUnavailable(ADMIN_REST_UNAVAILABLE_CACHE, unavailableKey, 'all_attempts_404');
+    }
+    if (lastError) {throw lastError;}
+    throw new Error(`Shopify Admin REST failed for ${shopDomain}`);
   }
 
   /**

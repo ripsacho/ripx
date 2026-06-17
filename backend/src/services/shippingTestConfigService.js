@@ -8,6 +8,11 @@ const SHIPPING_STRATEGIES = new Set([
   'carrier_quote',
 ]);
 
+const {
+  normalizeCheckoutDisplayConfig,
+  normalizeDeliveryPromiseConfig,
+} = require('./shippingCarrierRateFormatter');
+
 const SHIPPING_EXECUTION_HINTS = new Set([
   'auto',
   'carrier_service',
@@ -15,6 +20,8 @@ const SHIPPING_EXECUTION_HINTS = new Set([
   'delivery_customization',
   'manual',
 ]);
+
+const SHIPPING_DISPLAY_MODES = new Set(['add_preview_method', 'replace_existing_methods']);
 
 function toLowerString(value) {
   return String(value || '')
@@ -36,6 +43,14 @@ function toOptionalNumber(value) {
   }
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+function toOptionalInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const n = Number.parseInt(String(value).trim(), 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 function toCurrency(value) {
@@ -72,6 +87,144 @@ function toCountryCodes(input) {
     .slice(0, 50);
 }
 
+function toBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === '') {
+    return Boolean(fallback);
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  return ['1', 'true', 'yes', 'y', 'on'].includes(toLowerString(value));
+}
+
+function slugifyReplacementServiceCode(value, index = 0) {
+  const slug =
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || `method_${index + 1}`;
+  return `ripx_replace_${slug}`.slice(0, 64);
+}
+
+function normalizeShippingScope(input = {}) {
+  const raw = input && typeof input === 'object' ? input : {};
+  const selectedRateIds = toStringArray(
+    raw.selected_rate_ids || raw.selectedRateIds || raw.rate_ids || raw.rateIds
+  );
+  const selectedRateNames = toStringArray(
+    raw.selected_rate_names || raw.selectedRateNames || raw.rate_names || raw.rateNames
+  );
+  const selectedMethodDefinitionIds = toStringArray(
+    raw.selected_method_definition_ids ||
+      raw.selectedMethodDefinitionIds ||
+      raw.method_definition_ids ||
+      raw.methodDefinitionIds
+  );
+  return {
+    profile_id: toOptionalString(raw.profile_id || raw.profileId, 220),
+    profile_name: toOptionalString(raw.profile_name || raw.profileName, 160),
+    location_group_id: toOptionalString(raw.location_group_id || raw.locationGroupId, 220),
+    zone_id: toOptionalString(raw.zone_id || raw.zoneId, 220),
+    zone_name: toOptionalString(raw.zone_name || raw.zoneName, 160),
+    countries: toCountryCodes(raw.countries || raw.zone_countries || raw.zoneCountries),
+    selected_rate_ids: selectedRateIds,
+    selected_rate_names: selectedRateNames,
+    selected_method_definition_ids: selectedMethodDefinitionIds,
+  };
+}
+
+function hasShippingScopeValue(scope = {}) {
+  return Boolean(
+    scope.profile_id ||
+    scope.profile_name ||
+    scope.location_group_id ||
+    scope.zone_id ||
+    scope.zone_name ||
+    scope.countries.length > 0 ||
+    scope.selected_rate_ids.length > 0 ||
+    scope.selected_rate_names.length > 0 ||
+    scope.selected_method_definition_ids.length > 0
+  );
+}
+
+function normalizeShippingRateConfig(input = {}, index = 0, fallbackCurrency = 'USD') {
+  const raw = input && typeof input === 'object' ? input : {};
+  const name = toOptionalString(raw.name || raw.service_name || raw.serviceName, 100);
+  const priority =
+    toOptionalInteger(raw.priority ?? raw.order ?? raw.position ?? raw.rank) ?? index + 1;
+  const sortOrder = toOptionalInteger(raw.sort_order ?? raw.sortOrder) ?? priority;
+  const serviceCode = toOptionalString(
+    raw.service_code || raw.serviceCode || raw.code || (name ? '' : `ripx_rate_${index + 1}`),
+    100
+  );
+  return {
+    name,
+    description: toOptionalString(raw.description, 200),
+    delivery_promise: normalizeDeliveryPromiseConfig(
+      raw.delivery_promise || raw.deliveryPromise || raw
+    ),
+    amount: toOptionalNumber(raw.amount ?? raw.price ?? raw.rate),
+    currency: toCurrency(raw.currency || fallbackCurrency),
+    service_code: serviceCode,
+    condition_type: toLowerString(raw.condition_type || raw.conditionType || 'none') || 'none',
+    cart_total_min: toOptionalNumber(raw.cart_total_min ?? raw.cartTotalMin),
+    cart_total_max: toOptionalNumber(raw.cart_total_max ?? raw.cartTotalMax),
+    weight_min: toOptionalNumber(raw.weight_min ?? raw.weightMin),
+    weight_max: toOptionalNumber(raw.weight_max ?? raw.weightMax),
+    countries: toCountryCodes(raw.countries),
+    source_method_name: toOptionalString(
+      raw.source_method_name || raw.sourceMethodName || raw.source_rate_name || raw.sourceRateName,
+      120
+    ),
+    source_rate_name: toOptionalString(
+      raw.source_rate_name || raw.sourceRateName || raw.source_method_name || raw.sourceMethodName,
+      120
+    ),
+    source_rate_id: toOptionalString(raw.source_rate_id || raw.sourceRateId, 200),
+    source_method_definition_id: toOptionalString(
+      raw.source_method_definition_id || raw.sourceMethodDefinitionId,
+      200
+    ),
+    source_method_ids: toStringArray(raw.source_method_ids || raw.sourceMethodIds),
+    priority,
+    sort_order: sortOrder,
+  };
+}
+
+function normalizeShippingRates(input, _fallbackAmount = null, fallbackCurrency = 'USD') {
+  const rawRates = Array.isArray(input) ? input : [];
+  const isGeneratedFallbackRate =
+    rawRates.length === 1 &&
+    String(rawRates[0]?.service_code || rawRates[0]?.serviceCode || rawRates[0]?.code || '')
+      .trim()
+      .toLowerCase() === 'ripx_flat_rate';
+  if (isGeneratedFallbackRate) {
+    return [];
+  }
+  const normalizedRates = rawRates
+    .map((rate, index) => normalizeShippingRateConfig(rate, index, fallbackCurrency))
+    .filter(rate => rate.amount !== null || rate.name || rate.service_code)
+    .sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      if (a.sort_order !== b.sort_order) {
+        return a.sort_order - b.sort_order;
+      }
+      return String(a.name || a.service_code || '').localeCompare(
+        String(b.name || b.service_code || '')
+      );
+    });
+  if (normalizedRates.length > 0) {
+    return normalizedRates.slice(0, 20);
+  }
+  return [];
+}
+
 function inferStrategy(config = {}) {
   const explicit = toLowerString(config.strategy || config.shipping_strategy);
   if (SHIPPING_STRATEGIES.has(explicit)) {
@@ -102,10 +255,20 @@ function inferStrategy(config = {}) {
   if (discountType === 'fixed') {
     return 'discount_fixed';
   }
-  if (profileId || (Array.isArray(config.method_handles) && config.method_handles.length > 0)) {
+  if (
+    profileId ||
+    (Array.isArray(config.method_handles) && config.method_handles.length > 0) ||
+    (Array.isArray(config.methodHandles) && config.methodHandles.length > 0) ||
+    (Array.isArray(config.delivery_method_names) && config.delivery_method_names.length > 0) ||
+    (Array.isArray(config.deliveryMethodNames) && config.deliveryMethodNames.length > 0)
+  ) {
     return 'carrier_quote';
   }
-  if (rate !== null || discountValue !== null) {
+  if (
+    rate !== null ||
+    discountValue !== null ||
+    (Array.isArray(config.rates) && config.rates.length > 0)
+  ) {
     return 'flat_rate';
   }
   return 'control';
@@ -119,13 +282,29 @@ function normalizeExecutionHint(value) {
   return 'auto';
 }
 
+function normalizeShippingDisplayMode(value, replaceExistingRates = false) {
+  const normalized = toLowerString(value || '');
+  if (SHIPPING_DISPLAY_MODES.has(normalized)) {
+    return normalized;
+  }
+  return replaceExistingRates ? 'replace_existing_methods' : 'add_preview_method';
+}
+
 function normalizeShippingVariantConfig(config = {}) {
   const raw = config && typeof config === 'object' ? config : {};
   const strategy = inferStrategy(raw);
+  const amount = toOptionalNumber(raw.amount ?? raw.rate ?? raw.shipping_rate);
+  const currency = toCurrency(raw.currency);
+  const shippingScope = normalizeShippingScope(raw.shipping_scope || raw.shippingScope || raw);
+  const replaceExistingRates = toBoolean(raw.replace_existing_rates ?? raw.replaceExistingRates);
+  const shippingDisplayMode = normalizeShippingDisplayMode(
+    raw.shipping_display_mode || raw.shippingDisplayMode || raw.display_mode || raw.displayMode,
+    replaceExistingRates
+  );
 
   const normalized = {
     strategy,
-    amount: toOptionalNumber(raw.amount ?? raw.rate ?? raw.shipping_rate),
+    amount,
     threshold_amount: toOptionalNumber(
       raw.threshold_amount ?? raw.free_shipping_threshold ?? raw.freeShippingThreshold
     ),
@@ -136,9 +315,14 @@ function normalizeShippingVariantConfig(config = {}) {
           ? (raw.discount_value ?? raw.discountValue)
           : null)
     ),
-    currency: toCurrency(raw.currency),
+    currency,
     label: toOptionalString(raw.label, 80),
-    profile_id: toOptionalString(raw.profile_id || raw.profileId, 200),
+    checkout_display: normalizeCheckoutDisplayConfig(
+      raw.checkout_display || raw.checkoutDisplay || raw
+    ),
+    shipping_scope: shippingScope,
+    rates: normalizeShippingRates(raw.rates, amount, currency),
+    profile_id: shippingScope.profile_id || toOptionalString(raw.profile_id || raw.profileId, 200),
     method_handles: toStringArray(raw.method_handles || raw.methodHandles),
     delivery_method_names: toStringArray(
       raw.delivery_method_names || raw.deliveryMethodNames || raw.method_names || raw.methodNames
@@ -150,7 +334,15 @@ function normalizeShippingVariantConfig(config = {}) {
       raw.delivery_rename_to || raw.deliveryRenameTo || raw.rename_to,
       120
     ),
-    zone_countries: toCountryCodes(raw.zone_countries || raw.zoneCountries),
+    zone_countries: shippingScope.countries.length
+      ? shippingScope.countries
+      : toCountryCodes(raw.zone_countries || raw.zoneCountries),
+    shipping_display_mode: shippingDisplayMode,
+    replace_existing_rates: shippingDisplayMode === 'replace_existing_methods',
+    preview_label_prefix: toOptionalString(
+      raw.preview_label_prefix || raw.previewLabelPrefix || raw.label_prefix || raw.labelPrefix,
+      40
+    ),
     execution_hint: normalizeExecutionHint(raw.execution_hint || raw.executionHint),
     metadata: raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {},
   };
@@ -160,6 +352,20 @@ function normalizeShippingVariantConfig(config = {}) {
   }
   if (strategy === 'discount_percentage' && normalized.percent_off === null) {
     normalized.percent_off = toOptionalNumber(raw.discount_value ?? raw.discountValue);
+  }
+  if (
+    normalized.strategy === 'flat_rate' &&
+    normalized.shipping_display_mode === 'replace_existing_methods'
+  ) {
+    normalized.rates = normalized.rates.map((rate, index) => ({
+      ...rate,
+      service_code:
+        rate.service_code ||
+        slugifyReplacementServiceCode(
+          rate.source_method_name || rate.source_rate_name || rate.name,
+          index
+        ),
+    }));
   }
 
   return normalized;
@@ -208,7 +414,16 @@ function isActionableShippingConfig(config = {}) {
   const normalized = normalizeShippingVariantConfig(config);
   switch (normalized.strategy) {
     case 'flat_rate':
-      return normalized.amount !== null && normalized.amount >= 0;
+      if (
+        normalized.shipping_display_mode === 'replace_existing_methods' &&
+        normalized.delivery_method_names.length === 0
+      ) {
+        return false;
+      }
+      return (
+        (normalized.amount !== null && normalized.amount >= 0) ||
+        normalized.rates.some(rate => rate.amount !== null && rate.amount >= 0)
+      );
     case 'threshold_free_shipping':
       return normalized.threshold_amount !== null && normalized.threshold_amount > 0;
     case 'discount_percentage':
@@ -218,7 +433,12 @@ function isActionableShippingConfig(config = {}) {
     case 'free_shipping':
       return true;
     case 'carrier_quote':
-      return Boolean(normalized.profile_id || normalized.method_handles.length > 0);
+      return Boolean(
+        normalized.profile_id ||
+        hasShippingScopeValue(normalized.shipping_scope) ||
+        normalized.method_handles.length > 0 ||
+        normalized.delivery_method_names.length > 0
+      );
     case 'control':
     default:
       return false;
@@ -239,10 +459,46 @@ function validateShippingVariants(variants = []) {
     }
 
     if (config.strategy === 'flat_rate') {
-      if (config.amount === null || config.amount < 0) {
+      const hasValidFlatRate =
+        (config.amount !== null && config.amount >= 0) ||
+        config.rates.some(rate => rate.amount !== null && rate.amount >= 0);
+      if (!hasValidFlatRate) {
         errors.push(`${label}: flat_rate requires an amount >= 0.`);
       }
+      const replacesExistingRates = config.shipping_display_mode === 'replace_existing_methods';
+      if (replacesExistingRates && config.delivery_method_names.length === 0) {
+        errors.push(
+          `${label}: replacement flat_rate requires at least one delivery_method_names target to hide.`
+        );
+      }
+      if (replacesExistingRates && config.delivery_action !== 'hide') {
+        errors.push(`${label}: replacement flat_rate can only hide existing delivery methods.`);
+      }
     }
+
+    const defaultDescription = String(config.checkout_display?.default_description || '');
+    if (defaultDescription.length > 200) {
+      errors.push(
+        `${label}: checkout display default description must be 200 characters or fewer.`
+      );
+    }
+    config.rates.forEach((rate, rateIndex) => {
+      if (String(rate.description || '').length > 200) {
+        errors.push(`${label}: rate ${rateIndex + 1} description must be 200 characters or fewer.`);
+      }
+      const promise = rate.delivery_promise || config.checkout_display?.delivery_promise || {};
+      if (promise.mode && promise.mode !== 'none' && rate.amount === null) {
+        errors.push(`${label}: rate ${rateIndex + 1} delivery promise requires a rate amount.`);
+      }
+      if (
+        promise.mode === 'custom' &&
+        promise.min_delivery_date &&
+        promise.max_delivery_date &&
+        promise.min_delivery_date > promise.max_delivery_date
+      ) {
+        errors.push(`${label}: rate ${rateIndex + 1} delivery promise date range is invalid.`);
+      }
+    });
 
     if (config.strategy === 'threshold_free_shipping') {
       if (config.threshold_amount === null || config.threshold_amount <= 0) {
@@ -263,9 +519,20 @@ function validateShippingVariants(variants = []) {
     }
 
     if (config.strategy === 'carrier_quote') {
-      if (!config.profile_id && config.method_handles.length === 0) {
-        errors.push(`${label}: carrier_quote requires profile_id or at least one method handle.`);
+      if (
+        !config.profile_id &&
+        !hasShippingScopeValue(config.shipping_scope) &&
+        config.method_handles.length === 0 &&
+        config.delivery_method_names.length === 0
+      ) {
+        errors.push(
+          `${label}: carrier_quote requires profile_id, at least one method handle, or at least one delivery method name.`
+        );
       }
+    }
+
+    if (config.delivery_action === 'rename' && !config.delivery_rename_to) {
+      errors.push(`${label}: delivery rename action requires delivery_rename_to.`);
     }
 
     if (!isLikelyControlVariant(variant, index) && isActionableShippingConfig(config)) {
@@ -282,11 +549,53 @@ function validateShippingVariants(variants = []) {
   return errors;
 }
 
+function summarizeShippingConfigNormalization(variants = []) {
+  const summary = {
+    total_variants: Array.isArray(variants) ? variants.length : 0,
+    actionable_variants: 0,
+    strategy_counts: {},
+    display_mode_counts: {},
+    replace_mode_variants: 0,
+    additive_mode_variants: 0,
+    multi_rate_variants: 0,
+    blocker_count: 0,
+  };
+
+  if (!Array.isArray(variants)) {
+    return summary;
+  }
+
+  variants.forEach((variant, index) => {
+    const config = normalizeShippingVariantConfig(variant?.config || {});
+    summary.strategy_counts[config.strategy] = (summary.strategy_counts[config.strategy] || 0) + 1;
+    summary.display_mode_counts[config.shipping_display_mode] =
+      (summary.display_mode_counts[config.shipping_display_mode] || 0) + 1;
+    if (config.shipping_display_mode === 'replace_existing_methods') {
+      summary.replace_mode_variants += 1;
+    } else {
+      summary.additive_mode_variants += 1;
+    }
+    if (Array.isArray(config.rates) && config.rates.length > 1) {
+      summary.multi_rate_variants += 1;
+    }
+    if (!isLikelyControlVariant(variant, index) && isActionableShippingConfig(config)) {
+      summary.actionable_variants += 1;
+    }
+  });
+
+  summary.blocker_count = validateShippingVariants(variants).length;
+  return summary;
+}
+
 module.exports = {
   SHIPPING_STRATEGIES: Array.from(SHIPPING_STRATEGIES),
   SHIPPING_EXECUTION_HINTS: Array.from(SHIPPING_EXECUTION_HINTS),
+  SHIPPING_DISPLAY_MODES: Array.from(SHIPPING_DISPLAY_MODES),
   normalizeShippingVariantConfig,
   normalizeShippingTestPayload,
+  normalizeShippingScope,
+  normalizeShippingRates,
+  summarizeShippingConfigNormalization,
   validateShippingVariants,
   isActionableShippingConfig,
   isShippingTestPayload,

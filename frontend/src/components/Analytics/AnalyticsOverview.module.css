@@ -19,6 +19,79 @@
   padding: 0 32px 32px;
 }
 
+[data-theme='dark'] .overviewPage :global(.Polaris-Button) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Button span),
+[data-theme='dark'] .overviewPage :global(.Polaris-Button__Text) {
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Button:hover),
+[data-theme='dark'] .overviewPage :global(.Polaris-Button:focus-visible) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.16) inset,
+    0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Button:hover span),
+[data-theme='dark'] .overviewPage :global(.Polaris-Button:focus-visible span),
+[data-theme='dark'] .overviewPage :global(.Polaris-Button:hover .Polaris-Button__Text),
+[data-theme='dark'] .overviewPage :global(.Polaris-Button:focus-visible .Polaris-Button__Text) {
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Button[disabled]),
+[data-theme='dark'] .overviewPage :global(.Polaris-Button.Polaris-Button--disabled) {
+  background: rgba(30, 41, 59, 0.46);
+  border-color: rgba(148, 163, 184, 0.14);
+  color: rgba(148, 163, 184, 0.72);
+  box-shadow: none;
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Badge) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(30, 41, 59, 0.28) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Badge--toneSuccess) {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Badge--toneInfo) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .overviewPage :global(.Polaris-Badge--toneAttention) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .overviewPage :global(.Polaris-Badge--toneCritical) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
+}
+
 .overviewLayout {
   display: flex;
   flex-direction: column;
@@ -43,8 +116,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.02) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.02) 1px, transparent 0);
   background-size: 32px 32px;
   pointer-events: none;
   z-index: 0;
@@ -101,21 +173,29 @@
   overflow: hidden;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(6, 182, 212, 0.06);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.04),
+    0 0 0 1px rgba(6, 182, 212, 0.06);
 }
 
-[data-theme="dark"] .heroSection {
+[data-theme='dark'] .heroSection {
   background: linear-gradient(
     135deg,
-    rgba(26, 26, 26, 0.98) 0%,
-    rgba(18, 18, 18, 0.95) 50%,
+    rgba(51, 65, 85, 0.98) 0%,
+    var(--surface-glass-strong) 50%,
     rgba(6, 182, 212, 0.04) 100%
   );
   border-color: rgba(6, 182, 212, 0.2);
 }
 
-[data-theme="dark"] .heroSection::before {
-  background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.5), var(--futuristic-violet), transparent);
+[data-theme='dark'] .heroSection::before {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(6, 182, 212, 0.5),
+    var(--futuristic-violet),
+    transparent
+  );
 }
 
 .heroSection::before {
@@ -125,15 +205,26 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   background-size: 200% 100%;
   animation: overviewGradientShift var(--analytics-overview-time-6000) ease infinite;
   opacity: 0.95;
 }
 
 @keyframes overviewGradientShift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .heroContent {
@@ -183,7 +274,7 @@
   border-color: rgba(6, 182, 212, 0.2);
 }
 
-[data-theme="dark"] .heroStat {
+[data-theme='dark'] .heroStat {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(6, 182, 212, 0.12);
 }
@@ -213,13 +304,13 @@
   background:
     radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.08), transparent 32%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
-  box-shadow: 0 10px 36px rgba(15, 23, 42, 0.055);
+  box-shadow: 0 10px 36px rgba(30, 41, 59, 0.055);
 }
 
-[data-theme="dark"] .commandCenter {
+[data-theme='dark'] .commandCenter {
   background:
     radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.12), transparent 32%),
-    linear-gradient(135deg, rgba(26, 26, 26, 0.96), rgba(18, 18, 18, 0.9));
+    linear-gradient(135deg, rgba(51, 65, 85, 0.96), rgba(30, 41, 59, 0.9));
   border-color: rgba(139, 92, 246, 0.22);
 }
 
@@ -261,8 +352,38 @@
   background: rgba(255, 255, 255, 0.72);
 }
 
-[data-theme="dark"] .commandActionCard {
+[data-theme='dark'] .commandActionCard {
   background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme='dark'] .commandActionCard,
+[data-theme='dark'] .commandMetric {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.06) inset,
+    0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .commandActionCard :global(.Polaris-Button),
+[data-theme='dark'] .sectionTitleRow :global(.Polaris-Button),
+[data-theme='dark'] .chartHeader :global(.Polaris-Button),
+[data-theme='dark'] .filterPanel :global(.Polaris-Button) {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .commandActionCard :global(.Polaris-Button:hover),
+[data-theme='dark'] .sectionTitleRow :global(.Polaris-Button:hover),
+[data-theme='dark'] .chartHeader :global(.Polaris-Button:hover),
+[data-theme='dark'] .filterPanel :global(.Polaris-Button:hover) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
 }
 
 .commandActionCard span,
@@ -289,12 +410,12 @@
   display: grid;
   gap: 0.25rem;
   padding: 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.68);
 }
 
-[data-theme="dark"] .commandMetric {
+[data-theme='dark'] .commandMetric {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -333,12 +454,12 @@
   background:
     radial-gradient(circle at 14% 12%, rgba(6, 182, 212, 0.08), transparent 30%),
     rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 30px rgba(30, 41, 59, 0.05);
 }
 
-[data-theme="dark"] .readinessFlowCard,
-[data-theme="dark"] .riskRadarCard,
-[data-theme="dark"] .performanceMapCard {
+[data-theme='dark'] .readinessFlowCard,
+[data-theme='dark'] .riskRadarCard,
+[data-theme='dark'] .performanceMapCard {
   background:
     radial-gradient(circle at 14% 12%, rgba(6, 182, 212, 0.12), transparent 30%),
     rgba(255, 255, 255, 0.04);
@@ -357,14 +478,23 @@
   gap: 0.35rem;
   min-height: 132px;
   padding: 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
 }
 
-[data-theme="dark"] .readinessStage {
+[data-theme='dark'] .readinessStage {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .readinessStage,
+[data-theme='dark'] .portfolioMixRow,
+[data-theme='dark'] .insightRow,
+[data-theme='dark'] .filterPanel,
+[data-theme='dark'] .emptyChart {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(6, 182, 212, 0.14);
 }
 
 .readinessStage span,
@@ -391,7 +521,7 @@
 .readinessStage > div {
   height: 8px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   overflow: hidden;
 }
 
@@ -443,8 +573,10 @@
   border-radius: 50%;
   background:
     radial-gradient(circle at center, var(--bg-secondary) 55%, transparent 56%),
-    conic-gradient(from -90deg, #ef4444 var(--risk-score), rgba(15, 23, 42, 0.08) 0);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06), 0 10px 26px rgba(15, 23, 42, 0.08);
+    conic-gradient(from -90deg, #ef4444 var(--risk-score), rgba(30, 41, 59, 0.08) 0);
+  box-shadow:
+    inset 0 0 0 1px rgba(30, 41, 59, 0.06),
+    0 10px 26px rgba(30, 41, 59, 0.08);
 }
 
 .riskOrb strong {
@@ -472,7 +604,7 @@
 .riskSignalRow div {
   height: 9px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   overflow: hidden;
 }
 
@@ -495,13 +627,16 @@
 .performanceMap {
   position: relative;
   min-height: 260px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   border-radius: 18px;
   background:
     linear-gradient(rgba(6, 182, 212, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px),
     radial-gradient(circle at 85% 20%, rgba(34, 197, 94, 0.08), transparent 26%);
-  background-size: 28px 28px, 28px 28px, 100% 100%;
+  background-size:
+    28px 28px,
+    28px 28px,
+    100% 100%;
   overflow: hidden;
 }
 
@@ -547,10 +682,10 @@
   background:
     radial-gradient(circle at 92% 12%, rgba(139, 92, 246, 0.1), transparent 28%),
     rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 30px rgba(30, 41, 59, 0.05);
 }
 
-[data-theme="dark"] .portfolioMixCard {
+[data-theme='dark'] .portfolioMixCard {
   background:
     radial-gradient(circle at 92% 12%, rgba(139, 92, 246, 0.14), transparent 28%),
     rgba(255, 255, 255, 0.04);
@@ -566,9 +701,9 @@
   display: flex;
   height: 22px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(30, 41, 59, 0.04);
 }
 
 .portfolioMixStack i {
@@ -589,12 +724,12 @@
   gap: 0.75rem;
   align-items: center;
   padding: 0.75rem;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   border-radius: 14px;
   background: rgba(248, 250, 252, 0.72);
 }
 
-[data-theme="dark"] .portfolioMixRow {
+[data-theme='dark'] .portfolioMixRow {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -624,7 +759,7 @@
 .portfolioMixRow > div {
   height: 9px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   overflow: hidden;
 }
 
@@ -632,7 +767,11 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--mix-color, var(--futuristic-cyan)), var(--futuristic-violet));
+  background: linear-gradient(
+    90deg,
+    var(--mix-color, var(--futuristic-cyan)),
+    var(--futuristic-violet)
+  );
 }
 
 .portfolioMixRow em {
@@ -648,11 +787,11 @@
   border: 1px solid rgba(6, 182, 212, 0.14);
   border-radius: var(--overview-card-radius);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.045);
+  box-shadow: 0 8px 28px rgba(30, 41, 59, 0.045);
 }
 
-[data-theme="dark"] .statusPipeline,
-[data-theme="dark"] .insightCard {
+[data-theme='dark'] .statusPipeline,
+[data-theme='dark'] .insightCard {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(6, 182, 212, 0.18);
 }
@@ -697,7 +836,7 @@
 .statusRow div {
   height: 12px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   overflow: hidden;
 }
 
@@ -725,7 +864,7 @@
   align-items: center;
   width: 100%;
   padding: 0.85rem;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   border-radius: 14px;
   background: rgba(248, 250, 252, 0.72);
   color: inherit;
@@ -733,7 +872,7 @@
   text-align: left;
 }
 
-[data-theme="dark"] .insightRow {
+[data-theme='dark'] .insightRow {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -792,7 +931,9 @@
 
 .testCard:hover {
   border-color: var(--border-accent);
-  box-shadow: 0 4px 20px var(--shadow-md), 0 0 0 1px rgba(6, 182, 212, 0.08);
+  box-shadow:
+    0 4px 20px var(--shadow-md),
+    0 0 0 1px rgba(6, 182, 212, 0.08);
 }
 
 .testCardHeader {
@@ -848,6 +989,39 @@
   gap: 0.5rem;
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+[data-theme='dark'] .testCardBadges :global(.Polaris-Badge) {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(30, 41, 59, 0.28) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .testCardBadges :global(.Polaris-Badge--toneSuccess) {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .testCardBadges :global(.Polaris-Badge--toneInfo) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .testCardBadges :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .testCardBadges :global(.Polaris-Badge--toneAttention) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .testCardBadges :global(.Polaris-Badge--toneCritical) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
 }
 
 .testCardMetrics {
@@ -925,6 +1099,37 @@
   gap: 0.5rem;
 }
 
+[data-theme='dark'] .testCardActions :global(.Polaris-Button) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .testCardActions :global(.Polaris-Button span),
+[data-theme='dark'] .testCardActions :global(.Polaris-Button__Text) {
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .testCardActions :global(.Polaris-Button:hover),
+[data-theme='dark'] .testCardActions :global(.Polaris-Button:focus-visible) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.16) inset,
+    0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+[data-theme='dark'] .testCardActions :global(.Polaris-Button:hover span),
+[data-theme='dark'] .testCardActions :global(.Polaris-Button:focus-visible span),
+[data-theme='dark'] .testCardActions :global(.Polaris-Button:hover .Polaris-Button__Text),
+[data-theme='dark'] .testCardActions :global(.Polaris-Button:focus-visible .Polaris-Button__Text) {
+  color: #67e8f9;
+}
+
 .filterPanel {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.35fr) minmax(190px, 0.35fr);
@@ -934,6 +1139,19 @@
   border: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 16px;
   background: rgba(6, 182, 212, 0.04);
+}
+
+[data-theme='dark'] .filterPanel :global(.Polaris-TextField__Input),
+[data-theme='dark'] .filterPanel :global(.Polaris-Select__Input),
+[data-theme='dark'] .chartMetricSelect :global(.Polaris-Select__Input) {
+  background-color: rgba(30, 41, 59, 0.78);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.08) inset;
+}
+
+[data-theme='dark'] .filterPanel :global(.Polaris-TextField__Input)::placeholder {
+  color: rgba(148, 163, 184, 0.76);
 }
 
 @media (max-width: 600px) {
@@ -948,7 +1166,9 @@
   border-radius: var(--overview-card-radius);
   padding: 2rem;
   transition: all var(--overview-transition);
-  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  box-shadow:
+    0 6px 32px rgba(0, 0, 0, 0.05),
+    0 0 0 1px rgba(0, 0, 0, 0.02);
   position: relative;
   overflow: hidden;
 }
@@ -960,19 +1180,39 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   opacity: 0.7;
 }
 
 .chartCard:hover {
   border-color: rgba(6, 182, 212, 0.25);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(6, 182, 212, 0.15);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(6, 182, 212, 0.15);
   transform: translateY(-3px);
 }
 
-[data-theme="dark"] .chartCard {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.98) 0%, rgba(18, 18, 18, 0.95) 100%);
+[data-theme='dark'] .chartCard {
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.98) 0%, var(--surface-glass-strong) 100%);
   border-color: rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .chartCard,
+[data-theme='dark'] .statusPipeline,
+[data-theme='dark'] .insightCard,
+[data-theme='dark'] .portfolioMixCard,
+[data-theme='dark'] .readinessFlowCard,
+[data-theme='dark'] .riskRadarCard,
+[data-theme='dark'] .performanceMapCard {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(6, 182, 212, 0.08);
 }
 
 .emptyChart {
@@ -1009,8 +1249,12 @@
 }
 
 @keyframes overviewShimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Responsive */

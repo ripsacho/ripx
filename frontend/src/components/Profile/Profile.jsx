@@ -36,7 +36,7 @@ import {
   updateAccount,
   updatePreferences,
 } from '../../services/profileApi';
-import { getSavedTheme, updateTheme } from '../../utils/theme';
+import { THEME_CHANGE_EVENT, getSavedTheme, updateTheme } from '../../utils/theme';
 import Toast from '../Toast/Toast';
 import PartyPop from '../PartyPop/PartyPop';
 
@@ -159,6 +159,21 @@ function Profile() {
     }
   }, []);
 
+  const syncLocalThemePreferences = useCallback(() => {
+    try {
+      const savedTheme = getSavedTheme();
+      const savedPreferences = JSON.parse(localStorage.getItem(STORAGE_KEYS.PREFERENCES) || '{}');
+      setPreferences(prev => ({
+        ...prev,
+        theme: savedTheme,
+        customThemeStart: savedPreferences.customThemeStart ?? prev.customThemeStart,
+        customThemeEnd: savedPreferences.customThemeEnd ?? prev.customThemeEnd,
+      }));
+    } catch (err) {
+      console.error('Error syncing local theme preference:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const loadProfileData = async () => {
       try {
@@ -218,6 +233,20 @@ function Profile() {
     loadProfileData();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, []);
+
+  useEffect(() => {
+    const handleStorageSync = event => {
+      if (event.key !== STORAGE_KEYS.PREFERENCES) return;
+      syncLocalThemePreferences();
+    };
+
+    window.addEventListener(THEME_CHANGE_EVENT, syncLocalThemePreferences);
+    window.addEventListener('storage', handleStorageSync);
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, syncLocalThemePreferences);
+      window.removeEventListener('storage', handleStorageSync);
+    };
+  }, [syncLocalThemePreferences]);
 
   const handleProfileUpdate = async () => {
     setSaving(true);
@@ -696,7 +725,9 @@ function Profile() {
                   <div className={styles.sectionActionControls}>
                     {activeTab === 'profile' && (
                       <>
-                        <Button
+                        <button
+                          type="button"
+                          className={styles.sectionActionButton}
                           onClick={() =>
                             document
                               .getElementById('profile-regional-section')
@@ -704,7 +735,7 @@ function Profile() {
                           }
                         >
                           {activeSectionAction.secondaryLabel}
-                        </Button>
+                        </button>
                         <Button variant="primary" loading={saving} onClick={handleProfileUpdate}>
                           {activeSectionAction.primaryLabel}
                         </Button>
@@ -722,9 +753,13 @@ function Profile() {
                     )}
                     {activeTab === 'appearance' && (
                       <>
-                        <Button onClick={() => triggerCelebrationPreview('ultra')}>
+                        <button
+                          type="button"
+                          className={styles.sectionActionButton}
+                          onClick={() => triggerCelebrationPreview('ultra')}
+                        >
                           {activeSectionAction.secondaryLabel}
-                        </Button>
+                        </button>
                         <Button
                           variant="primary"
                           loading={saving}
@@ -1154,7 +1189,9 @@ function Profile() {
                                   </div>
                                   <div className={styles.apiActionRow}>
                                     <Button>Regenerate API Key</Button>
-                                    <Button>View API Documentation</Button>
+                                    <Button url="/api-docs" external>
+                                      View API Documentation
+                                    </Button>
                                   </div>
                                 </div>
                               </div>

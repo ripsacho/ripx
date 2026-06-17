@@ -118,7 +118,9 @@
   );
   border: 1px solid rgba(6, 182, 212, 0.18);
   border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  box-shadow:
+    0 8px 32px rgba(6, 182, 212, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   position: relative;
   overflow: hidden;
 }
@@ -130,7 +132,13 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   opacity: 0.9;
 }
 
@@ -214,9 +222,24 @@
 
 .heroCard {
   position: relative;
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(6, 182, 212, 0.06) 50%, rgba(139, 92, 246, 0.03) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(6, 182, 212, 0.06) 50%,
+    rgba(139, 92, 246, 0.03) 100%
+  );
   border: 1px solid rgba(6, 182, 212, 0.22);
   box-shadow: 0 8px 24px rgba(6, 182, 212, 0.08);
+}
+
+[data-theme='dark'] .heroCard {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 34%),
+    linear-gradient(165deg, rgba(30, 41, 59, 0.86) 0%, rgba(6, 182, 212, 0.08) 100%);
+  border-color: rgba(6, 182, 212, 0.24);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .heroCard,
@@ -247,6 +270,17 @@
   border: 1px solid rgba(98, 108, 116, 0.2);
   background: #ffffff;
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.06);
+}
+
+[data-theme='dark'] .statusCard,
+[data-theme='dark'] .stepsCard {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .statusBadges {
@@ -282,7 +316,12 @@
 }
 
 .stepsCard {
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(6, 182, 212, 0.04) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.95) 50%,
+    rgba(6, 182, 212, 0.04) 100%
+  );
   border: 1px solid rgba(6, 182, 212, 0.18);
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.06);
 }
@@ -330,6 +369,12 @@
   padding: 0 4px;
 }
 
+[data-theme='dark'] .stepNumber {
+  background: var(--surface-slate-panel);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
 .stepHeader {
   display: flex;
   align-items: center;
@@ -368,7 +413,7 @@
 }
 
 [data-theme='dark'] .railCard {
-  background: linear-gradient(180deg, rgba(28, 28, 28, 0.98) 0%, rgba(18, 18, 18, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.98) 0%, var(--surface-glass-strong) 100%);
   border-color: rgba(6, 182, 212, 0.22);
 }
 
@@ -407,7 +452,10 @@
 .stepCard {
   border: 1px solid rgba(6, 182, 212, 0.2);
   box-shadow: 0 6px 18px rgba(6, 182, 212, 0.08);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
   height: 100%;
 }
 
@@ -470,9 +518,9 @@
   border-color: rgba(6, 182, 212, 0.24);
   background: linear-gradient(
     165deg,
-    rgba(18, 18, 18, 0.98) 0%,
+    var(--surface-glass-strong) 0%,
     rgba(6, 182, 212, 0.08) 58%,
-    rgba(18, 18, 18, 0.98) 100%
+    var(--surface-glass-strong) 100%
   );
 }
 
@@ -526,7 +574,10 @@
   color: var(--text-secondary);
   background: var(--bg-tertiary);
   border: 2px solid rgba(6, 182, 212, 0.2);
-  transition: background var(--setup-wizard-time-200) ease, border-color var(--setup-wizard-time-200) ease, color var(--setup-wizard-time-200) ease;
+  transition:
+    background var(--setup-wizard-time-200) ease,
+    border-color var(--setup-wizard-time-200) ease,
+    color var(--setup-wizard-time-200) ease;
 }
 
 .stepPillDone {
@@ -562,7 +613,9 @@
   border-radius: 14px;
   border-left: 4px solid rgba(6, 182, 212, 0.4);
   box-shadow: 0 4px 16px rgba(6, 182, 212, 0.06);
-  transition: box-shadow var(--setup-wizard-time-200) ease, border-left-color var(--setup-wizard-time-200) ease;
+  transition:
+    box-shadow var(--setup-wizard-time-200) ease,
+    border-left-color var(--setup-wizard-time-200) ease;
 }
 
 .standaloneStepCard:hover {
@@ -648,7 +701,7 @@
 }
 
 [data-theme='dark'] .snippetBlock {
-  background: linear-gradient(180deg, rgba(15, 15, 15, 0.98) 0%, rgba(6, 182, 212, 0.06) 100%);
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(6, 182, 212, 0.06) 100%);
   border-color: rgba(6, 182, 212, 0.25);
 }
 
@@ -667,4 +720,3 @@
 .snippetCopyBtn:hover {
   opacity: 1;
 }
-

@@ -3,4 +3,4 @@ roles = ["frontend", "backend"]
 webhooks_path = "/api/webhooks"
 
 [commands]
-dev = "npm run dev:frontend"
+dev = "node scripts/dev-shopify-web.js"

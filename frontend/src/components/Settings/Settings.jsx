@@ -402,6 +402,8 @@ function Settings() {
   const [checkoutDiscountListCheck, setCheckoutDiscountListCheck] = useState(null);
   const [checkoutDiscountListCheckLoading, setCheckoutDiscountListCheckLoading] = useState(false);
   const [checkoutDiscountListCheckError, setCheckoutDiscountListCheckError] = useState(null);
+  const [shopSessionResetting, setShopSessionResetting] = useState(false);
+  const [shopInstallLinkOpening, setShopInstallLinkOpening] = useState(false);
   const [checkoutCartTransformEnsuring, setCheckoutCartTransformEnsuring] = useState(false);
   const [checkoutCartTransformEnsureResult, setCheckoutCartTransformEnsureResult] = useState(null);
   const [checkoutCartTransformEnsureError, setCheckoutCartTransformEnsureError] = useState(null);
@@ -946,6 +948,76 @@ function Settings() {
       setCheckoutFullVerifyRunning(false);
     }
   }, [installation?.domain, ensureCartTransform, ensureCheckoutDiscount, runCheckoutDiagnostics]);
+
+  const openShopifyInstallLink = useCallback(async () => {
+    const shopDomain = String(installation?.domain || '')
+      .trim()
+      .toLowerCase();
+    if (!shopDomain || !shopDomain.endsWith('.myshopify.com')) return false;
+    setShopInstallLinkOpening(true);
+    try {
+      const callbackBase =
+        typeof window !== 'undefined' && window.location?.origin
+          ? window.location.origin
+          : undefined;
+      const res = await apiGet('/auth/install-link', {
+        shop: shopDomain,
+        ...(callbackBase ? { callback_base: callbackBase } : {}),
+      });
+      const payload = unwrapData(res);
+      const installUrl = String(payload?.url || '').trim();
+      if (!installUrl) {
+        throw new Error('Install link was empty');
+      }
+      if (typeof window !== 'undefined') {
+        const popup = window.open(installUrl, '_blank', 'noopener,noreferrer');
+        if (!popup) {
+          window.location.href = installUrl;
+        }
+      }
+      return true;
+    } catch (e) {
+      setMessage(`Failed to open install link: ${e?.message || 'Unknown error'}`);
+      return false;
+    } finally {
+      setShopInstallLinkOpening(false);
+    }
+  }, [installation?.domain]);
+
+  const resetShopSessionForReinstall = useCallback(async () => {
+    const shopDomain = String(installation?.domain || '').trim();
+    if (!shopDomain) return;
+    const confirmed = window.confirm(
+      `Reset stored Shopify session for ${shopDomain}?\n\nAfter this, uninstall and reinstall the app to re-authorize with a fresh token.`
+    );
+    if (!confirmed) return;
+    setShopSessionResetting(true);
+    try {
+      const res = await apiPost(
+        '/settings/shop-session/reset',
+        {},
+        {
+          params: { domain: shopDomain },
+        }
+      );
+      const data = unwrapData(res);
+      const deleted = data?.deleted === true;
+      setMessage(
+        deleted
+          ? `Shopify session reset for ${shopDomain}. Reinstall the app from your install link.`
+          : `No stored Shopify session found for ${shopDomain}. You can proceed with reinstall.`
+      );
+      await fetchInstallation();
+      await runCheckoutDiagnostics({ silentError: true });
+      if (deleted) {
+        await openShopifyInstallLink();
+      }
+    } catch (e) {
+      setMessage(`Failed to reset Shopify session: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setShopSessionResetting(false);
+    }
+  }, [installation?.domain, fetchInstallation, runCheckoutDiagnostics, openShopifyInstallLink]);
 
   const runPreviewProbe = useCallback(async () => {
     const testId = String(previewProbeTestId || '').trim();
@@ -1612,6 +1684,23 @@ function Settings() {
       : null;
     return Boolean(discountCheck?.ok);
   }, [checkoutDiscountEnsureResult, checkoutDiag?.checklist]);
+  const shopifyAdminAuthFailed = useMemo(() => {
+    const checks = Array.isArray(checkoutDiag?.checklist) ? checkoutDiag.checklist : [];
+    return checks.some(item => {
+      const key = String(item?.id || item?.key || '')
+        .trim()
+        .toLowerCase();
+      const message = String(item?.message || '')
+        .trim()
+        .toLowerCase();
+      return (
+        (key.includes('shopify_admin_api_auth') && item?.ok === false) ||
+        message.includes('stored access token (401)') ||
+        message.includes('invalid api key or access token') ||
+        message.includes('unrecognized login')
+      );
+    });
+  }, [checkoutDiag?.checklist]);
 
   const setupComplete = useMemo(
     () => Boolean(isAppSettings && storeHealth.ready && checkoutDiscountAttached),
@@ -1857,12 +1946,26 @@ function Settings() {
       {
         id: 'shipping_path',
         title: 'Shipping path',
-        tone: 'info',
-        status: 'Review in test',
+        tone:
+          checkoutDiag?.infrastructure?.discount_function_available === true ||
+          shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+            ? 'info'
+            : 'warning',
+        status:
+          checkoutDiag?.infrastructure?.discount_function_available === true ||
+          shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+            ? 'Partial readiness'
+            : 'Needs prerequisites',
         summary:
-          'Shipping checkout paths now report adapter-specific readiness per test, because automatic, discount-only, and manual strategies can differ by variant.',
+          checkoutDiag?.infrastructure?.discount_function_available === true ||
+          shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+            ? 'At least one Shopify shipping execution path is visible. Exact readiness still depends on the selected strategy, CarrierService/profile bindings, and per-test diagnostics.'
+            : 'Shipping tests need a compatible Shopify execution path: discount function for shipping discounts, delivery customization for method changes, or manual carrier setup.',
         nextAction:
-          'Open a shipping test and use Checkout readiness to confirm whether each variant is automatic, discount-only, or manual before launch.',
+          checkoutDiag?.infrastructure?.discount_function_available === true ||
+          shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+            ? 'Open a shipping test, select control methods, run diagnostics, then dry run before apply.'
+            : 'Run checkout diagnostics and deploy the relevant Shopify extensions or configure carrier/manual setup before launching shipping variants.',
       },
     ];
   }, [
@@ -2219,6 +2322,31 @@ function Settings() {
           checkoutDiagLoading,
       },
       {
+        id: 'shop-session-reset',
+        title: 'Reinstall auth reset',
+        tone: shopifyAdminAuthFailed ? 'critical' : 'attention',
+        status: shopifyAdminAuthFailed ? 'Auth refresh required' : 'Manual recovery',
+        summary: shopifyAdminAuthFailed
+          ? 'Detected Shopify Admin token/auth failure. Reset and reinstall to refresh OAuth.'
+          : 'Use this before reinstall when token/session looks stale.',
+        actionLabel: 'Reset session',
+        onAction: () => resetShopSessionForReinstall(),
+        actionTooltip:
+          'Deletes the stored Shopify token/session for this shop. Use this before reinstall when auth is stale.',
+        loading: shopSessionResetting,
+        disabled:
+          shopSessionResetting ||
+          shopInstallLinkOpening ||
+          checkoutDiagLoading ||
+          checkoutDiscountEnsuring ||
+          checkoutCartTransformEnsuring ||
+          checkoutFullVerifyRunning,
+        secondaryLabel: 'Open install link',
+        onSecondaryAction: () => openShopifyInstallLink(),
+        secondaryTooltip:
+          'Opens the shop-specific install link so you can re-authorize immediately after reset.',
+      },
+      {
         id: 'offer-readiness',
         title: 'Offer checkout path',
         tone: checkoutDiscountAttached ? 'success' : 'warning',
@@ -2237,9 +2365,14 @@ function Settings() {
     checkoutFullVerifyRunning,
     checkoutCartTransformEnsuring,
     checkoutDiscountEnsuring,
+    shopSessionResetting,
+    shopInstallLinkOpening,
+    shopifyAdminAuthFailed,
     checkoutDiscountAttached,
     runCheckoutDiagnostics,
     runFullCheckoutVerification,
+    resetShopSessionForReinstall,
+    openShopifyInstallLink,
     ensureCheckoutDiscount,
   ]);
   const cartTransformDetectedInInventory =
@@ -3061,23 +3194,48 @@ function Settings() {
                                             </td>
                                             <td>
                                               <div className={styles.installChecklistActions}>
-                                                <Button
-                                                  size="slim"
-                                                  onClick={item.onAction}
-                                                  loading={item.loading}
-                                                  disabled={item.disabled}
-                                                >
-                                                  {item.actionLabel}
-                                                </Button>
-                                                {item.secondaryLabel && item.onSecondaryAction && (
+                                                {item.actionTooltip ? (
+                                                  <Tooltip content={item.actionTooltip}>
+                                                    <Button
+                                                      size="slim"
+                                                      onClick={item.onAction}
+                                                      loading={item.loading}
+                                                      disabled={item.disabled}
+                                                    >
+                                                      {item.actionLabel}
+                                                    </Button>
+                                                  </Tooltip>
+                                                ) : (
                                                   <Button
                                                     size="slim"
-                                                    variant="plain"
-                                                    onClick={item.onSecondaryAction}
+                                                    onClick={item.onAction}
+                                                    loading={item.loading}
+                                                    disabled={item.disabled}
                                                   >
-                                                    {item.secondaryLabel}
+                                                    {item.actionLabel}
                                                   </Button>
                                                 )}
+                                                {item.secondaryLabel &&
+                                                  item.onSecondaryAction &&
+                                                  (item.secondaryTooltip ? (
+                                                    <Tooltip content={item.secondaryTooltip}>
+                                                      <Button
+                                                        size="slim"
+                                                        variant="plain"
+                                                        onClick={item.onSecondaryAction}
+                                                      >
+                                                        {item.secondaryLabel}
+                                                      </Button>
+                                                    </Tooltip>
+                                                  ) : (
+                                                    <Button
+                                                      size="slim"
+                                                      variant="plain"
+                                                      onClick={item.onSecondaryAction}
+                                                    >
+                                                      {item.secondaryLabel}
+                                                    </Button>
+                                                  ))}
                                               </div>
                                             </td>
                                           </tr>
@@ -3121,7 +3279,7 @@ function Settings() {
                                   <div className={styles.installChecklistFooter}>
                                     {installation?.domain && (
                                       <a
-                                        href={ROUTES.DOCS}
+                                        href={`${ROUTES.DOCS}#installation`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className={styles.installDocLink}

@@ -83,9 +83,11 @@ if (failed) {
   console.log(
     '\nNext steps: fix the WARN items, then run shipping diagnostics from Test Detail or Test Wizard.'
   );
+  console.log('See docs/SHOPIFY_SHIPPING_TEST_RUNBOOK.md for the full rollout checklist.');
   process.exitCode = 1;
 } else {
   console.log(
     '\nEnvironment looks ready. Run shipping diagnostics in-app and perform a dry run before apply.'
   );
+  console.log('See docs/SHOPIFY_SHIPPING_TEST_RUNBOOK.md before applying on a live shop.');
 }

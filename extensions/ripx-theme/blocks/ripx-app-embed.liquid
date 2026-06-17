@@ -1,17 +1,68 @@
 {% comment %}
   RipX App Embed — primary load via Shopify App Proxy (/apps/ripx/script.js).
-  Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
-  This prevents local/dev stores from silently falling back to a different RipX environment.
+  Fallback: if proxy fails, load the direct public script endpoint configured in theme settings.
+  Important: do not hardcode temporary local tunnel URLs in schema defaults.
+  Keep fallback empty by default and set it manually only for local/dev debugging sessions.
   target: head — the primary runtime is parser-blocking so the server bootstrap can run before body paint.
-  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.46).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.47).
 {% endcomment %}
 
 <script>
   (function () {
     var storageKey = '__ripx_price_af_hint_v1__';
     var shopHost = '{{ request.host }}';
-    var version = '1.0.46';
+    var version = '1.0.47';
     var styleId = 'ripx-anti-flicker-style';
+    var defaultPriceSelectors = [
+      '.price',
+      '.money',
+      '[data-product-price]',
+      '[data-price]',
+      '.price-item',
+      '.price-item--regular',
+      '.price-item__regular',
+      '.product-price'
+    ];
+    function applyPriceGuard(selectors, releasedBy, timeoutMs) {
+      try {
+        var safeSelectors = Array.isArray(selectors) ? selectors.filter(isSafeSelector).slice(0, 80) : [];
+        if (!safeSelectors.length) return false;
+        var styleEl = document.getElementById(styleId);
+        if (!styleEl) {
+          styleEl = document.createElement('style');
+          styleEl.id = styleId;
+          (document.head || document.documentElement).appendChild(styleEl);
+        }
+        styleEl.textContent = safeSelectors
+          .map(function (selector) {
+            return 'html[data-ripx-af="price"] ' + selector + '{opacity:0 !important;}';
+          })
+          .join('');
+        document.documentElement.setAttribute('data-ripx-af', 'price');
+        window.__RIPX_INLINE_PRICE_AF__ = {
+          active: true,
+          at: Date.now(),
+          selectors: safeSelectors.length,
+          source: releasedBy || 'unknown'
+        };
+        setTimeout(function () {
+          if (
+            window.__RIPX_INLINE_PRICE_AF__ &&
+            window.__RIPX_INLINE_PRICE_AF__.active &&
+            document.documentElement.getAttribute('data-ripx-af') === 'price'
+          ) {
+            document.documentElement.removeAttribute('data-ripx-af');
+            window.__RIPX_INLINE_PRICE_AF__.active = false;
+            window.__RIPX_INLINE_PRICE_AF__.releasedBy =
+              (window.RipX && window.RipX.version ? 'inline_timeout_force' : releasedBy) ||
+              'inline_timeout';
+          }
+        }, Math.max(600, Math.min(2200, Number(timeoutMs) || 1400)));
+        return true;
+      } catch (_eGuard) {
+        return false;
+      }
+    }
     function installPreviewGuardIfNeeded() {
       try {
         if (!document.documentElement || !window.location) return false;
@@ -21,27 +72,7 @@
           !!params.get('ab_preview_test') ||
           !!params.get('ab_preview_variant');
         if (!isPreview) return false;
-        var styleEl = document.getElementById(styleId);
-        if (!styleEl) {
-          styleEl = document.createElement('style');
-          styleEl.id = styleId;
-          (document.head || document.documentElement).appendChild(styleEl);
-        }
-        styleEl.textContent = 'html[data-ripx-af="strict"] body{opacity:0 !important;}';
-        document.documentElement.setAttribute('data-ripx-af', 'strict');
-        window.__RIPX_INLINE_PREVIEW_AF__ = { active: true, at: Date.now() };
-        setTimeout(function () {
-          if (
-            window.__RIPX_INLINE_PREVIEW_AF__ &&
-            window.__RIPX_INLINE_PREVIEW_AF__.active &&
-            document.documentElement.getAttribute('data-ripx-af') === 'strict'
-          ) {
-            document.documentElement.removeAttribute('data-ripx-af');
-            window.__RIPX_INLINE_PREVIEW_AF__.active = false;
-            window.__RIPX_INLINE_PREVIEW_AF__.releasedBy = 'inline_preview_timeout';
-          }
-        }, 1800);
-        return true;
+        return applyPriceGuard(defaultPriceSelectors, 'inline_preview_timeout', 1700);
       } catch (_ePreviewAf) {
         return false;
       }
@@ -56,7 +87,7 @@
       return true;
     }
     try {
-      if (installPreviewGuardIfNeeded()) return;
+      installPreviewGuardIfNeeded();
       if (!window.sessionStorage || !document.documentElement) return;
       var raw = window.sessionStorage.getItem(storageKey);
       if (!raw) return;
@@ -68,51 +99,45 @@
       }
       var selectors = Array.isArray(hint.selectors) ? hint.selectors.filter(isSafeSelector) : [];
       if (!selectors.length) return;
-      var styleEl = document.getElementById(styleId);
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        (document.head || document.documentElement).appendChild(styleEl);
-      }
-      styleEl.textContent = selectors
-        .slice(0, 80)
-        .map(function (selector) {
-          return 'html[data-ripx-af="price"] ' + selector + '{opacity:0 !important;}';
-        })
-        .join('');
-      document.documentElement.setAttribute('data-ripx-af', 'price');
-      window.__RIPX_INLINE_PRICE_AF__ = { active: true, at: Date.now(), selectors: selectors.length };
-      setTimeout(function () {
-        if (
-          window.__RIPX_INLINE_PRICE_AF__ &&
-          window.__RIPX_INLINE_PRICE_AF__.active &&
-          document.documentElement.getAttribute('data-ripx-af') === 'price' &&
-          !(window.RipX && window.RipX.version)
-        ) {
-          document.documentElement.removeAttribute('data-ripx-af');
-          window.__RIPX_INLINE_PRICE_AF__.active = false;
-          window.__RIPX_INLINE_PRICE_AF__.releasedBy = 'inline_timeout';
-        }
-      }, Math.max(300, Math.min(1200, Number(hint.timeoutMs) || 900)));
+      applyPriceGuard(selectors, 'inline_timeout', Number(hint.timeoutMs) || 900);
     } catch (_e) {}
   })();
 </script>
 
 {% # theme-check-disable RemoteAsset, ParserBlockingScript %}
 <link rel="preconnect" href="https://{{ request.host }}" crossorigin>
-<script
-  id="ripx-storefront-runtime"
-  src="https://{{ request.host }}/apps/ripx/script.js?v=1.0.46"
-  crossorigin="anonymous"
-  fetchpriority="high"
-></script>
+<script>
+  (function () {
+    var shopHost = '{{ request.host }}';
+    var version = '1.0.47';
+    var scriptUrl = 'https://' + shopHost + '/apps/ripx/script.js?v=' + encodeURIComponent(version);
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var isPreview =
+        params.get('ab_preview') === '1' ||
+        !!params.get('ab_preview_test') ||
+        !!params.get('ab_preview_variant') ||
+        !!params.get('ab_preview_variant_name');
+      if (isPreview) {
+        scriptUrl += '&ripx_preview_bust=' + Date.now();
+      }
+    } catch (_eRipxPreviewBust) {}
+    var script = document.createElement('script');
+    script.id = 'ripx-storefront-runtime';
+    script.src = scriptUrl;
+    script.crossOrigin = 'anonymous';
+    script.fetchPriority = 'high';
+    script.async = false;
+    (document.head || document.documentElement || document.body).appendChild(script);
+  })();
+</script>
 {% # theme-check-enable RemoteAsset, ParserBlockingScript %}
 
 <script id="ripx-app-embed-config" type="application/json">
   {
     "shopHost": {{ request.host | json }},
-    "version": "1.0.46",
-    "directScriptBaseUrl": {{ block.settings.direct_script_base_url | json }}
+    "version": "1.0.47",
+    "directScriptBaseUrl": {{ block.settings.direct_script_base_url | default: "__RIPX_UNSET__" | json }}
   }
 </script>
 
@@ -122,9 +147,22 @@
     window.__RIPX_APP_EMBED_LOADER__ = true;
 
     var shopHost = '{{ request.host }}';
-    var version = '1.0.46';
+    var version = '1.0.47';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
-    var directScriptBaseUrl = {{ block.settings.direct_script_base_url | json }};
+    var directScriptBaseUrl = {{ block.settings.direct_script_base_url | default: "__RIPX_UNSET__" | json }};
+    function normalizeDirectScriptBaseUrl(value) {
+      var trimmed = String(value || '').trim();
+      if (!trimmed) return '';
+      try {
+        var parsed = new URL(trimmed);
+        if (parsed.protocol !== 'https:') return '';
+        if (!parsed.hostname) return '';
+        return parsed.origin.replace(/\/+$/, '');
+      } catch (_eDirectBase) {
+        return '';
+      }
+    }
+    directScriptBaseUrl = normalizeDirectScriptBaseUrl(directScriptBaseUrl);
     var fallbackSrc =
       directScriptBaseUrl && String(directScriptBaseUrl).trim()
         ? String(directScriptBaseUrl).replace(/\/+$/, '') +
@@ -137,8 +175,21 @@
     var attemptCount = 0;
     var ensureTimer = null;
 
-    function hasRipx() {
+    function hasRuntimeConfig() {
+      try {
+        var cfg = window.AB_TEST_RUNTIME_CONFIG || {};
+        return !!(cfg.apiUrl && String(cfg.apiUrl).trim());
+      } catch (_eCfg) {
+        return false;
+      }
+    }
+
+    function hasRipxVersion() {
       return !!(window.RipX && window.RipX.version);
+    }
+
+    function hasRipx() {
+      return hasRipxVersion() && hasRuntimeConfig();
     }
 
     function readPreviewCtx() {
@@ -264,8 +315,26 @@
       }
     }
 
-    function appendScript(src, isFallback) {
-      if (!src || hasScriptTagFor(src)) return;
+    function removeScriptTagsFor(src) {
+      if (!src) return;
+      var normalized = String(src).split('?')[0];
+      try {
+        Array.prototype.slice.call(document.scripts || []).forEach(function (s) {
+          var current = String((s && s.src) || '').split('?')[0];
+          if (current && current === normalized && s.parentNode) {
+            s.parentNode.removeChild(s);
+          }
+        });
+      } catch (_eRemove) {}
+    }
+
+    function appendScript(src, isFallback, forceReload) {
+      if (!src) return;
+      if (forceReload) {
+        removeScriptTagsFor(src);
+      } else if (hasScriptTagFor(src)) {
+        return;
+      }
       var tag = document.createElement('script');
       tag.src = src;
       tag.defer = true;
@@ -295,7 +364,7 @@
           };
         } catch (_eStatusFail) {}
         if (!isFallback && fallbackSrc) {
-          appendScript(withPreviewBust(fallbackSrc), true);
+          appendScript(withPreviewBust(fallbackSrc), true, forceReload === true);
         }
       };
       (document.head || document.documentElement || document.body).appendChild(tag);
@@ -306,6 +375,41 @@
         clearInterval(ensureTimer);
         ensureTimer = null;
       }
+    }
+
+    function reportInitFailure(reason) {
+      try {
+        if (!directScriptBaseUrl || !shopHost) return;
+        var endpoint = String(directScriptBaseUrl).replace(/\/+$/, '') + '/api/track/client-error';
+        var payload = {
+          error: 'ripx_storefront_init_failed',
+          url: String(window.location.href || ''),
+          shop_domain: shopHost,
+          metadata: {
+            reason: String(reason || 'unknown'),
+            primarySrc: primarySrc,
+            fallbackConfigured: !!fallbackSrc,
+            preview: !!readPreviewCtx(),
+            attemptCount: attemptCount,
+            version: version
+          }
+        };
+        var body = JSON.stringify(payload);
+        if (navigator && typeof navigator.sendBeacon === 'function') {
+          var blob = new Blob([body], { type: 'application/json' });
+          navigator.sendBeacon(endpoint, blob);
+          return;
+        }
+        if (typeof window.fetch === 'function') {
+          window.fetch(endpoint, {
+            method: 'POST',
+            mode: 'cors',
+            keepalive: true,
+            headers: { 'Content-Type': 'application/json' },
+            body: body
+          });
+        }
+      } catch (_e) {}
     }
 
     function ensureLoaded() {
@@ -321,12 +425,14 @@
         stopEnsure();
         return;
       }
+      var runtimePresentWithoutConfig = hasRipxVersion() && !hasRuntimeConfig();
       attemptCount += 1;
-      appendScript(withPreviewBust(primarySrc), false);
-      if (fallbackSrc) appendScript(withPreviewBust(fallbackSrc), true);
+      appendScript(withPreviewBust(primarySrc), false, runtimePresentWithoutConfig);
+      if (fallbackSrc) appendScript(withPreviewBust(fallbackSrc), true, runtimePresentWithoutConfig);
       if (attemptCount >= maxAttempts) {
         stopEnsure();
         if (redirectToPreviewBootstrapIfNeeded()) return;
+        reportInitFailure('runtime_missing_after_retries');
         try {
           window.__RIPX_APP_EMBED_LOADER_STATUS__ = {
             ok: false,
@@ -365,7 +471,8 @@
       "type": "text",
       "id": "direct_script_base_url",
       "label": "Direct script fallback base URL",
-      "info": "Optional. Example: https://your-app.example.com. Leave blank in local/dev to avoid silently falling back to another environment."
+      "default": "__RIPX_UNSET__",
+      "info": "Optional. Keep empty for normal operation. Set only for local/dev debugging when App Proxy cannot serve /apps/ripx/script.js. Use an HTTPS app origin (for example your current tunnel URL), then clear it when done."
     }
   ]
 }

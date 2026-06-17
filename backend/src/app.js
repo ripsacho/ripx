@@ -797,6 +797,9 @@ app.use('/api/analytics', authenticate, analyticsRoutes);
 app.use('/api/shopify', authenticateShopify, shopifyRoutes); // Shopify-specific (requires shop)
 app.use('/api/track', trackRoutes); // Public endpoint for tracking
 app.use('/api/proxy', proxyRoutes); // App proxy endpoints (no auth, uses signature)
+// Defensive alias for Shopify App Proxy targets that were set to APP_URL instead of APP_URL/api/proxy.
+// Without this, /apps/ripx/script.js can be proxied to /script.js and fall through to the SPA HTML.
+app.use('/', proxyRoutes);
 app.use('/api/feature-flags', featureFlagRoutes); // Public read-only feature flag evaluation
 app.use('/api/webhooks', webhookRoutes); // Webhook endpoints (no auth, uses HMAC)
 // Partner app application_url may be .../home; Shopify can register webhooks under /home/api/...

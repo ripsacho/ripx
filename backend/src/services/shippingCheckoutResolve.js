@@ -3,6 +3,7 @@ const {
   normalizeShippingTestPayload,
   normalizeShippingVariantConfig,
 } = require('./shippingTestConfigService');
+const logger = require('../utils/logger');
 
 function isShippingTestRowType(type) {
   const normalized = String(type || '')
@@ -136,6 +137,14 @@ function resolveShippingCheckoutGroupDiscount({
       }
     : null;
   const finish = result => {
+    if (debugMeta) {
+      logger.debug('Shipping checkout resolve decision', {
+        ...debugMeta,
+        applies: Boolean(result?.applies),
+        reason: result?.reason || null,
+        strategy: debugMeta.strategy || null,
+      });
+    }
     if (!debugMeta) {
       return result;
     }

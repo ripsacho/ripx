@@ -84,7 +84,9 @@
   background: linear-gradient(145deg, var(--futuristic-cyan) 0%, var(--futuristic-violet) 100%);
   color: white;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 4px 12px rgba(6, 182, 212, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .templateStepIcon svg,
@@ -128,7 +130,12 @@
 
 .templateNameSection {
   padding: 1.5rem 1.75rem;
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.03) 50%, transparent 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.06) 0%,
+    rgba(139, 92, 246, 0.03) 50%,
+    transparent 100%
+  );
   border: 1px solid var(--border-secondary);
   border-radius: 14px;
   border-left: 4px solid var(--futuristic-cyan);
@@ -192,11 +199,7 @@
   margin: 0 0 1rem 0;
   padding: 12px 14px;
   border-radius: 12px;
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.18) 0%,
-    rgba(139, 92, 246, 0.12) 100%
-  );
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18) 0%, rgba(139, 92, 246, 0.12) 100%);
   border: 1px solid rgba(6, 182, 212, 0.35);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.7) inset,
@@ -231,11 +234,7 @@
   padding: 12px 16px 14px;
   margin: -4px -8px 8px;
   border-radius: 12px;
-  background: linear-gradient(
-    180deg,
-    rgba(6, 182, 212, 0.1) 0%,
-    rgba(13, 148, 136, 0.05) 100%
-  );
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.1) 0%, rgba(13, 148, 136, 0.05) 100%);
   border: 1px solid rgba(6, 182, 212, 0.22);
   border-left: 4px solid var(--futuristic-cyan);
   box-shadow: 0 2px 10px rgba(6, 182, 212, 0.08);
@@ -267,12 +266,2263 @@
   pointer-events: none;
 }
 
+.variantConfigShell {
+  min-width: 0;
+}
+
+.shippingVariantStudio {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.shippingVariantCommandBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(6, 182, 212, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(236, 254, 255, 0.58) 0%, rgba(255, 255, 255, 0.78) 100%);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.05);
+}
+
+.shippingVariantCommandCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shippingVariantCommandCopy strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.shippingVariantCommandCopy span:not(.shippingStudioEyebrow) {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.shippingBrowserFrame {
+  overflow: visible;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.96) 100%),
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.1), transparent 34%);
+  box-shadow:
+    0 16px 36px rgba(30, 41, 59, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.shippingBrowserTabs {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  overflow-x: auto;
+  padding: 10px 10px 0;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.04) 0%, rgba(30, 41, 59, 0.015) 100%);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.08);
+}
+
+.shippingBrowserTabs::-webkit-scrollbar {
+  height: 8px;
+}
+
+.shippingBrowserTabs::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.16);
+}
+
+.shippingBrowserTab {
+  --shipping-variant-accent: #06b6d4;
+  --shipping-variant-accent-soft: rgba(6, 182, 212, 0.12);
+  position: relative;
+  min-width: 190px;
+  max-width: 260px;
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px 10px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-bottom-color: transparent;
+  border-radius: 14px 14px 0 0;
+  background: rgba(241, 245, 249, 0.78);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--wiz-motion-fast) var(--wiz-motion-ease),
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    transform var(--wiz-motion-fast) var(--wiz-motion-ease),
+    box-shadow var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingBrowserTab:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.94);
+  border-color: color-mix(in srgb, var(--shipping-variant-accent) 34%, rgba(30, 41, 59, 0.12));
+}
+
+.shippingBrowserTabActive {
+  background: #fff;
+  border-color: color-mix(in srgb, var(--shipping-variant-accent) 38%, rgba(30, 41, 59, 0.12));
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 8px 18px color-mix(in srgb, var(--shipping-variant-accent) 14%, transparent);
+}
+
+[data-theme='dark'] .shippingBrowserTab {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.72)),
+    var(--surface-slate-panel);
+  border-color: rgba(148, 163, 184, 0.2);
+  border-bottom-color: transparent;
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 18px rgba(0, 0, 0, 0.16);
+}
+
+[data-theme='dark'] .shippingBrowserTab:hover {
+  background:
+    linear-gradient(180deg, rgba(51, 65, 85, 0.86), rgba(30, 41, 59, 0.78)),
+    var(--surface-slate-panel);
+  border-color: rgba(148, 163, 184, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 22px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .shippingBrowserTabActive {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      color-mix(in srgb, var(--shipping-variant-accent) 10%, transparent),
+      transparent 54%
+    ),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.92), rgba(30, 41, 59, 0.88)),
+    var(--surface-slate-panel);
+  border-color: rgba(148, 163, 184, 0.38);
+  box-shadow:
+    0 -1px 0 color-mix(in srgb, var(--shipping-variant-accent) 30%, transparent) inset,
+    0 12px 26px rgba(0, 0, 0, 0.28);
+}
+
+.shippingBrowserTabActive::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(
+    90deg,
+    var(--shipping-variant-accent),
+    color-mix(in srgb, var(--shipping-variant-accent) 48%, white 52%)
+  );
+}
+
+.shippingBrowserTabTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.shippingBrowserTabTop strong,
+.shippingBrowserTabSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shippingBrowserTabDot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: var(--shipping-variant-accent);
+  box-shadow: 0 0 0 4px var(--shipping-variant-accent-soft);
+}
+
+.shippingBrowserTabSummary {
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+}
+
+.shippingBrowserTabMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.shippingBrowserTabMeta > span {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.shippingVariantPanel {
+  position: relative;
+  z-index: 1;
+  padding: 18px;
+  background: #fff;
+}
+
+[data-theme='dark'] .shippingVariantPanel {
+  background: var(--surface-slate-panel);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+.shippingVariantPanelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.shippingStudioEyebrow {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.shippingVariantWorkspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.36fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.shippingVariantFormCard,
+.shippingReadinessRail {
+  min-width: 0;
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.74));
+  box-shadow:
+    0 18px 46px rgba(30, 41, 59, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.shippingVariantFormCard {
+  overflow: visible;
+  padding: 16px;
+}
+
+[data-theme='dark'] .shippingVariantFormCard,
+[data-theme='dark'] .shippingReadinessRail,
+[data-theme='dark'] .shippingStrategySidebar,
+[data-theme='dark'] .shippingSmartSection,
+[data-theme='dark'] .shippingFormSection,
+[data-theme='dark'] .shippingCheckoutDisplayControls,
+[data-theme='dark'] .shippingRateTableHeader,
+[data-theme='dark'] .shippingRateTableRow,
+[data-theme='dark'] .shippingFieldNote {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(6, 182, 212, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .shippingStrategyOption,
+[data-theme='dark'] .shippingRadioCard {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .shippingStrategyOption:hover:not(:disabled),
+[data-theme='dark'] .shippingStrategyOptionActive,
+[data-theme='dark'] .shippingRadioCard:hover,
+[data-theme='dark'] .shippingRadioCardActive {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+[data-theme='dark'] .shippingSuggestionChip,
+[data-theme='dark'] .shippingConfigSummaryChip,
+[data-theme='dark'] .shippingAdvancedCount,
+[data-theme='dark'] .shippingLastFixChip {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .shippingSuggestionChip:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .shippingInlineBlocker {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
+}
+
+.shippingStrategyEditor {
+  display: grid;
+  grid-template-columns: minmax(196px, 0.3fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.shippingStrategyEditorSingle {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shippingStrategySidebar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.shippingStrategySidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.shippingStrategySidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.16);
+}
+
+.shippingStrategySidebar legend {
+  padding: 0 3px 4px;
+  color: var(--text-tertiary);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.shippingStrategyGroup {
+  display: grid;
+  gap: 4px;
+}
+
+.shippingStrategyGroupLabel {
+  padding: 2px 3px;
+  color: var(--text-tertiary);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shippingStrategyOption {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    background var(--wiz-motion-fast) var(--wiz-motion-ease),
+    transform var(--wiz-motion-fast) var(--wiz-motion-ease),
+    opacity var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingStrategyOption:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(6, 182, 212, 0.24);
+  background: rgba(236, 254, 255, 0.52);
+}
+
+.shippingStrategyOptionActive {
+  border-color: rgba(6, 182, 212, 0.38);
+  background: rgba(236, 254, 255, 0.72);
+}
+
+.shippingStrategyOption:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.shippingStrategyRadio {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(30, 41, 59, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: inset 0 0 0 2.5px rgba(255, 255, 255, 0.9);
+}
+
+.shippingStrategyOptionActive .shippingStrategyRadio {
+  border-color: rgba(6, 182, 212, 0.78);
+  background: #06b6d4;
+}
+
+.shippingStrategyOptionCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shippingStrategyOptionCopy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.shippingStrategyHelp {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 72px;
+  margin-bottom: 5px;
+  padding: 9px 10px;
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 10px;
+  background: rgba(236, 254, 255, 0.82);
+}
+
+.shippingStrategyHelp span {
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.shippingStrategyHelp small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.shippingSmartForm {
+  display: grid;
+  gap: 10px;
+}
+
+.shippingGuidedProgress {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid rgba(14, 116, 144, 0.1);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    rgba(248, 250, 252, 0.64);
+}
+
+.shippingGuidedStep {
+  position: relative;
+  align-items: center;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.8));
+  border: 1px solid rgba(30, 41, 59, 0.09);
+  border-radius: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 74px;
+  padding: 12px;
+  text-align: left;
+  isolation: isolate;
+  transition:
+    transform var(--wiz-motion-fast) var(--wiz-motion-ease),
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    box-shadow var(--wiz-motion-fast) var(--wiz-motion-ease),
+    background var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingGuidedStep::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: transparent;
+}
+
+.shippingGuidedStep:not(:disabled):hover {
+  transform: translateY(-2px);
+  border-color: rgba(14, 116, 144, 0.26);
+  box-shadow: 0 14px 30px rgba(30, 41, 59, 0.1);
+}
+
+.shippingGuidedStepActive {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.18), transparent 34%),
+    linear-gradient(135deg, rgba(236, 254, 255, 0.96), rgba(240, 253, 250, 0.86));
+  border-color: rgba(14, 116, 144, 0.38);
+  color: #0f766e;
+  box-shadow:
+    0 16px 34px rgba(14, 116, 144, 0.14),
+    inset 0 0 0 1px rgba(14, 116, 144, 0.08);
+}
+
+.shippingGuidedStepActive::before {
+  background: linear-gradient(180deg, #06b6d4, #14b8a6);
+}
+
+.shippingGuidedStepComplete {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(240, 253, 244, 0.94), rgba(248, 250, 252, 0.82));
+  border-color: rgba(34, 197, 94, 0.34);
+}
+
+.shippingGuidedStepComplete::before {
+  background: #22c55e;
+}
+
+.shippingGuidedStepBlocked {
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+  opacity: 0.6;
+}
+
+.shippingGuidedStep:disabled {
+  cursor: not-allowed;
+}
+
+.shippingGuidedStepIndex {
+  align-items: center;
+  background: linear-gradient(180deg, #ffffff, #f1f5f9);
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  color: var(--text-primary);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+  box-shadow: 0 8px 16px rgba(30, 41, 59, 0.08);
+}
+
+.shippingGuidedStepActive .shippingGuidedStepIndex {
+  background: linear-gradient(135deg, #0891b2, #0f766e);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(14, 116, 144, 0.26);
+}
+
+.shippingGuidedStepComplete .shippingGuidedStepIndex {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(34, 197, 94, 0.2);
+}
+
+.shippingGuidedStep strong,
+.shippingGuidedStep small {
+  display: block;
+}
+
+.shippingGuidedStep strong {
+  font-size: 0.75rem;
+}
+
+.shippingGuidedStep small {
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.shippingGuidedStep em {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.06);
+  color: var(--text-tertiary);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shippingGuidedStepActive em {
+  background: rgba(14, 116, 144, 0.14);
+  color: #0f766e;
+}
+
+.shippingGuidedStepComplete em {
+  background: rgba(34, 197, 94, 0.13);
+  color: #15803d;
+}
+
+.shippingGuidedSlide {
+  display: grid;
+  gap: 10px;
+  animation: shippingGuidedSlideIn 180ms var(--wiz-motion-ease);
+}
+
+.shippingGuidedFooter {
+  align-items: center;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 30%),
+    linear-gradient(135deg, rgba(30, 41, 59, 0.04), rgba(236, 254, 255, 0.72));
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.shippingGuidedFooterHint {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.shippingGuidedReviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shippingDetailsHero {
+  align-items: center;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.14), transparent 32%),
+    linear-gradient(135deg, rgba(236, 254, 255, 0.94), rgba(248, 250, 252, 0.86));
+  border: 1px solid rgba(14, 116, 144, 0.18);
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.shippingDetailsHero > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.shippingDetailsHero strong {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+}
+
+.shippingDetailsHero small {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.shippingDetailsRecipe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 360px;
+}
+
+.shippingDetailsRecipe span {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 999px;
+  color: #0f766e;
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.shippingGuidedReviewHero {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(236, 254, 255, 0.82));
+  box-shadow:
+    0 16px 34px rgba(34, 197, 94, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.shippingGuidedReviewHero strong {
+  color: #14532d;
+  font-size: 0.92rem;
+}
+
+.shippingGuidedReviewHero span:last-child {
+  color: #166534;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.shippingFinishChecklist {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shippingFinishChecklist > div {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.82));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.shippingFinishChecklist span {
+  align-items: center;
+  background: linear-gradient(135deg, #0891b2, #0f766e);
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.66rem;
+  font-weight: 900;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.shippingFinishChecklist strong {
+  color: var(--text-primary);
+  font-size: 0.76rem;
+}
+
+.shippingFinishChecklist small {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+@keyframes shippingGuidedSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shippingSmartSection {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(14, 116, 144, 0.13);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 30%),
+    rgba(255, 255, 255, 0.86);
+  box-shadow:
+    0 14px 32px rgba(30, 41, 59, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.shippingSmartSectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shippingSmartSectionHeader > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shippingSmartSectionHeader span {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.shippingSmartSectionHeader small {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.shippingSmartSectionBody {
+  display: grid;
+  gap: 10px;
+}
+
+.shippingSmartFieldGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.shippingRadioCardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shippingRadioCard {
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(30, 41, 59, 0.09);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    background var(--wiz-motion-fast) var(--wiz-motion-ease),
+    transform var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingRadioCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(6, 182, 212, 0.24);
+  background: rgba(236, 254, 255, 0.56);
+}
+
+.shippingRadioCardActive {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: rgba(236, 254, 255, 0.82);
+}
+
+.shippingRadioCardActive .shippingStrategyRadio {
+  border-color: rgba(6, 182, 212, 0.78);
+  background: #06b6d4;
+}
+
+.shippingRadioCard span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shippingRadioCard strong {
+  font-size: 0.76rem;
+  line-height: 1.25;
+}
+
+.shippingRadioCard small {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.shippingSuggestionBlock {
+  display: grid;
+  gap: 6px;
+}
+
+.shippingSuggestionBlock > span {
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shippingSuggestionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shippingSuggestionChip {
+  padding: 5px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.09);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    background var(--wiz-motion-fast) var(--wiz-motion-ease),
+    color var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingSuggestionChip:hover {
+  border-color: rgba(6, 182, 212, 0.28);
+  background: rgba(236, 254, 255, 0.78);
+  color: #0f766e;
+}
+
+.shippingPickerField,
+.shippingCountryPickerField {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  min-width: 0;
+}
+
+.shippingPickerField > span,
+.shippingCountryPickerField > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.shippingPickerField :global(.Polaris-TextField),
+.shippingCountryPickerField :global(.Polaris-TextField) {
+  margin: 0;
+}
+
+.shippingPickerHint {
+  color: var(--text-tertiary);
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.shippingFieldBadgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.shippingFieldBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 7px;
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 999px;
+  background: rgba(236, 254, 255, 0.78);
+  color: #0f766e;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.shippingFieldBadgeRequired {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 251, 235, 0.9);
+  color: #92400e;
+}
+
+[data-theme='dark'] .shippingFieldBadge {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.32);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .shippingFieldBadgeRequired {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+.shippingFormSection {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.shippingFormSectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shippingFormSectionHeader span {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shippingFormSectionHeader small {
+  color: var(--text-tertiary);
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.shippingPresetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shippingSuggestedSetupPanel {
+  align-items: center;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(240, 253, 244, 0.95), rgba(236, 254, 255, 0.78));
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px 14px;
+}
+
+.shippingSuggestedSetupPanel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.shippingSuggestedSetupPanel strong {
+  color: #14532d;
+  font-size: 0.8rem;
+}
+
+.shippingSuggestedSetupPanel small {
+  color: #166534;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.shippingModeRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.shippingSetupTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.8);
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 1px 0 rgba(30, 41, 59, 0.05);
+}
+
+.shippingSetupTabButton {
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shippingSetupTabButtonActive {
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+}
+
+.shippingAdvancedInlineHeader {
+  align-items: center;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 32%),
+    linear-gradient(135deg, rgba(248, 250, 252, 0.94), rgba(236, 254, 255, 0.78));
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px 14px;
+}
+
+.shippingAdvancedInlineHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.shippingAdvancedInlineHeader strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+.shippingAdvancedInlineHeader span {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+[data-theme='dark'] .shippingSetupTabs {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.18);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .shippingSetupTabButton {
+  color: rgba(203, 213, 225, 0.86);
+}
+
+[data-theme='dark'] .shippingSetupTabButton:hover {
+  background: rgba(6, 182, 212, 0.12);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .shippingSetupTabButtonActive {
+  background: rgba(6, 182, 212, 0.18);
+  color: #67e8f9;
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.16) inset;
+}
+
+.shippingModeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.shippingRateTable {
+  --shipping-rate-columns: minmax(130px, 1.25fr) minmax(150px, 1.35fr) minmax(105px, 0.75fr)
+    minmax(130px, 0.9fr) minmax(135px, 0.95fr) auto;
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.shippingRateTableHeader {
+  display: grid;
+  grid-template-columns: var(--shipping-rate-columns);
+  gap: 8px;
+  padding: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 1px 0 rgba(30, 41, 59, 0.06);
+  backdrop-filter: blur(2px);
+}
+
+.shippingRateTableHeader span {
+  color: var(--text-tertiary);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shippingRateTableHeader span:last-child {
+  text-align: right;
+}
+
+.shippingRateTableRow {
+  display: grid;
+  grid-template-columns: var(--shipping-rate-columns);
+  gap: 8px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
+  transition:
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    background var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingRateTableRow:hover {
+  border-color: rgba(14, 116, 144, 0.22);
+  background: rgba(240, 249, 255, 0.7);
+}
+
+.shippingRateTableCell {
+  min-width: 0;
+}
+
+.shippingRateTableCellActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.shippingFieldMicroNote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.shippingFieldMicroNote a {
+  color: var(--futuristic-cyan, #0891b2);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.shippingRateTableRowMeta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.shippingRateRowMetaStack {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.shippingCheckoutDisplayControls {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 12px;
+  background: rgba(240, 249, 255, 0.56);
+}
+
+.shippingDeliveryDateGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shippingRateHealthBadges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shippingConfigSummaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shippingConfigSummaryChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.shippingFieldNote {
+  padding: 10px 11px;
+  border: 1px dashed rgba(30, 41, 59, 0.14);
+  border-radius: 11px;
+  background: rgba(248, 250, 252, 0.82);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.shippingInlineBlocker {
+  padding: 9px 11px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 11px;
+  background: rgba(254, 242, 242, 0.9);
+  color: #991b1b;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.shippingInlineBlocker strong {
+  font-weight: 800;
+}
+
+.shippingInlineNote {
+  padding: 10px 12px;
+  border: 1px solid rgba(14, 116, 144, 0.2);
+  border-radius: 12px;
+  background: rgba(236, 254, 255, 0.78);
+  color: #0f766e;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.shippingInlineNote strong {
+  font-weight: 850;
+}
+
+.shippingAdvancedHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shippingAdvancedShell {
+  display: grid;
+  gap: 8px;
+}
+
+.shippingAdvancedActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shippingAdvancedCount {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.shippingLastFixChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-tertiary);
+  font-size: 0.67rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.shippingUndoHint {
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.shippingAdvancedMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.shippingShortcutHint {
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.shippingCurrencyPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border: 1px solid rgba(30, 41, 59, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  overflow: hidden;
+}
+
+.shippingCurrencyControlRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shippingCurrencyPillEmpty {
+  border-style: dashed;
+}
+
+.shippingCurrencyPillTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.69rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shippingCurrencyPillLabel {
+  max-width: 185px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shippingCurrencyPillClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid rgba(30, 41, 59, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.shippingCurrencyPopoverPanel {
+  min-width: 260px;
+  max-width: 320px;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+[data-theme='dark'] .shippingCurrencyPopoverPanel {
+  background: var(--surface-slate-solid);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 12px;
+}
+
+.shippingCurrencyPopoverActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.shippingCurrencyRecentRow {
+  display: grid;
+  gap: 6px;
+}
+
+.shippingCurrencyRecentRow > span {
+  color: var(--text-tertiary);
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.shippingCurrencyRecentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shippingCurrencyRecentChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.14);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.95);
+  color: var(--text-secondary);
+  font-size: 0.67rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+[data-theme='dark'] .shippingCurrencyPillClear,
+[data-theme='dark'] .shippingCurrencyRecentChip,
+[data-theme='dark'] .shippingCollapsedRatesList span {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .shippingCurrencyRecentChip:hover,
+[data-theme='dark'] .shippingCurrencyPillClear:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+.shippingCollapsedRatesSummary {
+  display: grid;
+  gap: 6px;
+  padding: 9px 11px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+[data-theme='dark'] .shippingCollapsedRatesSummary {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(6, 182, 212, 0.16);
+}
+
+.shippingCollapsedRatesSummary strong {
+  color: var(--text-primary);
+  font-size: 0.74rem;
+}
+
+.shippingCollapsedRatesList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shippingCollapsedRatesList span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-secondary);
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.shippingAdvancedHeaderHint {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.shippingInfoIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+}
+
+.shippingInfoIcon :global(svg) {
+  width: 14px;
+  height: 14px;
+}
+
+.shippingReadinessRail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  position: sticky;
+  top: 96px;
+}
+
+.shippingRailTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.shippingRailTabButton {
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shippingRailTabButtonActive {
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+}
+
+.shippingReadinessCard {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.shippingReadinessCard span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.shippingReadinessCard strong {
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.shippingReadinessHint {
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.shippingSetupOverviewCard {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 254, 255, 0.76));
+  box-shadow:
+    0 14px 30px rgba(30, 41, 59, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.shippingSetupOverviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shippingSetupOverviewTitle {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.shippingSetupOverviewMeta {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.shippingSetupProgressTrack {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.09);
+  overflow: hidden;
+}
+
+.shippingSetupProgressFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #06b6d4, #3b82f6);
+}
+
+.shippingCurrentSetupCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.shippingCurrentSetupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shippingCurrentSetupHeader .shippingStudioEyebrow {
+  margin-bottom: 0;
+}
+
+.shippingCurrentSetupSummary,
+.shippingCurrentSetupNote {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.shippingCurrentSetupList {
+  display: grid;
+  gap: 6px;
+}
+
+.shippingCurrentSetupActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.shippingScopeChecklist {
+  display: grid;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.shippingScopeChecklistItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.shippingScopeChecklistItem span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.08);
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+}
+
+.shippingScopeChecklistItemDone {
+  color: var(--text-primary);
+}
+
+.shippingScopeChecklistItemDone span {
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+}
+
+.shippingChecklistSummaryRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.69rem;
+}
+
+.shippingChecklistSummaryRow strong {
+  color: var(--text-primary);
+  font-size: 0.72rem;
+}
+
+.shippingChecklistQaRow {
+  display: grid;
+  gap: 3px;
+  padding: 6px 7px;
+  border: 1px solid rgba(30, 41, 59, 0.09);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.86);
+}
+
+.shippingChecklistQaMeta {
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.shippingChecklistFocusList {
+  display: grid;
+  gap: 5px;
+}
+
+.shippingChecklistFocusItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+}
+
+.shippingChecklistFocusItem span {
+  color: var(--text-tertiary);
+}
+
+.shippingChecklistMoreHint {
+  color: var(--text-tertiary);
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.shippingChecklistToggle {
+  justify-self: flex-start;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid rgba(30, 41, 59, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-secondary);
+  font-size: 0.67rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shippingChecklistReadyState {
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.shippingCurrentSetupRate {
+  display: grid;
+  gap: 3px;
+  padding: 6px 7px;
+  border: 1px solid rgba(30, 41, 59, 0.07);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.82);
+  color: var(--text-primary);
+  font-size: 0.71rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.shippingCurrentSetupMeta {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.shippingImpactPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(14, 116, 144, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.shippingCheckoutMockCard {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.9));
+  box-shadow:
+    0 10px 22px rgba(30, 41, 59, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.shippingCheckoutMockHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shippingCheckoutMockHeader > div,
+.shippingCheckoutMockLines {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shippingCheckoutMockTitle {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.shippingCheckoutMockPrice {
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.shippingCheckoutMockLines span {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.shippingCheckoutMockRadio {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  border: 2px solid rgba(14, 116, 144, 0.5);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 3px #fff;
+  background: rgba(14, 116, 144, 0.75);
+}
+
+.shippingRailPreviewHint {
+  border: 1px solid rgba(14, 116, 144, 0.12);
+  border-radius: 12px;
+  background: rgba(236, 254, 255, 0.62);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.4;
+  padding: 8px 10px;
+}
+
+.shippingOverviewInsights {
+  display: grid;
+  gap: 5px;
+}
+
+.shippingOverviewInsightChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-secondary);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.shippingOverviewInsightChipAction {
+  width: 100%;
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  background: rgba(254, 242, 242, 0.9);
+  color: #b91c1c;
+  cursor: pointer;
+  text-align: left;
+}
+
+.shippingRailBlockerBanner {
+  padding: 6px 8px;
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  border-radius: 9px;
+  background: rgba(254, 242, 242, 0.95);
+  color: #991b1b;
+  font-size: 0.67rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.shippingImpactArrow {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1;
+}
+
+.shippingImpactInlineRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.shippingImpactInlineBlock {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.shippingImpactInlineBlock span {
+  color: var(--text-tertiary);
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.shippingImpactInlineBlock strong {
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  line-height: 1.28;
+}
+
+.shippingImpactGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.shippingImpactCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.shippingImpactCard span {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shippingImpactCard strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.shippingAdvancedToggleRow {
+  padding-top: 4px;
+}
+
+.shippingAdvancedPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(236, 254, 255, 0.54) 0%, rgba(248, 250, 252, 0.72) 100%);
+}
+
+.shippingComparisonStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(30, 41, 59, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.shippingComparisonChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  max-width: 100%;
+  min-width: min(100%, 230px);
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.04);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--wiz-motion-fast) var(--wiz-motion-ease),
+    background var(--wiz-motion-fast) var(--wiz-motion-ease),
+    transform var(--wiz-motion-fast) var(--wiz-motion-ease);
+}
+
+.shippingComparisonChip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(6, 182, 212, 0.22);
+  background: rgba(236, 254, 255, 0.58);
+}
+
+.shippingComparisonChipActive {
+  border-color: rgba(6, 182, 212, 0.34);
+  background: rgba(236, 254, 255, 0.72);
+}
+
+.shippingComparisonChip > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shippingComparisonChip strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+.shippingVariantEmpty {
+  padding: 16px;
+  border: 1px dashed rgba(30, 41, 59, 0.16);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.72);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .shippingVariantWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingVariantCommandBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .shippingReadinessRail {
+    position: static;
+  }
+
+  .shippingAdvancedPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingStrategyEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingSmartFieldGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingModeRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .shippingAdvancedHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .shippingAdvancedInlineHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingDetailsHero,
+  .shippingFinishChecklist {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingDetailsRecipe {
+    justify-content: flex-start;
+  }
+
+  .shippingSuggestedSetupPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingAdvancedActions {
+    flex-wrap: wrap;
+  }
+
+  .shippingRateTableHeader {
+    display: none;
+  }
+
+  .shippingRateTableRow {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingRateTableCellActions {
+    justify-content: flex-start;
+  }
+
+  .shippingDeliveryDateGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingRateTable {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .shippingRadioCardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingSmartSectionHeader {
+    flex-direction: column;
+  }
+
+  .shippingGuidedProgress,
+  .shippingGuidedFooter {
+    grid-template-columns: 1fr;
+  }
+
+  .shippingGuidedFooter {
+    align-items: stretch;
+  }
+
+  .shippingFieldBadgeRow {
+    justify-content: flex-start;
+  }
+}
+
 .templateNameSectionFields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
 }
-
 
 .templateNameField,
 .templateDescField {
@@ -297,18 +2547,23 @@
   }
 }
 
-[data-theme="dark"] .templateNameSection {
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.04) 50%, transparent 100%);
+[data-theme='dark'] .templateNameSection {
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.08) 0%,
+    rgba(139, 92, 246, 0.04) 50%,
+    transparent 100%
+  );
   border-left-color: var(--futuristic-cyan);
 }
 
-[data-theme="dark"] .templateNameSectionIcon,
-[data-theme="dark"] .templateCategoryStep {
+[data-theme='dark'] .templateNameSectionIcon,
+[data-theme='dark'] .templateCategoryStep {
   background: rgba(6, 182, 212, 0.15);
   border-color: rgba(6, 182, 212, 0.25);
 }
 
-[data-theme="dark"] .templateCardIcon {
+[data-theme='dark'] .templateCardIcon {
   background: linear-gradient(150deg, rgba(6, 182, 212, 0.22) 0%, rgba(139, 92, 246, 0.16) 100%);
   border-color: rgba(6, 182, 212, 0.3);
   box-shadow:
@@ -316,7 +2571,10 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-[data-theme="dark"] :global(.template-grid-item) :global(.template-card.selected) .templateCardIcon {
+[data-theme='dark']
+  :global(.template-grid-item)
+  :global(.template-card.selected)
+  .templateCardIcon {
   background: linear-gradient(150deg, rgba(6, 182, 212, 0.32) 0%, rgba(139, 92, 246, 0.22) 100%);
   border-color: rgba(6, 182, 212, 0.5);
   box-shadow:
@@ -327,7 +2585,12 @@
 .templateCategorySection {
   position: relative;
   padding: 1.5rem 1.75rem 1.75rem;
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.02) 50%, transparent 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.04) 0%,
+    rgba(139, 92, 246, 0.02) 50%,
+    transparent 100%
+  );
   border: 1px solid var(--border-secondary);
   border-radius: 16px;
   border-left: 4px solid var(--futuristic-cyan);
@@ -392,12 +2655,12 @@
   line-height: 1.3;
 }
 
-[data-theme="dark"] .templateCategorySection {
+[data-theme='dark'] .templateCategorySection {
   background: linear-gradient(180deg, rgba(6, 182, 212, 0.04) 0%, transparent 100%);
   border-left-color: var(--futuristic-cyan);
 }
 
-[data-theme="dark"] .templateCategorySection:hover {
+[data-theme='dark'] .templateCategorySection:hover {
   box-shadow: 0 2px 12px rgba(6, 182, 212, 0.1);
 }
 
@@ -588,8 +2851,13 @@
 }
 
 @keyframes templateCardIconRing {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -678,14 +2946,17 @@
   border-color: rgba(6, 182, 212, 0.12);
 }
 
-[data-theme="dark"] .templateCardDesc {
+[data-theme='dark'] .templateCardDesc {
   color: var(--text-tertiary);
   background: rgba(6, 182, 212, 0.06);
   border-color: rgba(6, 182, 212, 0.1);
 }
 
-[data-theme="dark"] :global(.template-grid-item):hover .templateCardDesc,
-[data-theme="dark"] :global(.template-grid-item) :global(.template-card.selected) .templateCardDesc {
+[data-theme='dark'] :global(.template-grid-item):hover .templateCardDesc,
+[data-theme='dark']
+  :global(.template-grid-item)
+  :global(.template-card.selected)
+  .templateCardDesc {
   background: rgba(6, 182, 212, 0.1);
   border-color: rgba(6, 182, 212, 0.18);
 }
@@ -754,7 +3025,6 @@
   opacity: 0.68;
   pointer-events: none;
 }
-
 
 /* Template grid - improved layout for test type boxes */
 .templateGrid {
@@ -885,7 +3155,9 @@
   background: linear-gradient(145deg, var(--futuristic-cyan) 0%, var(--futuristic-violet) 100%);
   color: white;
   flex-shrink: 0;
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 4px 16px rgba(6, 182, 212, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .sampleSizeStepIcon svg,
@@ -969,7 +3241,9 @@
   border-radius: 10px;
   background: linear-gradient(145deg, rgba(6, 182, 212, 0.85) 0%, rgba(139, 92, 246, 0.75) 100%);
   color: white;
-  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 2px 10px rgba(6, 182, 212, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .trafficStepIcon svg,
@@ -1032,7 +3306,7 @@
   background: rgba(6, 182, 212, 0.04);
 }
 
-[data-theme="dark"] .trafficSummaryValid {
+[data-theme='dark'] .trafficSummaryValid {
   border-color: rgba(6, 182, 212, 0.25);
   background: rgba(6, 182, 212, 0.06);
 }
@@ -1051,12 +3325,17 @@
   box-shadow: 0 1px 6px rgba(6, 182, 212, 0.2);
 }
 
-[data-theme="dark"] .trafficStep {
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 50%, var(--bg-secondary) 100%);
+[data-theme='dark'] .trafficStep {
+  background: linear-gradient(
+    180deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 50%,
+    var(--bg-secondary) 100%
+  );
   border-color: rgba(6, 182, 212, 0.15);
 }
 
-[data-theme="dark"] .trafficSummaryBar {
+[data-theme='dark'] .trafficSummaryBar {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(6, 182, 212, 0.15);
 }
@@ -1137,7 +3416,12 @@
 
 .reviewStepAccent {
   height: 3px;
-  background: linear-gradient(90deg, var(--futuristic-cyan) 0%, var(--futuristic-teal) 50%, var(--futuristic-violet) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-teal) 50%,
+    var(--futuristic-violet) 100%
+  );
   border-radius: 0;
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
 }
@@ -1161,7 +3445,9 @@
   background: linear-gradient(145deg, var(--futuristic-cyan) 0%, var(--futuristic-violet) 100%);
   color: white;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 4px 12px rgba(6, 182, 212, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .reviewStepHeaderIcon svg,
@@ -1488,111 +3774,858 @@
   }
 }
 
-.reviewShippingHint {
-  margin: 0;
+[data-theme='dark'] .variantCard,
+[data-theme='dark'] .variantConfigHeadPrice,
+[data-theme='dark'] .variantConfigHeadCheckout,
+[data-theme='dark'] .reviewStep,
+[data-theme='dark'] .reviewVariantCard,
+[data-theme='dark'] .reviewCheckoutPreview,
+[data-theme='dark'] .reviewCheckoutSectionItem,
+[data-theme='dark'] .reviewSchedulingSection {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.reviewShippingDiagnostics {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+[data-theme='dark'] .variantCard:hover,
+[data-theme='dark'] .reviewVariantChip:hover {
+  border-color: rgba(6, 182, 212, 0.36);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(6, 182, 212, 0.1);
+}
+
+[data-theme='dark'] .reviewStepHeader {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
+  border-bottom-color: rgba(6, 182, 212, 0.16);
+}
+
+[data-theme='dark'] .reviewSection {
+  border-bottom-color: rgba(148, 163, 184, 0.14);
+}
+
+[data-theme='dark'] .reviewSection:hover {
+  background: rgba(6, 182, 212, 0.08);
+}
+
+[data-theme='dark'] .reviewSectionTitleIcon,
+[data-theme='dark'] .reviewVariantChip,
+[data-theme='dark'] .reviewVariantMetric,
+[data-theme='dark'] .reviewCheckoutSectionMeta span,
+[data-theme='dark'] .reviewCheckoutRuntimeNotes span {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .reviewCheckoutRuntimeNotes span {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .variantConfigShell {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Card),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-ShadowBevel),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Box) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Banner),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-CalloutCard),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Choice),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Checkbox) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Text),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Label__Text),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Choice__Label) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Text--subdued),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Choice__Descriptions),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-TextField__HelpText),
+[data-theme='dark'] .variantConfigShell :global(.Polaris-Select__HelpText) {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .variantConfigHeadCheckout::before {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.12), transparent 34%),
+    rgba(30, 41, 59, 0.32);
+}
+
+[data-theme='dark'] :global(.variant-code-summary),
+[data-theme='dark'] :global(.variant-codes-empty-state) {
+  background: var(--surface-scrim);
+  border: 1px solid rgba(6, 182, 212, 0.18);
   border-radius: 12px;
-  border: 1px solid var(--border-secondary);
-  background: rgba(255, 255, 255, 0.72);
+  color: rgba(226, 232, 240, 0.94);
 }
 
-.reviewShippingVariantActions {
-  display: grid;
-  gap: 8px;
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion),
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-item),
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-body),
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-panel),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-content),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-default-page),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-summary),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-codes-empty-state),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Card']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Panel']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Section']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Summary']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Editor']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Content']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Module']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Wrapper']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Empty']) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-.reviewShippingVariantActionRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-secondary);
-  background: rgba(255, 255, 255, 0.72);
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-head) {
+  background: var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-.reviewShippingReport {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 2px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border-secondary);
-  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-head:hover),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.config-editor-accordion-head[aria-expanded='true']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Card']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Panel']:hover) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
 }
 
-.reviewShippingHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-head-icon),
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-head-chevron),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-summary-dot) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  color: #67e8f9 !important;
 }
 
-.reviewShippingTitle {
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--text-primary);
+[data-theme='dark'] :global(.wizard-page) :global(.config-editor-accordion-head-label),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'] strong),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Title']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Label']) {
+  color: rgba(241, 245, 249, 0.96) !important;
 }
 
-.reviewShippingMode {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'] small),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'] p),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Hint']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Meta']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='variant'][class*='Subtitle']) {
+  color: rgba(203, 213, 225, 0.78) !important;
 }
 
-.reviewShippingList {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Card:has(.variant-code-summary)),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Card:has(.config-editor-accordion)),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Card:has([class*='variant'])),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-ShadowBevel:has(.variant-code-summary)),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.Polaris-ShadowBevel:has(.config-editor-accordion)),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-ShadowBevel:has([class*='variant'])),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Box:has(.variant-code-summary)),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Box:has(.config-editor-accordion)),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Box:has([class*='variant'])) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
 }
 
-.reviewShippingItem {
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border-secondary);
-  background: rgba(255, 255, 255, 0.72);
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-TextField__Input),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Select__Input) {
+  background-color: var(--surface-slate-soft) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+  -webkit-text-fill-color: rgba(241, 245, 249, 0.96) !important;
 }
 
-.reviewShippingItemHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Select__Backdrop) {
+  background: var(--surface-slate-soft) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
 }
 
-.reviewShippingVariantName {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-primary);
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-empty),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-embed-blocked-card),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-preview-wrap),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-preview-loading),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-toolbar),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-bottom-bar),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-bottom-bar-trigger),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-overlay),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-overlay-header),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-overlay-body),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-empty),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-card),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-card-header-row),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-card-sidebar),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-card-content),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-pane),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-dropdown-trigger),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-dropdown-panel),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-editor-card),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tabbed),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab-bar),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab-panel),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-editor-wrapper),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-help-text),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-selector),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-navigation-buttons) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    rgba(30, 41, 59, 0.7) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-.reviewShippingStatus {
-  font-size: 0.6875rem;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-overlay) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    var(--surface-slate-solid) !important;
 }
 
-.reviewShippingMeta {
-  margin: 0;
-  font-size: 0.7rem;
-  color: var(--text-tertiary);
-  line-height: 1.4;
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-overlay-header),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-card-header-row),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-card-sidebar),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab-bar) {
+  background: var(--surface-slate-soft) !important;
+  border-color: rgba(6, 182, 212, 0.18) !important;
 }
 
-.reviewShippingDetail {
-  margin: 4px 0 0;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-bottom-bar-trigger:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-variant-tab:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-variant-tab--active),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-element-tab:hover),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.variant-visual-editor-snippet-element-tab--active),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-tab:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-tab--active),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-position-btn:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-position-btn--active),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-dropdown-option:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-dropdown-option--selected),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab--active),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-selector-button:hover),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-selector-button--selected) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-element-tab-wrap),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-position-btn),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-selector-button),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-history-btn),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-collapse-btn),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-change-cancel),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.variant-visual-editor-snippet-change-selector-btn),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.variant-visual-editor-snippet-remove-element-btn) {
+  background: rgba(30, 41, 59, 0.76) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-bottom-bar-count),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.variant-visual-editor-snippet-overlay-variant-title),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-dropdown-trigger-label),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-dropdown-option-label) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-preview-hint),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-overlay-subtitle),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global(.variant-visual-editor-snippet-overlay-title-meta),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-snippet-elements-label),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-selector-label),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-visual-editor-position-label),
+[data-theme='dark'] :global(.wizard-page) :global(.variant-code-tab-meta) {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-ShadowBevel) {
+  --pc-shadow-bevel-content-xs: none !important;
+  background: var(--surface-glass) !important;
+  border: 1px solid rgba(6, 182, 212, 0.2) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Box) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  background-color: transparent !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab,
+[data-theme='dark'] .shippingBrowserViewport,
+[data-theme='dark'] .shippingBrowserCanvas,
+[data-theme='dark'] .shippingControlPanel,
+[data-theme='dark'] .shippingControlSection,
+[data-theme='dark'] .shippingMethodCard,
+[data-theme='dark'] .shippingMethodRow,
+[data-theme='dark'] .shippingMethodPreview,
+[data-theme='dark'] .shippingRateSummary,
+[data-theme='dark'] .shippingRateSummaryItem,
+[data-theme='dark'] .shippingRuleCard,
+[data-theme='dark'] .shippingDestinationCard,
+[data-theme='dark'] .shippingConditionRow,
+[data-theme='dark'] .shippingAssignmentCard,
+[data-theme='dark'] .shippingDiagnosticsCard,
+[data-theme='dark'] .shippingReadinessCard,
+[data-theme='dark'] .trafficAllocationCard,
+[data-theme='dark'] .trafficSummaryBar,
+[data-theme='dark'] .trafficSummaryItem,
+[data-theme='dark'] .trafficVariantRow,
+[data-theme='dark'] .reviewVariantMetrics,
+[data-theme='dark'] .reviewCheckoutRuntimeNotes,
+[data-theme='dark'] .reviewCheckoutSection,
+[data-theme='dark'] .reviewCheckoutSummary,
+[data-theme='dark'] .reviewSchedulingItem {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .shippingMethodCard:hover,
+[data-theme='dark'] .shippingMethodRow:hover,
+[data-theme='dark'] .shippingRuleCard:hover,
+[data-theme='dark'] .shippingDestinationCard:hover,
+[data-theme='dark'] .trafficVariantRow:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .shippingBrowserTabActive {
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(6, 182, 212, 0.14);
+}
+
+[data-theme='dark'] .shippingBrowserTab,
+[data-theme='dark'] .shippingBrowserTab:hover,
+[data-theme='dark'] .shippingBrowserTabActive {
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.72)),
+    var(--surface-slate-panel) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  border-bottom-color: transparent !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab:hover {
+  background:
+    linear-gradient(180deg, rgba(51, 65, 85, 0.86), rgba(30, 41, 59, 0.78)),
+    var(--surface-slate-panel) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  border-bottom-color: transparent !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabActive,
+[data-theme='dark'] .shippingBrowserTabActive:hover {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      color-mix(in srgb, var(--shipping-variant-accent) 10%, transparent),
+      transparent 54%
+    ),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.92), rgba(30, 41, 59, 0.88)),
+    var(--surface-slate-panel) !important;
+  border-color: rgba(148, 163, 184, 0.38) !important;
+  border-bottom-color: transparent !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab span,
+[data-theme='dark'] .shippingBrowserTab strong,
+[data-theme='dark'] .shippingBrowserTab:hover span,
+[data-theme='dark'] .shippingBrowserTab:hover strong,
+[data-theme='dark'] .shippingBrowserTabActive span,
+[data-theme='dark'] .shippingBrowserTabActive strong {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-ShadowBevel > .Polaris-Box),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Card .Polaris-Box),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-LegacyCard .Polaris-Box) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-TextField__Input),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Select__Input) {
+  background-color: var(--surface-slate-soft) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+  -webkit-text-fill-color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .shippingVariantCommandBar,
+[data-theme='dark'] .shippingBrowserFrame,
+[data-theme='dark'] .trafficStepHeader {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Frame']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Panel']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Card']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Bar']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Section']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Sidebar']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Workspace']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Editor']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Table']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Row']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Summary']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Rail']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Tabs']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='TabButton']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Option']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Chip']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Pill']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Note']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Hint']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Checklist']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='CurrentSetup']) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Tab']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='TabActive']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='TabButtonActive']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Option']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='OptionActive']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='RadioCard']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='RadioCardActive']),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global([class*='shipping'][class*='SuggestionChip']:hover),
+[data-theme='dark']
+  :global(.wizard-page)
+  :global([class*='shipping'][class*='RailTabButtonActive']) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'] strong),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Title']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Label']) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'] small),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Meta']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Hint']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='shipping'][class*='Note']) {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Button),
+[data-theme='dark'] :global(.wizard-page) :global(button[class*='Button']),
+[data-theme='dark'] :global(.wizard-page) :global(button[class*='Btn']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Button'][role='button']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Btn'][role='button']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='toolbarBtn']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='ToolbarBtn']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='ActionButton']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='ActionBtn']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Chip']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Pill']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Badge']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='SummaryItem']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Metric']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Preview']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='EmptyState']) {
+  --p-color-bg-fill: var(--surface-glass) !important;
+  --p-color-bg-fill-hover: rgba(6, 182, 212, 0.16) !important;
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-border: rgba(6, 182, 212, 0.22) !important;
+  --p-color-text: rgba(226, 232, 240, 0.96) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Button:hover),
+[data-theme='dark'] :global(.wizard-page) :global(button[class*='Button']:hover),
+[data-theme='dark'] :global(.wizard-page) :global(button[class*='Btn']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Button'][role='button']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Btn'][role='button']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Chip']:hover),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Pill']:hover) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Button--variantPrimary),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Button--toneSuccess),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Button--toneCritical) {
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global([class*='Label']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Title']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Value']) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global([class*='Hint']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Meta']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Subtitle']),
+[data-theme='dark'] :global(.wizard-page) :global([class*='Description']) {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+/* Final shipping Variant Config fallbacks. Keep last so the strategy and live-method preview win source order. */
+[data-theme='dark'] .shippingVariantFormCard,
+[data-theme='dark'] .shippingVariantPanel,
+[data-theme='dark'] .shippingBrowserFrame,
+[data-theme='dark'] .shippingBrowserTabs,
+[data-theme='dark'] .shippingStrategySidebar,
+[data-theme='dark'] .shippingStrategyHelp,
+[data-theme='dark'] .shippingStrategyOption,
+[data-theme='dark'] .shippingSmartForm,
+[data-theme='dark'] .shippingSmartSection,
+[data-theme='dark'] .shippingSmartSectionBody,
+[data-theme='dark'] .shippingFormSection,
+[data-theme='dark'] .shippingSetupTabs,
+[data-theme='dark'] .shippingAdvancedInlineHeader,
+[data-theme='dark'] .shippingAdvancedShell,
+[data-theme='dark'] .shippingAdvancedMetaRow,
+[data-theme='dark'] .shippingSuggestedSetupPanel,
+[data-theme='dark'] .shippingRadioCard,
+[data-theme='dark'] .shippingCheckoutDisplayControls,
+[data-theme='dark'] .shippingFieldNote,
+[data-theme='dark'] .shippingFieldMicroNote,
+[data-theme='dark'] .shippingReadinessRail,
+[data-theme='dark'] .shippingSetupOverviewCard,
+[data-theme='dark'] .shippingRailTabs,
+[data-theme='dark'] .shippingGuidedProgress,
+[data-theme='dark'] .shippingGuidedStep,
+[data-theme='dark'] .shippingGuidedStepIndex,
+[data-theme='dark'] .shippingGuidedStep em,
+[data-theme='dark'] .shippingGuidedFooter,
+[data-theme='dark'] .shippingGuidedReviewHero,
+[data-theme='dark'] .shippingDetailsHero,
+[data-theme='dark'] .shippingDetailsRecipe span,
+[data-theme='dark'] .shippingFinishChecklist > div,
+[data-theme='dark'] .shippingCurrentSetupCard,
+[data-theme='dark'] .shippingCurrentSetupRate,
+[data-theme='dark'] .shippingScopeChecklist,
+[data-theme='dark'] .shippingScopeChecklistItem span,
+[data-theme='dark'] .shippingChecklistQaRow,
+[data-theme='dark'] .shippingChecklistToggle,
+[data-theme='dark'] .shippingOverviewInsightChip,
+[data-theme='dark'] .shippingOverviewInsights,
+[data-theme='dark'] .shippingCheckoutMockCard,
+[data-theme='dark'] .shippingImpactPreview,
+[data-theme='dark'] .shippingImpactGrid,
+[data-theme='dark'] .shippingImpactCard,
+[data-theme='dark'] .shippingRailPreviewHint,
+[data-theme='dark'] .shippingImpactInlineBlock,
+[data-theme='dark'] .shippingComparisonStrip,
+[data-theme='dark'] .shippingComparisonChip,
+[data-theme='dark'] .shippingAdvancedPanel,
+[data-theme='dark'] .shippingCollapsedRatesSummary,
+[data-theme='dark'] .shippingRateTable,
+[data-theme='dark'] .shippingRateTableHeader,
+[data-theme='dark'] .shippingRateTableRow,
+[data-theme='dark'] .shippingRateTableRowMeta,
+[data-theme='dark'] .shippingCurrencyPill,
+[data-theme='dark'] .shippingCurrencyPillTrigger,
+[data-theme='dark'] .shippingCurrencyPopoverPanel,
+[data-theme='dark'] .shippingCurrencyRecentChip,
+[data-theme='dark'] .shippingCurrencyPillClear,
+[data-theme='dark'] .shippingCollapsedRatesList span,
+[data-theme='dark'] .shippingVariantEmpty {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .shippingStrategyOption:hover:not(:disabled),
+[data-theme='dark'] .shippingStrategyOptionActive,
+[data-theme='dark'] .shippingRadioCard:hover,
+[data-theme='dark'] .shippingRadioCardActive,
+[data-theme='dark'] .shippingRailTabButton:hover,
+[data-theme='dark'] .shippingRailTabButtonActive,
+[data-theme='dark'] .shippingSetupTabButton:hover,
+[data-theme='dark'] .shippingSetupTabButtonActive,
+[data-theme='dark'] .shippingGuidedStepActive,
+[data-theme='dark'] .shippingGuidedStepComplete,
+[data-theme='dark'] .shippingGuidedStep:not(:disabled):hover,
+[data-theme='dark'] .shippingChecklistToggle:hover,
+[data-theme='dark'] .shippingOverviewInsightChipAction:hover,
+[data-theme='dark'] .shippingComparisonChip:hover,
+[data-theme='dark'] .shippingComparisonChipActive,
+[data-theme='dark'] .shippingRateTableRow:hover,
+[data-theme='dark'] .shippingCurrencyRecentChip:hover,
+[data-theme='dark'] .shippingCurrencyPillClear:hover,
+[data-theme='dark'] .shippingCurrencyPillTrigger:hover {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] .shippingStrategySidebar legend,
+[data-theme='dark'] .shippingStrategyGroupLabel,
+[data-theme='dark'] .shippingStudioEyebrow,
+[data-theme='dark'] .shippingStrategyHelp small,
+[data-theme='dark'] .shippingSmartSectionHeader small,
+[data-theme='dark'] .shippingRadioCard small,
+[data-theme='dark'] .shippingPickerHint,
+[data-theme='dark'] .shippingFormSectionHeader small,
+[data-theme='dark'] .shippingModeLabel,
+[data-theme='dark'] .shippingRateTableHeader span,
+[data-theme='dark'] .shippingFieldMicroNote,
+[data-theme='dark'] .shippingGuidedFooterHint,
+[data-theme='dark'] .shippingGuidedStep small,
+[data-theme='dark'] .shippingGuidedStep em,
+[data-theme='dark'] .shippingGuidedStepBlocked,
+[data-theme='dark'] .shippingAdvancedInlineHeader span,
+[data-theme='dark'] .shippingDetailsHero small,
+[data-theme='dark'] .shippingFinishChecklist small,
+[data-theme='dark'] .shippingAdvancedHeaderHint,
+[data-theme='dark'] .shippingUndoHint,
+[data-theme='dark'] .shippingShortcutHint,
+[data-theme='dark'] .shippingSuggestedSetupPanel small,
+[data-theme='dark'] .shippingSetupOverviewMeta,
+[data-theme='dark'] .shippingCurrentSetupSummary,
+[data-theme='dark'] .shippingCurrentSetupNote,
+[data-theme='dark'] .shippingCurrentSetupMeta,
+[data-theme='dark'] .shippingCheckoutMockPrice,
+[data-theme='dark'] .shippingCheckoutMockLines span,
+[data-theme='dark'] .shippingOverviewInsightChip,
+[data-theme='dark'] .shippingImpactInlineBlock span,
+[data-theme='dark'] .shippingImpactCard span,
+[data-theme='dark'] .shippingChecklistSummaryRow,
+[data-theme='dark'] .shippingChecklistFocusItem,
+[data-theme='dark'] .shippingChecklistFocusItem span,
+[data-theme='dark'] .shippingChecklistMoreHint,
+[data-theme='dark'] .shippingChecklistQaMeta,
+[data-theme='dark'] .shippingCurrencyPillLabel,
+[data-theme='dark'] .shippingCurrencyRecentRow > span,
+[data-theme='dark'] .shippingCollapsedRatesSummary strong {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .shippingStrategyHelp span,
+[data-theme='dark'] .shippingStrategyOptionCopy strong,
+[data-theme='dark'] .shippingSmartSectionHeader span,
+[data-theme='dark'] .shippingAdvancedInlineHeader strong,
+[data-theme='dark'] .shippingSuggestedSetupPanel strong,
+[data-theme='dark'] .shippingPickerField > span,
+[data-theme='dark'] .shippingCountryPickerField > span,
+[data-theme='dark'] .shippingFormSectionHeader span,
+[data-theme='dark'] .shippingRadioCard strong,
+[data-theme='dark'] .shippingSetupOverviewTitle,
+[data-theme='dark'] .shippingGuidedStep strong,
+[data-theme='dark'] .shippingGuidedStepIndex,
+[data-theme='dark'] .shippingGuidedStepActive .shippingGuidedStepIndex,
+[data-theme='dark'] .shippingGuidedStepComplete .shippingGuidedStepIndex,
+[data-theme='dark'] .shippingGuidedReviewHero strong,
+[data-theme='dark'] .shippingDetailsHero strong,
+[data-theme='dark'] .shippingFinishChecklist strong,
+[data-theme='dark'] .shippingFinishChecklist span,
+[data-theme='dark'] .shippingCurrentSetupRate,
+[data-theme='dark'] .shippingCurrentSetupRate strong,
+[data-theme='dark'] .shippingCheckoutMockTitle,
+[data-theme='dark'] .shippingImpactInlineBlock strong,
+[data-theme='dark'] .shippingImpactCard strong,
+[data-theme='dark'] .shippingChecklistSummaryRow strong,
+[data-theme='dark'] .shippingChecklistFocusItem strong,
+[data-theme='dark'] .shippingChecklistReadyState,
+[data-theme='dark'] .shippingScopeChecklistItemDone,
+[data-theme='dark'] .shippingScopeChecklistItemDone span,
+[data-theme='dark'] .shippingConfigSummaryChip,
+[data-theme='dark'] .shippingAdvancedCount,
+[data-theme='dark'] .shippingLastFixChip,
+[data-theme='dark'] .shippingComparisonChip strong {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .shippingGuidedStepComplete,
+[data-theme='dark'] .shippingGuidedStepComplete em,
+[data-theme='dark'] .shippingScopeChecklistItemDone span,
+[data-theme='dark'] .shippingChecklistReadyState {
+  background: rgba(34, 197, 94, 0.14) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] .shippingGuidedStepBlocked,
+[data-theme='dark'] .shippingGuidedStepBlocked em {
+  background: rgba(51, 65, 85, 0.66) !important;
+  border-color: rgba(100, 116, 139, 0.3) !important;
+  color: rgba(148, 163, 184, 0.86) !important;
+}
+
+[data-theme='dark'] .shippingGuidedStepActive .shippingGuidedStepIndex,
+[data-theme='dark'] .shippingStrategyOptionActive .shippingStrategyRadio,
+[data-theme='dark'] .shippingRadioCardActive .shippingStrategyRadio,
+[data-theme='dark'] .shippingCheckoutMockRadio {
+  background: linear-gradient(135deg, #06b6d4, #0f766e) !important;
+  border-color: #67e8f9 !important;
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .shippingStrategyRadio,
+[data-theme='dark'] .shippingCheckoutMockRadio {
+  background: rgba(30, 41, 59, 0.86) !important;
+  border-color: rgba(6, 182, 212, 0.54) !important;
+  box-shadow:
+    inset 0 0 0 3px var(--surface-slate-solid),
+    0 0 0 1px rgba(6, 182, 212, 0.14) !important;
+}
+
+[data-theme='dark'] .shippingStrategyOptionActive .shippingStrategyRadio,
+[data-theme='dark'] .shippingRadioCardActive .shippingStrategyRadio,
+[data-theme='dark'] .shippingCheckoutMockRadio {
+  background: #06b6d4 !important;
+  border-color: #67e8f9 !important;
+  box-shadow:
+    inset 0 0 0 3px rgba(30, 41, 59, 0.94),
+    0 0 18px rgba(6, 182, 212, 0.36) !important;
+}
+
+[data-theme='dark'] .shippingSetupProgressTrack {
+  background: var(--surface-slate-panel) !important;
+  box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .shippingGuidedReviewHero span:last-child {
+  color: rgba(187, 247, 208, 0.86) !important;
+}
+
+[data-theme='dark'] .shippingRailBlockerBanner,
+[data-theme='dark'] .shippingOverviewInsightChipAction,
+[data-theme='dark'] .shippingInlineBlocker {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(248, 113, 113, 0.36) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme='dark'] .shippingInlineNote {
+  background: rgba(6, 182, 212, 0.12) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  color: #99f6e4 !important;
 }

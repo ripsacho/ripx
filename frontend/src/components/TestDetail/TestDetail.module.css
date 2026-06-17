@@ -262,7 +262,7 @@
     linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.78)) padding-box,
     linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.12)) border-box;
   box-shadow:
-    0 2px 8px rgba(15, 23, 42, 0.035),
+    0 2px 8px rgba(30, 41, 59, 0.035),
     0 0 0 1px rgba(255, 255, 255, 0.54) inset;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -513,7 +513,7 @@
   border: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 16px;
   box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.04),
+    0 10px 24px rgba(30, 41, 59, 0.04),
     0 0 0 1px rgba(255, 255, 255, 0.62) inset;
   position: relative;
   z-index: 130;
@@ -752,7 +752,7 @@
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow:
-    0 24px 70px rgba(15, 23, 42, 0.18),
+    0 24px 70px rgba(30, 41, 59, 0.18),
     0 0 0 1px rgba(255, 255, 255, 0.72) inset;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1083,6 +1083,18 @@
   border: 1px solid rgba(6, 182, 212, 0.28);
 }
 
+[data-theme='dark'] .badgePersonalized {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .badgeRollout {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
 .detailSecondaryBtnPrimary {
   background: rgba(6, 182, 212, 0.08);
   border-color: rgba(6, 182, 212, 0.35);
@@ -1231,6 +1243,12 @@
   background: rgba(34, 197, 94, 0.2);
   color: var(--status-success, #16a34a);
   margin-left: 0.25rem;
+}
+
+[data-theme='dark'] .stopInlineCardBadge {
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(74, 222, 128, 0.34);
+  color: #86efac;
 }
 
 /* Rollout inline config */
@@ -2007,7 +2025,7 @@
 
 /* Dark mode: Stop & Rollout modals */
 [data-theme='dark'] .stopModalCard {
-  background: linear-gradient(165deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.95) 100%);
+  background: linear-gradient(165deg, rgba(30, 41, 59, 0.98) 0%, var(--surface-slate-solid) 100%);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
@@ -2026,7 +2044,7 @@
 }
 
 [data-theme='dark'] .detailHero {
-  background: #0f172a;
+  background: var(--bg-secondary);
   border-color: rgba(6, 182, 212, 0.22);
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.4),
@@ -2049,7 +2067,7 @@
 
 [data-theme='dark'] .detailActionsMenuTrigger {
   background:
-    linear-gradient(rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.98)) padding-box,
+    linear-gradient(rgba(30, 41, 59, 0.98), rgba(30, 41, 59, 0.98)) padding-box,
     linear-gradient(135deg, rgba(6, 182, 212, 0.34), rgba(139, 92, 246, 0.26)) border-box;
   border-color: rgba(6, 182, 212, 0.24);
   box-shadow:
@@ -2063,7 +2081,7 @@
 }
 
 [data-theme='dark'] .detailActionsMenuPanel {
-  background: rgba(15, 23, 42, 0.98);
+  background: rgba(30, 41, 59, 0.98);
   border-color: rgba(6, 182, 212, 0.26);
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.42),
@@ -2125,7 +2143,7 @@
 
 [data-theme='dark'] .detailHeroTopBadges {
   background:
-    linear-gradient(rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.82)) padding-box,
+    linear-gradient(var(--surface-slate-soft), var(--surface-slate-soft)) padding-box,
     linear-gradient(135deg, rgba(6, 182, 212, 0.28), rgba(139, 92, 246, 0.18)) border-box;
   border-color: rgba(6, 182, 212, 0.22);
   box-shadow:
@@ -2148,7 +2166,7 @@
 }
 
 [data-theme='dark'] .detailHeroActionsStrip {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.74), rgba(30, 41, 59, 0.48));
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.74), rgba(30, 41, 59, 0.48));
   border-color: rgba(6, 182, 212, 0.2);
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.18),
@@ -2192,24 +2210,91 @@
   background: rgba(6, 182, 212, 0.35);
 }
 
+[data-theme='dark'] .detailPage :global(.wizard-section),
+[data-theme='dark'] .detailPage :global(.Polaris-Card),
+[data-theme='dark'] .detailPage :global(.Polaris-LegacyCard),
+[data-theme='dark'] .detailPage :global(.Polaris-ShadowBevel),
+[data-theme='dark'] .detailPage :global([class*='configWrapper']),
+[data-theme='dark'] .detailPage :global([class*='targetingCard']),
+[data-theme='dark'] .detailPage :global([class*='goalWorkspaceCard']),
+[data-theme='dark'] .detailPage :global([class*='goalWorkspaceSidebar']),
+[data-theme='dark'] .detailPage :global([class*='variantCard']),
+[data-theme='dark'] .detailPage :global([class*='reviewVariantCard']),
+[data-theme='dark'] .detailPage :global([class*='reviewCheckoutPreview']) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-ShadowBevel) {
+  --pc-shadow-bevel-content-xs: none !important;
+  background: var(--surface-glass) !important;
+  border: 1px solid rgba(6, 182, 212, 0.2) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-Box) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-bg-fill-transparent: transparent !important;
+  background-color: transparent !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-Card),
+[data-theme='dark'] .detailPage :global(.Polaris-LegacyCard) {
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-BlockStack),
+[data-theme='dark'] .detailPage :global(.Polaris-InlineStack) {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-Banner) {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-TextField__Input),
+[data-theme='dark'] .detailPage :global(.Polaris-Select__Input) {
+  background-color: rgba(30, 41, 59, 0.78);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-TextField__Input)::placeholder {
+  color: rgba(148, 163, 184, 0.76);
+}
+
 [data-theme='dark'] .detailSecondaryBtn {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
 }
 
 [data-theme='dark'] .detailSecondaryBtn:hover {
   background: rgba(6, 182, 212, 0.12);
   border-color: rgba(6, 182, 212, 0.4);
+  color: #a5f3fc;
 }
 
 [data-theme='dark'] .detailSecondaryBtnDestructive {
   background: rgba(220, 38, 38, 0.08);
   border-color: rgba(220, 38, 38, 0.35);
+  color: #fca5a5;
 }
 
 [data-theme='dark'] .detailSecondaryBtnDestructive:hover {
   background: rgba(220, 38, 38, 0.15);
   border-color: rgba(220, 38, 38, 0.45);
+  color: #fecaca;
 }
 
 /* Test & variant IDs modal — copy-on-click */
@@ -2564,6 +2649,58 @@
   margin: 0;
 }
 
+.shippingDiagnosticsBlockingOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.56);
+  backdrop-filter: blur(2px);
+  pointer-events: all;
+}
+
+.shippingDiagnosticsBlockingCard {
+  min-width: 280px;
+  max-width: min(460px, calc(100vw - 2rem));
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--text-primary);
+  box-shadow: 0 18px 44px rgba(30, 41, 59, 0.25);
+  text-align: center;
+}
+
+.shippingDiagnosticsBlockingCard strong {
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.shippingDiagnosticsBlockingCard span {
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.shippingDiagnosticsBlockingSpinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid rgba(14, 116, 144, 0.22);
+  border-top-color: #0891b2;
+  animation: shippingDiagnosticsSpinner 0.8s linear infinite;
+}
+
+@keyframes shippingDiagnosticsSpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .detailPostWizardPanels {
   display: flex;
   flex-direction: column;
@@ -2604,7 +2741,7 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 12px 28px rgba(30, 41, 59, 0.05);
   overflow: hidden;
 }
 
@@ -2623,7 +2760,7 @@
 }
 
 .detailInsightToggle:hover {
-  background: rgba(15, 23, 42, 0.025);
+  background: rgba(30, 41, 59, 0.025);
 }
 
 .detailInsightToggle:focus-visible {
@@ -2641,7 +2778,7 @@
 .detailInsightToggleTitle {
   font-size: 0.9rem;
   font-weight: 700;
-  color: var(--p-color-text, #0f172a);
+  color: var(--p-color-text, var(--bg-secondary));
 }
 
 .detailInsightToggleSummary {
@@ -2667,6 +2804,41 @@
   padding: 0 1rem 1rem;
 }
 
+.shippingCallbackRateList {
+  display: grid;
+  gap: 8px;
+}
+
+.shippingCallbackRateCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.shippingCallbackRateCard > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shippingCallbackRateCard strong {
+  color: var(--p-color-text, var(--bg-secondary));
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.shippingCallbackRateCard span {
+  color: var(--p-color-text-subdued, #64748b);
+  font-size: 0.74rem;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .shippingVariantActionRow {
   display: flex;
   align-items: center;
@@ -2681,7 +2853,7 @@
 .shippingVariantActionLabel {
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--p-color-text, #0f172a);
+  color: var(--p-color-text, var(--bg-secondary));
 }
 
 .shippingVariantActionButtons {
@@ -2747,7 +2919,7 @@
 .checkoutExperienceCardTitle {
   font-size: 0.84rem;
   font-weight: 700;
-  color: var(--p-color-text, #0f172a);
+  color: var(--p-color-text, var(--bg-secondary));
 }
 
 .checkoutReadinessMetaRow {
@@ -2761,11 +2933,11 @@
   align-items: center;
   padding: 0.25rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  background: rgba(30, 41, 59, 0.04);
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--p-color-text, #0f172a);
+  color: var(--p-color-text, var(--bg-secondary));
 }
 
 .checkoutReadinessCapabilities {
@@ -2794,7 +2966,7 @@
 .checkoutReadinessCapabilityLevel {
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--p-color-text, #0f172a);
+  color: var(--p-color-text, var(--bg-secondary));
   text-transform: capitalize;
 }
 
@@ -2821,4 +2993,166 @@
   background: rgba(245, 158, 11, 0.1);
   border-color: rgba(245, 158, 11, 0.22);
   color: #92400e;
+}
+
+[data-theme='dark'] .shippingDiagnosticsBlockingCard {
+  background: rgba(30, 41, 59, 0.94);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: rgba(241, 245, 249, 0.96);
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.42);
+}
+
+[data-theme='dark'] .shippingDiagnosticsBlockingCard span {
+  color: rgba(203, 213, 225, 0.8);
+}
+
+[data-theme='dark'] .detailPostWizardPanels {
+  border-top-color: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .detailPostWizardHeaderIcon,
+[data-theme='dark'] .detailInsightPanel,
+[data-theme='dark'] .shippingCallbackRateCard,
+[data-theme='dark'] .shippingVariantActionRow,
+[data-theme='dark'] .checkoutExperienceCard,
+[data-theme='dark'] .checkoutReadinessCapability {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .detailPostWizardHeaderIcon {
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .detailInsightToggle:hover {
+  background: rgba(6, 182, 212, 0.1);
+}
+
+[data-theme='dark'] .detailInsightToggleTitle,
+[data-theme='dark'] .shippingCallbackRateCard strong,
+[data-theme='dark'] .shippingVariantActionLabel,
+[data-theme='dark'] .checkoutExperienceCardTitle,
+[data-theme='dark'] .checkoutReadinessCapabilityLevel {
+  color: rgba(241, 245, 249, 0.96);
+}
+
+[data-theme='dark'] .detailInsightToggleSummary,
+[data-theme='dark'] .detailInsightChevron,
+[data-theme='dark'] .shippingCallbackRateCard span,
+[data-theme='dark'] .checkoutReadinessCapabilityLabel {
+  color: rgba(203, 213, 225, 0.78);
+}
+
+[data-theme='dark'] .checkoutReadinessPill {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .checkoutReadinessCheckError {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .checkoutReadinessCheckWarning {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-ShadowBevel > .Polaris-Box),
+[data-theme='dark'] .detailPage :global(.Polaris-Card .Polaris-Box),
+[data-theme='dark'] .detailPage :global(.Polaris-LegacyCard .Polaris-Box),
+[data-theme='dark'] .detailPage :global(.Polaris-Box:has(.Polaris-TextField)),
+[data-theme='dark'] .detailPage :global(.Polaris-Box:has(.Polaris-Select)) {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .detailPage :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] .detailPage :global(.Polaris-Select__Backdrop) {
+  background: var(--surface-slate-soft) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+}
+
+[data-theme='dark'] .launchAdvancedOptions,
+[data-theme='dark'] .launchChecklist,
+[data-theme='dark'] .detailPage :global([class*='priceSummaryCard']),
+[data-theme='dark'] .detailPage :global([class*='priceSectionBlock']),
+[data-theme='dark'] .detailPage :global([class*='priceOptionCard']),
+[data-theme='dark'] .detailPage :global([class*='priceDrawerPanel']),
+[data-theme='dark'] .detailPage :global([class*='checkoutStudio']),
+[data-theme='dark'] .detailPage :global([class*='checkoutSection']),
+[data-theme='dark'] .detailPage :global([class*='customRule']),
+[data-theme='dark'] .detailPage :global([class*='advancedStudio']),
+[data-theme='dark'] .detailPage :global([class*='shippingBrowser']),
+[data-theme='dark'] .detailPage :global([class*='trafficSummary']) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    rgba(30, 41, 59, 0.66);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .detailStatusRunning {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(6, 182, 212, 0.12));
+  border-color: rgba(74, 222, 128, 0.32);
+  color: #86efac;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .detailSecondaryBtnPrimary,
+[data-theme='dark'] .stopInlineCard,
+[data-theme='dark'] .rolloutInlinePreset,
+[data-theme='dark'] .rolloutInlineDuration {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .detailSecondaryBtnPrimary:hover,
+[data-theme='dark'] .stopInlineCard:hover:not(:disabled),
+[data-theme='dark'] .rolloutInlinePreset:hover,
+[data-theme='dark'] .rolloutInlinePresetActive,
+[data-theme='dark'] .rolloutInlineDuration:hover,
+[data-theme='dark'] .rolloutInlineDurationActive {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .stopInlineCardPersonalize {
+  border-color: rgba(74, 222, 128, 0.32);
+}
+
+[data-theme='dark'] .stopInlineCardStop {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.34);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .stopInlineCardStop:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(248, 113, 113, 0.46);
+}
+
+[data-theme='dark'] .stopInlineCancel:hover,
+[data-theme='dark'] .rolloutInlineCancel:hover,
+[data-theme='dark'] .rolloutInlineBtnCancel:hover {
+  background: rgba(6, 182, 212, 0.12);
+  color: #67e8f9;
 }

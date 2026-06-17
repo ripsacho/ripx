@@ -22,7 +22,7 @@ Professional slide deck and speaker script for presenting RipX.
 npm install -g @marp-team/marp-cli
 
 # Export to HTML (interactive)
-marp docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html
+marp docs/archive/presentation/PRESENTATION.md -o docs/archive/presentation/PRESENTATION.html
 
 # Export presentation to PDF
 npm run presentation:pdf
@@ -31,7 +31,7 @@ npm run presentation:pdf
 npm run speech:pdf
 
 # Live preview (watch mode)
-marp docs/presentation/PRESENTATION.md -s
+marp docs/archive/presentation/PRESENTATION.md -s
 ```
 
 ### Option 2: VS Code / Cursor

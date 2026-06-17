@@ -30,8 +30,19 @@
     0 2px 16px rgba(0, 0, 0, 0.03),
     0 1px 2px rgba(6, 182, 212, 0.04);
   z-index: 1000;
-  transition: left var(--top-bar-time-200) ease, box-shadow var(--top-bar-time-200) ease, border-color var(--top-bar-time-200) ease;
-  font-family: var(--topbar-font, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  transition:
+    left var(--top-bar-time-200) ease,
+    box-shadow var(--top-bar-time-200) ease,
+    border-color var(--top-bar-time-200) ease;
+  font-family: var(
+    --topbar-font,
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif
+  );
   letter-spacing: -0.02em;
 }
 
@@ -67,14 +78,11 @@
 }
 
 [data-theme='dark'] .topBar {
-  background: linear-gradient(
-    165deg,
-    rgba(18, 18, 18, 0.98) 0%,
-    rgba(15, 15, 15, 0.96) 50%,
-    rgba(6, 182, 212, 0.04) 100%
-  );
-  border-bottom-color: rgba(6, 182, 212, 0.18);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3) inset, 0 2px 12px rgba(0, 0, 0, 0.2);
+  background: var(--futuristic-block-bg);
+  border-bottom-color: var(--border-primary);
+  box-shadow:
+    0 1px 0 rgba(30, 41, 59, 0.4) inset,
+    0 2px 12px var(--shadow-sm);
 }
 
 [data-theme='dark'] .topBar::before {
@@ -102,7 +110,11 @@
   background: rgba(255, 255, 255, 0.8);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background var(--top-bar-time-200) ease, border-color var(--top-bar-time-200) ease, color var(--top-bar-time-200) ease, transform var(--top-bar-time-150) ease;
+  transition:
+    background var(--top-bar-time-200) ease,
+    border-color var(--top-bar-time-200) ease,
+    color var(--top-bar-time-200) ease,
+    transform var(--top-bar-time-150) ease;
 }
 
 .mobileToggle:hover {
@@ -113,7 +125,9 @@
 
 .mobileToggle:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px var(--futuristic-cyan);
 }
 
 /* Breadcrumb: parent = subdued link, current = emphasized title */
@@ -153,7 +167,9 @@
   cursor: pointer;
   text-decoration: none;
   border-radius: 8px;
-  transition: background var(--top-bar-time-200) ease, color var(--top-bar-time-200) ease;
+  transition:
+    background var(--top-bar-time-200) ease,
+    color var(--top-bar-time-200) ease;
   letter-spacing: -0.01em;
 }
 
@@ -200,7 +216,7 @@
   margin-right: 0.25rem;
 }
 
-/* Divider between primary actions (store + New Test) and action group (notifications + user) */
+/* Divider between store switcher and utility icons */
 .topBarRightDivider {
   width: 1px;
   height: 24px;
@@ -212,81 +228,6 @@
 
 [data-theme='dark'] .topBarRightDivider {
   background: rgba(6, 182, 212, 0.18);
-}
-
-/* Primary CTA: New Test (Title Case, prominent) */
-.newTestBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 40px;
-  padding: 0 1rem;
-  border-radius: 12px;
-  border: 1px solid rgba(6, 182, 212, 0.28);
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.05));
-  color: var(--futuristic-cyan);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  cursor: pointer;
-  transition: background var(--top-bar-time-200) ease, border-color var(--top-bar-time-200) ease, color var(--top-bar-time-200) ease, transform var(--top-bar-time-150) ease, box-shadow var(--top-bar-time-200) ease;
-  box-shadow: 0 1px 3px rgba(6, 182, 212, 0.08);
-}
-
-.newTestBtn:hover {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.08));
-  border-color: rgba(6, 182, 212, 0.4);
-  color: var(--futuristic-cyan);
-  transform: translateY(-0.5px);
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.12);
-}
-
-.newTestBtn:active {
-  transform: translateY(0);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .newTestBtn:hover,
-  .newTestBtn:active {
-    transform: none;
-  }
-}
-
-.newTestBtn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
-}
-
-.newTestBtn :global(svg) {
-  width: 18px;
-  height: 18px;
-}
-
-.newTestBtnLabel {
-  white-space: nowrap;
-  letter-spacing: -0.01em;
-}
-
-@media (max-width: 768px) {
-  .newTestBtnLabel {
-    display: none;
-  }
-  .newTestBtn {
-    padding: 0 0.5rem;
-    min-width: 40px;
-    height: 40px;
-    justify-content: center;
-  }
-}
-
-[data-theme='dark'] .newTestBtn {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.08));
-  border-color: rgba(6, 182, 212, 0.3);
-}
-
-[data-theme='dark'] .newTestBtn:hover {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.12));
-  border-color: rgba(6, 182, 212, 0.45);
 }
 
 /* Open in new tab button - spacing before store switcher */
@@ -309,9 +250,9 @@
 }
 
 [data-theme='dark'] .actionGroup {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(6, 182, 212, 0.16);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  background: var(--surface-muted);
+  border-color: var(--border-primary);
+  box-shadow: 0 1px 2px var(--shadow-sm);
 }
 
 .actionGroupDivider {
@@ -340,13 +281,39 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background var(--top-bar-time-200) ease, color var(--top-bar-time-200) ease, transform var(--top-bar-time-150) ease, box-shadow var(--top-bar-time-200) ease;
+  transition:
+    background var(--top-bar-time-200) ease,
+    color var(--top-bar-time-200) ease,
+    transform var(--top-bar-time-150) ease,
+    box-shadow var(--top-bar-time-200) ease;
   position: relative;
 }
 
 .iconBtn:hover {
   background: rgba(6, 182, 212, 0.1);
   color: var(--futuristic-cyan);
+}
+
+.newTestIconBtn {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-secondary);
+}
+
+.newTestIconBtn:hover {
+  border: 0 !important;
+  background: rgba(6, 182, 212, 0.1) !important;
+  color: var(--futuristic-cyan);
+  box-shadow: none !important;
+}
+
+.newTestIconBtn:focus,
+.newTestIconBtn:active {
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .iconBtn:active {
@@ -363,6 +330,11 @@
 .helpPopover {
   padding: 1rem 1.25rem;
   min-width: 180px;
+}
+
+[data-theme='dark'] .helpPopover {
+  background: var(--surface-slate-solid);
+  color: rgba(226, 232, 240, 0.96);
 }
 
 .helpPopover h2 {
@@ -387,6 +359,11 @@
 
 .helpPopoverLink:hover {
   background: rgba(6, 182, 212, 0.1);
+}
+
+[data-theme='dark'] .helpPopoverLink:hover {
+  background: rgba(6, 182, 212, 0.16);
+  color: #67e8f9;
 }
 
 .helpPopoverContextItem {
@@ -421,7 +398,9 @@
 
 .iconBtn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px var(--futuristic-cyan);
 }
 
 /* User menu trigger: pill with icon + label + chevron */
@@ -473,7 +452,9 @@
   height: 16px;
   margin-left: 0.125rem;
   opacity: 0.7;
-  transition: transform var(--top-bar-time-200) ease, opacity var(--top-bar-time-200) ease;
+  transition:
+    transform var(--top-bar-time-200) ease,
+    opacity var(--top-bar-time-200) ease;
 }
 
 .userMenuTriggerChevron svg {
@@ -536,12 +517,45 @@
   height: 20px;
 }
 
+.themeToggleBtn {
+  color: #475569;
+}
+
+.themeToggleBtn svg {
+  transition:
+    color var(--top-bar-time-200) ease,
+    transform var(--top-bar-time-200) ease;
+}
+
+.themeToggleBtn:hover svg {
+  transform: rotate(-12deg) scale(1.06);
+}
+
+.themeToggleBtn:not(.themeToggleBtnDark):hover {
+  color: #4f46e5;
+}
+
+.themeToggleBtnDark {
+  color: #facc15;
+}
+
+.themeToggleBtnDark:hover {
+  background: rgba(250, 204, 21, 0.14);
+  color: #fde68a;
+}
+
 [data-theme='dark'] .iconBtn:hover {
   background: rgba(6, 182, 212, 0.12);
 }
 
+[data-theme='dark'] .themeToggleBtnDark:hover {
+  background: rgba(250, 204, 21, 0.14);
+}
+
 [data-theme='dark'] .iconBtn:focus-visible {
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px var(--futuristic-cyan);
 }
 
 [data-theme='dark'] .iconBtn.active {
@@ -565,13 +579,14 @@
   box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.3);
   font-size: 0.65rem;
   font-weight: 700;
-  color: var(--bg-secondary);
+  color: var(--text-inverse);
   line-height: 1;
   animation: topbarBadgePulse var(--top-bar-time-2000) ease-in-out infinite;
 }
 
 @keyframes topbarBadgePulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -602,7 +617,9 @@
   background: var(--bg-secondary);
   border: 1px solid rgba(6, 182, 212, 0.18);
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  box-shadow:
+    0 8px 32px rgba(6, 182, 212, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   overflow: hidden;
 }
 
@@ -656,7 +673,9 @@
 [data-theme='dark'] .notificationPopover {
   background: var(--bg-secondary);
   border-color: rgba(6, 182, 212, 0.22);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .notificationEmptyState {
@@ -683,12 +702,22 @@
   opacity: 0.7;
 }
 
+[data-theme='dark'] .notificationEmptyIcon {
+  background: rgba(6, 182, 212, 0.16);
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  color: #67e8f9;
+  opacity: 1;
+}
+
 .notificationItem {
   padding: 0.875rem 1rem;
   border-radius: 10px;
   border: 1px solid rgba(6, 182, 212, 0.1);
   background: rgba(255, 255, 255, 0.5);
-  transition: background var(--top-bar-time-200) ease, border-color var(--top-bar-time-200) ease, box-shadow var(--top-bar-time-200) ease;
+  transition:
+    background var(--top-bar-time-200) ease,
+    border-color var(--top-bar-time-200) ease,
+    box-shadow var(--top-bar-time-200) ease;
 }
 
 .notificationItem:hover {
@@ -712,6 +741,13 @@
 
 [data-theme='dark'] .notificationItem:hover {
   background: rgba(6, 182, 212, 0.08);
+}
+
+[data-theme='dark'] .notificationItemUnread,
+[data-theme='dark'] .notificationItemUnread:hover {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.28);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.06) inset;
 }
 
 .notificationPopoverFooter {
@@ -741,7 +777,15 @@
     0 12px 40px rgba(0, 0, 0, 0.06),
     0 0 0 1px rgba(255, 255, 255, 0.6) inset;
   overflow: hidden;
-  font-family: var(--topbar-font, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-family: var(
+    --topbar-font,
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif
+  );
   letter-spacing: -0.01em;
 }
 
@@ -804,6 +848,10 @@
   padding: 0 0.75rem 0.75rem;
   margin: 0 0.35rem 0.5rem;
   border-bottom: 1px solid rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .userMenuConnection {
+  border-bottom-color: rgba(6, 182, 212, 0.18);
 }
 
 .userMenuConnectionLabel {
@@ -902,6 +950,11 @@
   color: var(--text-secondary);
 }
 
+[data-theme='dark'] .userMenuNotConnectedLabel,
+[data-theme='dark'] .userMenuNotConnectedIcon {
+  color: rgba(203, 213, 225, 0.78);
+}
+
 .userMenuNotConnectedIcon {
   display: inline-flex;
   align-items: center;
@@ -927,7 +980,9 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: box-shadow var(--top-bar-time-200) ease, transform var(--top-bar-time-100) ease;
+  transition:
+    box-shadow var(--top-bar-time-200) ease,
+    transform var(--top-bar-time-100) ease;
   box-shadow: 0 1px 2px rgba(6, 182, 212, 0.2);
 }
 
@@ -954,7 +1009,9 @@
   letter-spacing: -0.01em;
   color: var(--text-primary);
   cursor: pointer;
-  transition: background var(--top-bar-time-150) ease, color var(--top-bar-time-150) ease;
+  transition:
+    background var(--top-bar-time-150) ease,
+    color var(--top-bar-time-150) ease;
   background: transparent;
 }
 

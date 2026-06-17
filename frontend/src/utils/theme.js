@@ -5,7 +5,29 @@
  * and persistence
  */
 
-import { STORAGE_KEYS, INTERVALS } from '../constants';
+import { STORAGE_KEYS } from '../constants';
+
+export const THEME_CHANGE_EVENT = 'ripx:theme-change';
+
+const VALID_THEME_MODES = new Set(['light', 'dark', 'auto', 'custom']);
+
+const readThemePreferences = () => {
+  const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
+  return saved ? JSON.parse(saved) : {};
+};
+
+const emitThemeChange = ({ theme, resolvedTheme, customTimes = null }) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(THEME_CHANGE_EVENT, {
+      detail: {
+        theme,
+        resolvedTheme,
+        customTimes,
+      },
+    })
+  );
+};
 
 /**
  * Get current time-based theme (for auto mode)
@@ -45,6 +67,35 @@ export const getTimeBasedTheme = (customTimes = null) => {
   }
 };
 
+export const getResolvedTheme = () => {
+  if (typeof document !== 'undefined') {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    if (currentTheme === 'dark' || currentTheme === 'light') {
+      return currentTheme;
+    }
+  }
+
+  try {
+    const preferences = readThemePreferences();
+    const theme = VALID_THEME_MODES.has(preferences.theme) ? preferences.theme : 'light';
+    if (theme === 'auto') return getTimeBasedTheme();
+    if (
+      theme === 'custom' &&
+      preferences.customThemeStart !== undefined &&
+      preferences.customThemeEnd !== undefined
+    ) {
+      return getTimeBasedTheme({
+        start: preferences.customThemeStart,
+        end: preferences.customThemeEnd,
+      });
+    }
+    return theme === 'dark' ? 'dark' : 'light';
+  } catch (err) {
+    console.error('Error resolving theme preference:', err);
+    return 'light';
+  }
+};
+
 /**
  * Apply theme to document
  *
@@ -52,14 +103,18 @@ export const getTimeBasedTheme = (customTimes = null) => {
  * @param {Object} customTimes - Optional custom times for 'custom' mode { start: number, end: number }
  */
 export const applyTheme = (theme, customTimes = null) => {
+  if (typeof document === 'undefined') return 'light';
   const root = document.documentElement;
+  let resolvedTheme = theme === 'dark' ? 'dark' : 'light';
 
   if (theme === 'auto') {
     const timeBasedTheme = getTimeBasedTheme();
+    resolvedTheme = timeBasedTheme;
     root.setAttribute('data-theme', timeBasedTheme);
     root.setAttribute('data-theme-mode', 'auto');
   } else if (theme === 'custom') {
     const timeBasedTheme = getTimeBasedTheme(customTimes);
+    resolvedTheme = timeBasedTheme;
     root.setAttribute('data-theme', timeBasedTheme);
     root.setAttribute('data-theme-mode', 'custom');
     if (customTimes) {
@@ -72,6 +127,10 @@ export const applyTheme = (theme, customTimes = null) => {
     root.removeAttribute('data-theme-start');
     root.removeAttribute('data-theme-end');
   }
+
+  root.style.colorScheme = resolvedTheme;
+
+  return resolvedTheme;
 };
 
 /**
@@ -79,11 +138,8 @@ export const applyTheme = (theme, customTimes = null) => {
  */
 export const getSavedTheme = () => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
-    if (saved) {
-      const preferences = JSON.parse(saved);
-      return preferences.theme || 'light';
-    }
+    const preferences = readThemePreferences();
+    return VALID_THEME_MODES.has(preferences.theme) ? preferences.theme : 'light';
   } catch (err) {
     console.error('Error loading theme preference:', err);
   }
@@ -95,45 +151,27 @@ export const getSavedTheme = () => {
  */
 export const initializeTheme = () => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
-    const preferences = saved ? JSON.parse(saved) : {};
-    const theme = preferences.theme || 'light';
+    const preferences = readThemePreferences();
+    const theme = VALID_THEME_MODES.has(preferences.theme) ? preferences.theme : 'light';
+    let resolvedTheme;
+    let customTimes = null;
 
     if (
       theme === 'custom' &&
       preferences.customThemeStart !== undefined &&
       preferences.customThemeEnd !== undefined
     ) {
-      applyTheme('custom', {
+      customTimes = {
         start: preferences.customThemeStart,
         end: preferences.customThemeEnd,
-      });
+      };
+      resolvedTheme = applyTheme('custom', customTimes);
     } else {
-      applyTheme(theme);
+      resolvedTheme = applyTheme(theme);
     }
+    emitThemeChange({ theme, resolvedTheme, customTimes });
 
-    // If auto or custom mode, set up interval to check time
-    if (theme === 'auto' || theme === 'custom') {
-      // Check every minute for time-based theme changes
-      setInterval(() => {
-        const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
-        const prefs = saved ? JSON.parse(saved) : {};
-        const currentTheme = prefs.theme || 'light';
-
-        if (currentTheme === 'auto') {
-          applyTheme('auto');
-        } else if (
-          currentTheme === 'custom' &&
-          prefs.customThemeStart !== undefined &&
-          prefs.customThemeEnd !== undefined
-        ) {
-          applyTheme('custom', {
-            start: prefs.customThemeStart,
-            end: prefs.customThemeEnd,
-          });
-        }
-      }, INTERVALS.THEME_CHECK);
-    }
+    // App.jsx owns the interval that re-runs initialization for auto/custom modes.
   } catch (err) {
     console.error('Error initializing theme:', err);
     applyTheme('light');
@@ -148,9 +186,9 @@ export const initializeTheme = () => {
  */
 export const updateTheme = (theme, customTimes = null) => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
-    const preferences = saved ? JSON.parse(saved) : {};
-    preferences.theme = theme;
+    const preferences = readThemePreferences();
+    const nextTheme = VALID_THEME_MODES.has(theme) ? theme : 'light';
+    preferences.theme = nextTheme;
 
     if (customTimes) {
       preferences.customThemeStart = customTimes.start;
@@ -159,12 +197,16 @@ export const updateTheme = (theme, customTimes = null) => {
 
     localStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(preferences));
 
-    if (theme === 'custom' && customTimes) {
-      applyTheme('custom', customTimes);
+    let resolvedTheme;
+    if (nextTheme === 'custom' && customTimes) {
+      resolvedTheme = applyTheme('custom', customTimes);
     } else {
-      applyTheme(theme);
+      resolvedTheme = applyTheme(nextTheme);
     }
+    emitThemeChange({ theme: nextTheme, resolvedTheme, customTimes });
+    return { theme: nextTheme, resolvedTheme, customTimes };
   } catch (err) {
     console.error('Error updating theme:', err);
+    return null;
   }
 };

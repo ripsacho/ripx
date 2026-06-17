@@ -4,9 +4,11 @@
   "description": "RipX - Professional AB Testing Platform for Shopify Stores",
   "main": "backend/src/app.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev": "npm run dev:guard:ports && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:guard:ports": "node scripts/guard-dev-ports.js --mode=dev",
     "dev:backend": "nodemon",
-    "dev:frontend": "cd frontend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev -- --port 3001 --strictPort",
+    "dev:shopify:web": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "install:all": "npm install && npm --prefix frontend install && npm --prefix extensions/ripx-checkout-discount install && npm --prefix extensions/ripx-cart-transform install && npm --prefix extensions/ripx-checkout-ui install && npm --prefix extensions/ripx-payment-customization install && npm --prefix extensions/ripx-delivery-customization install",
     "dev:db": "docker compose -f docker-compose.dev.yml up -d",
     "dev:db:stop": "docker compose -f docker-compose.dev.yml down",
@@ -35,17 +37,25 @@
     "format:check": "prettier --check \"**/*.{js,jsx,json,md}\"",
     "prepare": "husky",
     "validate": "npm run lint && npm run test && npm run build",
-    "shopify:dev": "shopify app dev",
+    "shopify:dev": "npm run shopify:dev:local:safe",
     "shopify:dev:local": "shopify app dev --config shopify.app.local.toml",
     "shopify:dev:production": "shopify app dev --config shopify.app.production.toml",
-    "shopify:dev:local:safe": "npm run shopify:guard:local && npm run shopify:dev:local",
-    "shopify:dev:production:safe": "npm run shopify:guard:production && npm run shopify:dev:production",
-    "shopify:dev:localhost": "shopify app dev --use-localhost",
-    "shopify:deploy:local": "shopify app deploy --config shopify.app.local.toml",
+    "shopify:sanitize:local-toml": "node scripts/sanitize-shopify-local-toml.js",
+    "shopify:print:partner-urls": "node scripts/print-shopify-partner-urls.js",
+    "shopify:dev:local:safe": "npm run shopify:cleanup:workers && npm run shopify:guard:ports && npm run shopify:sanitize:local-toml && npm run shopify:guard:local && npm run shopify:dev:local",
+    "shopify:dev:local:verbose": "npm run shopify:cleanup:workers && npm run shopify:guard:ports && npm run shopify:sanitize:local-toml && npm run shopify:guard:local && shopify app dev --config shopify.app.local.toml --verbose",
+    "shopify:dev:production:safe": "npm run shopify:guard:ports && npm run shopify:guard:production && npm run shopify:dev:production",
+    "shopify:dev:localhost": "shopify app dev --config shopify.app.local.toml --use-localhost",
+    "shopify:dev:local:localhost:safe": "npm run shopify:cleanup:workers && npm run shopify:guard:ports && npm run shopify:sanitize:local-toml && npm run shopify:guard:local && npm run shopify:dev:localhost",
+    "shopify:deploy:local": "node scripts/shopify-deploy-local.js",
     "shopify:deploy:production": "shopify app deploy --config shopify.app.production.toml",
-    "shopify:deploy:local:safe": "npm run shopify:guard:local && npm run shopify:extensions:prepare && npm run shopify:deploy:local",
+    "shopify:deploy:local:safe": "node scripts/shopify-deploy-local.js",
+    "shopify:deploy:local:no-release": "node scripts/shopify-deploy-local.js --no-release",
     "shopify:deploy:production:safe": "npm run shopify:guard:production && npm run shopify:extensions:prepare && npm run shopify:deploy:production",
-    "shopify:guard:local": "node scripts/verify-shopify-config-match.js --config shopify.app.local.toml",
+    "shopify:guard:ports": "node scripts/guard-dev-ports.js --mode=shopify",
+    "shopify:guard:local": "node scripts/verify-shopify-config-match.js --config shopify.app.local.toml && node scripts/verify-shopify-local-dev-ready.js --config shopify.app.local.toml",
+    "shopify:cleanup:workers": "node scripts/cleanup-shopify-dev-workers.js",
+    "shopify:dev:clean": "shopify app dev clean --config shopify.app.local.toml",
     "shopify:guard:production": "node scripts/verify-shopify-config-match.js --config shopify.app.production.toml",
     "shopify:checkout-discount:install": "cd extensions/ripx-checkout-discount && npm install",
     "shopify:checkout-discount:sync-config": "node scripts/write-ripx-checkout-config.js --target=discount",
@@ -80,9 +90,9 @@
     "verify:oauth": "node scripts/verify-oauth-config.js",
     "audit": "npm audit && npm --prefix frontend audit && npm run audit:extensions",
     "audit:extensions": "npm --prefix extensions/ripx-checkout-discount audit && npm --prefix extensions/ripx-cart-transform audit && npm --prefix extensions/ripx-checkout-ui audit && npm --prefix extensions/ripx-payment-customization audit && npm --prefix extensions/ripx-delivery-customization audit",
-    "presentation": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html --allow-local-files",
-    "presentation:pdf": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.pdf --allow-local-files",
-    "speech:pdf": "npx @marp-team/marp-cli docs/presentation/SPEECH_DECK.md -o docs/presentation/SPEECH.pdf --allow-local-files --no-stdin"
+    "presentation": "npx @marp-team/marp-cli docs/archive/presentation/PRESENTATION.md -o docs/archive/presentation/PRESENTATION.html --allow-local-files",
+    "presentation:pdf": "npx @marp-team/marp-cli docs/archive/presentation/PRESENTATION.md -o docs/archive/presentation/PRESENTATION.pdf --allow-local-files",
+    "speech:pdf": "npx @marp-team/marp-cli docs/archive/presentation/SPEECH_DECK.md -o docs/archive/presentation/SPEECH.pdf --allow-local-files --no-stdin"
   },
   "keywords": [
     "ripx",
@@ -100,14 +110,6 @@
   "engines": {
     "node": ">=20.17.0",
     "npm": ">=9.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-org/ripx.git"
-  },
-  "homepage": "https://github.com/your-org/ripx#readme",
-  "bugs": {
-    "url": "https://github.com/your-org/ripx/issues"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^7.3.0",

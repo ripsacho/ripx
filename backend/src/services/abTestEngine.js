@@ -338,10 +338,13 @@ class ABTestEngine {
         }
       }
 
-      // Sticky assignment wins over later targeting/ramp changes. This keeps live users stable
-      // after a test is edited, matching production A/B testing tools.
+      // Reuse sticky assignments only while the visitor still matches current targeting.
+      // If a test is tightened to mobile-only, a previously assigned desktop visitor must stop seeing it.
       const existingAssignment = await getTestAssignment(testId, userId, shopDomain);
       if (existingAssignment) {
+        if (!this.isUserEligible(test, context)) {
+          return null;
+        }
         return this._buildAssignmentResponseFromExisting(test, existingAssignment);
       }
 
@@ -525,7 +528,13 @@ class ABTestEngine {
     });
 
     assignmentsMap.forEach((assignment, testId) => {
-      if (assignment && groupByTestId.get(String(testId))) {
+      const test = testsMap.get(testId);
+      const testContext = { ...context, ...(contextOverrides[testId] || {}) };
+      if (
+        assignment &&
+        groupByTestId.get(String(testId)) &&
+        this.isUserEligible(test, testContext)
+      ) {
         blockedGroups.add(groupByTestId.get(String(testId)));
       }
     });
@@ -633,6 +642,9 @@ class ABTestEngine {
       const testContext = { ...context, ...(contextOverrides[testId] || {}) };
       const existingAssignment = assignmentsMap.get(testId);
       if (existingAssignment) {
+        if (!this.isUserEligible(test, testContext)) {
+          continue;
+        }
         const existingResponse = this._buildAssignmentResponseFromExisting(
           test,
           existingAssignment
@@ -1211,12 +1223,18 @@ class ABTestEngine {
     }
 
     // Check variants
-    if (!testConfig.variants || testConfig.variants.length < 2) {
-      errors.push('At least 2 variants are required');
+    const minVariants = testType === 'shipping' ? 1 : 2;
+    if (!testConfig.variants || testConfig.variants.length < minVariants) {
+      errors.push(
+        minVariants === 1 ? 'At least 1 variant is required' : 'At least 2 variants are required'
+      );
     }
 
     // Check allocation percentages
     if (testConfig.variants) {
+      if (testType === 'shipping' && testConfig.variants.length === 1) {
+        testConfig.variants = [{ ...testConfig.variants[0], allocation: 100 }];
+      }
       const totalAllocation = testConfig.variants.reduce(
         (sum, v) => sum + (Number(v.allocation) || 0),
         0
