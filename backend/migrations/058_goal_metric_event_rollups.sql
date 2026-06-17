@@ -2,7 +2,7 @@
 -- Keep all-time named-event counts compact for Goals & Metrics catalog reads.
 
 CREATE TABLE IF NOT EXISTS goal_metric_event_rollups (
-  tenant_id UUID,
+  tenant_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
   shop_domain VARCHAR(255) NOT NULL,
   event_name VARCHAR(100) NOT NULL,
   test_id UUID NOT NULL,
@@ -10,10 +10,22 @@ CREATE TABLE IF NOT EXISTS goal_metric_event_rollups (
   last_seen_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
-  PRIMARY KEY (shop_domain, event_name, test_id)
+  PRIMARY KEY (tenant_id, shop_domain, event_name, test_id)
 );
 
 ALTER TABLE goal_metric_event_rollups ADD COLUMN IF NOT EXISTS tenant_id UUID;
+ALTER TABLE goal_metric_event_rollups
+  ALTER COLUMN tenant_id SET DEFAULT '00000000-0000-0000-0000-000000000000'::uuid;
+UPDATE goal_metric_event_rollups
+SET tenant_id = '00000000-0000-0000-0000-000000000000'::uuid
+WHERE tenant_id IS NULL;
+ALTER TABLE goal_metric_event_rollups
+  ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE goal_metric_event_rollups
+  DROP CONSTRAINT IF EXISTS goal_metric_event_rollups_pkey;
+ALTER TABLE goal_metric_event_rollups
+  ADD CONSTRAINT goal_metric_event_rollups_pkey
+  PRIMARY KEY (tenant_id, shop_domain, event_name, test_id);
 
 CREATE INDEX IF NOT EXISTS idx_goal_metric_event_rollups_shop_event
   ON goal_metric_event_rollups (shop_domain, event_name);
@@ -27,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_goal_metric_event_rollups_test
 
 CREATE TABLE IF NOT EXISTS goal_metric_event_daily_rollups (
   event_date DATE NOT NULL,
-  tenant_id UUID,
+  tenant_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
   shop_domain VARCHAR(255) NOT NULL,
   event_name VARCHAR(100) NOT NULL,
   test_id UUID NOT NULL,
@@ -35,10 +47,22 @@ CREATE TABLE IF NOT EXISTS goal_metric_event_daily_rollups (
   last_seen_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
-  PRIMARY KEY (event_date, shop_domain, event_name, test_id)
+  PRIMARY KEY (event_date, tenant_id, shop_domain, event_name, test_id)
 );
 
 ALTER TABLE goal_metric_event_daily_rollups ADD COLUMN IF NOT EXISTS tenant_id UUID;
+ALTER TABLE goal_metric_event_daily_rollups
+  ALTER COLUMN tenant_id SET DEFAULT '00000000-0000-0000-0000-000000000000'::uuid;
+UPDATE goal_metric_event_daily_rollups
+SET tenant_id = '00000000-0000-0000-0000-000000000000'::uuid
+WHERE tenant_id IS NULL;
+ALTER TABLE goal_metric_event_daily_rollups
+  ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE goal_metric_event_daily_rollups
+  DROP CONSTRAINT IF EXISTS goal_metric_event_daily_rollups_pkey;
+ALTER TABLE goal_metric_event_daily_rollups
+  ADD CONSTRAINT goal_metric_event_daily_rollups_pkey
+  PRIMARY KEY (event_date, tenant_id, shop_domain, event_name, test_id);
 
 CREATE INDEX IF NOT EXISTS idx_goal_metric_event_daily_rollups_shop_event_date
   ON goal_metric_event_daily_rollups (shop_domain, event_name, event_date DESC);
@@ -60,7 +84,7 @@ INSERT INTO goal_metric_event_rollups (
   updated_at
 )
 SELECT
-  e.tenant_id,
+  COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid) AS tenant_id,
   LOWER(TRIM(e.shop_domain)) AS shop_domain,
   LEFT(BTRIM(e.event_name), 100) AS event_name,
   e.test_id,
@@ -71,10 +95,9 @@ FROM events e
 WHERE e.event_name IS NOT NULL
   AND BTRIM(e.event_name) <> ''
   AND COALESCE(TRIM(e.shop_domain), '') <> ''
-GROUP BY e.tenant_id, LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id
-ON CONFLICT (shop_domain, event_name, test_id)
+GROUP BY COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id
+ON CONFLICT (tenant_id, shop_domain, event_name, test_id)
 DO UPDATE SET
-  tenant_id = COALESCE(EXCLUDED.tenant_id, goal_metric_event_rollups.tenant_id),
   event_count = EXCLUDED.event_count,
   last_seen_at = EXCLUDED.last_seen_at,
   updated_at = NOW();
@@ -101,10 +124,9 @@ BEGIN
     last_seen_at,
     updated_at
   )
-  VALUES (NEW.tenant_id, LOWER(TRIM(NEW.shop_domain)), normalized_event_name, NEW.test_id, 1, event_seen_at, NOW())
-  ON CONFLICT (shop_domain, event_name, test_id)
+  VALUES (COALESCE(NEW.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(NEW.shop_domain)), normalized_event_name, NEW.test_id, 1, event_seen_at, NOW())
+  ON CONFLICT (tenant_id, shop_domain, event_name, test_id)
   DO UPDATE SET
-    tenant_id = COALESCE(EXCLUDED.tenant_id, goal_metric_event_rollups.tenant_id),
     event_count = goal_metric_event_rollups.event_count + 1,
     last_seen_at = GREATEST(
       COALESCE(goal_metric_event_rollups.last_seen_at, EXCLUDED.last_seen_at),
@@ -122,10 +144,9 @@ BEGIN
     last_seen_at,
     updated_at
   )
-  VALUES (event_seen_at::date, NEW.tenant_id, LOWER(TRIM(NEW.shop_domain)), normalized_event_name, NEW.test_id, 1, event_seen_at, NOW())
-  ON CONFLICT (event_date, shop_domain, event_name, test_id)
+  VALUES (event_seen_at::date, COALESCE(NEW.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(NEW.shop_domain)), normalized_event_name, NEW.test_id, 1, event_seen_at, NOW())
+  ON CONFLICT (event_date, tenant_id, shop_domain, event_name, test_id)
   DO UPDATE SET
-    tenant_id = COALESCE(EXCLUDED.tenant_id, goal_metric_event_daily_rollups.tenant_id),
     event_count = goal_metric_event_daily_rollups.event_count + 1,
     last_seen_at = GREATEST(
       COALESCE(goal_metric_event_daily_rollups.last_seen_at, EXCLUDED.last_seen_at),
@@ -155,7 +176,7 @@ INSERT INTO goal_metric_event_daily_rollups (
 )
 SELECT
   e.created_at::date AS event_date,
-  e.tenant_id,
+  COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid) AS tenant_id,
   LOWER(TRIM(e.shop_domain)) AS shop_domain,
   LEFT(BTRIM(e.event_name), 100) AS event_name,
   e.test_id,
@@ -166,10 +187,9 @@ FROM events e
 WHERE e.event_name IS NOT NULL
   AND BTRIM(e.event_name) <> ''
   AND COALESCE(TRIM(e.shop_domain), '') <> ''
-GROUP BY e.created_at::date, e.tenant_id, LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id
-ON CONFLICT (event_date, shop_domain, event_name, test_id)
+GROUP BY e.created_at::date, COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id
+ON CONFLICT (event_date, tenant_id, shop_domain, event_name, test_id)
 DO UPDATE SET
-  tenant_id = COALESCE(EXCLUDED.tenant_id, goal_metric_event_daily_rollups.tenant_id),
   event_count = EXCLUDED.event_count,
   last_seen_at = EXCLUDED.last_seen_at,
   updated_at = NOW();
@@ -201,7 +221,7 @@ BEGIN
     updated_at
   )
   SELECT
-    e.tenant_id,
+    COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid) AS tenant_id,
     LOWER(TRIM(e.shop_domain)) AS shop_domain,
     LEFT(BTRIM(e.event_name), 100) AS event_name,
     e.test_id,
@@ -213,7 +233,7 @@ BEGIN
     AND BTRIM(e.event_name) <> ''
     AND COALESCE(TRIM(e.shop_domain), '') <> ''
     AND (normalized_shop_domain IS NULL OR LOWER(TRIM(e.shop_domain)) = normalized_shop_domain)
-  GROUP BY e.tenant_id, LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id;
+  GROUP BY COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id;
   GET DIAGNOSTICS inserted_all_time = ROW_COUNT;
 
   INSERT INTO goal_metric_event_daily_rollups (
@@ -228,7 +248,7 @@ BEGIN
   )
   SELECT
     e.created_at::date AS event_date,
-    e.tenant_id,
+    COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid) AS tenant_id,
     LOWER(TRIM(e.shop_domain)) AS shop_domain,
     LEFT(BTRIM(e.event_name), 100) AS event_name,
     e.test_id,
@@ -240,7 +260,7 @@ BEGIN
     AND BTRIM(e.event_name) <> ''
     AND COALESCE(TRIM(e.shop_domain), '') <> ''
     AND (normalized_shop_domain IS NULL OR LOWER(TRIM(e.shop_domain)) = normalized_shop_domain)
-  GROUP BY e.created_at::date, e.tenant_id, LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id;
+  GROUP BY e.created_at::date, COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id;
   GET DIAGNOSTICS inserted_daily = ROW_COUNT;
 
   RETURN QUERY SELECT inserted_all_time, inserted_daily;

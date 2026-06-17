@@ -60,6 +60,34 @@ describe('goalMetricDefinition database optimizations', () => {
     expect(observedParams[1]).toContain('page_view');
   });
 
+  it('uses tenant id as the primary rollup scope when tenant context is available', async () => {
+    let observedSql = '';
+    let observedParams = [];
+
+    query.mockImplementation((sql, params) => {
+      if (String(sql).includes('FROM goal_metric_definitions')) {
+        return { rows: [] };
+      }
+      if (String(sql).includes('FROM goal_metric_event_rollups')) {
+        observedSql = sql;
+        observedParams = params;
+        return { rows: [] };
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+
+    await listGoalMetricDefinitions('shared-shop.myshopify.com', {
+      tenantId: '00000000-0000-4000-8000-000000000123',
+    });
+
+    expect(observedSql).toContain('rollups.tenant_id = $1::uuid');
+    expect(observedSql).not.toContain('rollups.shop_domain = $1');
+    expect(observedSql).not.toContain('OR rollups.shop_domain');
+    expect(observedSql).toContain('rollups.event_name = ANY($2::text[])');
+    expect(observedParams[0]).toBe('00000000-0000-4000-8000-000000000123');
+    expect(observedParams[1]).toContain('page_view');
+  });
+
   it('falls back to raw events when rollups are not migrated yet', async () => {
     const rollupError = new Error('relation "goal_metric_event_rollups" does not exist');
     let rawSql = '';
@@ -93,6 +121,37 @@ describe('goalMetricDefinition database optimizations', () => {
     expect(rawSql).toContain('e.tenant_id = (SELECT id FROM tenants WHERE domain = $1 LIMIT 1)');
     expect(rawSql).toContain('e.event_name = ANY($2::text[])');
     expect(definitions.find(item => item.event_name === 'page_view').observed_count).toBe(2);
+  });
+
+  it('uses tenant id as the primary raw event fallback scope when available', async () => {
+    const rollupError = new Error('relation "goal_metric_event_rollups" does not exist');
+    let rawSql = '';
+    let rawParams = [];
+
+    query.mockImplementation((sql, params) => {
+      if (String(sql).includes('FROM goal_metric_definitions')) {
+        return { rows: [] };
+      }
+      if (String(sql).includes('FROM goal_metric_event_rollups')) {
+        throw rollupError;
+      }
+      if (String(sql).includes('FROM events')) {
+        rawSql = sql;
+        rawParams = params;
+        return { rows: [] };
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+
+    await listGoalMetricDefinitions('shared-shop.myshopify.com', {
+      tenantId: '00000000-0000-4000-8000-000000000456',
+    });
+
+    expect(rawSql).toContain('e.tenant_id = $1::uuid');
+    expect(rawSql).not.toContain('e.shop_domain = $1');
+    expect(rawSql).not.toContain('OR e.shop_domain');
+    expect(rawSql).toContain('e.event_name = ANY($2::text[])');
+    expect(rawParams[0]).toBe('00000000-0000-4000-8000-000000000456');
   });
 
   it('rebuilds goal metric event rollups with normalized optional shop scope', async () => {

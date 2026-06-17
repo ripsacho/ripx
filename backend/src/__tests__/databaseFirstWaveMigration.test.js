@@ -62,14 +62,14 @@ describe('database first-wave migration', () => {
     );
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS goal_metric_event_rollups');
-    expect(sql).toContain('PRIMARY KEY (shop_domain, event_name, test_id)');
+    expect(sql).toContain('PRIMARY KEY (tenant_id, shop_domain, event_name, test_id)');
     expect(sql).toContain('idx_goal_metric_event_rollups_shop_event');
     expect(sql).toContain(
       'ALTER TABLE goal_metric_event_rollups ADD COLUMN IF NOT EXISTS tenant_id UUID'
     );
     expect(sql).toContain('idx_goal_metric_event_rollups_tenant_event');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS goal_metric_event_daily_rollups');
-    expect(sql).toContain('PRIMARY KEY (event_date, shop_domain, event_name, test_id)');
+    expect(sql).toContain('PRIMARY KEY (event_date, tenant_id, shop_domain, event_name, test_id)');
     expect(sql).toContain(
       'ALTER TABLE goal_metric_event_daily_rollups ADD COLUMN IF NOT EXISTS tenant_id UUID'
     );
@@ -80,20 +80,35 @@ describe('database first-wave migration', () => {
     expect(sql).toContain('FROM events e');
     expect(sql).toContain('WHERE e.event_name IS NOT NULL');
     expect(sql).toContain(
-      'GROUP BY e.tenant_id, LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id'
+      "GROUP BY COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id"
     );
     expect(sql).toContain(
-      'GROUP BY e.created_at::date, e.tenant_id, LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id'
+      "GROUP BY e.created_at::date, COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), LOWER(TRIM(e.shop_domain)), LEFT(BTRIM(e.event_name), 100), e.test_id"
     );
-    expect(sql).toContain('ON CONFLICT (shop_domain, event_name, test_id)');
-    expect(sql).toContain('ON CONFLICT (event_date, shop_domain, event_name, test_id)');
-    expect(sql).toContain('tenant_id = COALESCE(EXCLUDED.tenant_id');
+    expect(sql).toContain('ON CONFLICT (tenant_id, shop_domain, event_name, test_id)');
+    expect(sql).toContain('ON CONFLICT (event_date, tenant_id, shop_domain, event_name, test_id)');
     expect(sql).toContain('CREATE OR REPLACE FUNCTION ripx_increment_goal_metric_event_rollups()');
     expect(sql).toContain('CREATE OR REPLACE FUNCTION refresh_goal_metric_event_rollups');
     expect(sql).toContain('LOWER(TRIM(NEW.shop_domain))');
     expect(sql).toContain('DROP TRIGGER IF EXISTS trg_events_goal_metric_rollups ON events');
     expect(sql).toContain('AFTER INSERT ON events');
     expect(sql).toContain('EXECUTE FUNCTION ripx_increment_goal_metric_event_rollups()');
+  });
+
+  it('adds a follow-up fix for tenant-aware goal metric rollup keys', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../migrations/069_goal_metric_rollups_tenant_primary_keys.sql'),
+      'utf8'
+    );
+
+    expect(sql).toContain('DROP CONSTRAINT IF EXISTS goal_metric_event_rollups_pkey');
+    expect(sql).toContain('PRIMARY KEY (tenant_id, shop_domain, event_name, test_id)');
+    expect(sql).toContain('DROP CONSTRAINT IF EXISTS goal_metric_event_daily_rollups_pkey');
+    expect(sql).toContain('PRIMARY KEY (event_date, tenant_id, shop_domain, event_name, test_id)');
+    expect(sql).toContain('ON CONFLICT (tenant_id, shop_domain, event_name, test_id)');
+    expect(sql).toContain('ON CONFLICT (event_date, tenant_id, shop_domain, event_name, test_id)');
+    expect(sql).toContain("COALESCE(e.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid)");
+    expect(sql).toContain('SELECT * FROM refresh_goal_metric_event_rollups(NULL)');
   });
 
   it('adds non-disruptive event partition readiness indexes', () => {
