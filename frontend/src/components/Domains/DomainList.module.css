@@ -197,11 +197,10 @@
 [data-theme='dark'] .domainsHeroGradient {
   background: linear-gradient(
     160deg,
-    #111827 0%,
-    var(--bg-secondary) 30%,
-    #134e4e 60%,
-    #0e7490 85%,
-    #06b6d4 100%
+    #020617 0%,
+    #0f172a 34%,
+    #164e63 68%,
+    #155e75 100%
   );
   opacity: 0.99;
   border-bottom: none;
@@ -316,7 +315,7 @@
 }
 
 [data-theme='dark'] .domainsHeroTitle {
-  color: inherit;
+  color: #f8fafc;
 }
 
 .domainsHeroTitleAccent {
@@ -327,8 +326,12 @@
 }
 
 [data-theme='dark'] .domainsHeroTitleAccent {
-  background: linear-gradient(135deg, #67e8f9 0%, #22d3ee 40%, #c4b5fd 100%);
-  filter: drop-shadow(0 0 24px rgba(6, 182, 212, 0.4));
+  background: linear-gradient(135deg, #f8fafc 0%, #a5f3fc 42%, #ddd6fe 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 0 18px rgba(6, 182, 212, 0.32));
 }
 
 .domainsHeroSubtitle {
@@ -411,7 +414,11 @@
 }
 
 [data-theme='dark'] .domainsQuickActionIcon {
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(139, 92, 246, 0.16));
+  border: 1px solid rgba(165, 243, 252, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(6, 182, 212, 0.16);
 }
 
 .domainsQuickActionCard :global(.Polaris-Icon) {
@@ -419,7 +426,7 @@
 }
 
 [data-theme='dark'] .domainsQuickActionCard :global(.Polaris-Icon) {
-  color: #fff;
+  color: #a5f3fc;
 }
 
 .domainsQuickActionText {
@@ -795,6 +802,17 @@
 .mainEmptyIcon :global(svg) {
   width: 36px;
   height: 36px;
+}
+
+[data-theme='dark'] .mainEmptyIcon,
+[data-theme='dark'] .addModalIconWrap,
+[data-theme='dark'] .addModalChoiceCardIcon {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.14));
+  border-color: rgba(165, 243, 252, 0.22);
+  color: #a5f3fc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(6, 182, 212, 0.14);
 }
 
 .mainEmptyHeading {

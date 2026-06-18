@@ -452,6 +452,15 @@
   box-shadow: 0 2px 12px rgba(6, 182, 212, 0.15);
 }
 
+[data-theme='dark'] .settingsShellIcon {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(139, 92, 246, 0.16));
+  border: 1px solid rgba(165, 243, 252, 0.22);
+  color: #a5f3fc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(6, 182, 212, 0.16);
+}
+
 .settingsShellIcon svg {
   width: 24px;
   height: 24px;

@@ -404,6 +404,50 @@ code {
   background: rgba(6, 182, 212, 0.4);
 }
 
+/* Dark theme: CSS-module page icon wrappers can contain raw SVG icons that do not inherit color. */
+[data-theme='dark']
+  :where(
+    [class*='HeroIcon'],
+    [class*='heroIcon'],
+    [class*='ShellIcon'],
+    [class*='shellIcon'],
+    [class*='HeaderIcon'],
+    [class*='headerIcon'],
+    [class*='SectionHeaderIcon'],
+    [class*='sectionHeaderIcon'],
+    [class*='SectionIconWrap'],
+    [class*='sectionIconWrap'],
+    [class*='QuickActionIcon'],
+    [class*='quickActionIcon'],
+    [class*='FeatureIcon'],
+    [class*='featureIcon']
+  ) {
+  color: #a5f3fc;
+}
+
+[data-theme='dark']
+  :where(
+    [class*='HeroIcon'],
+    [class*='heroIcon'],
+    [class*='ShellIcon'],
+    [class*='shellIcon'],
+    [class*='HeaderIcon'],
+    [class*='headerIcon'],
+    [class*='SectionHeaderIcon'],
+    [class*='sectionHeaderIcon'],
+    [class*='SectionIconWrap'],
+    [class*='sectionIconWrap'],
+    [class*='QuickActionIcon'],
+    [class*='quickActionIcon'],
+    [class*='FeatureIcon'],
+    [class*='featureIcon']
+  )
+  :where(svg, svg *, .Polaris-Icon, .Polaris-Icon *) {
+  color: currentColor !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
 /* Smooth Page Transitions */
 * {
   transition-property: background-color, border-color, color, box-shadow, transform;

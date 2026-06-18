@@ -998,6 +998,9 @@
   width: 28px;
   height: 28px;
   margin: 0;
+  color: currentColor;
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 .heroTitleWrap {
@@ -1329,12 +1332,15 @@
   cursor: not-allowed;
 }
 
-.refreshBtn:global(svg) {
+.refreshBtn svg {
   width: 16px;
   height: 16px;
+  color: currentColor;
+  fill: currentColor;
+  stroke: currentColor;
 }
 
-.refreshSpinning:global(svg) {
+.refreshSpinning svg {
   animation: dashSpin var(--dash-anim-spin) var(--dash-anim-linear) infinite;
 }
 
@@ -1345,7 +1351,9 @@
 }
 
 [data-theme='dark'] .refreshBtn {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(165, 243, 252, 0.22);
+  color: #a5f3fc;
 }
 
 .cmdKHint {
@@ -1424,8 +1432,28 @@
 }
 
 [data-theme='dark'] .heroIconWrap {
-  color: #67e8f9;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.16));
+  color: #a5f3fc;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(139, 92, 246, 0.16));
+  border: 1px solid rgba(165, 243, 252, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(6, 182, 212, 0.16);
+}
+
+[data-theme='dark'] .heroIconWrap svg,
+[data-theme='dark'] .heroIconWrap svg *,
+[data-theme='dark'] .refreshBtn svg,
+[data-theme='dark'] .refreshBtn svg * {
+  color: #a5f3fc;
+  fill: #a5f3fc;
+  stroke: #a5f3fc;
+}
+
+[data-theme='dark'] .refreshBtn:hover:not(:disabled) svg,
+[data-theme='dark'] .refreshBtn:hover:not(:disabled) svg * {
+  color: #ffffff;
+  fill: #ffffff;
+  stroke: #ffffff;
 }
 
 [data-theme='dark'] .heroTitle {
