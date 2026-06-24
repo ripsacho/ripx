@@ -52,6 +52,7 @@ describe('shippingWizardBlueprint', () => {
       shipping_display_mode: 'replace_existing_methods',
       replace_existing_rates: true,
       delivery_action: 'hide',
+      delivery_rename_to: null,
       metadata: {
         foo: 'bar',
         shipping_wizard_path: 'unified',
