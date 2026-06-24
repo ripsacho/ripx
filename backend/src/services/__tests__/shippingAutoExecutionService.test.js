@@ -485,7 +485,7 @@ describe('shippingAutoExecutionService', () => {
     expect(restSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('creates a fresh carrier service when shipping config revision changes', async () => {
+  it('updates the existing carrier service when shipping config revision changes', async () => {
     const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
     graphSpy.mockResolvedValueOnce({
       data: {
@@ -511,7 +511,7 @@ describe('shippingAutoExecutionService', () => {
       })
       .mockResolvedValueOnce({
         carrier_service: {
-          id: 202,
+          id: 201,
           name: 'RipX Shipping Rate - test-rev rnewrevis',
           callback_url:
             'https://ripx.example.com/api/track/shipping-carrier-rates?test_id=test-rev&cfg_rev=new-revision&shop_domain=plus.myshopify.com&variant_index=1&strategy=flat_rate&amount=43.00',
@@ -547,28 +547,15 @@ describe('shippingAutoExecutionService', () => {
     });
 
     const action = result.execution_result.actions[0];
-    expect(action.status).toBe('created');
-    expect(action.details?.service?.id).toBe(202);
+    expect(action.status).toBe('updated');
+    expect(action.details?.service?.id).toBe(201);
     expect(action.details?.callback_url).toContain('cfg_rev=new-revision');
-    expect(action.details?.stale_revision_cleanup).toEqual([
-      expect.objectContaining({
-        ok: true,
-        status: 'deleted',
-      }),
-    ]);
+    expect(action.details?.stale_revision_cleanup).toEqual([]);
     expect(restSpy).toHaveBeenCalledWith(
       'plus.myshopify.com',
       'token',
       expect.objectContaining({
-        method: 'POST',
-        path: 'carrier_services.json',
-      })
-    );
-    expect(restSpy).toHaveBeenCalledWith(
-      'plus.myshopify.com',
-      'token',
-      expect.objectContaining({
-        method: 'DELETE',
+        method: 'PUT',
         path: 'carrier_services/201.json',
       })
     );
@@ -1119,15 +1106,110 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
       action: 'hide',
       method_names: ['Standard Delivery', 'Express'],
-      require_present_method_names: [],
+      method_codes: expect.arrayContaining(['standard_delivery', 'Standard Delivery']),
+      require_present_method_names: expect.arrayContaining(['Fast Standard']),
       require_present_method_codes: ['ripx_replace_standard_delivery'],
       protected_method_codes: ['ripx_replace_standard_delivery'],
+      protected_method_names: ['Fast Standard'],
       hide_when_unassigned_method_names: [],
       hide_when_unassigned_method_codes: ['ripx_replace_standard_delivery'],
     });
-    expect(actions[0].details?.callback_url).not.toContain('require_assignment=');
+    expect(actions[1].details?.config?.variant_rules[0].rename_to).toBeUndefined();
+    expect(actions[0].details?.callback_url).toContain('require_assignment=1');
     expect(result.persisted_variants[1].config.metadata.shipping_resources).toHaveLength(2);
     expect(restSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not emit rename_to for hide delivery customization rules', async () => {
+    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    graphSpy
+      .mockResolvedValueOnce({
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'plus.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          shopifyFunctions: {
+            nodes: [
+              {
+                id: 'fn-delivery-1',
+                title: 'RipX Delivery Customization',
+                apiType: 'DELIVERY_CUSTOMIZATION',
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizationCreate: {
+            deliveryCustomization: {
+              id: 'gid://shopify/DeliveryCustomization/1',
+              title: 'RipX Shipping Delivery test-rename Variant A',
+              enabled: true,
+            },
+            userErrors: [],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [{ id: 'gid://shopify/Metafield/1' }],
+            userErrors: [],
+          },
+        },
+      });
+    jest
+      .spyOn(shopifyService, 'requestAdminRest')
+      .mockResolvedValueOnce({ carrier_services: [] })
+      .mockResolvedValueOnce({
+        carrier_service: {
+          id: 555,
+          name: 'RipX Shipping Carrier',
+          callback_url: 'https://ripx.example.com/api/track/shipping-carrier-rates',
+          service_discovery: true,
+        },
+      });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-rename',
+        name: 'Shipping rename stale field',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 42,
+              replace_existing_rates: true,
+              delivery_method_names: ['Standard'],
+              delivery_action: 'hide',
+              delivery_rename_to: 'New Standard',
+              rates: [{ name: 'Standard A', amount: 39, source_method_name: 'Standard' }],
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const hideRule = result.execution_result.actions.find(
+      action => action.execution_adapter === 'delivery_customization'
+    )?.details?.config?.variant_rules?.[0];
+    expect(hideRule?.action).toBe('hide');
+    expect(hideRule?.rename_to).toBeUndefined();
   });
 
   it('treats replace display mode as replacement flat-rate behavior', async () => {
@@ -1230,12 +1312,112 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].status).toBe('created');
     expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
       method_names: ['Standard Delivery'],
-      require_present_method_names: [],
+      require_present_method_names: expect.arrayContaining(['Standard Delivery']),
       require_present_method_codes: ['ripx_replace_standard_delivery'],
       protected_method_codes: ['ripx_replace_standard_delivery'],
+      protected_method_names: ['Standard Delivery'],
       hide_when_unassigned_method_codes: ['ripx_replace_standard_delivery'],
     });
     expect(restSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('applies delivery customization for add-preview flat rate hide targets', async () => {
+    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    graphSpy
+      .mockResolvedValueOnce({
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'plus.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          shopifyFunctions: {
+            nodes: [
+              {
+                id: 'fn-delivery-1',
+                title: 'RipX Delivery Customization',
+                apiType: 'DELIVERY_CUSTOMIZATION',
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizations: { edges: [] },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizationCreate: {
+            deliveryCustomization: {
+              id: 'gid://shopify/DeliveryCustomization/46',
+              title: 'RipX Shipping Delivery test-add-hide Variant Add Hide',
+              enabled: true,
+            },
+            userErrors: [],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [{ id: 'gid://shopify/Metafield/46' }],
+            userErrors: [],
+          },
+        },
+      });
+    const restSpy = jest.spyOn(shopifyService, 'requestAdminRest');
+    restSpy.mockResolvedValueOnce({ carrier_services: [] }).mockResolvedValueOnce({
+      carrier_service: {
+        id: 446,
+        name: 'RipX Shipping Rate - test-add-hide',
+        callback_url:
+          'https://ripx.example.com/api/track/shipping-carrier-rates?test_id=test-add-hide&variant_index=1&strategy=flat_rate&amount=12.00',
+        service_discovery: true,
+      },
+    });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-add-hide',
+        name: 'Shipping add hide test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant Add Hide',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 12,
+              shipping_display_mode: 'add_preview_method',
+              delivery_method_names: ['Standard Shipping'],
+              delivery_action: 'hide',
+              rates: [{ name: 'Express', amount: 12, currency: 'USD' }],
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const actions = result.execution_result.actions;
+    expect(actions).toHaveLength(2);
+    expect(actions[1].execution_adapter).toBe('delivery_customization');
+    expect(actions[1].status).toBe('created');
+    expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
+      method_names: ['Standard Shipping'],
+      skip_replacement_presence_gate: true,
+      protected_method_name_prefixes: expect.arrayContaining(['RipX Preview']),
+    });
   });
 
   it('does not hide existing methods when replacement carrier service is not ready', async () => {

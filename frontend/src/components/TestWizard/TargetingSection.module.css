@@ -19336,6 +19336,52 @@
   color: rgba(226, 232, 240, 0.96) !important;
 }
 
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge *),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge *) {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusSuccess),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusSuccess) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusInfo),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusInfo) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusWarning),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusWarning),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusAttention),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusAttention) {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusCritical),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusCritical) {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.36) !important;
+  color: #fca5a5 !important;
+}
+
 /* Final dark fallbacks for late-defined Variant Config modules. Keep this at the end of the file so it wins source order. */
 [data-theme='dark'] .priceConfigWrap,
 [data-theme='dark'] .priceVariantPricingShell,
@@ -19526,6 +19572,91 @@
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .priceSummaryCard,
+[data-theme='dark'] .priceSummaryHeader {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.16), transparent 36%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.5), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.32) !important;
+  box-shadow:
+    0 16px 34px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(103, 232, 249, 0.1) !important;
+}
+
+[data-theme='dark'] .priceMethodRecommendationCard {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+[data-theme='dark'] .priceMethodRecommendationCardPreferred {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(8, 47, 73, 0.48), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.36) !important;
+}
+
+[data-theme='dark'] .priceMethodRecommendationCardMuted {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(69, 26, 3, 0.38), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+}
+
+[data-theme='dark'] .checkoutStudioHero {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.2), transparent 36%),
+    radial-gradient(circle at 100% 10%, rgba(139, 92, 246, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.56), rgba(30, 27, 75, 0.34) 52%, rgba(15, 23, 42, 0.86)) !important;
+  border-color: rgba(103, 232, 249, 0.3) !important;
+  box-shadow:
+    0 18px 42px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(196, 181, 253, 0.12) !important;
+}
+
+[data-theme='dark'] .checkoutPhaseCard,
+[data-theme='dark'] .checkoutQuickSetupCard,
+[data-theme='dark'] .checkoutTargetingTile,
+[data-theme='dark'] .checkoutVariantBlock {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+}
+
+[data-theme='dark'] .checkoutPhaseCardActive {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.2), transparent 36%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.54), rgba(15, 23, 42, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+}
+
+[data-theme='dark'] .checkoutMinimumSetupItemRequired,
+[data-theme='dark'] .checkoutSectionHealthItemAttention,
+[data-theme='dark'] .checkoutInactiveModeBanner,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel,
+[data-theme='dark'] .checkoutProductStudioWarning,
+[data-theme='dark'] .checkoutRuntimePreviewNotes,
+[data-theme='dark'] .priceMatrixChangedCell {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] .checkoutInactiveModeBanner strong,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel strong,
+[data-theme='dark'] .checkoutProductStudioWarning strong,
+[data-theme='dark'] .checkoutRuntimePreviewNotes strong {
+  color: #fde68a !important;
+}
+
+[data-theme='dark'] .checkoutInactiveModeBanner span,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel span,
+[data-theme='dark'] .checkoutProductStudioWarning span,
+[data-theme='dark'] .checkoutRuntimePreviewNotes span {
+  color: rgba(254, 243, 199, 0.82) !important;
 }
 
 [data-theme='dark'] .priceMethodChoiceCard:hover:not(:disabled),

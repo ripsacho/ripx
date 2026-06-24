@@ -26,6 +26,8 @@ import {
   getShippingMethodHandles,
   getShippingDeliveryTargets,
   getShippingScopeTargets,
+  isOfferWizardConfig,
+  getOfferWizardReadinessIssues,
 } from '../../utils/shippingConfig';
 import {
   resolveCustomRuleGroupsFromSegments,
@@ -285,7 +287,12 @@ export function getWizardStepErrors(stepId, options) {
       errors.push(`${label}: shipping strategy is invalid.`);
       return;
     }
-    if (strategy === 'flat_rate' && (amount === null || amount < 0) && !hasActionableRate) {
+    if (
+      strategy === 'flat_rate' &&
+      (amount === null || amount < 0) &&
+      !hasActionableRate &&
+      !isOfferWizardConfig(cfg)
+    ) {
       errors.push(`${label}: flat rate requires an amount >= 0 or at least one configured rate.`);
     }
     if (
@@ -310,9 +317,17 @@ export function getWizardStepErrors(stepId, options) {
       strategy === 'flat_rate' &&
       replacesExistingRates &&
       deliveryTargets.length === 0 &&
-      !isControl
+      !isControl &&
+      !isOfferWizardConfig(cfg)
     ) {
       errors.push(`${label}: replacement flat rate requires at least one delivery method target.`);
+    }
+    if (isOfferWizardConfig(cfg) && !isControl) {
+      getOfferWizardReadinessIssues(cfg, {
+        normalizeRates: config => normalizeShippingRates(config),
+      }).forEach(issue => {
+        errors.push(`${label}: ${issue}`);
+      });
     }
     if (
       strategy === 'flat_rate' &&
@@ -370,6 +385,21 @@ export function getWizardStepErrors(stepId, options) {
     }
     if (strategy === 'discount_fixed' && (amount === null || amount <= 0)) {
       errors.push(`${label}: shipping fixed discount requires an amount > 0.`);
+    }
+    const unifiedWizard = String(cfg.metadata?.shipping_wizard_path || '').trim() === 'unified';
+    const unifiedIncentiveStrategies = [
+      'free_shipping',
+      'threshold_free_shipping',
+      'discount_percentage',
+      'discount_fixed',
+    ];
+    if (
+      unifiedWizard &&
+      unifiedIncentiveStrategies.includes(strategy) &&
+      deliveryTargets.length === 0 &&
+      !isControl
+    ) {
+      errors.push(`${label}: pick at least one Shopify method to target.`);
     }
     if (
       strategy === 'carrier_quote' &&

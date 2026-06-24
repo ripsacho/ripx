@@ -89,7 +89,7 @@ const {
   signPriceAssignment,
   getPriceAssignmentSigningBlocker,
 } = require('../utils/priceAssignmentSignature');
-const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
+const { findVariantForPreviewQuery, previewLabelEquals } = require('../utils/previewVariantMatch');
 const { normalizeShippingVariantConfig } = require('../services/shippingTestConfigService');
 const {
   formatCarrierRateForCheckout,
@@ -333,7 +333,9 @@ function carrierRequestMatchesAssignment(
     .map(value => String(value).trim());
   return allowedVariants.length === 0
     ? variantValues.length > 0
-    : variantValues.some(value => allowedVariants.includes(value));
+    : variantValues.some(value =>
+        allowedVariants.some(expected => value === expected || previewLabelEquals(value, expected))
+      );
 }
 
 function summarizeCarrierAssignmentDiagnostics(
@@ -3328,7 +3330,16 @@ router.post(
       });
     }
 
-    if (strategy === 'carrier_quote') {
+    if (strategy === 'carrier_quote' && assignmentRequired && !assignmentMatches) {
+      logger.info('shipping_carrier_quote_assignment_missing', {
+        testId: req.query?.test_id || null,
+        variantIndex: req.query?.variant_index || null,
+        variantId: req.query?.variant_id || null,
+        assignmentDiagnostics,
+      });
+    }
+
+    if (strategy === 'carrier_quote' && assignmentMatches) {
       let providerConfig = {
         provider: String(req.query?.quote_provider || '').trim(),
         amount,

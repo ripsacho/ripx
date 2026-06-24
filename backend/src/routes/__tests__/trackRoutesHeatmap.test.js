@@ -169,6 +169,29 @@ describe('track heatmap route helpers', () => {
     ).toBe(true);
   });
 
+  it('matches carrier callback assignments when variant labels differ only by plus encoding', () => {
+    const req = {
+      body: {
+        rate: {
+          items: [
+            {
+              properties: {
+                _ripx_price_test: 'test-plus',
+                _ripx_variant: 'Variant A',
+              },
+            },
+          ],
+        },
+      },
+    };
+    expect(
+      carrierRequestMatchesAssignment(req, {
+        testId: 'test-plus',
+        variantName: 'Variant+A',
+      })
+    ).toBe(true);
+  });
+
   it('records recent shipping carrier callback traces', () => {
     recordShippingCarrierCallbackTrace({
       test_id: 'trace-test',

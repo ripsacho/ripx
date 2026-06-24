@@ -939,13 +939,26 @@ if (distExists) {
   // Serve /assets/* first so JS/CSS get correct MIME type (never fall through to SPA catch-all).
   const assetsDir = path.join(frontendDist, 'assets');
   if (fs.existsSync(assetsDir)) {
-    app.use(
-      '/assets',
-      express.static(assetsDir, {
-        maxAge: '1y',
-        immutable: true,
-      })
-    );
+    const assetStaticOptions =
+      process.env.NODE_ENV === 'production'
+        ? {
+            maxAge: '1y',
+            immutable: true,
+          }
+        : {
+            etag: false,
+            lastModified: false,
+            maxAge: 0,
+            setHeaders: res => {
+              res.setHeader(
+                'Cache-Control',
+                'no-store, no-cache, must-revalidate, proxy-revalidate'
+              );
+              res.setHeader('Pragma', 'no-cache');
+              res.setHeader('Expires', '0');
+            },
+          };
+    app.use('/assets', express.static(assetsDir, assetStaticOptions));
   }
   app.use(
     express.static(frontendDist, {
@@ -1009,6 +1022,25 @@ if (require.main === module) {
       environment: process.env.NODE_ENV || 'development',
       version: APP_VERSION,
     });
+    if (process.env.NODE_ENV !== 'production' && distExists) {
+      const shippingWizardSource = path.join(
+        __dirname,
+        '../../frontend/src/components/TestWizard/shipping/panels/VariationBuilderPanel.jsx'
+      );
+      const distIndexPath = path.join(frontendDist, 'index.html');
+      try {
+        if (
+          fs.existsSync(shippingWizardSource) &&
+          fs.statSync(shippingWizardSource).mtimeMs > fs.statSync(distIndexPath).mtimeMs
+        ) {
+          logger.warn(
+            'frontend/dist is older than shipping wizard UI source; Shopify embed will serve stale UI until you run npm run ensure:frontend-dist'
+          );
+        }
+      } catch {
+        // Ignore stat errors during startup hint.
+      }
+    }
     // Shopify OAuth: remind deployers to align Partner Dashboard with redirect_uri; warn if using dynamic tunnel URL
     if (
       process.env.SHOPIFY_API_KEY &&

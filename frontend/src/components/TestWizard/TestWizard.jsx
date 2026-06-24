@@ -4,7 +4,7 @@
  * Reusable create/edit flow for AB tests.
  * Template selection is optional for edit mode.
  */
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
 import {
   Card,
   FormLayout,
@@ -239,12 +239,34 @@ import {
   getShippingStrategy as inferShippingStrategy,
   getShippingVariantSummary as getSharedShippingVariantSummary,
   normalizeShippingDeliveryPromise as normalizeSharedShippingDeliveryPromise,
+  formatShippingDeliveryPromiseLabel,
   SHIPPING_DELIVERY_PROMISE_OPTIONS,
+  getShippingOfferMode,
+  getShippingOfferAttributes,
+  buildShippingOfferAttributesPatch,
+  buildOfferAttributeRevertPatch,
+  buildNativeDeliveryMethodCodes,
+  resolveControlShippingBaseline,
+  formatShippingOfferBaselineValue,
+  SHIPPING_OFFER_ATTRIBUTE_OPTIONS,
 } from '../../utils/shippingConfig';
-import ControlShippingBaselinePanel from './shipping/panels/ControlShippingBaselinePanel';
-import ControlMethodsPanel from './shipping/panels/ControlMethodsPanel';
-import ShippingOperationsPanel from './shipping/panels/ShippingOperationsPanel';
-import VariationBuilderPanel from './shipping/panels/VariationBuilderPanel';
+const ShippingVariantStudio = React.lazy(() => import('./shipping/ShippingVariantStudio'));
+import buildShippingVariantStudioBindings from './shipping/buildShippingVariantStudioBindings';
+import {
+  buildMethodTargetingPatch,
+  buildShippingCategoryConfigPatch,
+  buildShippingCategoryTransitionResetPatch,
+  getGuidedShippingStepBlockedReason as resolveGuidedShippingStepBlockedReason,
+  getGuidedShippingStepStatusLabel,
+  getGuidedShippingSteps,
+  getShippingCategoryLabel,
+  getShippingTypeOptionDetails,
+  normalizeShippingWizardStepKey,
+  shouldManageReplacementRatesForCategory,
+  shouldShowMethodSelectionStep,
+  getShippingTestTypeByKey,
+  getConfigureFormKind,
+} from './shipping/config/shippingWizardBlueprint';
 
 function getCheckoutOptionLabel(options = [], value, fallback = '') {
   const normalizedValue = String(value || '').trim();
@@ -457,26 +479,39 @@ function TestWizard({
   const runShippingOperation = useCallback(
     async action => {
       const testId = initialData?.id;
-      if (!testId) return;
-      setShippingRailTab('diagnostics');
+      if (!testId) {
+        setShippingOperationResult({
+          title: 'Save required before diagnostics',
+          message: 'Save this test first, then run diagnostics or apply shipping changes.',
+        });
+        return;
+      }
       setShippingOperationLoading(action);
       setShippingOperationResult(null);
       try {
         const response =
           action === 'diagnostics'
             ? await apiGet(`/tests/${testId}/shipping/diagnostics`)
-            : await apiPost(`/tests/${testId}/shipping/execute`, {
-                dry_run: action === 'dryRun',
-                apply: action === 'apply',
-                variantIndex: shippingVariantTabIndex,
-              });
+            : action === 'liveDebug'
+              ? await apiGet(`/tests/${testId}/shipping/live-debug`, {}, { timeout: 120000 })
+              : action === 'cleanupStale'
+                ? await apiPost(`/tests/${testId}/shipping/cleanup-stale-callbacks`, {
+                    dry_run: false,
+                  })
+                : await apiPost(`/tests/${testId}/shipping/execute`, {
+                    dry_run: action === 'dryRun',
+                    apply: action === 'apply',
+                    variantIndex: shippingVariantTabIndex,
+                  });
         const payload = unwrapData(response) || response;
         const summary =
-          payload?.diagnostics?.readiness ||
-          payload?.execution_result?.summary ||
-          payload?.summary ||
-          payload?.result ||
-          {};
+          action === 'liveDebug'
+            ? payload?.live_debug || {}
+            : payload?.diagnostics?.readiness ||
+              payload?.execution_result?.summary ||
+              payload?.summary ||
+              payload?.result ||
+              {};
         const mode =
           payload?.execution_result?.mode ||
           payload?.execution_result?.execution_mode ||
@@ -506,19 +541,63 @@ function TestWizard({
         if (summary?.running_shipping_conflicts !== undefined) {
           detailItems.push(`${summary.running_shipping_conflicts} conflicts`);
         }
+        if (action === 'cleanupStale' && payload?.cleaned_count !== undefined) {
+          detailItems.push(`${payload.cleaned_count} cleaned`);
+        }
+        if (action === 'cleanupStale' && Array.isArray(payload?.stale_hosts)) {
+          detailItems.push(
+            `${payload.stale_hosts.length} host${payload.stale_hosts.length === 1 ? '' : 's'}`
+          );
+        }
+        if (action === 'liveDebug' && payload?.live_debug?.callback_probe) {
+          const probe = payload.live_debug.callback_probe;
+          detailItems.push(
+            probe.ok
+              ? `probe: ${probe.rates_count || 0} rate(s)`
+              : `probe failed: ${probe.error || 'unknown'}`
+          );
+        }
+        if (action === 'liveDebug' && payload?.live_debug?.live_shopify) {
+          const live = payload.live_debug.live_shopify;
+          detailItems.push(`${live.matching_callback_count || 0} synced carrier(s)`);
+          if ((live.stale_callback_count || 0) > 0) {
+            detailItems.push(`${live.stale_callback_count} stale carrier(s)`);
+          }
+        }
         setShippingOperationResult({
           title:
             action === 'diagnostics'
               ? 'Diagnostics complete'
-              : action === 'dryRun'
-                ? 'Active variant dry run complete'
-                : 'Active variant shipping apply complete',
+              : action === 'liveDebug'
+                ? 'Live debug complete'
+                : action === 'cleanupStale'
+                  ? 'Stale callback cleanup complete'
+                  : action === 'dryRun'
+                    ? 'Active variant dry run complete'
+                    : 'Active variant shipping apply complete',
           message:
             typeof summary === 'string'
               ? summary
-              : payload?.message ||
-                `Execution mode: ${mode}. Review the diagnostics report before launch.`,
+              : action === 'liveDebug'
+                ? Array.isArray(payload?.live_debug?.likely_issues) &&
+                  payload.live_debug.likely_issues[0]
+                  ? payload.live_debug.likely_issues[0]
+                  : payload?.live_debug?.callback_probe?.ok
+                    ? `Carrier probe returned ${payload.live_debug.callback_probe.rates_count || 0} rate(s).`
+                    : 'Review live Shopify carriers, callback probe, and storefront checks below.'
+                : action === 'cleanupStale'
+                  ? payload?.message ||
+                    `Removed ${payload?.cleaned_count || 0} stale callback reference(s).`
+                  : payload?.diagnostics?.debug_checklist?.primary_blocker?.title
+                    ? `Blocked: ${payload.diagnostics.debug_checklist.primary_blocker.title}`
+                    : payload?.message ||
+                      `Execution mode: ${mode}. Review the diagnostics report before launch.`,
           details: detailItems,
+          debugChecklist:
+            action === 'liveDebug'
+              ? payload?.live_debug?.debug_checklist || null
+              : payload?.diagnostics?.debug_checklist || null,
+          liveDebugReport: action === 'liveDebug' ? payload?.live_debug || null : null,
         });
         if (typeof onRefreshTest === 'function') {
           onRefreshTest();
@@ -534,6 +613,144 @@ function TestWizard({
     },
     [initialData?.id, onRefreshTest, shippingVariantTabIndex]
   );
+  const runShippingFinishPipeline = useCallback(async () => {
+    const testId = initialData?.id;
+    if (!testId) {
+      setShippingOperationResult({
+        title: 'Save required before apply',
+        message: 'Save this test first, then run the shipping setup pipeline.',
+      });
+      return false;
+    }
+    setShippingOperationLoading('finishSetup');
+    setShippingOperationResult(null);
+    try {
+      const baseTimeline = [
+        { key: 'saved', label: 'Saved', status: 'pass' },
+        { key: 'dryRun', label: 'Dry run', status: 'pending' },
+        { key: 'cleanup', label: 'Cleanup', status: 'pending' },
+        { key: 'apply', label: 'Apply', status: 'pending' },
+      ];
+      const dryRunResponse = await apiPost(`/tests/${testId}/shipping/execute`, {
+        dry_run: true,
+        apply: false,
+        variantIndex: shippingVariantTabIndex,
+      });
+      const dryRunPayload = unwrapData(dryRunResponse) || dryRunResponse || {};
+      const dryRunSummary = dryRunPayload?.execution_result?.summary || {};
+      const dryRunFailedCount = Number(dryRunSummary?.failed_count || 0);
+      const dryRunManualCount = Number(dryRunSummary?.manual_required_count || 0);
+      if (dryRunFailedCount > 0 || dryRunManualCount > 0) {
+        const details = [];
+        if (dryRunSummary?.action_count !== undefined) {
+          details.push(
+            `${dryRunSummary.action_count} action${dryRunSummary.action_count === 1 ? '' : 's'}`
+          );
+        }
+        if (dryRunFailedCount > 0) {
+          details.push(`${dryRunFailedCount} failed`);
+        }
+        if (dryRunManualCount > 0) {
+          details.push(`${dryRunManualCount} manual`);
+        }
+        setShippingOperationResult({
+          title: 'Setup save completed, apply blocked',
+          message:
+            'Dry run reported failures or manual steps. Fix those first, then run Finish and Save Setup again.',
+          details,
+          pipelineTimeline: baseTimeline.map(step =>
+            step.key === 'dryRun'
+              ? { ...step, status: 'warn' }
+              : step.key === 'cleanup' || step.key === 'apply'
+                ? { ...step, status: 'skipped' }
+                : step
+          ),
+        });
+        return false;
+      }
+      const timelineAfterDryRun = baseTimeline.map(step =>
+        step.key === 'dryRun' ? { ...step, status: 'pass' } : step
+      );
+      const cleanupResponse = await apiPost(`/tests/${testId}/shipping/cleanup-stale-callbacks`, {
+        dry_run: false,
+      });
+      const timelineAfterCleanup = timelineAfterDryRun.map(step =>
+        step.key === 'cleanup' ? { ...step, status: 'pass' } : step
+      );
+      const applyResponse = await apiPost(
+        `/tests/${testId}/shipping/execute`,
+        {
+          dry_run: false,
+          apply: true,
+          variantIndex: shippingVariantTabIndex,
+        },
+        { timeout: 120000 }
+      );
+      const cleanupPayload = unwrapData(cleanupResponse) || cleanupResponse || {};
+      const applyPayload = unwrapData(applyResponse) || applyResponse || {};
+      const summary = applyPayload?.execution_result?.summary || {};
+      const details = [
+        'Dry run completed',
+        cleanupPayload?.cleaned_count
+          ? `Cleaned ${cleanupPayload.cleaned_count} stale callback ref(s)`
+          : 'No stale callback refs found',
+      ];
+      if (summary?.action_count !== undefined) {
+        details.push(`${summary.action_count} action${summary.action_count === 1 ? '' : 's'}`);
+      }
+      if (summary?.failed_count !== undefined) {
+        details.push(`${summary.failed_count} failed`);
+      }
+      setShippingOperationResult({
+        title: 'Setup saved and applied',
+        message:
+          applyPayload?.message ||
+          dryRunPayload?.message ||
+          'Finish pipeline completed: dry run, cleanup, and apply.',
+        details,
+        debugReport: {
+          generatedAt: new Date().toISOString(),
+          variantIndex: shippingVariantTabIndex,
+          dryRun: {
+            message: dryRunPayload?.message || '',
+            summary: dryRunSummary,
+            executionResult: dryRunPayload?.execution_result || null,
+          },
+          cleanup: {
+            message: cleanupPayload?.message || '',
+            cleanedCount: Number(cleanupPayload?.cleaned_count || 0),
+            payload: cleanupPayload,
+          },
+          apply: {
+            message: applyPayload?.message || '',
+            summary,
+            executionResult: applyPayload?.execution_result || null,
+          },
+        },
+        pipelineTimeline: timelineAfterCleanup.map(step =>
+          step.key === 'apply' ? { ...step, status: 'pass' } : step
+        ),
+      });
+      if (typeof onRefreshTest === 'function') {
+        onRefreshTest();
+      }
+      return true;
+    } catch (err) {
+      setShippingOperationResult({
+        title: 'Finish pipeline failed',
+        message: err?.message || 'Could not run dry run, cleanup, and apply.',
+        pipelineTimeline: [
+          { key: 'saved', label: 'Saved', status: 'pass' },
+          { key: 'dryRun', label: 'Dry run', status: 'warn' },
+          { key: 'cleanup', label: 'Cleanup', status: 'warn' },
+          { key: 'apply', label: 'Apply', status: 'warn' },
+        ],
+      });
+      return false;
+    } finally {
+      setShippingOperationLoading('');
+    }
+  }, [initialData?.id, onRefreshTest, shippingVariantTabIndex]);
   useEffect(() => {
     if (!isDirty) {
       setVisualEditorDirty(false);
@@ -577,11 +794,9 @@ function TestWizard({
   const [antiFlickerToast, setAntiFlickerToast] = useState(null);
   const [goalEventCopyToast, setGoalEventCopyToast] = useState(null);
   const [shippingUiMode, setShippingUiMode] = useState('beginner');
-  const [shippingChecklistExpanded, setShippingChecklistExpanded] = useState(false);
-  const [shippingCurrentSetupExpanded, setShippingCurrentSetupExpanded] = useState(false);
-  const [shippingRailTab, setShippingRailTab] = useState('overview');
-  const [shippingGuidedStep, setShippingGuidedStep] = useState('category');
+  const [shippingGuidedStep, setShippingGuidedStep] = useState('type');
   const [shippingUiAdvancedOpen, setShippingUiAdvancedOpen] = useState(false);
+  const [shippingOfferFieldPickerOpen, setShippingOfferFieldPickerOpen] = useState(false);
   const [shippingReplacementExtraRowsOpen, setShippingReplacementExtraRowsOpen] = useState(false);
   const [shippingRateActionToast, setShippingRateActionToast] = useState(null);
   const [shippingRateLastFixedAt, setShippingRateLastFixedAt] = useState(null);
@@ -635,9 +850,6 @@ function TestWizard({
     }
     setShippingVariantTabIndex(prev => Math.min(prev, n - 1));
   }, [formData.variants?.length]);
-  useEffect(() => {
-    setShippingRailTab('overview');
-  }, [shippingVariantTabIndex]);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
     if (n === 0) {
@@ -3277,6 +3489,11 @@ function TestWizard({
         .replace(/_/g, '-');
       const currentTestType = formData.type || initialData?.type || selectedTemplate;
       const isPriceScope = isPriceLikeTestType(currentTestType);
+      const isShippingScope =
+        selectedTemplate === 'shipping' ||
+        String(currentTestType || '')
+          .trim()
+          .toLowerCase() === 'shipping';
       const urlPattern = formData.segments?.url_pattern ?? '';
       const firstId =
         formData.target_id ||
@@ -3284,7 +3501,7 @@ function TestWizard({
           ? formData.target_ids[0]
           : null);
       const resources = storeResources || [];
-      if (isPriceScope && normalizedTargetType === 'all-products') {
+      if ((isPriceScope || isShippingScope) && normalizedTargetType === 'all-products') {
         const previewProduct = previewProductOverride || pricePreviewProduct;
         if (previewProduct?.handle) {
           return `/products/${encodeURIComponent(previewProduct.handle)}`;
@@ -4675,7 +4892,7 @@ function TestWizard({
   };
 
   const handleSubmit = async (options = {}) => {
-    if (!onSubmit) return;
+    if (!onSubmit) return false;
 
     const reviewStepId = steps[steps.length - 1]?.id;
     const isReviewStep = currentStep === reviewStepId;
@@ -4684,7 +4901,7 @@ function TestWizard({
       if (stepErrors.length > 0) {
         shouldFocusValidationSummaryRef.current = true;
         setError(stepErrors[0]);
-        return;
+        return false;
       }
     }
 
@@ -4696,7 +4913,7 @@ function TestWizard({
       normalizeTextValue(payload.name) || normalizeTextValue(initialData?.name) || '';
     if (!nameToUse) {
       setError('Test name is required.');
-      return;
+      return false;
     }
     const payloadWithName = { ...payload, name: nameToUse.trim() };
     if (!normalizeTextValue(payload.name) && normalizeTextValue(initialData?.name)) {
@@ -4745,10 +4962,11 @@ function TestWizard({
       }
       setAutosaveState('error');
       setLoading(false);
-      return;
+      return false;
     }
 
     setLoading(false);
+    return true;
   };
 
   const handleSaveDraft = async () => {
@@ -4991,13 +5209,18 @@ function TestWizard({
     const isPricePreview = isPriceLikeTestType(
       formData.type || initialData?.type || selectedTemplate
     );
+    const isShippingPreview =
+      selectedTemplate === 'shipping' ||
+      String(formData.type || initialData?.type || selectedTemplate || '')
+        .trim()
+        .toLowerCase() === 'shipping';
     const pricePreviewSurface = isPricePreview
       ? String(options.pricePreviewSurface || getPricePreviewSurfaceFromMappings() || 'pdp')
           .trim()
           .toLowerCase()
       : 'pdp';
     const pathForPreview =
-      isPricePreview && pricePreviewSurface && pricePreviewSurface !== 'pdp'
+      (isPricePreview || isShippingPreview) && pricePreviewSurface && pricePreviewSurface !== 'pdp'
         ? buildPriceSurfacePickerPath(pricePreviewSurface, {
             productPath: getFirstTargetPreviewPath(options.pricePreviewProduct || null),
             collectionPath: getCollectionPreviewPath(),
@@ -5012,7 +5235,7 @@ function TestWizard({
       .toLowerCase()
       .replace(/_/g, '-');
     if (
-      isPricePreview &&
+      (isPricePreview || isShippingPreview) &&
       normalizedTargetTypeForPreview === 'all-products' &&
       pricePreviewSurface === 'pdp' &&
       !String(pathForPreview || '').startsWith('/products/')
@@ -5139,7 +5362,16 @@ function TestWizard({
     const isAllProductsPricePreview =
       isPriceLikeTestType(formData.type || initialData?.type || selectedTemplate) &&
       normalizedTargetType === 'all-products';
-    if (isAllProductsPricePreview && !pricePreviewProduct?.handle) {
+    const isAllProductsShippingPreview =
+      (selectedTemplate === 'shipping' ||
+        String(formData.type || initialData?.type || selectedTemplate || '')
+          .trim()
+          .toLowerCase() === 'shipping') &&
+      normalizedTargetType === 'all-products';
+    if (
+      (isAllProductsPricePreview || isAllProductsShippingPreview) &&
+      !pricePreviewProduct?.handle
+    ) {
       pricePreviewProductOverride = await fetchFirstPricePreviewProduct();
     }
     const url = buildPreviewUrl(variant, index, {
@@ -5149,8 +5381,8 @@ function TestWizard({
     });
     if (!url) {
       setError(
-        isAllProductsPricePreview
-          ? 'Could not load a product page for all-products price preview. Refresh products or reconnect Shopify, then try again.'
+        isAllProductsPricePreview || isAllProductsShippingPreview
+          ? 'Could not load a product page for all-products preview. Refresh products or reconnect Shopify, then try again.'
           : isStandalone
             ? 'Add a site domain for this test (or a variant URL) to preview. You can set it in test settings or when connecting your site.'
             : 'Missing shop domain. Open the app from Shopify Admin to preview.'
@@ -5186,7 +5418,16 @@ function TestWizard({
     const isAllProductsPricePreview =
       isPriceLikeTestType(formData.type || initialData?.type || selectedTemplate) &&
       normalizedTargetType === 'all-products';
-    if (isAllProductsPricePreview && !pricePreviewProduct?.handle) {
+    const isAllProductsShippingPreview =
+      (selectedTemplate === 'shipping' ||
+        String(formData.type || initialData?.type || selectedTemplate || '')
+          .trim()
+          .toLowerCase() === 'shipping') &&
+      normalizedTargetType === 'all-products';
+    if (
+      (isAllProductsPricePreview || isAllProductsShippingPreview) &&
+      !pricePreviewProduct?.handle
+    ) {
       pricePreviewProductOverride = await fetchFirstPricePreviewProduct();
     }
     const url = buildPreviewUrl(variant, index, {
@@ -5197,8 +5438,8 @@ function TestWizard({
     });
     if (!url) {
       setError(
-        isAllProductsPricePreview
-          ? 'Could not load a product page for all-products price preview. Refresh products or reconnect Shopify, then try again.'
+        isAllProductsPricePreview || isAllProductsShippingPreview
+          ? 'Could not load a product page for all-products preview. Refresh products or reconnect Shopify, then try again.'
           : isStandalone
             ? 'Add a site domain for this test (or a variant URL) to preview. You can set it in test settings or when connecting your site.'
             : 'Missing shop domain. Open the app from Shopify Admin to preview.'
@@ -5235,7 +5476,16 @@ function TestWizard({
     const isAllProductsPricePreview =
       isPriceLikeTestType(formData.type || initialData?.type || selectedTemplate) &&
       normalizedTargetType === 'all-products';
-    if (isAllProductsPricePreview && !pricePreviewProduct?.handle) {
+    const isAllProductsShippingPreview =
+      (selectedTemplate === 'shipping' ||
+        String(formData.type || initialData?.type || selectedTemplate || '')
+          .trim()
+          .toLowerCase() === 'shipping') &&
+      normalizedTargetType === 'all-products';
+    if (
+      (isAllProductsPricePreview || isAllProductsShippingPreview) &&
+      !pricePreviewProduct?.handle
+    ) {
       pricePreviewProductOverride = await fetchFirstPricePreviewProduct();
     }
     return buildPreviewUrl(variant, index, {
@@ -11834,22 +12084,8 @@ function TestWizard({
       const normalized = normalizeShippingDeliveryPromise(promise);
       return normalized.mode === 'custom' ? 'custom' : normalized.preset || 'none';
     };
-    const getShippingDeliveryPromiseLabel = promise => {
-      const normalized = normalizeShippingDeliveryPromise(promise);
-      if (normalized.mode === 'custom') {
-        if (normalized.min_delivery_date || normalized.max_delivery_date) {
-          return `${normalized.min_delivery_date || 'Custom date'} to ${
-            normalized.max_delivery_date || normalized.min_delivery_date
-          }`;
-        }
-        return 'Custom date range';
-      }
-      const value = getShippingDeliveryPromiseValue(normalized);
-      return (
-        SHIPPING_DELIVERY_PROMISE_OPTIONS.find(option => option.value === value)?.label ||
-        'No delivery promise'
-      );
-    };
+    const getShippingDeliveryPromiseLabel = promise =>
+      formatShippingDeliveryPromiseLabel(normalizeShippingDeliveryPromise(promise));
     const buildShippingDeliveryPromisePatch = value => {
       const normalized = String(value || 'none').trim();
       if (normalized === 'custom') {
@@ -11860,6 +12096,48 @@ function TestWizard({
       }
       return { mode: 'preset', preset: normalized };
     };
+    const getShippingDeliveryPromiseModeValue = promise => {
+      const normalized = normalizeShippingDeliveryPromise(promise);
+      if (normalized.mode === 'custom') {
+        return 'custom';
+      }
+      if (normalized.mode === 'preset' && normalized.preset && normalized.preset !== 'none') {
+        return 'preset';
+      }
+      return 'none';
+    };
+    const applyShippingPromiseModeChange = (mode, currentPromise = {}) => {
+      const normalizedMode = String(mode || 'none')
+        .trim()
+        .toLowerCase();
+      const normalizedCurrent = normalizeShippingDeliveryPromise(currentPromise);
+      if (normalizedMode === 'custom') {
+        return {
+          mode: 'custom',
+          preset: 'custom',
+          min_delivery_date: normalizedCurrent.min_delivery_date || '',
+          max_delivery_date: normalizedCurrent.max_delivery_date || '',
+        };
+      }
+      if (normalizedMode === 'preset') {
+        const fallbackPreset =
+          normalizedCurrent.mode === 'preset' &&
+          normalizedCurrent.preset &&
+          !['none', 'custom'].includes(normalizedCurrent.preset)
+            ? normalizedCurrent.preset
+            : 'next_business_day';
+        return { mode: 'preset', preset: fallbackPreset };
+      }
+      return { mode: 'none', preset: 'none' };
+    };
+    const deliveryPromisePresetOptions = SHIPPING_DELIVERY_PROMISE_OPTIONS.filter(
+      option => !['none', 'custom'].includes(String(option.value || '').trim())
+    );
+    const shippingPromiseModeOptions = [
+      { label: 'None', value: 'none' },
+      { label: 'Preset', value: 'preset' },
+      { label: 'Custom date range', value: 'custom' },
+    ];
     const getShippingReadiness = (variant, index) => getSharedShippingReadiness(variant, index);
     const getShippingVariantSummary = (variant, index) =>
       getSharedShippingVariantSummary(variant, index, formatShippingMoney);
@@ -11974,6 +12252,10 @@ function TestWizard({
     const activeCheckoutDeliveryPromise = normalizeShippingDeliveryPromise(
       activeCheckoutDisplay.delivery_promise || activeCheckoutDisplay.deliveryPromise
     );
+    const metadata =
+      activeShippingConfig.metadata && typeof activeShippingConfig.metadata === 'object'
+        ? activeShippingConfig.metadata
+        : {};
     const isLinkedReplacementRate = (rate, index) => {
       const selectedReplacementNames = new Set(
         normalizeCheckoutListInput(
@@ -12061,6 +12343,278 @@ function TestWizard({
       }
       updateShippingVariantConfig(activeShippingVariantIndex, variantPatch);
     };
+    const usesUnifiedCheckoutOffer =
+      activeStrategy === 'flat_rate' ||
+      (activeStrategy === 'carrier_quote' &&
+        ['static_rate', 'static', 'flat_rate', ''].includes(
+          String(metadata.quote_provider || 'static_rate')
+            .trim()
+            .toLowerCase()
+        ));
+    const checkoutOfferRateName = (() => {
+      const primaryRate = activeConfiguredRates[0];
+      if (primaryRate && String(primaryRate.name || '').trim()) {
+        return String(primaryRate.name).trim();
+      }
+      const fromMeta = String(
+        metadata.quote_service_name || metadata.quoteServiceName || ''
+      ).trim();
+      if (fromMeta) {
+        return fromMeta;
+      }
+      return String(activeShippingConfig.label || '').trim();
+    })();
+    const checkoutOfferPrice =
+      activeStrategy === 'carrier_quote' ? (metadata.quote_amount ?? amountValue) : amountValue;
+    const syncCheckoutOfferRatesPatch = (ratePatch = {}) => {
+      if (!ratePatch || Object.keys(ratePatch).length === 0) {
+        return null;
+      }
+      const selectedReplacementNames = new Set(
+        normalizeCheckoutListInput(
+          activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+        ).map(name => name.toLowerCase())
+      );
+      const isReplaceExistingMode =
+        String(
+          activeShippingConfig.shipping_display_mode ||
+            activeShippingConfig.shippingDisplayMode ||
+            activeShippingConfig.display_mode ||
+            ''
+        )
+          .trim()
+          .toLowerCase() === 'replace_existing_methods' ||
+        activeShippingConfig.replace_existing_rates === true ||
+        activeShippingConfig.replaceExistingRates === true;
+      if (isReplaceExistingMode && activeConfiguredRates.length > 0) {
+        let updatedLinkedRateCount = 0;
+        const nextRates = activeConfiguredRates.map((rate, index) => {
+          const sourceName = String(
+            rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
+          )
+            .trim()
+            .toLowerCase();
+          const visibleName = String(rate?.name || rate?.service_name || '')
+            .trim()
+            .toLowerCase();
+          const isLinkedReplacement =
+            selectedReplacementNames.size === 0 ||
+            selectedReplacementNames.has(sourceName) ||
+            selectedReplacementNames.has(visibleName) ||
+            (activeConfiguredRates.length === 1 && index === 0);
+          if (!isLinkedReplacement) {
+            return rate;
+          }
+          updatedLinkedRateCount += 1;
+          return { ...rate, ...ratePatch };
+        });
+        if (updatedLinkedRateCount === 0 && activeConfiguredRates[0]) {
+          return activeConfiguredRates.map((rate, index) =>
+            index === 0 ? { ...rate, ...ratePatch } : rate
+          );
+        }
+        return nextRates;
+      }
+      if (hasSingleSimpleConfiguredRate) {
+        return [{ ...activeConfiguredRates[0], ...ratePatch }];
+      }
+      if (
+        activeConfiguredRates.length === 0 &&
+        (ratePatch.name || ratePatch.amount !== undefined)
+      ) {
+        return [
+          {
+            name: ratePatch.name || checkoutOfferRateName || 'RipX Shipping',
+            amount:
+              ratePatch.amount !== undefined
+                ? ratePatch.amount
+                : checkoutOfferPrice === '' || checkoutOfferPrice === null
+                  ? null
+                  : Number(checkoutOfferPrice),
+            currency: String(activeShippingConfig.currency || 'USD')
+              .trim()
+              .toUpperCase(),
+            description:
+              ratePatch.description || String(activeCheckoutDisplay.default_description || ''),
+            delivery_promise: ratePatch.delivery_promise || activeCheckoutDeliveryPromise,
+            priority: 1,
+            sort_order: 1,
+          },
+        ];
+      }
+      return null;
+    };
+    const updateShippingCheckoutOfferName = value => {
+      const nextName = String(value || '').trim();
+      const variantPatch = {
+        label: nextName,
+        metadata: {
+          ...metadata,
+          quote_service_name: nextName,
+        },
+      };
+      const syncedRates = syncCheckoutOfferRatesPatch({ name: nextName });
+      if (syncedRates) {
+        variantPatch.rates = syncedRates;
+      }
+      updateShippingVariantConfig(activeShippingVariantIndex, variantPatch);
+    };
+    const updateShippingCheckoutOfferPrice = value => {
+      const nextAmount = value === '' ? null : Number(value);
+      if (activeStrategy === 'carrier_quote') {
+        const variantPatch = {
+          amount: nextAmount,
+          metadata: {
+            ...metadata,
+            quote_amount: nextAmount,
+          },
+        };
+        const syncedRates = syncCheckoutOfferRatesPatch({ amount: nextAmount });
+        if (syncedRates) {
+          variantPatch.rates = syncedRates;
+        }
+        updateShippingVariantConfig(activeShippingVariantIndex, variantPatch);
+        return;
+      }
+      updateFlatShippingAmount(value);
+    };
+    const renderShippingCheckoutOfferFields = ({
+      compact = false,
+      showPanelHeader = true,
+      offerAttributes = null,
+      offerBaseline = null,
+      showUncheckedBaselines = false,
+    } = {}) => {
+      const activeOfferAttributes = offerAttributes || shippingOfferAttributes;
+      const activeOfferBaseline = offerBaseline || shippingOfferBaseline;
+      const renderOfferBaselineField = (attributeKey, label) => (
+        <div className={stepStyles.shippingOfferBaselineField} key={`baseline-${attributeKey}`}>
+          <span>{label}</span>
+          <strong>{formatShippingOfferBaselineValue(attributeKey, activeOfferBaseline)}</strong>
+          <small>Control default for this test</small>
+        </div>
+      );
+      return (
+        <div
+          className={
+            compact
+              ? stepStyles.shippingCheckoutDisplayControlsCompact
+              : stepStyles.shippingCheckoutDisplayControls
+          }
+        >
+          {showPanelHeader ? (
+            <div className={stepStyles.shippingCheckoutOfferPanelHeader}>
+              <span className={stepStyles.shippingStudioEyebrow}>Checkout offer</span>
+              <strong>Update what shoppers see together</strong>
+              <small>
+                Checked fields are editable. Unchecked fields keep the control default in checkout.
+              </small>
+            </div>
+          ) : null}
+          <div className={stepStyles.shippingCheckoutOfferPriceGrid}>
+            {activeOfferAttributes.name ? (
+              <TextField
+                label="Checkout rate name"
+                value={checkoutOfferRateName}
+                onChange={updateShippingCheckoutOfferName}
+                placeholder={replacesExistingRates ? 'RipX Standard' : 'RipX Shipping'}
+                helpText="Shown as the shipping method title in checkout."
+                autoComplete="off"
+              />
+            ) : showUncheckedBaselines ? (
+              renderOfferBaselineField('name', 'Checkout rate name')
+            ) : null}
+            {activeOfferAttributes.rate ? (
+              <TextField
+                label="Checkout price"
+                type="number"
+                value={getShippingNumberValue(checkoutOfferPrice)}
+                onChange={updateShippingCheckoutOfferPrice}
+                prefix="$"
+                helpText={
+                  activeStrategy === 'carrier_quote'
+                    ? 'Used by the static carrier quote provider at checkout.'
+                    : replacesExistingRates
+                      ? 'Replacement amount shown after native methods are hidden.'
+                      : 'Amount shown beside Shopify methods.'
+                }
+                autoComplete="off"
+              />
+            ) : showUncheckedBaselines ? (
+              renderOfferBaselineField('rate', 'Checkout price')
+            ) : null}
+          </div>
+          {activeOfferAttributes.message ? (
+            <TextField
+              label="Delivery promise text"
+              value={String(activeCheckoutDisplay.default_description || '')}
+              onChange={value =>
+                updateShippingCheckoutDisplay({
+                  default_description: value,
+                })
+              }
+              placeholder="Arrives fast with full tracking"
+              helpText="Optional text shown under the shipping method title in checkout."
+              maxLength={200}
+              autoComplete="off"
+            />
+          ) : showUncheckedBaselines ? (
+            renderOfferBaselineField('message', 'Delivery promise text')
+          ) : null}
+          {activeOfferAttributes.range ? (
+            <>
+              <Select
+                label="Delivery promise"
+                options={SHIPPING_DELIVERY_PROMISE_OPTIONS}
+                value={getShippingDeliveryPromiseValue(activeCheckoutDeliveryPromise)}
+                onChange={value =>
+                  updateShippingCheckoutDisplay({
+                    delivery_promise: buildShippingDeliveryPromisePatch(value),
+                  })
+                }
+                helpText="Optional delivery date range shown in checkout for CarrierService rates."
+              />
+              {activeCheckoutDeliveryPromise.mode === 'custom' && (
+                <div className={stepStyles.shippingDeliveryDateGrid}>
+                  <TextField
+                    label="Earliest delivery date"
+                    type="date"
+                    value={String(activeCheckoutDeliveryPromise.min_delivery_date || '')}
+                    onChange={value =>
+                      updateShippingCheckoutDisplay({
+                        delivery_promise: {
+                          ...activeCheckoutDeliveryPromise,
+                          min_delivery_date: value,
+                        },
+                      })
+                    }
+                    autoComplete="off"
+                  />
+                  <TextField
+                    label="Latest delivery date"
+                    type="date"
+                    value={String(activeCheckoutDeliveryPromise.max_delivery_date || '')}
+                    onChange={value =>
+                      updateShippingCheckoutDisplay({
+                        delivery_promise: {
+                          ...activeCheckoutDeliveryPromise,
+                          max_delivery_date: value,
+                        },
+                      })
+                    }
+                    autoComplete="off"
+                  />
+                </div>
+              )}
+            </>
+          ) : showUncheckedBaselines ? (
+            renderOfferBaselineField('range', 'Delivery promise')
+          ) : null}
+        </div>
+      );
+    };
+    const renderShippingCheckoutDisplayFields = (options = {}) =>
+      renderShippingCheckoutOfferFields(options);
     const activeConfiguredValidRates = activeConfiguredRates.filter(
       rate => hasShippingNumericValue(rate.amount) && Number(rate.amount) >= 0
     );
@@ -12075,10 +12629,6 @@ function TestWizard({
       activeShippingConfig.percent_off !== undefined && activeShippingConfig.percent_off !== null
         ? activeShippingConfig.percent_off
         : (activeShippingConfig.discount_percent ?? '');
-    const metadata =
-      activeShippingConfig.metadata && typeof activeShippingConfig.metadata === 'object'
-        ? activeShippingConfig.metadata
-        : {};
     const activeShippingScope =
       activeShippingConfig.shipping_scope && typeof activeShippingConfig.shipping_scope === 'object'
         ? activeShippingConfig.shipping_scope
@@ -12172,12 +12722,6 @@ function TestWizard({
     const shippingLiveCheckoutQaDone =
       metadata.shipping_live_checkout_qa_complete === true ||
       Boolean(metadata.shipping_live_checkout_qa_checked_at);
-    const shippingLiveCheckoutQaCheckedAt = String(
-      metadata.shipping_live_checkout_qa_checked_at || ''
-    ).trim();
-    const shippingLiveCheckoutQaCheckedAtText = shippingLiveCheckoutQaCheckedAt
-      ? new Date(shippingLiveCheckoutQaCheckedAt).toLocaleString()
-      : '';
     const quoteProvider = String(metadata.quote_provider || '').trim();
     const inferredCurrentRate =
       (scopedCurrentRateCandidate?.score || 0) > 0
@@ -12277,8 +12821,17 @@ function TestWizard({
       });
     };
     const getSelectedShippingCategory = () => {
+      const metadataType = String(metadata?.shipping_test_type || '')
+        .trim()
+        .toLowerCase();
+      if (metadataType && getShippingTestTypeByKey(metadataType)) {
+        return metadataType;
+      }
       if (activeStrategy === 'flat_rate') {
-        return replacesExistingRates ? 'replace_rate' : 'add_rate';
+        if (activeShippingConfig.replace_existing_rates) {
+          return 'replace_rate';
+        }
+        return 'add_rate';
       }
       if (isDeliveryCustomizationPath) {
         const action = String(activeShippingConfig.delivery_action || 'hide')
@@ -12291,79 +12844,106 @@ function TestWizard({
     };
     const handleShippingCategorySelect = category => {
       if (isActiveControlLike) return;
-      const normalized = String(category || '').trim();
+      const normalized = String(category || '')
+        .trim()
+        .toLowerCase();
+      const previousCategory = getSelectedShippingCategory();
+      if (normalized === previousCategory) {
+        if (activeShippingGuidedStep === 'type') {
+          setShippingGuidedStep(shouldShowMethodSelectionStep(normalized) ? 'hide' : 'configure');
+        }
+        return;
+      }
+      const transitionReset = buildShippingCategoryTransitionResetPatch(
+        previousCategory,
+        normalized
+      );
+      const patch = {
+        ...transitionReset,
+        ...buildShippingCategoryConfigPatch(normalized, {
+          metadata,
+          activeShippingScope,
+        }),
+      };
+      if (Object.keys(transitionReset).length > 0) {
+        patch.shipping_scope = {
+          ...activeShippingScope,
+          selected_rate_ids: [],
+          selected_rate_names: [],
+          selected_method_definition_ids: [],
+        };
+      }
       if (normalized === 'replace_rate') {
-        updateShippingVariantConfig(activeShippingVariantIndex, {
-          strategy: 'flat_rate',
-          execution_hint: 'auto',
-          shipping_display_mode: 'replace_existing_methods',
-          replace_existing_rates: true,
-          delivery_action: 'hide',
-        });
         setShippingReplacementExtraRowsOpen(false);
-        setShippingRailTab('overview');
-        setShippingGuidedStep('methods');
-        return;
       }
-      if (normalized === 'add_rate') {
-        updateShippingVariantConfig(activeShippingVariantIndex, {
-          strategy: 'flat_rate',
-          execution_hint: 'auto',
-          shipping_display_mode: 'add_preview_method',
-          replace_existing_rates: false,
-          delivery_method_names: [],
-          delivery_action: 'hide',
-          shipping_scope: {
-            ...activeShippingScope,
-            selected_rate_ids: [],
-            selected_rate_names: [],
-            selected_method_definition_ids: [],
-          },
-        });
-        setShippingRailTab('overview');
-        setShippingGuidedStep('details');
-        return;
-      }
-      if (normalized === 'hide_method' || normalized === 'rename_method') {
-        updateShippingVariantConfig(activeShippingVariantIndex, {
-          strategy: 'carrier_quote',
-          execution_hint: 'delivery_customization',
-          delivery_action: normalized === 'rename_method' ? 'rename' : 'hide',
-          shipping_display_mode: 'replace_existing_methods',
-          replace_existing_rates: false,
-          rates: [],
-        });
-        setShippingRailTab('overview');
-        setShippingGuidedStep('methods');
-        return;
-      }
-      if (normalized === 'carrier_quote') {
-        updateShippingVariantConfig(activeShippingVariantIndex, {
-          strategy: 'carrier_quote',
-          execution_hint: 'carrier_quote',
-          delivery_method_names: [],
-          delivery_action: 'hide',
-          shipping_display_mode: 'add_preview_method',
-          replace_existing_rates: false,
-        });
-        setShippingRailTab('overview');
-        setShippingGuidedStep('details');
-        return;
-      }
-      updateShippingVariantConfig(activeShippingVariantIndex, {
-        strategy: normalized,
-        execution_hint: '',
-        delivery_method_names: [],
-        shipping_display_mode: 'add_preview_method',
-        replace_existing_rates: false,
-      });
-      setShippingRailTab('overview');
-      setShippingGuidedStep('details');
+      updateShippingVariantConfig(activeShippingVariantIndex, patch);
+      setShippingGuidedStep(shouldShowMethodSelectionStep(normalized) ? 'hide' : 'configure');
     };
     const selectedShippingCategory = getSelectedShippingCategory();
-    const selectedCategoryNeedsMethods = ['replace_rate', 'hide_method', 'rename_method'].includes(
-      selectedShippingCategory
-    );
+    const selectedCategoryNeedsMethods = shouldShowMethodSelectionStep(selectedShippingCategory);
+    const shippingOfferMode = getShippingOfferMode(activeShippingConfig);
+    const shippingOfferAttributes = getShippingOfferAttributes(activeShippingConfig);
+    const controlVariantForBaseline = (formData.variants || [])[0] || null;
+    const shippingOfferBaseline = resolveControlShippingBaseline({
+      controlVariant: controlVariantForBaseline,
+      currentSetup: shippingCurrentSetup,
+      inferredRate: shippingCurrentSetup?.summary?.inferred_baseline_rate || null,
+    });
+    const setShippingOfferAttributeEnabled = (attributeKey, enabled) => {
+      const normalizedKey = String(attributeKey || '').trim();
+      if (!normalizedKey) {
+        return;
+      }
+      const nextAttributes = buildShippingOfferAttributesPatch({
+        ...shippingOfferAttributes,
+        [normalizedKey]: Boolean(enabled),
+      });
+      const checkoutOfferSource =
+        activeShippingConfig.checkout_offer &&
+        typeof activeShippingConfig.checkout_offer === 'object'
+          ? activeShippingConfig.checkout_offer
+          : activeShippingConfig.checkoutOffer &&
+              typeof activeShippingConfig.checkoutOffer === 'object'
+            ? activeShippingConfig.checkoutOffer
+            : {};
+      const basePatch = {
+        metadata: {
+          ...metadata,
+          shipping_offer_attributes: nextAttributes,
+        },
+        checkout_offer: {
+          ...checkoutOfferSource,
+          attributes: nextAttributes,
+        },
+      };
+      if (enabled) {
+        updateShippingVariantConfig(activeShippingVariantIndex, basePatch);
+        return;
+      }
+      const revertPatch = buildOfferAttributeRevertPatch(
+        activeShippingConfig,
+        normalizedKey,
+        shippingOfferBaseline
+      );
+      const revertCheckoutOffer =
+        revertPatch.checkout_offer && typeof revertPatch.checkout_offer === 'object'
+          ? revertPatch.checkout_offer
+          : checkoutOfferSource;
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        ...revertPatch,
+        ...basePatch,
+        metadata: {
+          ...(revertPatch.metadata && typeof revertPatch.metadata === 'object'
+            ? revertPatch.metadata
+            : {}),
+          ...basePatch.metadata,
+        },
+        checkout_offer: {
+          ...revertCheckoutOffer,
+          ...basePatch.checkout_offer,
+        },
+      });
+    };
     const selectedStrategyChoice =
       shippingStrategyChoices.find(choice => isStrategyChoiceActive(choice)) ||
       shippingStrategyChoices[0];
@@ -12495,6 +13075,9 @@ function TestWizard({
     const availableDeliveryMethodNames = uniqueShippingValues(
       shippingCurrentRates.map(rate => rate?.name)
     ).slice(0, 8);
+    const activeDeliveryMethodNames = normalizeCheckoutListInput(
+      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+    );
     const existingDeliveryMethodText =
       availableDeliveryMethodNames.length > 0
         ? availableDeliveryMethodNames.slice(0, 3).join(', ')
@@ -12530,22 +13113,31 @@ function TestWizard({
     });
     const shippingScopeStepItems = [
       {
-        label: 'Choose Scope (profile + zone)',
-        done:
-          !['flat_rate', 'carrier_quote'].includes(activeStrategy) ||
-          hasShippingCarrierScopeSelection,
+        label: 'Choose shipping test type',
+        done: Boolean(selectedShippingCategory),
       },
       {
-        label: 'Set Method Targets',
-        done:
-          Array.isArray(activeShippingConfig.delivery_method_names) &&
-          activeShippingConfig.delivery_method_names.length > 0,
+        label: selectedCategoryNeedsMethods
+          ? getShippingTypeOptionDetails(selectedShippingCategory).group === 'incentives'
+            ? 'Pick Shopify methods to target'
+            : 'Pick Shopify methods'
+          : 'Optional method hide selection',
+        done: selectedCategoryNeedsMethods ? activeDeliveryMethodNames.length > 0 : true,
       },
       {
-        label: 'Set Variant Rate',
+        label: 'Configure variant shipping',
         done:
-          hasShippingNumericValue(activeShippingConfig.amount) ||
-          activeConfiguredValidRates.length > 0,
+          activeReadiness?.status !== 'blocked' &&
+          (hasShippingNumericValue(activeShippingConfig.amount) ||
+            activeConfiguredValidRates.length > 0 ||
+            selectedShippingCategory === 'free_shipping' ||
+            selectedShippingCategory === 'hide_method' ||
+            (selectedShippingCategory === 'threshold_free_shipping' &&
+              hasShippingNumericValue(thresholdValue)) ||
+            (selectedShippingCategory === 'discount_percentage' &&
+              hasShippingNumericValue(percentOffValue)) ||
+            (selectedShippingCategory === 'discount_fixed' &&
+              hasShippingNumericValue(amountValue))),
       },
       {
         label: 'Run Live Checkout QA',
@@ -12561,9 +13153,6 @@ function TestWizard({
       shippingChecklistTotalCount > 0
         ? Math.round((shippingChecklistDoneCount / shippingChecklistTotalCount) * 100)
         : 100;
-    const shippingCurrentSetupVisibleRates = shippingCurrentSetupExpanded
-      ? shippingCurrentRates.slice(0, 6)
-      : shippingCurrentRates.slice(0, 2);
     const hasShippingBlocker = activeReadiness?.status === 'blocked';
     const shippingBlockerMessage = activeReadiness?.issue || 'Configuration blocked.';
     const canShowShippingOperations = canShowShippingExecution({
@@ -12660,9 +13249,6 @@ function TestWizard({
       }
       return [...current, normalizedNext];
     };
-    const activeDeliveryMethodNames = normalizeCheckoutListInput(
-      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
-    );
     const activeSelectedMethodIds = [
       ...(Array.isArray(activeShippingScope.selected_method_definition_ids)
         ? activeShippingScope.selected_method_definition_ids
@@ -12730,11 +13316,59 @@ function TestWizard({
         delivery_promise: { mode: 'none', preset: 'none' },
       };
     };
+    const buildHideTargetsPatch = (methodNames = []) => {
+      const normalizedNames = normalizeCheckoutListInput(methodNames);
+      return {
+        ...buildMethodTargetingPatch(selectedShippingCategory, normalizedNames),
+        delivery_method_codes:
+          normalizedNames.length > 0 ? buildNativeDeliveryMethodCodes(normalizedNames) : [],
+      };
+    };
+    const findShippingCurrentRateByName = methodName => {
+      const normalizedName = String(methodName || '')
+        .trim()
+        .toLowerCase();
+      if (!normalizedName) return null;
+      return (
+        shippingCurrentRates.find(rate => {
+          const rateName = String(rate?.name || '')
+            .trim()
+            .toLowerCase();
+          return rateName === normalizedName;
+        }) || null
+      );
+    };
+    const ensureOfferWizardLinkedRates = () => {
+      if (isActiveControlLike) return;
+      if (!shouldManageReplacementRatesForCategory(selectedShippingCategory)) return;
+      if (activeDeliveryMethodNames.length === 0) return;
+      const linkedRates = activeDeliveryMethodNames
+        .map((methodName, index) => {
+          const sourceRate = findShippingCurrentRateByName(methodName);
+          return (
+            findReplacementRateForMethod(methodName) ||
+            buildReplacementRateForMethod(methodName, sourceRate, index)
+          );
+        })
+        .filter(Boolean);
+      if (linkedRates.length === 0) return;
+      const firstReplacementAmount = linkedRates.find(rate =>
+        hasShippingNumericValue(rate?.amount)
+      )?.amount;
+      updateShippingVariantConfig(activeShippingVariantIndex, {
+        ...buildHideTargetsPatch(activeDeliveryMethodNames),
+        strategy: 'flat_rate',
+        execution_hint: 'auto',
+        rates: renumberShippingRateOrdering(linkedRates),
+        ...(hasShippingNumericValue(firstReplacementAmount)
+          ? { amount: firstReplacementAmount }
+          : {}),
+      });
+    };
     const updateActiveDeliveryMethodNames = (nextNames, { clearScopeTargets = false } = {}) => {
       if (isActiveControlLike) return;
-      const patch = {
-        delivery_method_names: normalizeCheckoutListInput(nextNames),
-      };
+      const normalizedNames = normalizeCheckoutListInput(nextNames);
+      const patch = buildHideTargetsPatch(normalizedNames);
       if (clearScopeTargets && normalizeCheckoutListInput(nextNames).length === 0) {
         patch.shipping_scope = {
           ...activeShippingScope,
@@ -12742,10 +13376,6 @@ function TestWizard({
           selected_rate_names: [],
           selected_method_definition_ids: [],
         };
-        if (selectedShippingCategory === 'replace_rate') {
-          patch.rates = [];
-          patch.amount = null;
-        }
       }
       updateShippingVariantConfig(activeShippingVariantIndex, patch);
     };
@@ -12797,7 +13427,10 @@ function TestWizard({
       const idsToRemove = [methodDefinitionId, rateId, ...groupedSourceIds];
       let nextRates = activeConfiguredRates;
       let nextAmountPatch = {};
-      if (selectedShippingCategory === 'replace_rate') {
+      const shouldManageReplacementRates =
+        shouldManageReplacementRatesForCategory(selectedShippingCategory);
+      const shouldReplaceFlow = shouldManageReplacementRates && nextNames.length > 0;
+      if (shouldReplaceFlow) {
         if (exists) {
           nextRates = activeConfiguredRates.filter(rate => {
             const sourceName = getReplacementSourceName(rate);
@@ -12823,8 +13456,8 @@ function TestWizard({
         }
       }
       updateShippingVariantConfig(activeShippingVariantIndex, {
-        delivery_method_names: normalizeCheckoutListInput(nextNames),
-        ...(selectedShippingCategory === 'replace_rate'
+        ...buildHideTargetsPatch(nextNames),
+        ...(shouldReplaceFlow
           ? { rates: renumberShippingRateOrdering(nextRates), ...nextAmountPatch }
           : {}),
         shipping_scope: {
@@ -12853,7 +13486,7 @@ function TestWizard({
         .map(rate => String(rate?.id || '').trim())
         .filter(Boolean);
       const replacementRatesForSelection =
-        selectedShippingCategory === 'replace_rate'
+        shouldManageReplacementRatesForCategory(selectedShippingCategory) && names.length > 0
           ? renumberShippingRateOrdering(
               names
                 .map(name => {
@@ -12878,8 +13511,8 @@ function TestWizard({
         hasShippingNumericValue(rate?.amount)
       )?.amount;
       updateShippingVariantConfig(activeShippingVariantIndex, {
-        delivery_method_names: normalizeCheckoutListInput(names),
-        ...(selectedShippingCategory === 'replace_rate'
+        ...buildHideTargetsPatch(names),
+        ...(names.length > 0 && replacementRatesForSelection.length > 0
           ? {
               rates: replacementRatesForSelection,
               ...(hasShippingNumericValue(firstReplacementAmount)
@@ -12921,11 +13554,10 @@ function TestWizard({
       const nextRate = buildReplacementRateForMethod(normalizedName, sourceRate);
       if (!nextRate) return;
       updateShippingVariantConfig(activeShippingVariantIndex, {
+        ...buildHideTargetsPatch(
+          appendShippingListValue(activeDeliveryMethodNames, normalizedName)
+        ),
         strategy: activeStrategy === 'control' ? 'flat_rate' : activeStrategy,
-        shipping_display_mode: 'replace_existing_methods',
-        replace_existing_rates: true,
-        delivery_action: activeShippingConfig.delivery_action || 'hide',
-        delivery_method_names: appendShippingListValue(activeDeliveryMethodNames, normalizedName),
         ...(activeConfiguredRates.length === 0 && hasShippingNumericValue(nextRate.amount)
           ? { amount: nextRate.amount }
           : {}),
@@ -12966,111 +13598,12 @@ function TestWizard({
         ),
       });
     };
-    const applyCurrentShippingSetupToTreatmentVariants = () => {
-      if (!activeShippingVariant || isActiveControlLike) return;
-      setIsDirty(true);
-      const activeShippingMetadataPatch = {
-        quote_provider: metadata.quote_provider || '',
-        quote_amount: metadata.quote_amount ?? null,
-        country_rates: metadata.country_rates || '',
-      };
-      const activeConfigPatch = {
-        strategy: activeStrategy,
-        shipping_strategy: activeStrategy,
-        execution_hint: activeShippingConfig.execution_hint || '',
-        shipping_display_mode:
-          activeShippingConfig.shipping_display_mode ||
-          activeShippingConfig.shippingDisplayMode ||
-          activeShippingConfig.display_mode ||
-          'add_preview_method',
-        replace_existing_rates: Boolean(activeShippingConfig.replace_existing_rates),
-        amount: activeShippingConfig.amount ?? activeShippingConfig.rate ?? null,
-        rate: activeShippingConfig.rate ?? activeShippingConfig.amount ?? null,
-        threshold_amount:
-          activeShippingConfig.threshold_amount ??
-          activeShippingConfig.free_shipping_threshold ??
-          activeShippingConfig.freeShippingThreshold ??
-          null,
-        free_shipping_threshold:
-          activeShippingConfig.free_shipping_threshold ??
-          activeShippingConfig.threshold_amount ??
-          activeShippingConfig.freeShippingThreshold ??
-          null,
-        percent_off:
-          activeShippingConfig.percent_off ?? activeShippingConfig.discount_percent ?? null,
-        discount_percent:
-          activeShippingConfig.discount_percent ?? activeShippingConfig.percent_off ?? null,
-        discount_type:
-          activeShippingConfig.discount_type || activeShippingConfig.discountType || '',
-        discount_value:
-          activeShippingConfig.discount_value ??
-          activeShippingConfig.discountValue ??
-          activeShippingConfig.amount ??
-          activeShippingConfig.rate ??
-          null,
-        rates: activeConfiguredRates,
-        currency: activeShippingConfig.currency || 'USD',
-        delivery_method_names: activeDeliveryMethodNames,
-        method_handles:
-          activeShippingConfig.method_handles || activeShippingConfig.methodHandles || [],
-        shipping_scope: activeShippingConfig.shipping_scope,
-        delivery_action: activeShippingConfig.delivery_action || 'hide',
-        delivery_rename_to: activeShippingConfig.delivery_rename_to || '',
-        profile_id: activeShippingConfig.profile_id || activeShippingConfig.profileId || '',
-        checkout_display: activeShippingConfig.checkout_display,
-      };
-      setFormData(currentFormData => {
-        const nextVariants = (currentFormData.variants || []).map((variant, index) => {
-          const controlLike = index === 0 || /^control(\s|$)/i.test(String(variant?.name || ''));
-          if (controlLike || index === activeShippingVariantIndex) return variant;
-          return {
-            ...variant,
-            config: {
-              ...(variant?.config || {}),
-              ...activeConfigPatch,
-              metadata: {
-                ...((variant?.config && variant.config.metadata) || {}),
-                ...activeShippingMetadataPatch,
-                shipping_config_revision: new Date().toISOString(),
-              },
-            },
-          };
-        });
-        const nextFormData = { ...currentFormData, variants: nextVariants };
-        formDataRef.current = nextFormData;
-        return nextFormData;
-      });
-    };
-    const guidedShippingSteps = [
-      {
-        key: 'category',
-        label: 'Choose change',
-        description: 'Pick the shipping outcome.',
-      },
-      ...(selectedCategoryNeedsMethods
-        ? [
-            {
-              key: 'methods',
-              label: 'Pick methods',
-              description: 'Choose live Shopify methods.',
-            },
-          ]
-        : []),
-      {
-        key: 'details',
-        label: 'Set details',
-        description: 'Enter the rate, discount, or rename.',
-      },
-      {
-        key: 'review',
-        label: 'Finish',
-        description: 'Review and save the setup.',
-      },
-    ];
+    const guidedShippingSteps = getGuidedShippingSteps();
+    const normalizedShippingGuidedStep = normalizeShippingWizardStepKey(shippingGuidedStep);
     const activeShippingGuidedStep = guidedShippingSteps.some(
-      step => step.key === shippingGuidedStep
+      step => step.key === normalizedShippingGuidedStep
     )
-      ? shippingGuidedStep
+      ? normalizedShippingGuidedStep
       : guidedShippingSteps[0].key;
     const activeShippingGuidedStepIndex = Math.max(
       0,
@@ -13078,44 +13611,31 @@ function TestWizard({
     );
     const activeGuidedStepLabel =
       guidedShippingSteps[activeShippingGuidedStepIndex]?.label || 'Choose change';
-    const selectedShippingCategoryLabel =
-      selectedShippingCategory === 'replace_rate'
-        ? 'Replace rate'
-        : selectedShippingCategory === 'add_rate'
-          ? 'Add new rate'
-          : selectedShippingCategory === 'hide_method'
-            ? 'Hide method'
-            : selectedShippingCategory === 'rename_method'
-              ? 'Rename method'
-              : selectedShippingCategory === 'threshold_free_shipping'
-                ? 'Free over threshold'
-                : selectedShippingCategory === 'discount_percentage'
-                  ? 'Percent off'
-                  : selectedShippingCategory === 'discount_fixed'
-                    ? 'Fixed discount'
-                    : selectedShippingCategory === 'free_shipping'
-                      ? 'Free shipping'
-                      : selectedShippingCategory === 'carrier_quote'
-                        ? 'Carrier/app rate'
-                        : getShippingStrategyLabel(activeStrategy);
+    const selectedShippingCategoryLabel = getShippingCategoryLabel(
+      selectedShippingCategory,
+      getShippingStrategyLabel(activeStrategy)
+    );
     const guidedShippingMethodsMissing =
       selectedCategoryNeedsMethods && activeDeliveryMethodNames.length === 0;
+    const guidedShippingMethodsRecommended =
+      !selectedCategoryNeedsMethods && activeDeliveryMethodNames.length === 0;
     const guidedShippingDetailsMissing = Boolean(hasShippingBlocker);
-    const getGuidedShippingStepBlockedReason = stepKey => {
-      if ((stepKey === 'details' || stepKey === 'review') && guidedShippingMethodsMissing) {
-        return 'Complete method selection first.';
-      }
-      if (stepKey === 'review' && guidedShippingDetailsMissing) {
-        return (
-          shippingBlockerMessage || activeReadiness?.issue || 'Complete the setup details first.'
-        );
-      }
-      return '';
-    };
+    const getGuidedShippingStepBlockedReason = stepKey =>
+      resolveGuidedShippingStepBlockedReason({
+        stepKey,
+        methodsMissing: guidedShippingMethodsMissing,
+        detailsMissing: guidedShippingDetailsMissing,
+        blockerMessage: shippingBlockerMessage,
+        readinessIssue: activeReadiness?.issue,
+      });
     const goToGuidedShippingStep = index => {
       const nextStep = guidedShippingSteps[index];
       if (!nextStep) return;
-      if (getGuidedShippingStepBlockedReason(nextStep.key)) return;
+      const isBackwardOrSame = index <= activeShippingGuidedStepIndex;
+      if (!isBackwardOrSame && getGuidedShippingStepBlockedReason(nextStep.key)) return;
+      if (nextStep.key === 'configure') {
+        ensureOfferWizardLinkedRates();
+      }
       setShippingGuidedStep(nextStep.key);
     };
     const goToNextGuidedShippingStep = () =>
@@ -13125,9 +13645,10 @@ function TestWizard({
     const goToPreviousGuidedShippingStep = () =>
       goToGuidedShippingStep(Math.max(activeShippingGuidedStepIndex - 1, 0));
     const handleFinishGuidedShippingSetup = async () => {
-      setShippingRailTab('overview');
       if (mode === 'edit') {
-        await handleSubmit();
+        const saved = await handleSubmit();
+        if (!saved) return;
+        await runShippingFinishPipeline();
         return;
       }
       if (currentStep < steps.length) {
@@ -13140,18 +13661,23 @@ function TestWizard({
           const active = step.key === activeShippingGuidedStep;
           const complete = index < activeShippingGuidedStepIndex;
           const blockedReason = getGuidedShippingStepBlockedReason(step.key);
-          const statusLabel = blockedReason
-            ? 'Locked'
-            : active
-              ? 'Current'
-              : complete
-                ? 'Done'
-                : 'Next';
+          const isForwardLocked = Boolean(blockedReason) && index > activeShippingGuidedStepIndex;
+          const statusLabel = getGuidedShippingStepStatusLabel({
+            stepKey: step.key,
+            stepIndex: index,
+            activeStepIndex: activeShippingGuidedStepIndex,
+            selectedCategory: selectedShippingCategory,
+            methodsMissing: guidedShippingMethodsMissing,
+            methodsRecommended: guidedShippingMethodsRecommended,
+            detailsMissing: guidedShippingDetailsMissing,
+            blockerMessage: shippingBlockerMessage,
+            readinessIssue: activeReadiness?.issue,
+          });
           return (
             <button
               key={step.key}
               type="button"
-              disabled={Boolean(blockedReason)}
+              disabled={isForwardLocked}
               className={`${stepStyles.shippingGuidedStep} ${
                 active ? stepStyles.shippingGuidedStepActive : ''
               } ${complete ? stepStyles.shippingGuidedStepComplete : ''} ${
@@ -13175,8 +13701,9 @@ function TestWizard({
     const renderGuidedShippingFooter = () => {
       const isFirst = activeShippingGuidedStepIndex === 0;
       const isLast = activeShippingGuidedStepIndex === guidedShippingSteps.length - 1;
-      const methodsMissing = activeShippingGuidedStep === 'methods' && guidedShippingMethodsMissing;
-      const detailsMissing = activeShippingGuidedStep === 'details' && guidedShippingDetailsMissing;
+      const methodsMissing = activeShippingGuidedStep === 'hide' && guidedShippingMethodsMissing;
+      const detailsMissing =
+        activeShippingGuidedStep === 'configure' && guidedShippingDetailsMissing;
       const finishBlocked =
         isLast && (guidedShippingMethodsMissing || guidedShippingDetailsMissing);
       const nextStep = guidedShippingSteps[activeShippingGuidedStepIndex + 1];
@@ -13188,29 +13715,33 @@ function TestWizard({
           </Button>
           <div className={stepStyles.shippingGuidedFooterHint}>
             {methodsMissing
-              ? 'Select at least one Shopify method, or go back and choose a category that does not need method targeting.'
-              : detailsMissing
-                ? shippingBlockerMessage ||
-                  activeReadiness?.issue ||
-                  'Complete the required setup details.'
-                : nextBlockedReason
-                  ? nextBlockedReason
-                  : finishBlocked
-                    ? shippingBlockerMessage ||
-                      activeReadiness?.issue ||
-                      'Complete the setup before finishing.'
-                    : isLast
-                      ? mode === 'edit'
-                        ? 'Finish saves this setup. Apply live Shopify changes after review.'
-                        : 'Finish stores this setup and continues the test creation flow.'
-                      : 'Continue when this step looks right.'}
+              ? getShippingTypeOptionDetails(selectedShippingCategory).group === 'incentives'
+                ? 'Select at least one Shopify method this incentive should apply to.'
+                : 'Select at least one Shopify method before continuing.'
+              : guidedShippingMethodsRecommended && activeShippingGuidedStep === 'hide'
+                ? 'Tip: select control shipping methods to hide in checkout. You can continue without a selection.'
+                : detailsMissing
+                  ? shippingBlockerMessage ||
+                    activeReadiness?.issue ||
+                    'Complete the required setup details.'
+                  : nextBlockedReason
+                    ? nextBlockedReason
+                    : finishBlocked
+                      ? shippingBlockerMessage ||
+                        activeReadiness?.issue ||
+                        'Complete the setup before finishing.'
+                      : isLast
+                        ? mode === 'edit'
+                          ? 'Finish saves setup, runs dry run, cleans stale refs, and applies live shipping.'
+                          : 'Finish stores this setup and continues the test creation flow.'
+                        : 'Continue when this step looks right.'}
           </div>
           {isLast ? (
             <Button
               variant="primary"
               onClick={handleFinishGuidedShippingSetup}
-              loading={loading || submitLoading}
-              disabled={finishBlocked}
+              loading={loading || submitLoading || shippingOperationLoading === 'finishSetup'}
+              disabled={finishBlocked || shippingOperationLoading === 'finishSetup'}
             >
               {mode === 'edit' ? 'Finish and Save Setup' : 'Finish Setup'}
             </Button>
@@ -13218,7 +13749,7 @@ function TestWizard({
             <Button
               variant="primary"
               onClick={goToNextGuidedShippingStep}
-              disabled={methodsMissing || detailsMissing || Boolean(nextBlockedReason)}
+              disabled={methodsMissing || Boolean(nextBlockedReason)}
             >
               Next
             </Button>
@@ -13226,81 +13757,6 @@ function TestWizard({
         </div>
       );
     };
-    const renderGuidedShippingReview = () =>
-      renderShippingSmartSection({
-        title: 'Review and finish',
-        description:
-          'Save the setup first, then run diagnostics or live apply from the preview rail.',
-        badges: [
-          renderShippingFieldBadge(
-            shippingChecklistPending.length === 0 ? 'Ready' : 'Draft',
-            shippingChecklistPending.length === 0 ? 'success' : 'attention'
-          ),
-        ],
-        children: (
-          <>
-            {hasShippingBlocker ? (
-              <div className={stepStyles.shippingInlineBlocker}>
-                <strong>Review Needed:</strong> {shippingBlockerMessage}
-              </div>
-            ) : (
-              <div className={stepStyles.shippingGuidedReviewHero}>
-                <span className={stepStyles.shippingStudioEyebrow}>Ready to save</span>
-                <strong>This variant setup is ready.</strong>
-                <span>
-                  Control stays unchanged. Save this draft, then run diagnostics or apply from the
-                  preview rail when you are ready.
-                </span>
-              </div>
-            )}
-            <div className={stepStyles.shippingFinishChecklist}>
-              <div>
-                <span>1</span>
-                <strong>Save setup</strong>
-                <small>Stores this variant configuration in RipX.</small>
-              </div>
-              <div>
-                <span>2</span>
-                <strong>Run diagnostics</strong>
-                <small>Check Shopify binding and the latest carrier callback assignment.</small>
-              </div>
-              <div>
-                <span>3</span>
-                <strong>Apply when ready</strong>
-                <small>
-                  Use a fresh preview cart so checkout receives this variant assignment.
-                </small>
-              </div>
-            </div>
-            <div className={stepStyles.shippingInlineNote}>
-              <strong>Preview tip:</strong> after changing a replacement rate, open the customer
-              link with a fresh cart or reset the cart session. Existing cart lines can keep old
-              checkout assignment properties until they are repaired or re-added.
-            </div>
-            <div className={stepStyles.shippingImpactInlineRow}>
-              <div className={stepStyles.shippingImpactInlineBlock}>
-                <span>{shippingBeforeAfter.beforeTitle}</span>
-                <strong>{shippingBeforeAfter.before}</strong>
-              </div>
-              <div className={stepStyles.shippingImpactArrow} aria-hidden>
-                →
-              </div>
-              <div className={stepStyles.shippingImpactInlineBlock}>
-                <span>{shippingBeforeAfter.afterTitle}</span>
-                <strong>{shippingBeforeAfter.after}</strong>
-              </div>
-            </div>
-            <div className={stepStyles.shippingGuidedReviewActions}>
-              <Button onClick={applyCurrentShippingSetupToTreatmentVariants} size="slim">
-                Copy setup to other treatment variants
-              </Button>
-              <Button onClick={() => setShippingRailTab('details')} size="slim" variant="tertiary">
-                Open readiness details
-              </Button>
-            </div>
-          </>
-        ),
-      });
     const updateShippingRateAt = (rateIndex, patch) => {
       setShippingLastAutoFixSnapshot(null);
       const nextRates = [...activeConfiguredRates];
@@ -13753,7 +14209,7 @@ function TestWizard({
           after: hasShippingNumericValue(activePrimaryRateAmount)
             ? replacesExistingRates
               ? `After apply, RipX shows ${activeConfiguredValidRates.length > 1 ? `up to ${activeConfiguredValidRates.length} configured carrier rates (starting at ${formatShippingMoney(activePrimaryRateAmount)})` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`} and hides ${targetedDeliveryMethods.length > 0 ? targetedDeliveryMethods.join(', ') : existingDeliveryMethodText} for this variant.`
-              : `After apply, RipX can add ${activeConfiguredValidRates.length > 1 ? `${activeConfiguredValidRates.length} configured carrier rates` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`}${previewLabelPrefix ? ` labeled with "${previewLabelPrefix}"` : ' labeled as RipX Preview'}. Shopify may still show ${existingDeliveryMethodText} unless you switch display mode to replace existing methods.`
+              : `After apply, RipX adds ${activeConfiguredValidRates.length > 1 ? `${activeConfiguredValidRates.length} configured carrier rates` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`}${previewLabelPrefix ? ` labeled with "${previewLabelPrefix}"` : ' labeled as RipX Preview'}${targetedDeliveryMethods.length > 0 ? ` and hides ${targetedDeliveryMethods.join(', ')} for this variant` : ''}.`
             : 'Add a flat amount to preview the variant shipping rate.',
         };
       }
@@ -13859,7 +14315,316 @@ function TestWizard({
         <div className={stepStyles.shippingSmartSectionBody}>{children}</div>
       </div>
     );
+    const renderShippingOfferStep = () => {
+      const shouldShowOfferBlocker = activeReadiness?.status === 'blocked';
+      const showNameColumn = shippingOfferAttributes.name;
+      const showRateColumn = shippingOfferAttributes.rate;
+      const showMessageColumn = shippingOfferAttributes.message;
+      const showRangeColumn = shippingOfferAttributes.range;
+      const offerTableColumnTemplate = [
+        showNameColumn ? 'minmax(130px, 1.25fr)' : null,
+        showMessageColumn ? 'minmax(150px, 1.35fr)' : null,
+        showRateColumn ? 'minmax(105px, 0.75fr)' : null,
+        showRangeColumn ? 'minmax(130px, 0.95fr)' : null,
+        '48px',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      const optionalOfferFieldOptions = SHIPPING_OFFER_ATTRIBUTE_OPTIONS.filter(option =>
+        ['message', 'range'].includes(option.key)
+      );
+      const enabledOptionalOfferFields = optionalOfferFieldOptions.filter(option =>
+        Boolean(shippingOfferAttributes[option.key])
+      );
+      const tableRates = activeConfiguredRates;
+      const renderTableBaselineCell = (attributeKey, rate) => {
+        const rateBaseline = {
+          ...shippingOfferBaseline,
+          name:
+            String(rate?.name || shippingOfferBaseline.name).trim() || shippingOfferBaseline.name,
+          rate: hasShippingNumericValue(rate?.amount) ? rate.amount : shippingOfferBaseline.rate,
+          message: String(rate?.description || shippingOfferBaseline.message).trim(),
+          range: rate?.delivery_promise || shippingOfferBaseline.range,
+        };
+        return (
+          <div className={stepStyles.shippingOfferBaselineFieldCompact}>
+            <strong>{formatShippingOfferBaselineValue(attributeKey, rateBaseline)}</strong>
+            <small>Control default</small>
+          </div>
+        );
+      };
+      return renderShippingSmartSection({
+        title: 'New shipping for this test',
+        description:
+          shippingOfferMode === 'multiple'
+            ? 'Add one row per shopper-visible shipping option.'
+            : 'Set the shopper-visible shipping option for this variant.',
+        badges: [renderShippingFieldBadge('Required', 'attention')],
+        children: (
+          <>
+            {shouldShowOfferBlocker && (
+              <div className={stepStyles.shippingInlineBlocker}>
+                <strong>Fix Before Apply:</strong>{' '}
+                {activeReadiness?.issue || 'Configuration blocked.'}
+              </div>
+            )}
+            {shippingOfferMode === 'single' ? (
+              renderShippingCheckoutOfferFields({
+                showUncheckedBaselines: true,
+                offerAttributes: shippingOfferAttributes,
+                offerBaseline: shippingOfferBaseline,
+              })
+            ) : (
+              <>
+                <div className={stepStyles.shippingOfferTableToolbar}>
+                  <Button icon={PlusIcon} size="slim" onClick={handleAddShippingRateRow}>
+                    {tableRates.length === 0 ? 'Add first shipping row' : 'Add shipping row'}
+                  </Button>
+                  <span>
+                    {tableRates.length} option{tableRates.length === 1 ? '' : 's'} configured
+                  </span>
+                </div>
+                <div className={stepStyles.shippingOfferAttributeToggleRow}>
+                  <div className={stepStyles.shippingOfferAttributeToggleBar}>
+                    <Button
+                      size="slim"
+                      disclosure={shippingOfferFieldPickerOpen ? 'up' : 'down'}
+                      onClick={() => setShippingOfferFieldPickerOpen(open => !open)}
+                    >
+                      Optional fields
+                    </Button>
+                    <span className={stepStyles.shippingOfferAttributeSummary}>
+                      {enabledOptionalOfferFields.length > 0
+                        ? enabledOptionalOfferFields.map(option => option.label).join(', ')
+                        : 'None enabled'}
+                    </span>
+                  </div>
+                  <div
+                    className={`${stepStyles.shippingOfferAttributeToggleGrid} ${
+                      shippingOfferFieldPickerOpen
+                        ? stepStyles.shippingOfferAttributeToggleGridOpen
+                        : ''
+                    }`}
+                    hidden={!shippingOfferFieldPickerOpen}
+                  >
+                    {optionalOfferFieldOptions.map(option => (
+                      <Checkbox
+                        key={`shipping-offer-attr-${option.key}`}
+                        label={option.label}
+                        checked={Boolean(shippingOfferAttributes[option.key])}
+                        onChange={checked => setShippingOfferAttributeEnabled(option.key, checked)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                {tableRates.length === 0 ? (
+                  <div className={stepStyles.shippingInlineNote}>
+                    Add at least one RipX shipping row. Unchecked fields will use control defaults.
+                  </div>
+                ) : (
+                  <div
+                    className={stepStyles.shippingRateTable}
+                    style={{ '--shipping-rate-columns': offerTableColumnTemplate }}
+                  >
+                    <div className={stepStyles.shippingRateTableHeader} aria-hidden="true">
+                      {showNameColumn ? <span>Name</span> : null}
+                      {showMessageColumn ? <span>Promise text</span> : null}
+                      {showRateColumn ? <span>Amount</span> : null}
+                      {showRangeColumn ? <span>Promise</span> : null}
+                      <span />
+                    </div>
+                    {tableRates.map((rate, rateIndex) => (
+                      <div
+                        key={`offer-rate-${rateIndex}`}
+                        className={stepStyles.shippingRateTableRow}
+                      >
+                        {showNameColumn ? (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            <TextField
+                              label={`Rate name ${rateIndex + 1}`}
+                              labelHidden
+                              value={String(rate.name || '')}
+                              onChange={value => updateShippingRateAt(rateIndex, { name: value })}
+                              placeholder="Standard Shipping"
+                              autoComplete="off"
+                            />
+                          </div>
+                        ) : (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            {renderTableBaselineCell('name', rate)}
+                          </div>
+                        )}
+                        {showMessageColumn ? (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            <TextField
+                              label={`Promise text ${rateIndex + 1}`}
+                              labelHidden
+                              value={String(rate.description || '')}
+                              onChange={value =>
+                                updateShippingRateAt(rateIndex, { description: value })
+                              }
+                              placeholder="Arrives fast with full tracking"
+                              maxLength={200}
+                              autoComplete="off"
+                            />
+                          </div>
+                        ) : (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            {renderTableBaselineCell('message', rate)}
+                          </div>
+                        )}
+                        {showRateColumn ? (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            <TextField
+                              label={`Rate amount ${rateIndex + 1}`}
+                              labelHidden
+                              type="number"
+                              value={getShippingNumberValue(rate.amount)}
+                              onChange={value =>
+                                updateShippingRateAt(rateIndex, {
+                                  amount: value === '' ? null : Number(value),
+                                })
+                              }
+                              prefix="$"
+                              autoComplete="off"
+                            />
+                          </div>
+                        ) : (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            {renderTableBaselineCell('rate', rate)}
+                          </div>
+                        )}
+                        {showRangeColumn ? (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            {(() => {
+                              const ratePromise = normalizeShippingDeliveryPromise(
+                                rate?.delivery_promise
+                              );
+                              return (
+                                <div className={stepStyles.shippingPromiseEditorShell}>
+                                  <Select
+                                    label={`Promise mode ${rateIndex + 1}`}
+                                    labelHidden
+                                    options={shippingPromiseModeOptions}
+                                    value={getShippingDeliveryPromiseModeValue(ratePromise)}
+                                    onChange={value =>
+                                      updateShippingRateAt(rateIndex, {
+                                        delivery_promise: applyShippingPromiseModeChange(
+                                          value,
+                                          ratePromise
+                                        ),
+                                      })
+                                    }
+                                  />
+                                  {getShippingDeliveryPromiseModeValue(ratePromise) === 'preset' ? (
+                                    <Select
+                                      label={`Promise preset ${rateIndex + 1}`}
+                                      labelHidden
+                                      options={deliveryPromisePresetOptions}
+                                      value={
+                                        normalizeShippingDeliveryPromise(ratePromise).preset ||
+                                        'next_business_day'
+                                      }
+                                      onChange={value => {
+                                        const nextPromise = buildShippingDeliveryPromisePatch(
+                                          value || 'next_business_day'
+                                        );
+                                        updateShippingRateAt(rateIndex, {
+                                          delivery_promise: nextPromise,
+                                        });
+                                      }}
+                                    />
+                                  ) : null}
+                                  {getShippingDeliveryPromiseModeValue(ratePromise) === 'none' ? (
+                                    <small className={stepStyles.shippingPromiseModeHint}>
+                                      No delivery date promise will be sent for this row.
+                                    </small>
+                                  ) : null}
+                                  {ratePromise.mode === 'custom' ? (
+                                    <div className={stepStyles.shippingPromiseCustomSection}>
+                                      <div className={stepStyles.shippingDeliveryDateGrid}>
+                                        <div className={stepStyles.shippingPromiseDateField}>
+                                          <small className={stepStyles.shippingPromiseDateLabel}>
+                                            Earliest
+                                          </small>
+                                          <TextField
+                                            label={`Earliest delivery date ${rateIndex + 1}`}
+                                            labelHidden
+                                            type="date"
+                                            value={String(ratePromise.min_delivery_date || '')}
+                                            onChange={value =>
+                                              updateShippingRateAt(rateIndex, {
+                                                delivery_promise: {
+                                                  ...ratePromise,
+                                                  min_delivery_date: value,
+                                                },
+                                              })
+                                            }
+                                            autoComplete="off"
+                                          />
+                                        </div>
+                                        <div className={stepStyles.shippingPromiseDateField}>
+                                          <small className={stepStyles.shippingPromiseDateLabel}>
+                                            Latest
+                                          </small>
+                                          <TextField
+                                            label={`Latest delivery date ${rateIndex + 1}`}
+                                            labelHidden
+                                            type="date"
+                                            value={String(ratePromise.max_delivery_date || '')}
+                                            onChange={value =>
+                                              updateShippingRateAt(rateIndex, {
+                                                delivery_promise: {
+                                                  ...ratePromise,
+                                                  max_delivery_date: value,
+                                                },
+                                              })
+                                            }
+                                            autoComplete="off"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <div className={stepStyles.shippingRateTableCell}>
+                            {renderTableBaselineCell('range', rate)}
+                          </div>
+                        )}
+                        <div
+                          className={`${stepStyles.shippingRateTableCell} ${stepStyles.shippingRateTableCellActions}`}
+                        >
+                          <Button
+                            size="slim"
+                            variant="tertiary"
+                            tone="critical"
+                            disabled={tableRates.length <= 1}
+                            onClick={() => removeShippingRateAt(rateIndex)}
+                            icon={DeleteIcon}
+                            accessibilityLabel={`Remove row ${rateIndex + 1}`}
+                          ></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        ),
+      });
+    };
     const renderShippingPrimaryFields = () => {
+      const configureFormKind = getConfigureFormKind(selectedShippingCategory);
+      const categoryStrategy = getShippingTestTypeByKey(selectedShippingCategory)?.strategy;
+      const primaryFieldStrategy =
+        configureFormKind === 'primary_fields' && categoryStrategy
+          ? categoryStrategy
+          : activeStrategy;
       if (isActiveControlLike || activeStrategy === 'control') {
         return renderShippingSmartSection({
           title: 'Control baseline',
@@ -13873,7 +14638,7 @@ function TestWizard({
           ),
         });
       }
-      if (activeStrategy === 'flat_rate') {
+      if (activeStrategy === 'flat_rate' && configureFormKind === 'flat_rate') {
         const shouldShowInlineBlocker = activeReadiness?.status === 'blocked';
         const isShippingUiAdvancedMode = shippingUiMode === 'advanced';
         const showAdvancedRateRows = shippingUiAdvancedOpen;
@@ -13981,7 +14746,7 @@ function TestWizard({
                   <small>
                     {replacesExistingRates
                       ? 'RipX hides the selected native method for this variant, then shows this linked replacement rate.'
-                      : 'Start with the required amount. Optional checkout copy and extra rows can stay closed.'}
+                      : 'Set the checkout offer below: name, price, message, and delivery promise ship together.'}
                   </small>
                 </div>
                 <div className={stepStyles.shippingDetailsRecipe}>
@@ -13992,19 +14757,23 @@ function TestWizard({
                   <span>Control unchanged</span>
                 </div>
               </div>
-              <TextField
-                label="Flat shipping amount"
-                type="number"
-                value={getShippingNumberValue(amountValue)}
-                onChange={updateFlatShippingAmount}
-                prefix="$"
-                helpText={
-                  replacesExistingRates
-                    ? 'This is the rate shown after selected Shopify methods are hidden.'
-                    : 'This is the new RipX rate shown beside Shopify methods.'
-                }
-                autoComplete="off"
-              />
+              {usesUnifiedCheckoutOffer ? (
+                renderShippingCheckoutOfferFields()
+              ) : (
+                <TextField
+                  label="Flat shipping amount"
+                  type="number"
+                  value={getShippingNumberValue(amountValue)}
+                  onChange={updateFlatShippingAmount}
+                  prefix="$"
+                  helpText={
+                    replacesExistingRates
+                      ? 'This is the rate shown after selected Shopify methods are hidden.'
+                      : 'This is the new RipX rate shown beside Shopify methods.'
+                  }
+                  autoComplete="off"
+                />
+              )}
               <div className={stepStyles.shippingFieldMicroNote}>
                 {replacesExistingRates
                   ? 'Most replacement tests need one row: hide the selected native method and show its linked RipX replacement. Extra rows are only for offering more than one service choice.'
@@ -14015,11 +14784,11 @@ function TestWizard({
               </div>
               <div className={stepStyles.shippingAdvancedInlineHeader}>
                 <div>
-                  <strong>Optional checkout enhancements</strong>
+                  <strong>Extra rate rows</strong>
                   <span>
                     {replacesExistingRates
-                      ? 'Edit the linked replacement label, subline, delivery promise, or add extra service choices.'
-                      : 'Add sublines, delivery promises, or multiple rate rows without changing the required setup above.'}
+                      ? 'Add more service choices only when this variant should show multiple replacement options.'
+                      : 'Add multiple named services only when shoppers need more than one RipX option.'}
                   </span>
                 </div>
                 <Button
@@ -14036,70 +14805,10 @@ function TestWizard({
                     setShippingUiAdvancedOpen(open => !open);
                   }}
                 >
-                  {shippingUiAdvancedOpen ? 'Hide optional settings' : 'Add optional settings'}
+                  {shippingUiAdvancedOpen ? 'Hide extra rate rows' : 'Add extra rate rows'}
                 </Button>
               </div>
-              {shippingUiAdvancedOpen && (
-                <div className={stepStyles.shippingCheckoutDisplayControls}>
-                  <TextField
-                    label="Default checkout subline"
-                    value={String(activeCheckoutDisplay.default_description || '')}
-                    onChange={value =>
-                      updateShippingCheckoutDisplay({
-                        default_description: value,
-                      })
-                    }
-                    placeholder="Free tracking included"
-                    helpText="Optional. Used when a rate row does not have its own subline."
-                    maxLength={200}
-                    autoComplete="off"
-                  />
-                  <Select
-                    label="Default delivery promise"
-                    options={SHIPPING_DELIVERY_PROMISE_OPTIONS}
-                    value={getShippingDeliveryPromiseValue(activeCheckoutDeliveryPromise)}
-                    onChange={value =>
-                      updateShippingCheckoutDisplay({
-                        delivery_promise: buildShippingDeliveryPromisePatch(value),
-                      })
-                    }
-                    helpText="Optional. RipX sends dates only for CarrierService rates."
-                  />
-                  {activeCheckoutDeliveryPromise.mode === 'custom' && (
-                    <div className={stepStyles.shippingDeliveryDateGrid}>
-                      <TextField
-                        label="Earliest delivery date"
-                        type="date"
-                        value={String(activeCheckoutDeliveryPromise.min_delivery_date || '')}
-                        onChange={value =>
-                          updateShippingCheckoutDisplay({
-                            delivery_promise: {
-                              ...activeCheckoutDeliveryPromise,
-                              min_delivery_date: value,
-                            },
-                          })
-                        }
-                        autoComplete="off"
-                      />
-                      <TextField
-                        label="Latest delivery date"
-                        type="date"
-                        value={String(activeCheckoutDeliveryPromise.max_delivery_date || '')}
-                        onChange={value =>
-                          updateShippingCheckoutDisplay({
-                            delivery_promise: {
-                              ...activeCheckoutDeliveryPromise,
-                              max_delivery_date: value,
-                            },
-                          })
-                        }
-                        autoComplete="off"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-              {isShippingUiAdvancedMode && shippingUiAdvancedOpen && (
+              {shippingUiAdvancedOpen && isShippingUiAdvancedMode && (
                 <div className={stepStyles.shippingSuggestedSetupPanel}>
                   <div>
                     <span className={stepStyles.shippingStudioEyebrow}>Recommended setup</span>
@@ -14566,17 +15275,109 @@ function TestWizard({
                                   })()}
                                 </div>
                                 <div className={stepStyles.shippingRateTableCell}>
-                                  <Select
-                                    label={`Delivery promise ${rateIndex + 1}`}
-                                    labelHidden
-                                    options={SHIPPING_DELIVERY_PROMISE_OPTIONS}
-                                    value={getShippingDeliveryPromiseValue(rate.delivery_promise)}
-                                    onChange={value =>
-                                      updateShippingRateAt(rateIndex, {
-                                        delivery_promise: buildShippingDeliveryPromisePatch(value),
-                                      })
-                                    }
-                                  />
+                                  {(() => {
+                                    const ratePromise = normalizeShippingDeliveryPromise(
+                                      rate.delivery_promise
+                                    );
+                                    return (
+                                      <div className={stepStyles.shippingPromiseEditorShell}>
+                                        <Select
+                                          label={`Promise mode ${rateIndex + 1}`}
+                                          labelHidden
+                                          options={shippingPromiseModeOptions}
+                                          value={getShippingDeliveryPromiseModeValue(ratePromise)}
+                                          onChange={value =>
+                                            updateShippingRateAt(rateIndex, {
+                                              delivery_promise: applyShippingPromiseModeChange(
+                                                value,
+                                                ratePromise
+                                              ),
+                                            })
+                                          }
+                                        />
+                                        {getShippingDeliveryPromiseModeValue(ratePromise) ===
+                                        'preset' ? (
+                                          <Select
+                                            label={`Promise preset ${rateIndex + 1}`}
+                                            labelHidden
+                                            options={deliveryPromisePresetOptions}
+                                            value={
+                                              normalizeShippingDeliveryPromise(ratePromise)
+                                                .preset || 'next_business_day'
+                                            }
+                                            onChange={value => {
+                                              const nextPromise = buildShippingDeliveryPromisePatch(
+                                                value || 'next_business_day'
+                                              );
+                                              updateShippingRateAt(rateIndex, {
+                                                delivery_promise: nextPromise,
+                                              });
+                                            }}
+                                          />
+                                        ) : null}
+                                        {getShippingDeliveryPromiseModeValue(ratePromise) ===
+                                        'none' ? (
+                                          <small className={stepStyles.shippingPromiseModeHint}>
+                                            No delivery date promise will be sent for this row.
+                                          </small>
+                                        ) : null}
+                                        {ratePromise.mode === 'custom' ? (
+                                          <div className={stepStyles.shippingPromiseCustomSection}>
+                                            <div className={stepStyles.shippingDeliveryDateGrid}>
+                                              <div className={stepStyles.shippingPromiseDateField}>
+                                                <small
+                                                  className={stepStyles.shippingPromiseDateLabel}
+                                                >
+                                                  Earliest
+                                                </small>
+                                                <TextField
+                                                  label={`Earliest delivery date ${rateIndex + 1}`}
+                                                  labelHidden
+                                                  type="date"
+                                                  value={String(
+                                                    ratePromise.min_delivery_date || ''
+                                                  )}
+                                                  onChange={value =>
+                                                    updateShippingRateAt(rateIndex, {
+                                                      delivery_promise: {
+                                                        ...ratePromise,
+                                                        min_delivery_date: value,
+                                                      },
+                                                    })
+                                                  }
+                                                  autoComplete="off"
+                                                />
+                                              </div>
+                                              <div className={stepStyles.shippingPromiseDateField}>
+                                                <small
+                                                  className={stepStyles.shippingPromiseDateLabel}
+                                                >
+                                                  Latest
+                                                </small>
+                                                <TextField
+                                                  label={`Latest delivery date ${rateIndex + 1}`}
+                                                  labelHidden
+                                                  type="date"
+                                                  value={String(
+                                                    ratePromise.max_delivery_date || ''
+                                                  )}
+                                                  onChange={value =>
+                                                    updateShippingRateAt(rateIndex, {
+                                                      delivery_promise: {
+                                                        ...ratePromise,
+                                                        max_delivery_date: value,
+                                                      },
+                                                    })
+                                                  }
+                                                  autoComplete="off"
+                                                />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 <div
                                   className={`${stepStyles.shippingRateTableCell} ${stepStyles.shippingRateTableCellActions}`}
@@ -14635,51 +15436,6 @@ function TestWizard({
                                 </div>
                                 <div className={stepStyles.shippingRateTableRowMeta}>
                                   <div className={stepStyles.shippingRateRowMetaStack}>
-                                    {getShippingDeliveryPromiseValue(rate.delivery_promise) ===
-                                      'custom' && (
-                                      <div className={stepStyles.shippingDeliveryDateGrid}>
-                                        <TextField
-                                          label={`Earliest delivery date ${rateIndex + 1}`}
-                                          type="date"
-                                          value={String(
-                                            rate.delivery_promise?.min_delivery_date || ''
-                                          )}
-                                          onChange={value =>
-                                            updateShippingRateAt(rateIndex, {
-                                              delivery_promise: {
-                                                ...normalizeShippingDeliveryPromise(
-                                                  rate.delivery_promise
-                                                ),
-                                                mode: 'custom',
-                                                preset: 'custom',
-                                                min_delivery_date: value,
-                                              },
-                                            })
-                                          }
-                                          autoComplete="off"
-                                        />
-                                        <TextField
-                                          label={`Latest delivery date ${rateIndex + 1}`}
-                                          type="date"
-                                          value={String(
-                                            rate.delivery_promise?.max_delivery_date || ''
-                                          )}
-                                          onChange={value =>
-                                            updateShippingRateAt(rateIndex, {
-                                              delivery_promise: {
-                                                ...normalizeShippingDeliveryPromise(
-                                                  rate.delivery_promise
-                                                ),
-                                                mode: 'custom',
-                                                preset: 'custom',
-                                                max_delivery_date: value,
-                                              },
-                                            })
-                                          }
-                                          autoComplete="off"
-                                        />
-                                      </div>
-                                    )}
                                     {rateValidationIssues.length > 0 ? (
                                       <div className={stepStyles.shippingRateHealthBadges}>
                                         {rateValidationIssues.map(issue => (
@@ -14804,7 +15560,7 @@ function TestWizard({
           ),
         });
       }
-      if (activeStrategy === 'threshold_free_shipping') {
+      if (primaryFieldStrategy === 'threshold_free_shipping') {
         return renderShippingSmartSection({
           title: 'Free shipping threshold',
           description: 'Choose the cart value that unlocks free shipping.',
@@ -14825,7 +15581,7 @@ function TestWizard({
           ),
         });
       }
-      if (activeStrategy === 'discount_percentage') {
+      if (primaryFieldStrategy === 'discount_percentage') {
         return renderShippingSmartSection({
           title: 'Percent shipping discount',
           description: 'Discount matching shipping costs by a percentage.',
@@ -14846,7 +15602,7 @@ function TestWizard({
           ),
         });
       }
-      if (activeStrategy === 'discount_fixed') {
+      if (primaryFieldStrategy === 'discount_fixed') {
         return renderShippingSmartSection({
           title: 'Fixed shipping discount',
           description: 'Subtract a fixed amount from matching shipping costs.',
@@ -14867,11 +15623,18 @@ function TestWizard({
           ),
         });
       }
-      if (activeStrategy === 'free_shipping') {
+      if (primaryFieldStrategy === 'free_shipping') {
+        const freeShippingNeedsMethods =
+          selectedCategoryNeedsMethods && activeDeliveryMethodNames.length === 0;
         return renderShippingSmartSection({
           title: 'Force free shipping',
           description: 'No amount is needed for a 100% shipping discount path.',
-          badges: [renderShippingFieldBadge('Ready')],
+          badges: [
+            renderShippingFieldBadge(
+              freeShippingNeedsMethods ? 'Needs methods' : 'Ready',
+              freeShippingNeedsMethods ? 'attention' : undefined
+            ),
+          ],
           children: (
             <div className={stepStyles.shippingFieldNote}>
               RipX applies a 100% shipping discount to matching delivery groups for this variant.
@@ -15034,20 +15797,7 @@ function TestWizard({
                   );
                 })}
               </div>
-              {quoteProvider === 'static_rate' && (
-                <TextField
-                  label="Provider quote amount"
-                  type="number"
-                  value={getShippingNumberValue(metadata.quote_amount)}
-                  onChange={value =>
-                    updateShippingMetadata(activeShippingVariantIndex, {
-                      quote_amount: value === '' ? null : Number(value),
-                    })
-                  }
-                  prefix="$"
-                  autoComplete="off"
-                />
-              )}
+              {quoteProvider === 'static_rate' && renderShippingCheckoutOfferFields()}
               {quoteProvider === 'country_table' && (
                 <TextField
                   label="Country rates"
@@ -15213,623 +15963,99 @@ function TestWizard({
         ),
       });
     };
+    const {
+      state: shippingStudioState,
+      actions: shippingStudioActions,
+      renderers: shippingStudioRenderers,
+    } = buildShippingVariantStudioBindings({
+      shippingVariants,
+      activeShippingVariantIndex,
+      getShippingReadiness,
+      getVariantColor,
+      getVariantColorLight,
+      getShippingVariantSummary,
+      activeShippingVariant,
+      strategyGuidance,
+      activeReadiness,
+      shippingReadinessList,
+      isActiveControlLike,
+      shippingCurrentRates,
+      shippingCurrentSetupLoading,
+      shippingCurrentSetupError,
+      shippingStudioEnhancementsEnabled,
+      selectedStrategyChoice,
+      shippingStrategyGroups,
+      shippingStrategyChoices,
+      isStrategyChoiceActive,
+      activeShippingGuidedStep,
+      selectedShippingCategory,
+      selectedCategoryNeedsMethods,
+      activeDeliveryMethodNames,
+      activeSelectedMethodIds,
+      activeConfiguredRates,
+      shippingUiAdvancedOpen,
+      selectedShippingCategoryLabel,
+      thresholdAmount: thresholdValue,
+      percentOff: percentOffValue,
+      discountAmount: amountValue,
+      activeShippingGuidedStepIndex,
+      guidedShippingSteps,
+      activeGuidedStepLabel,
+      activeStrategy,
+      hasShippingBlocker,
+      shippingBlockerMessage,
+      checkoutPreviewTitle,
+      checkoutPreviewPrice,
+      checkoutPreviewDescription,
+      checkoutPreviewPromiseLabel,
+      shippingBeforeAfter,
+      canShowShippingOperations,
+      shippingOperationsDisabled,
+      shippingOperationsDisabledReason,
+      shippingApplyBlockedReason,
+      shippingOperationLoading,
+      shippingOperationResult,
+      onRunShippingDiagnostics: () => runShippingOperation('diagnostics'),
+      testSaved: Boolean(initialData?.id),
+      setShippingVariantTabIndex,
+      setShippingGuidedStep,
+      setShippingCurrentSetupRefreshKey,
+      handleShippingStrategyChoice,
+      handleShippingCategorySelect,
+      toggleActiveDeliveryMethodName,
+      selectAllActiveDeliveryMethods,
+      updateActiveDeliveryMethodNames,
+      addReplacementRateForMethod,
+      removeReplacementRateForMethod,
+      runShippingOperation,
+      renderGuidedShippingProgress,
+      renderShippingOfferStep,
+      renderShippingPrimaryFields,
+      renderShippingBaselineField,
+      renderShippingTargetingFields,
+      renderGuidedShippingFooter,
+    });
+
     return (
       <BlockStack gap="400">
         {shippingVariants.length > 0 ? (
-          <div className={stepStyles.shippingVariantStudio}>
-            <div className={stepStyles.shippingVariantCommandBar}>
-              <div className={stepStyles.shippingVariantCommandCopy}>
-                <span className={stepStyles.shippingStudioEyebrow}>Shipping variant studio</span>
-                <strong>Configure each shipping experience without leaving the editor.</strong>
-                <span>
-                  Choose a shipping category, configure the variant-only changes, and use the
-                  preview rail for draft readiness.
-                </span>
+          <Suspense
+            fallback={
+              <div className={stepStyles.shippingVariantEmpty}>
+                <InlineStack gap="200" blockAlign="center">
+                  <Spinner size="small" />
+                  <span>Loading shipping studio...</span>
+                </InlineStack>
               </div>
-            </div>
-            <div className={stepStyles.shippingBrowserFrame}>
-              <div
-                className={stepStyles.shippingBrowserTabs}
-                role="tablist"
-                aria-label="Shipping test variants"
-              >
-                {shippingVariants.map((variant, index) => {
-                  const readiness = getShippingReadiness(variant, index);
-                  const active = index === activeShippingVariantIndex;
-                  const color = getVariantColor(index);
-                  return (
-                    <button
-                      key={`shipping-tab-${index}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      aria-controls={`shipping-variant-panel-${index}`}
-                      className={`${stepStyles.shippingBrowserTab} ${
-                        active ? stepStyles.shippingBrowserTabActive : ''
-                      }`}
-                      style={{
-                        '--shipping-variant-accent': color,
-                        '--shipping-variant-accent-soft': getVariantColorLight(color, 0.12),
-                      }}
-                      onClick={() => {
-                        setShippingVariantTabIndex(index);
-                        setShippingGuidedStep('category');
-                        setShippingRailTab('overview');
-                      }}
-                    >
-                      <span className={stepStyles.shippingBrowserTabTop}>
-                        <span className={stepStyles.shippingBrowserTabDot} aria-hidden />
-                        <strong>{variant?.name || `Variant ${index + 1}`}</strong>
-                      </span>
-                      <span className={stepStyles.shippingBrowserTabSummary}>
-                        {getShippingVariantSummary(variant, index)}
-                      </span>
-                      <span className={stepStyles.shippingBrowserTabMeta}>
-                        <Badge tone={readiness.tone} size="small">
-                          {readiness.label}
-                        </Badge>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div
-                id={`shipping-variant-panel-${activeShippingVariantIndex}`}
-                role="tabpanel"
-                className={stepStyles.shippingVariantPanel}
-              >
-                <div className={stepStyles.shippingVariantPanelHeader}>
-                  <div>
-                    <span className={stepStyles.shippingStudioEyebrow}>Active tab</span>
-                    <Text variant="headingMd" as="h3" fontWeight="bold">
-                      {activeShippingVariant?.name || `Variant ${activeShippingVariantIndex + 1}`}
-                    </Text>
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      {strategyGuidance}
-                    </Text>
-                  </div>
-                  <InlineStack gap="200" blockAlign="center" wrap>
-                    <Badge tone={activeReadiness?.tone || 'info'}>
-                      {activeReadiness?.label || 'Ready'}
-                    </Badge>
-                  </InlineStack>
-                </div>
-
-                <div className={stepStyles.shippingVariantWorkspace}>
-                  <div className={stepStyles.shippingVariantFormCard}>
-                    {isActiveControlLike ? (
-                      <ControlShippingBaselinePanel
-                        methods={shippingCurrentRates}
-                        loading={shippingCurrentSetupLoading}
-                        error={shippingCurrentSetupError}
-                        onRefresh={() => setShippingCurrentSetupRefreshKey(value => value + 1)}
-                      />
-                    ) : (
-                      <div
-                        className={`${stepStyles.shippingStrategyEditor} ${
-                          shippingStudioEnhancementsEnabled
-                            ? stepStyles.shippingStrategyEditorSingle
-                            : ''
-                        }`}
-                      >
-                        {!shippingStudioEnhancementsEnabled && (
-                          <fieldset className={stepStyles.shippingStrategySidebar}>
-                            <legend>Shipping strategy</legend>
-                            <div className={stepStyles.shippingStrategyHelp} aria-live="polite">
-                              <span>{selectedStrategyChoice?.label || 'Shipping strategy'}</span>
-                              <small>
-                                {selectedStrategyChoice?.description ||
-                                  'Choose how this variant should modify checkout shipping.'}
-                              </small>
-                            </div>
-                            {shippingStrategyGroups
-                              .filter(group => group.key !== 'baseline')
-                              .map(group => {
-                                const choices = shippingStrategyChoices.filter(
-                                  choice => choice.group === group.key && choice.value !== 'control'
-                                );
-                                if (choices.length === 0) return null;
-                                return (
-                                  <div className={stepStyles.shippingStrategyGroup} key={group.key}>
-                                    <span className={stepStyles.shippingStrategyGroupLabel}>
-                                      {group.label}
-                                    </span>
-                                    {choices.map(choice => {
-                                      const active = isStrategyChoiceActive(choice);
-                                      return (
-                                        <button
-                                          key={choice.key}
-                                          type="button"
-                                          role="radio"
-                                          aria-checked={active}
-                                          title={choice.description}
-                                          className={`${stepStyles.shippingStrategyOption} ${
-                                            active ? stepStyles.shippingStrategyOptionActive : ''
-                                          }`}
-                                          onClick={() => handleShippingStrategyChoice(choice.value)}
-                                        >
-                                          <span
-                                            className={stepStyles.shippingStrategyRadio}
-                                            aria-hidden
-                                          />
-                                          <span className={stepStyles.shippingStrategyOptionCopy}>
-                                            <strong>{choice.label}</strong>
-                                          </span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              })}
-                          </fieldset>
-                        )}
-                        <div className={stepStyles.shippingSmartForm}>
-                          {shippingStudioEnhancementsEnabled ? (
-                            <>
-                              {renderGuidedShippingProgress()}
-                              <div className={stepStyles.shippingGuidedSlide}>
-                                {activeShippingGuidedStep === 'category' && (
-                                  <VariationBuilderPanel
-                                    selectedCategory={selectedShippingCategory}
-                                    disabled={false}
-                                    onCategorySelect={handleShippingCategorySelect}
-                                  />
-                                )}
-                                {activeShippingGuidedStep === 'methods' && (
-                                  <ControlMethodsPanel
-                                    methods={shippingCurrentRates}
-                                    selectedMethodNames={activeDeliveryMethodNames}
-                                    selectedMethodIds={activeSelectedMethodIds}
-                                    selectedCategory={selectedShippingCategory}
-                                    replacementRates={activeConfiguredRates}
-                                    loading={shippingCurrentSetupLoading}
-                                    error={shippingCurrentSetupError}
-                                    onToggleMethod={toggleActiveDeliveryMethodName}
-                                    onSelectAll={selectAllActiveDeliveryMethods}
-                                    onClear={() =>
-                                      updateActiveDeliveryMethodNames([], {
-                                        clearScopeTargets: true,
-                                      })
-                                    }
-                                    onAddReplacementRate={addReplacementRateForMethod}
-                                    onRemoveReplacementRate={removeReplacementRateForMethod}
-                                  />
-                                )}
-                                {activeShippingGuidedStep === 'details' && (
-                                  <>
-                                    {renderShippingPrimaryFields()}
-                                    {renderShippingBaselineField()}
-                                    {(selectedShippingCategory === 'carrier_quote' ||
-                                      shippingUiAdvancedOpen) &&
-                                      renderShippingTargetingFields()}
-                                  </>
-                                )}
-                                {activeShippingGuidedStep === 'review' &&
-                                  renderGuidedShippingReview()}
-                              </div>
-                              {renderGuidedShippingFooter()}
-                            </>
-                          ) : (
-                            <>
-                              {renderShippingPrimaryFields()}
-                              {renderShippingBaselineField()}
-                              {renderShippingTargetingFields()}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <aside className={stepStyles.shippingReadinessRail}>
-                    <div className={stepStyles.shippingSetupOverviewCard}>
-                      <div className={stepStyles.shippingSetupOverviewHeader}>
-                        <span className={stepStyles.shippingStudioEyebrow}>
-                          {shippingStudioEnhancementsEnabled
-                            ? 'Preview companion'
-                            : 'Action summary'}
-                        </span>
-                        <Badge
-                          tone={
-                            isActiveControlLike
-                              ? 'success'
-                              : shippingChecklistPending.length === 0
-                                ? 'success'
-                                : 'attention'
-                          }
-                          size="small"
-                        >
-                          {isActiveControlLike
-                            ? 'Baseline'
-                            : shippingChecklistPending.length === 0
-                              ? 'Ready'
-                              : 'Needs setup'}
-                        </Badge>
-                      </div>
-                      <div className={stepStyles.shippingSetupOverviewTitle}>
-                        {isActiveControlLike
-                          ? 'Control variant keeps Shopify shipping unchanged.'
-                          : shippingStudioEnhancementsEnabled
-                            ? shippingChecklistPending.length === 0
-                              ? 'Ready to preview and apply.'
-                              : `Next: ${shippingChecklistPrimaryNext}`
-                            : `Next: ${shippingChecklistPrimaryNext}`}
-                      </div>
-                      {!isActiveControlLike && (
-                        <>
-                          <div className={stepStyles.shippingSetupProgressTrack} aria-hidden>
-                            <span
-                              className={stepStyles.shippingSetupProgressFill}
-                              style={{ width: `${shippingSetupCompletionPercent}%` }}
-                            />
-                          </div>
-                          <div className={stepStyles.shippingSetupOverviewMeta}>
-                            {shippingStudioEnhancementsEnabled
-                              ? `${selectedShippingCategoryLabel} • Step ${activeShippingGuidedStepIndex + 1}/${guidedShippingSteps.length}: ${activeGuidedStepLabel}`
-                              : `${shippingChecklistDoneCount}/${shippingChecklistTotalCount} steps complete • ${getShippingStrategyLabel(activeStrategy)}`}
-                          </div>
-                        </>
-                      )}
-                      {isActiveControlLike && (
-                        <div className={stepStyles.shippingSetupOverviewMeta}>
-                          Read-only baseline • No RipX shipping actions
-                        </div>
-                      )}
-                    </div>
-                    <div className={stepStyles.shippingRailTabs}>
-                      <button
-                        type="button"
-                        className={`${stepStyles.shippingRailTabButton} ${
-                          shippingRailTab === 'overview'
-                            ? stepStyles.shippingRailTabButtonActive
-                            : ''
-                        }`}
-                        onClick={() => setShippingRailTab('overview')}
-                      >
-                        Overview
-                      </button>
-                      {shippingStudioEnhancementsEnabled &&
-                        !isActiveControlLike &&
-                        canShowShippingOperations && (
-                          <button
-                            type="button"
-                            className={`${stepStyles.shippingRailTabButton} ${
-                              shippingRailTab === 'diagnostics'
-                                ? stepStyles.shippingRailTabButtonActive
-                                : ''
-                            }`}
-                            onClick={() => setShippingRailTab('diagnostics')}
-                          >
-                            Diagnostics
-                          </button>
-                        )}
-                      <button
-                        type="button"
-                        className={`${stepStyles.shippingRailTabButton} ${
-                          shippingRailTab === 'details'
-                            ? stepStyles.shippingRailTabButtonActive
-                            : ''
-                        }`}
-                        onClick={() => setShippingRailTab('details')}
-                      >
-                        Details
-                      </button>
-                    </div>
-                    {shippingRailTab === 'overview' ? (
-                      <>
-                        {hasShippingBlocker && (
-                          <div className={stepStyles.shippingRailBlockerBanner} role="alert">
-                            <strong>Fix Before Apply:</strong> {shippingBlockerMessage}
-                          </div>
-                        )}
-                        <div className={stepStyles.shippingOverviewInsights}>
-                          {hasShippingBlocker ? (
-                            <button
-                              type="button"
-                              className={`${stepStyles.shippingOverviewInsightChip} ${stepStyles.shippingOverviewInsightChipAction}`}
-                              onClick={() => {
-                                setShippingRailTab('details');
-                                setShippingChecklistExpanded(true);
-                              }}
-                              title="Open details to resolve blocker"
-                            >
-                              Status: {shippingBlockerMessage}
-                            </button>
-                          ) : (
-                            <span className={stepStyles.shippingOverviewInsightChip}>
-                              Status: {activeReadiness?.issue || 'Ready'}
-                            </span>
-                          )}
-                          <span className={stepStyles.shippingOverviewInsightChip}>
-                            Setup: {shippingCurrentSetupCompactText}
-                          </span>
-                          {!isActiveControlLike && shippingStudioEnhancementsEnabled && (
-                            <span className={stepStyles.shippingOverviewInsightChip}>
-                              Change: {selectedShippingCategoryLabel}
-                            </span>
-                          )}
-                        </div>
-                        <div className={stepStyles.shippingImpactPreview}>
-                          <span className={stepStyles.shippingStudioEyebrow}>Shopper preview</span>
-                          <div className={stepStyles.shippingCheckoutMockCard}>
-                            <div className={stepStyles.shippingCheckoutMockHeader}>
-                              <div>
-                                <span className={stepStyles.shippingCheckoutMockTitle}>
-                                  {isActiveControlLike || activeStrategy === 'control'
-                                    ? 'Shopify live shipping method'
-                                    : checkoutPreviewTitle}
-                                </span>
-                                <span className={stepStyles.shippingCheckoutMockPrice}>
-                                  {isActiveControlLike || activeStrategy === 'control'
-                                    ? 'Current price'
-                                    : checkoutPreviewPrice}
-                                </span>
-                              </div>
-                              <span
-                                className={stepStyles.shippingCheckoutMockRadio}
-                                aria-hidden="true"
-                              />
-                            </div>
-                            <div className={stepStyles.shippingCheckoutMockLines}>
-                              <span>
-                                {isActiveControlLike || activeStrategy === 'control'
-                                  ? 'Control uses your live Shopify shipping labels.'
-                                  : checkoutPreviewDescription ||
-                                    'No checkout subline will be sent.'}
-                              </span>
-                              <span>
-                                {isActiveControlLike || activeStrategy === 'control'
-                                  ? 'Delivery promise comes from Shopify settings.'
-                                  : checkoutPreviewPromiseLabel}
-                              </span>
-                            </div>
-                          </div>
-                          <div className={stepStyles.shippingRailPreviewHint}>
-                            This preview is a draft estimate. Save changes, then run diagnostics
-                            before applying live Shopify updates.
-                          </div>
-                          <div className={stepStyles.shippingImpactInlineRow}>
-                            <div className={stepStyles.shippingImpactInlineBlock}>
-                              <span>{shippingBeforeAfter.beforeTitle}</span>
-                              <strong>{shippingBeforeAfter.before}</strong>
-                            </div>
-                            <div className={stepStyles.shippingImpactArrow} aria-hidden>
-                              →
-                            </div>
-                            <div className={stepStyles.shippingImpactInlineBlock}>
-                              <span>{shippingBeforeAfter.afterTitle}</span>
-                              <strong>{shippingBeforeAfter.after}</strong>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    ) : shippingRailTab === 'diagnostics' ? (
-                      <>
-                        {shippingStudioEnhancementsEnabled &&
-                        !isActiveControlLike &&
-                        canShowShippingOperations ? (
-                          <ShippingOperationsPanel
-                            canRun={!shippingOperationsDisabled}
-                            canApply={
-                              !shippingOperationsDisabled &&
-                              !isActiveControlLike &&
-                              !hasShippingBlocker
-                            }
-                            disabledReason={shippingOperationsDisabledReason}
-                            applyDisabledReason={shippingApplyBlockedReason}
-                            loadingAction={shippingOperationLoading}
-                            latestResult={shippingOperationResult}
-                            activeVariantLabel={
-                              activeShippingVariant?.name ||
-                              `Variant ${activeShippingVariantIndex + 1}`
-                            }
-                            onRunDiagnostics={() => runShippingOperation('diagnostics')}
-                            onDryRun={() => runShippingOperation('dryRun')}
-                            onApply={() => runShippingOperation('apply')}
-                          />
-                        ) : (
-                          <div className={stepStyles.shippingCurrentSetupNote}>
-                            Diagnostics are available after this shipping test is saved.
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {!isActiveControlLike && (
-                          <div className={stepStyles.shippingScopeChecklist}>
-                            <span className={stepStyles.shippingStudioEyebrow}>Guided setup</span>
-                            <div className={stepStyles.shippingChecklistSummaryRow}>
-                              <strong>
-                                {shippingChecklistDoneCount}/{shippingChecklistTotalCount} Complete
-                              </strong>
-                              <span>
-                                {shippingChecklistPending.length === 0
-                                  ? 'All Setup Steps Ready'
-                                  : `${shippingChecklistPending.length} Step${
-                                      shippingChecklistPending.length === 1 ? '' : 's'
-                                    } Remaining`}
-                              </span>
-                            </div>
-                            <div className={stepStyles.shippingChecklistQaRow}>
-                              <Checkbox
-                                label="Run Live Checkout QA"
-                                checked={shippingLiveCheckoutQaDone}
-                                onChange={checked => {
-                                  updateShippingMetadata(activeShippingVariantIndex, {
-                                    shipping_live_checkout_qa_complete: Boolean(checked),
-                                    shipping_live_checkout_qa_checked_at: checked
-                                      ? new Date().toISOString()
-                                      : null,
-                                  });
-                                }}
-                                helpText="Mark this after one real storefront checkout confirms the expected variant rate."
-                              />
-                              {shippingLiveCheckoutQaDone &&
-                                shippingLiveCheckoutQaCheckedAtText && (
-                                  <span className={stepStyles.shippingChecklistQaMeta}>
-                                    Confirmed: {shippingLiveCheckoutQaCheckedAtText}
-                                  </span>
-                                )}
-                            </div>
-                            {shippingChecklistPending.length > 0 ? (
-                              <div className={stepStyles.shippingChecklistFocusList}>
-                                {(shippingChecklistExpanded
-                                  ? shippingChecklistPending
-                                  : shippingChecklistPending.slice(0, 1)
-                                ).map(item => (
-                                  <div
-                                    key={item.label}
-                                    className={stepStyles.shippingChecklistFocusItem}
-                                  >
-                                    <span aria-hidden>•</span>
-                                    <strong>{item.label}</strong>
-                                  </div>
-                                ))}
-                                {!shippingChecklistExpanded &&
-                                  shippingChecklistPending.length > 1 && (
-                                    <div className={stepStyles.shippingChecklistMoreHint}>
-                                      +{shippingChecklistPending.length - 1} more step
-                                      {shippingChecklistPending.length - 1 === 1 ? '' : 's'}
-                                    </div>
-                                  )}
-                                {shippingChecklistPending.length > 1 && (
-                                  <button
-                                    type="button"
-                                    className={stepStyles.shippingChecklistToggle}
-                                    onClick={() => setShippingChecklistExpanded(open => !open)}
-                                  >
-                                    {shippingChecklistExpanded
-                                      ? 'Show Fewer'
-                                      : 'Show Full Checklist'}
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <div className={stepStyles.shippingChecklistReadyState}>
-                                Checklist complete. Run one real checkout before launching.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <div className={stepStyles.shippingCurrentSetupCard}>
-                          <div className={stepStyles.shippingCurrentSetupHeader}>
-                            <span className={stepStyles.shippingStudioEyebrow}>
-                              Current Shopify setup
-                            </span>
-                            <Button
-                              size="slim"
-                              disabled={shippingCurrentSetupLoading}
-                              onClick={() => setShippingCurrentSetupRefreshKey(value => value + 1)}
-                            >
-                              {shippingCurrentSetupLoading ? 'Loading' : 'Refresh'}
-                            </Button>
-                          </div>
-                          {shippingCurrentSetupError ? (
-                            <div className={stepStyles.shippingCurrentSetupNote}>
-                              {shippingCurrentSetupError}
-                            </div>
-                          ) : shippingCurrentSetupLoading && shippingCurrentRates.length === 0 ? (
-                            <div className={stepStyles.shippingCurrentSetupNote}>
-                              Reading delivery profiles and shipping zones from Shopify...
-                            </div>
-                          ) : shippingCurrentRates.length > 0 ? (
-                            <>
-                              <div className={stepStyles.shippingCurrentSetupSummary}>
-                                {shippingCurrentSetupSummary?.can_infer_single_flat_rate
-                                  ? 'One flat configured rate was found and used in the shopper preview.'
-                                  : 'Multiple or calculated rates found. Preview shows the configured current setup instead of one guessed rate.'}
-                              </div>
-                              <div className={stepStyles.shippingCurrentSetupActions}>
-                                <button
-                                  type="button"
-                                  className={stepStyles.shippingChecklistToggle}
-                                  onClick={() => setShippingCurrentSetupExpanded(open => !open)}
-                                >
-                                  {shippingCurrentSetupExpanded
-                                    ? 'Show Fewer Rates'
-                                    : 'Show Rate Details'}
-                                </button>
-                              </div>
-                              {activeStrategy === 'flat_rate' && !isActiveControlLike && (
-                                <div className={stepStyles.shippingCurrentSetupNote}>
-                                  These existing methods can still show in checkout beside the RipX
-                                  flat rate. Turn on replacement and pick every method this variant
-                                  should hide.
-                                </div>
-                              )}
-                              <div className={stepStyles.shippingCurrentSetupList}>
-                                {shippingCurrentSetupVisibleRates.map((rate, rateIndex) => (
-                                  <div
-                                    className={stepStyles.shippingCurrentSetupRate}
-                                    key={`${rate.id || rate.name || 'rate'}-${rateIndex}`}
-                                  >
-                                    <div>{getCurrentSetupRateLine(rate)}</div>
-                                    {getCurrentSetupRateMeta(rate) && (
-                                      <small className={stepStyles.shippingCurrentSetupMeta}>
-                                        {getCurrentSetupRateMeta(rate)}
-                                      </small>
-                                    )}
-                                    {!isActiveControlLike && (
-                                      <Button
-                                        size="slim"
-                                        variant="plain"
-                                        onClick={() => applyCurrentSetupRateScope(rate)}
-                                      >
-                                        Use as scope
-                                      </Button>
-                                    )}
-                                  </div>
-                                ))}
-                                {!shippingCurrentSetupExpanded &&
-                                  shippingCurrentRates.length > 2 && (
-                                    <div className={stepStyles.shippingCurrentSetupNote}>
-                                      +{shippingCurrentRates.length - 2} more configured rate
-                                      {shippingCurrentRates.length - 2 === 1 ? '' : 's'}
-                                    </div>
-                                  )}
-                              </div>
-                            </>
-                          ) : (
-                            <div className={stepStyles.shippingCurrentSetupNote}>
-                              No configured manual rates were returned. The shop may rely on carrier
-                              or app-calculated rates.
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </aside>
-                </div>
-              </div>
-            </div>
-
-            <div
-              className={stepStyles.shippingComparisonStrip}
-              aria-label="Shipping variant comparison"
-            >
-              {shippingReadinessList.map(item => (
-                <button
-                  key={`shipping-compare-${item.index}`}
-                  type="button"
-                  className={`${stepStyles.shippingComparisonChip} ${
-                    item.index === activeShippingVariantIndex
-                      ? stepStyles.shippingComparisonChipActive
-                      : ''
-                  }`}
-                  onClick={() => setShippingVariantTabIndex(item.index)}
-                >
-                  <span>
-                    <strong>{item.variant?.name || `Variant ${item.index + 1}`}</strong>
-                    {item.summary}
-                  </span>
-                  <Badge tone={item.readiness.tone} size="small">
-                    {item.readiness.label}
-                  </Badge>
-                </button>
-              ))}
-            </div>
-          </div>
+            }
+          >
+            <ShippingVariantStudio
+              stepStyles={stepStyles}
+              state={shippingStudioState}
+              actions={shippingStudioActions}
+              renderers={shippingStudioRenderers}
+            />
+          </Suspense>
         ) : (
           <div className={stepStyles.shippingVariantEmpty}>
             Add Control and at least one treatment variant before configuring shipping strategy.
@@ -23888,7 +24114,7 @@ function TestWizard({
                       Back
                     </Button>
                   )}
-                  {mode === 'edit' && currentStep < steps.length && (
+                  {mode === 'edit' && (
                     <Button
                       onClick={() => handleSubmit()}
                       loading={loading || submitLoading}

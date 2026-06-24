@@ -169,6 +169,91 @@ describe('shippingExecutionPlanner', () => {
     ]);
   });
 
+  it('requires carrier service and delivery customization for replacement carrier_quote', () => {
+    const plan = buildShippingExecutionPlan(
+      {
+        id: 't-replace-quote',
+        name: 'Shipping replacement quote test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'carrier_quote',
+              amount: 49,
+              replace_existing_rates: true,
+              execution_hint: 'delivery_customization',
+              delivery_method_names: ['Standard', 'Express'],
+              metadata: {
+                quote_provider: 'static_rate',
+                quote_amount: 45,
+              },
+            },
+          },
+        ],
+      },
+      {
+        capabilities: {
+          adapter_support: {
+            carrier_service: { available: true },
+            delivery_customization: { available: true },
+            manual: { available: true },
+          },
+        },
+        recommended_execution_path: 'carrier_service',
+      }
+    );
+    expect(plan.variants[1].status).toBe('ready');
+    expect(plan.variants[1].execution_adapter).toBe('carrier_service');
+    expect(plan.variants[1].execution_adapters).toEqual([
+      'carrier_service',
+      'delivery_customization',
+    ]);
+    expect(plan.variants[1].replace_existing_rates).toBe(true);
+  });
+
+  it('requires delivery customization for add-preview flat rate hide targets', () => {
+    const plan = buildShippingExecutionPlan(
+      {
+        id: 't-add-hide',
+        name: 'Shipping add hide test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 12,
+              shipping_display_mode: 'add_preview_method',
+              delivery_method_names: ['Standard Shipping'],
+              delivery_action: 'hide',
+            },
+          },
+        ],
+      },
+      {
+        capabilities: {
+          adapter_support: {
+            carrier_service: { available: true },
+            delivery_customization: { available: true },
+            manual: { available: true },
+          },
+        },
+        recommended_execution_path: 'carrier_service',
+      }
+    );
+    expect(plan.variants[1].status).toBe('ready');
+    expect(plan.variants[1].execution_adapters).toEqual([
+      'carrier_service',
+      'delivery_customization',
+    ]);
+    expect(plan.variants[1].replace_existing_rates).toBe(false);
+  });
+
   it('honors delivery customization execution_hint when adapter is available', () => {
     const plan = buildShippingExecutionPlan(
       {

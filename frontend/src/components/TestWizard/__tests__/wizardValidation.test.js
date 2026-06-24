@@ -1152,6 +1152,35 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('between 0 and 100'))).toBe(true);
       });
 
+      it('rejects unified wizard incentives without targeted Shopify methods', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              {
+                name: 'Variant A',
+                config: {
+                  strategy: 'free_shipping',
+                  metadata: {
+                    shipping_wizard_path: 'unified',
+                    shipping_test_type: 'free_shipping',
+                  },
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('pick at least one Shopify method to target'))).toBe(
+          true
+        );
+      });
+
       it('returns error on targeting step when selected and excluded products overlap', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
           stepIds: stepIdsWithTemplate,

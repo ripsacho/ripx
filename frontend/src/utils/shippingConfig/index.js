@@ -1,4 +1,5 @@
 import { normalizeCheckoutListInput } from '../checkoutSections';
+import { getOfferWizardReadinessIssues, isOfferWizardConfig } from './offerWizard';
 
 export const SHIPPING_STRATEGIES = [
   'control',
@@ -144,43 +145,10 @@ export function normalizeShippingDeliveryDate(value) {
   return match ? match[1] : '';
 }
 
-export function normalizeShippingDeliveryPromise(raw = {}) {
-  const source = raw && typeof raw === 'object' ? raw : {};
-  const promise =
-    source.delivery_promise && typeof source.delivery_promise === 'object'
-      ? source.delivery_promise
-      : source.deliveryPromise && typeof source.deliveryPromise === 'object'
-        ? source.deliveryPromise
-        : source;
-  const mode = String(
-    promise.mode || promise.delivery_promise_mode || promise.deliveryPromiseMode || ''
-  )
-    .trim()
-    .toLowerCase();
-  const preset = String(
-    promise.preset || promise.delivery_promise_preset || promise.deliveryPromisePreset || ''
-  )
-    .trim()
-    .toLowerCase();
-  const minDeliveryDate = normalizeShippingDeliveryDate(
-    promise.min_delivery_date ||
-      promise.minDeliveryDate ||
-      promise.delivery_min_date ||
-      promise.deliveryMinDate
-  );
-  const maxDeliveryDate = normalizeShippingDeliveryDate(
-    promise.max_delivery_date ||
-      promise.maxDeliveryDate ||
-      promise.delivery_max_date ||
-      promise.deliveryMaxDate
-  );
-  return {
-    mode: mode || (preset ? 'preset' : minDeliveryDate || maxDeliveryDate ? 'custom' : 'none'),
-    preset,
-    min_delivery_date: minDeliveryDate,
-    max_delivery_date: maxDeliveryDate || minDeliveryDate,
-  };
-}
+export {
+  normalizeShippingDeliveryPromise,
+  formatShippingDeliveryPromiseLabel,
+} from './deliveryPromiseDisplay';
 
 export function getShippingDisplayMode(cfg = {}) {
   const displayMode = String(
@@ -232,7 +200,10 @@ export function hasActionableShippingConfig(cfg = {}) {
 
   if (strategy === 'flat_rate') {
     if (shouldReplaceExistingShippingMethods(cfg)) {
-      return ((amount !== null && amount >= 0) || hasActionableRate) && deliveryTargets.length > 0;
+      const offerWizard = isOfferWizardConfig(cfg);
+      const hasRate = (amount !== null && amount >= 0) || hasActionableRate;
+      if (offerWizard) return hasRate;
+      return hasRate && deliveryTargets.length > 0;
     }
     return (amount !== null && amount >= 0) || hasActionableRate;
   }
@@ -274,6 +245,21 @@ export function getShippingReadiness(variant, index) {
   const methodHandles = getShippingMethodHandles(cfg);
   const profileId = String(cfg.profile_id || cfg.profileId || '').trim();
   const scopeTargets = getShippingScopeTargets(cfg);
+
+  if (isOfferWizardConfig(cfg)) {
+    const offerIssues = getOfferWizardReadinessIssues(cfg, {
+      normalizeRates: config => normalizeShippingRates(config),
+    });
+    if (offerIssues.length > 0) {
+      return {
+        tone: 'attention',
+        label: 'Needs setup',
+        status: 'blocked',
+        issue: offerIssues[0],
+      };
+    }
+    return { tone: 'info', label: 'Ready', status: 'ready', issue: 'Configuration is actionable' };
+  }
 
   if (strategy === 'flat_rate' && (amount === null || amount < 0) && !hasActionableRate) {
     return {
@@ -349,6 +335,25 @@ export function getShippingReadiness(variant, index) {
       issue: 'Add profile, method handle, delivery method target, or shipping scope',
     };
   }
+  const unifiedWizard = String(cfg.metadata?.shipping_wizard_path || '').trim() === 'unified';
+  const unifiedIncentiveStrategies = [
+    'free_shipping',
+    'threshold_free_shipping',
+    'discount_percentage',
+    'discount_fixed',
+  ];
+  if (
+    unifiedWizard &&
+    unifiedIncentiveStrategies.includes(strategy) &&
+    deliveryTargets.length === 0
+  ) {
+    return {
+      tone: 'attention',
+      label: 'Needs methods',
+      status: 'blocked',
+      issue: 'Pick at least one Shopify method to target',
+    };
+  }
   return { tone: 'info', label: 'Ready', status: 'ready', issue: 'Configuration is actionable' };
 }
 
@@ -405,3 +410,22 @@ export function getShippingVariantSummary(
   }
   return strategy || 'Control';
 }
+
+export {
+  SHIPPING_OFFER_MODES,
+  SHIPPING_OFFER_ATTRIBUTE_KEYS,
+  SHIPPING_OFFER_ATTRIBUTE_OPTIONS,
+  DEFAULT_SHIPPING_OFFER_ATTRIBUTES,
+  normalizeShippingOfferMode,
+  getShippingOfferMode,
+  normalizeShippingOfferAttributes,
+  getShippingOfferAttributes,
+  buildShippingOfferAttributesPatch,
+  getShippingOfferAttributeLabels,
+  isOfferWizardConfig,
+  getOfferWizardReadinessIssues,
+  buildOfferAttributeRevertPatch,
+  buildNativeDeliveryMethodCodes,
+  resolveControlShippingBaseline,
+  formatShippingOfferBaselineValue,
+} from './offerWizard';

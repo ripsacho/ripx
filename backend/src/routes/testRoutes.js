@@ -57,11 +57,14 @@ const { buildShippingExecutionPlan } = require('../services/shippingExecutionPla
 const {
   getShippingCarrierCallbackTrace,
 } = require('../services/shippingCarrierCallbackTraceService');
+const { buildShippingPreviewDebugChecklist } = require('../services/shippingPreviewDebugService');
+const { buildShippingLiveDebugReport } = require('../services/shippingLiveDebugService');
 const {
   executeShippingTestPlan,
   cleanupManagedShippingResources,
   compareShippingCarrierCallbackUrls,
   fetchCarrierServicesViaAdmin,
+  syncLiveCarrierCallbacksForTest,
 } = require('../services/shippingAutoExecutionService');
 const {
   buildTestCheckoutReadiness,
@@ -411,6 +414,56 @@ function resolveShippingDiagnosticsUrls() {
     app_url: appUrl || null,
     shipping_resolve_batch_url: checkoutResolveUrl || null,
     carrier_callback_url: carrierCallbackUrl || null,
+  };
+}
+
+function resolveUrlHost(url) {
+  try {
+    return new URL(String(url || '').trim()).host;
+  } catch {
+    return null;
+  }
+}
+
+function pruneStaleStoredCarrierCallbacks(test = {}, expectedHost = null) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  const staleHosts = new Set();
+  let cleanedCount = 0;
+
+  const nextVariants = variants.map(variant => {
+    const nextVariant = { ...(variant || {}) };
+    const config =
+      nextVariant.config && typeof nextVariant.config === 'object' ? { ...nextVariant.config } : {};
+    const metadata =
+      config.metadata && typeof config.metadata === 'object' ? { ...config.metadata } : {};
+    const resources = Array.isArray(metadata.shipping_resources) ? metadata.shipping_resources : [];
+
+    const filteredResources = resources.filter(resource => {
+      if (!resource || typeof resource !== 'object') {
+        return false;
+      }
+      if (String(resource.resource_type || '').trim() !== 'carrier_service') {
+        return true;
+      }
+      const host = resolveUrlHost(resource.callback_url);
+      if (!host || !expectedHost || host === expectedHost) {
+        return true;
+      }
+      staleHosts.add(host);
+      cleanedCount += 1;
+      return false;
+    });
+
+    metadata.shipping_resources = filteredResources;
+    config.metadata = metadata;
+    nextVariant.config = config;
+    return nextVariant;
+  });
+
+  return {
+    variants: nextVariants,
+    cleaned_count: cleanedCount,
+    stale_hosts: Array.from(staleHosts),
   };
 }
 
@@ -2446,6 +2499,45 @@ router.get(
       variantDisplaySummary,
       currentSetup
     );
+    const debugChecklist = buildShippingPreviewDebugChecklist({
+      testId: id,
+      testStatus: test?.status || null,
+      urls,
+      storedShippingResources: (Array.isArray(test?.variants) ? test.variants : []).flatMap(
+        variant => {
+          const resources = variant?.config?.metadata?.shipping_resources;
+          return Array.isArray(resources) ? resources : [];
+        }
+      ),
+      readiness: {
+        carrier_callback_configured: Boolean(urls.carrier_callback_url),
+        shipping_checkout_resolve_configured: Boolean(urls.shipping_resolve_batch_url),
+        assignment_signature_required: shouldRequireSignedAssignment(),
+        running_shipping_conflicts: conflicts.length,
+        live_carrier_services_found: carrierChecks.filter(item => item.live_resource?.id).length,
+        pending_carrier_services: pendingCarrierChecks.length,
+        live_delivery_customizations_found: deliveryCustomizationChecks.filter(
+          item => item.live_resource?.id
+        ).length,
+        stale_carrier_callbacks: staleCarrierCallbacks.length,
+        carrier_profile_bindings_found: profileBindingChecks.filter(
+          item => item.bound_to_profile_zone
+        ).length,
+        missing_carrier_profile_bindings: profileBindingChecks.filter(
+          item => !item.bound_to_profile_zone
+        ).length,
+        latest_carrier_callback_seen: Boolean(latestCarrierCallback),
+        latest_carrier_callback_at: latestCarrierCallback?.at || null,
+        latest_carrier_callback_rates_count: latestCarrierCallback?.rates_count ?? null,
+        latest_carrier_callback_rates: latestCarrierCallback?.rates || [],
+        rate_name_collision_warnings: rateNameCollisionWarnings.length,
+        replace_mode_variants: variantDisplaySummary.replace_mode_variants,
+        additive_mode_variants: variantDisplaySummary.additive_mode_variants,
+        multi_rate_variants: variantDisplaySummary.multi_rate_variants,
+      },
+      liveResourceChecks,
+      carrierCallbackTrace,
+    });
 
     const timingSnapshot = timing.snapshot({
       test_id: id,
@@ -2505,6 +2597,7 @@ router.get(
         variant_display_summary: variantDisplaySummary,
         normalization_summary: normalizationSummary,
         carrier_callback_trace: carrierCallbackTrace,
+        debug_checklist: debugChecklist,
         dry_run_summary: dryRunResult?.execution_result?.summary || null,
         assignment_visibility: {
           required_line_attributes: [
@@ -2520,6 +2613,176 @@ router.get(
         actionable_variant_count: actionableVariants.length,
         conflicts,
       },
+    });
+  })
+);
+
+/**
+ * POST /api/tests/:id/shipping/cleanup-stale-callbacks
+ * Remove stale callback host refs from saved shipping metadata.
+ */
+router.post(
+  '/:id/shipping/cleanup-stale-callbacks',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, ['Shipping cleanup is available only for shipping tests.']);
+    }
+
+    const urls = resolveShippingDiagnosticsUrls();
+    const currentHost = resolveUrlHost(urls.carrier_callback_url || urls.app_url);
+    if (!currentHost) {
+      return sendValidationError(res, [
+        'Could not resolve current callback host from RIPX_SHIPPING_CARRIER_CALLBACK_URL or APP_URL.',
+      ]);
+    }
+
+    const dryRun = parseBooleanFlag(req.body?.dry_run ?? req.body?.dryRun);
+    const syncLive =
+      req.body?.sync_live === undefined ? true : parseBooleanFlag(req.body?.sync_live);
+    const rawVariantIndex = req.body?.variantIndex ?? req.body?.variant_index;
+    let variantIndex = null;
+    if (
+      rawVariantIndex !== undefined &&
+      rawVariantIndex !== null &&
+      String(rawVariantIndex).trim()
+    ) {
+      const parsedIndex = Number(rawVariantIndex);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0) {
+        return sendValidationError(res, [
+          'variantIndex must be a non-negative integer when provided.',
+        ]);
+      }
+      variantIndex = parsedIndex;
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    let liveSync = null;
+    if (!dryRun && syncLive && accessToken) {
+      liveSync = await syncLiveCarrierCallbacksForTest({
+        test,
+        shopDomain,
+        accessToken,
+        variantIndex,
+        apply: true,
+      });
+    }
+
+    const cleanup = pruneStaleStoredCarrierCallbacks(test, currentHost);
+    let persistedVariants = cleanup.variants;
+    if (!dryRun && accessToken && (liveSync?.synced_count > 0 || cleanup.cleaned_count > 0)) {
+      const executeResult = await executeShippingTestPlan({
+        test: { ...test, variants: cleanup.variants },
+        shopDomain,
+        accessToken,
+        apply: true,
+        variantIndex,
+      });
+      persistedVariants = executeResult?.persisted_variants || cleanup.variants;
+      await updateTest(id, shopDomain, { variants: persistedVariants });
+    }
+
+    const responseData = {
+      test_id: id,
+      dry_run: dryRun,
+      current_callback_host: currentHost,
+      cleaned_count: cleanup.cleaned_count,
+      stale_hosts: cleanup.stale_hosts,
+      live_sync: liveSync,
+    };
+
+    const message =
+      dryRun && cleanup.cleaned_count > 0
+        ? `Dry run complete. ${cleanup.cleaned_count} stale callback reference(s) would be removed.`
+        : liveSync?.synced_count > 0 && cleanup.cleaned_count > 0
+          ? `Synced ${liveSync.synced_count} live carrier callback(s) and removed ${cleanup.cleaned_count} stale metadata reference(s).`
+          : liveSync?.synced_count > 0
+            ? `Synced ${liveSync.synced_count} live carrier callback(s) to ${currentHost}.`
+            : cleanup.cleaned_count > 0
+              ? `Removed ${cleanup.cleaned_count} stale callback reference(s) from saved shipping metadata.`
+              : 'No stale callback references found in saved shipping metadata.';
+
+    return sendSuccess(res, HTTP_STATUS.OK, responseData, message);
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/live-debug
+ * Deep shipping checkout debug report with live Shopify carrier state and callback probe.
+ */
+router.get(
+  '/:id/shipping/live-debug',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Shipping live debug is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
+    const executionPlan = buildShippingExecutionPlan(test, capabilityReport);
+    const dryRunResult = await executeShippingTestPlan({
+      test,
+      shopDomain,
+      accessToken,
+      apply: false,
+    });
+    const dryRunActions = dryRunResult?.execution_result?.actions || [];
+    const liveResourceChecks = await hydrateShippingLiveResourceChecks(
+      shopDomain,
+      accessToken,
+      buildShippingLiveResourceChecks(dryRunActions)
+    );
+    const carrierChecks = liveResourceChecks.filter(
+      item => item?.live_resource?.type === 'carrier_service'
+    );
+    const staleCarrierCallbacks = carrierChecks.filter(
+      item => item?.live_resource?.callback_matches === false
+    );
+    const carrierCallbackTrace = getShippingCarrierCallbackTrace({ testId: id, limit: 10 });
+    const latestCarrierCallback = carrierCallbackTrace[0] || null;
+
+    const report = await buildShippingLiveDebugReport({
+      test,
+      shopDomain,
+      accessToken,
+      liveResourceChecks,
+      carrierCallbackTrace,
+      readiness: {
+        live_carrier_services_found: carrierChecks.filter(item => item.live_resource?.id).length,
+        stale_carrier_callbacks: staleCarrierCallbacks.length,
+        latest_carrier_callback_seen: Boolean(latestCarrierCallback),
+        latest_carrier_callback_at: latestCarrierCallback?.at || null,
+        latest_carrier_callback_rates_count: latestCarrierCallback?.rates_count ?? null,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      test_id: id,
+      execution_plan: executionPlan,
+      live_debug: report,
     });
   })
 );

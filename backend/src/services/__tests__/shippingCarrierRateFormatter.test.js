@@ -1,5 +1,6 @@
 const {
   formatCarrierRateForCheckout,
+  formatDeliveryPromiseShopperLabel,
   normalizeCheckoutDisplayConfig,
   resolveDeliveryPromiseDates,
 } = require('../shippingCarrierRateFormatter');
@@ -49,6 +50,56 @@ describe('shippingCarrierRateFormatter', () => {
     });
   });
 
+  it('falls back to checkout display promise when rate promise is explicitly none', () => {
+    const rate = formatCarrierRateForCheckout({
+      rateConfig: {
+        name: 'Budget',
+        description: '',
+        amount: 6,
+        currency: 'USD',
+        delivery_promise: { mode: 'none', preset: 'none' },
+      },
+      variantConfig: {
+        checkout_display: {
+          default_description: 'Default shipping subline',
+          delivery_promise: { mode: 'preset', preset: '2_3_business_days' },
+        },
+      },
+      now: new Date('2026-06-05T12:00:00Z'),
+    });
+
+    expect(rate).toMatchObject({
+      service_name: 'Budget',
+      description: '',
+      min_delivery_date: '2026-06-09',
+      max_delivery_date: '2026-06-10',
+    });
+  });
+
+  it('falls back to checkout defaults only when rate fields are not explicitly set', () => {
+    const rate = formatCarrierRateForCheckout({
+      rateConfig: {
+        name: 'Standard',
+        amount: 7,
+        currency: 'USD',
+      },
+      variantConfig: {
+        checkout_display: {
+          default_description: 'Default shipping subline',
+          delivery_promise: { mode: 'preset', preset: '2_3_business_days' },
+        },
+      },
+      now: new Date('2026-06-05T12:00:00Z'),
+    });
+
+    expect(rate).toMatchObject({
+      service_name: 'Standard',
+      description: 'Default shipping subline',
+      min_delivery_date: '2026-06-09',
+      max_delivery_date: '2026-06-10',
+    });
+  });
+
   it('adds config revision to generated fallback service codes', () => {
     const rate = formatCarrierRateForCheckout({
       rateConfig: { name: 'Standard', amount: 8, currency: 'USD' },
@@ -77,7 +128,7 @@ describe('shippingCarrierRateFormatter', () => {
       default_description: 'Ships fast',
       delivery_promise: {
         mode: 'custom',
-        preset: 'none',
+        preset: 'custom',
         min_delivery_date: '2026-07-04',
         max_delivery_date: '2026-07-05',
       },
@@ -94,5 +145,18 @@ describe('shippingCarrierRateFormatter', () => {
       min_delivery_date: '2026-06-09',
       max_delivery_date: '2026-06-10',
     });
+  });
+
+  it('formats custom delivery dates as shopper-facing business days', () => {
+    expect(
+      formatDeliveryPromiseShopperLabel(
+        {
+          mode: 'custom',
+          min_delivery_date: '2026-06-09',
+          max_delivery_date: '2026-06-10',
+        },
+        new Date('2026-06-05T12:00:00Z')
+      )
+    ).toBe('Delivers in 2-3 business days');
   });
 });

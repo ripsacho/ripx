@@ -2209,6 +2209,12 @@
   color: #f59e0b;
 }
 
+[data-theme='dark'] .badgeWarning {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
 /* Doc grid */
 .docGrid {
   display: grid;
@@ -2512,6 +2518,8 @@
 
 [data-theme='dark'] .calloutWarning {
   background: rgba(245, 158, 11, 0.13);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
 }
 
 [data-theme='dark'] .calloutSuccess {

@@ -110,6 +110,36 @@ function slugifyReplacementServiceCode(value, index = 0) {
   return `ripx_replace_${slug}`.slice(0, 64);
 }
 
+function slugifyNativeDeliveryMethodCode(value, index = 0) {
+  const slug = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return slug || `method_${index + 1}`;
+}
+
+function buildNativeDeliveryMethodCodes(methodNames = []) {
+  const codes = [];
+  methodNames.forEach((name, index) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) {
+      return;
+    }
+    codes.push(trimmed);
+    codes.push(trimmed.toLowerCase());
+    codes.push(slugifyNativeDeliveryMethodCode(trimmed, index));
+    codes.push(
+      String(trimmed)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+    );
+  });
+  return Array.from(new Set(codes.filter(Boolean))).slice(0, 50);
+}
+
 function normalizeShippingScope(input = {}) {
   const raw = input && typeof input === 'object' ? input : {};
   const selectedRateIds = toStringArray(
@@ -327,6 +357,9 @@ function normalizeShippingVariantConfig(config = {}) {
     delivery_method_names: toStringArray(
       raw.delivery_method_names || raw.deliveryMethodNames || raw.method_names || raw.methodNames
     ),
+    delivery_method_codes: toStringArray(
+      raw.delivery_method_codes || raw.deliveryMethodCodes || raw.method_codes || raw.methodCodes
+    ),
     delivery_action: toLowerString(
       raw.delivery_action || raw.deliveryAction || raw.action || 'hide'
     ),
@@ -347,6 +380,21 @@ function normalizeShippingVariantConfig(config = {}) {
     metadata: raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {},
   };
 
+  if (
+    normalized.delivery_method_names.length === 0 &&
+    shippingScope.selected_rate_names.length > 0
+  ) {
+    normalized.delivery_method_names = [...shippingScope.selected_rate_names];
+  }
+  if (
+    normalized.delivery_method_codes.length === 0 &&
+    normalized.delivery_method_names.length > 0
+  ) {
+    normalized.delivery_method_codes = buildNativeDeliveryMethodCodes(
+      normalized.delivery_method_names
+    );
+  }
+
   if (strategy === 'discount_fixed' && normalized.amount === null) {
     normalized.amount = toOptionalNumber(raw.discount_value ?? raw.discountValue);
   }
@@ -354,7 +402,7 @@ function normalizeShippingVariantConfig(config = {}) {
     normalized.percent_off = toOptionalNumber(raw.discount_value ?? raw.discountValue);
   }
   if (
-    normalized.strategy === 'flat_rate' &&
+    (normalized.strategy === 'flat_rate' || normalized.strategy === 'carrier_quote') &&
     normalized.shipping_display_mode === 'replace_existing_methods'
   ) {
     normalized.rates = normalized.rates.map((rate, index) => ({
@@ -366,6 +414,27 @@ function normalizeShippingVariantConfig(config = {}) {
           index
         ),
     }));
+  }
+  if (normalized.strategy === 'carrier_quote') {
+    const primaryRate = normalized.rates[0] || null;
+    const nextMetadata = { ...normalized.metadata };
+    if (!toOptionalString(nextMetadata.quote_service_name) && primaryRate?.name) {
+      nextMetadata.quote_service_name = primaryRate.name;
+    }
+    if (
+      nextMetadata.quote_amount === undefined ||
+      nextMetadata.quote_amount === null ||
+      String(nextMetadata.quote_amount).trim() === ''
+    ) {
+      const fromRate = toOptionalNumber(primaryRate?.amount);
+      if (fromRate !== null) {
+        nextMetadata.quote_amount = fromRate;
+      }
+    }
+    normalized.metadata = nextMetadata;
+    if (normalized.amount === null && nextMetadata.quote_amount !== null) {
+      normalized.amount = toOptionalNumber(nextMetadata.quote_amount);
+    }
   }
 
   return normalized;
@@ -432,13 +501,45 @@ function isActionableShippingConfig(config = {}) {
       return normalized.amount !== null && normalized.amount > 0;
     case 'free_shipping':
       return true;
-    case 'carrier_quote':
-      return Boolean(
+    case 'carrier_quote': {
+      const metadata =
+        normalized.metadata && typeof normalized.metadata === 'object' ? normalized.metadata : {};
+      const provider = toLowerString(
+        metadata.quote_provider || metadata.quoteProvider || metadata.provider || ''
+      );
+      const hasResolvableAmount =
+        (normalized.amount !== null && normalized.amount >= 0) ||
+        normalized.rates.some(rate => rate.amount !== null && rate.amount >= 0) ||
+        (metadata.quote_amount !== undefined &&
+          metadata.quote_amount !== null &&
+          Number(metadata.quote_amount) >= 0);
+      const hasScope = Boolean(
         normalized.profile_id ||
         hasShippingScopeValue(normalized.shipping_scope) ||
         normalized.method_handles.length > 0 ||
         normalized.delivery_method_names.length > 0
       );
+      const isReplaceMode = normalized.shipping_display_mode === 'replace_existing_methods';
+      const isDeliveryOnly =
+        !isReplaceMode &&
+        (normalized.delivery_action === 'rename' ||
+          normalized.delivery_action === 'reorder' ||
+          normalized.execution_hint === 'delivery_customization');
+      if (!hasScope) {
+        return false;
+      }
+      if (isDeliveryOnly) {
+        return true;
+      }
+      if (isReplaceMode) {
+        if (provider === 'country_table') {
+          const countryRates = String(metadata.country_rates || metadata.countryRates || '').trim();
+          return Boolean(countryRates);
+        }
+        return hasResolvableAmount;
+      }
+      return true;
+    }
     case 'control':
     default:
       return false;

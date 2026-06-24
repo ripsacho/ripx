@@ -17,6 +17,9 @@ var NO_CHANGES = { operations: [] };
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
+function normalizeToken(value) {
+  return String(value || "").trim().toLowerCase();
+}
 function getConfiguration(input) {
   const raw = input?.deliveryCustomization?.metafield?.jsonValue;
   return raw && typeof raw === "object" ? raw : {};
@@ -26,7 +29,9 @@ function resolveAssignment(deliveryGroups = []) {
   for (const group of Array.isArray(deliveryGroups) ? deliveryGroups : []) {
     for (const line of Array.isArray(group?.cartLines) ? group.cartLines : []) {
       const testId = String(line?.ripxTest?.value || line?.ripxPublicTest?.value || "").trim();
-      const variantId = String(line?.ripxVariant?.value || line?.ripxPublicVariant?.value || "").trim();
+      const variantId = String(
+        line?.ripxVariant?.value || line?.ripxPublicVariant?.value || ""
+      ).trim();
       if (testId && variantId) {
         if (!chosen) {
           chosen = { testId, variantId };
@@ -40,21 +45,35 @@ function resolveAssignment(deliveryGroups = []) {
   }
   return chosen;
 }
+function variantAssignmentMatches(rule, assignedVariant) {
+  const assigned = normalizeToken(assignedVariant);
+  if (!assigned) {
+    return false;
+  }
+  const candidates = [
+    rule?.variant_id,
+    rule?.variant_name,
+    rule?.variantId,
+    rule?.variantName,
+    rule?.variant_index,
+    rule?.variantIndex
+  ].filter((value) => value !== void 0 && value !== null).map((value) => normalizeToken(value)).filter(Boolean);
+  return candidates.includes(assigned);
+}
 function getMatchedRule(config, assignment) {
   const rules = Array.isArray(config?.variant_rules) ? config.variant_rules : [];
   return rules.find((rule) => {
     if (!rule || typeof rule !== "object") {
       return false;
     }
-    if (config?.test_id && assignment?.testId && String(config.test_id) !== String(assignment.testId)) {
+    if (config?.test_id && assignment?.testId && normalizeToken(config.test_id) !== normalizeToken(assignment.testId)) {
       return false;
     }
     const assignedVariant = String(assignment?.variantId || "").trim();
     if (!assignedVariant) {
       return false;
     }
-    const variantCandidates = [rule.variant_id, rule.variant_name, rule.variantId, rule.variantName].filter((value) => value !== void 0 && value !== null).map((value) => String(value).trim()).filter(Boolean);
-    return variantCandidates.includes(assignedVariant);
+    return variantAssignmentMatches(rule, assignedVariant);
   });
 }
 function getUnassignedHiddenMethodNames(config) {
@@ -85,40 +104,106 @@ function getUnassignedHiddenMethodCodes(config) {
   }
   return codes;
 }
+function normalizeComparableTitle(value) {
+  return normalizeText(value).replace(/\bshipping\b/g, "").replace(/\s+/g, " ").trim();
+}
 function matchesOptionTitle(title, wantedNames = []) {
+  const normalizedTitle = normalizeComparableTitle(title);
+  if (!normalizedTitle) {
+    return false;
+  }
+  return wantedNames.some((item) => {
+    const wanted = normalizeComparableTitle(item);
+    if (!wanted) {
+      return false;
+    }
+    if (normalizedTitle === wanted) {
+      return true;
+    }
+    if (normalizedTitle.includes(wanted) || wanted.includes(normalizedTitle)) {
+      return true;
+    }
+    const titleTokens = normalizedTitle.split(" ").filter(Boolean);
+    const wantedTokens = wanted.split(" ").filter(Boolean);
+    return wantedTokens.length > 0 && wantedTokens.every((token) => titleTokens.includes(token));
+  });
+}
+function matchesOptionTitlePrefix(title, wantedPrefixes = []) {
   const normalizedTitle = normalizeText(title);
-  return wantedNames.some((item) => normalizeText(item) === normalizedTitle);
+  if (!normalizedTitle) {
+    return false;
+  }
+  return wantedPrefixes.some((prefix) => {
+    const normalizedPrefix = normalizeText(prefix);
+    if (!normalizedPrefix) {
+      return false;
+    }
+    return normalizedTitle.startsWith(`${normalizedPrefix}:`) || normalizedTitle.startsWith(`${normalizedPrefix} `) || normalizedTitle.startsWith(normalizedPrefix);
+  });
 }
 function matchesOptionCode(code, wantedCodes = []) {
   const normalizedCode = normalizeText(code);
-  return wantedCodes.some((item) => normalizeText(item) === normalizedCode);
+  return wantedCodes.some((item) => {
+    const wanted = normalizeText(item);
+    if (!wanted) {
+      return false;
+    }
+    return normalizedCode === wanted || normalizedCode.includes(wanted) || wanted.includes(normalizedCode);
+  });
 }
-function hasRequiredVisibleOption(deliveryGroups = [], wantedNames = [], wantedCodes = []) {
-  const normalizedCodes = Array.isArray(wantedCodes) ? wantedCodes.map((item) => normalizeText(item)).filter(Boolean) : [];
-  const normalizedWanted = Array.isArray(wantedNames) ? wantedNames.map((item) => normalizeText(item)).filter(Boolean) : [];
-  if (normalizedCodes.length === 0 && normalizedWanted.length === 0) {
+function shouldProtectOption(option, protectedCodes = [], protectedNamePrefixes = [], protectedNames = []) {
+  if (matchesOptionCode(option?.code, protectedCodes)) {
+    return true;
+  }
+  if (matchesOptionTitlePrefix(option?.title, protectedNamePrefixes)) {
+    return true;
+  }
+  if (matchesOptionTitle(option?.title, protectedNames)) {
+    return true;
+  }
+  return false;
+}
+function hasRequiredVisibleOption(deliveryGroups = [], wantedNames = [], wantedCodes = [], wantedPrefixes = []) {
+  const names = Array.isArray(wantedNames) ? wantedNames : [];
+  const codes = Array.isArray(wantedCodes) ? wantedCodes : [];
+  const prefixes = Array.isArray(wantedPrefixes) ? wantedPrefixes : [];
+  if (names.length === 0 && codes.length === 0 && prefixes.length === 0) {
     return true;
   }
   for (const group of deliveryGroups) {
     for (const option of Array.isArray(group?.deliveryOptions) ? group.deliveryOptions : []) {
-      if (option?.handle && (normalizedCodes.includes(normalizeText(option?.code)) || normalizedCodes.length === 0 && normalizedWanted.includes(normalizeText(option?.title)))) {
+      if (!option?.handle) {
+        continue;
+      }
+      if (matchesOptionCode(option?.code, codes)) {
+        return true;
+      }
+      if (matchesOptionTitle(option?.title, names)) {
+        return true;
+      }
+      if (matchesOptionTitlePrefix(option?.title, prefixes)) {
         return true;
       }
     }
   }
   return false;
 }
-function buildHideOperations(deliveryGroups = [], wantedNames = [], wantedCodes = [], excludedCodes = []) {
+function shouldSkipReplacementPresenceGate(rule = {}) {
+  return Boolean(rule?.skip_replacement_presence_gate);
+}
+function buildHideOperations(deliveryGroups = [], wantedNames = [], wantedCodes = [], protectedCodes = [], protectedNamePrefixes = [], protectedNames = []) {
   const operations = [];
   for (const group of deliveryGroups) {
     for (const option of Array.isArray(group?.deliveryOptions) ? group.deliveryOptions : []) {
       if (!option?.handle) {
         continue;
       }
-      if (matchesOptionCode(option?.code, excludedCodes)) {
+      if (shouldProtectOption(option, protectedCodes, protectedNamePrefixes, protectedNames)) {
         continue;
       }
-      if (!matchesOptionCode(option?.code, wantedCodes) && !matchesOptionTitle(option?.title, wantedNames)) {
+      const matchesCode = matchesOptionCode(option?.code, wantedCodes);
+      const matchesTitle = matchesOptionTitle(option?.title, wantedNames);
+      if (!matchesCode && !matchesTitle) {
         continue;
       }
       operations.push({
@@ -191,19 +276,25 @@ function cartDeliveryOptionsTransformRun(input) {
   if (methodNames.length === 0 || deliveryGroups.length === 0) {
     return NO_CHANGES;
   }
-  if (!hasRequiredVisibleOption(
+  const skipReplacementPresenceGate = shouldSkipReplacementPresenceGate(matchedRule);
+  if (!skipReplacementPresenceGate && !hasRequiredVisibleOption(
     deliveryGroups,
     matchedRule?.require_present_method_names,
-    matchedRule?.require_present_method_codes
+    matchedRule?.require_present_method_codes,
+    matchedRule?.require_present_method_prefixes
   )) {
     return NO_CHANGES;
   }
+  const protectedNamePrefixes = Array.isArray(matchedRule?.protected_method_name_prefixes) ? matchedRule.protected_method_name_prefixes : [];
+  const protectedNames = Array.isArray(matchedRule?.protected_method_names) ? matchedRule.protected_method_names : [];
   const action = normalizeText(matchedRule?.action || "hide");
   const operations = action === "rename" ? buildRenameOperations(deliveryGroups, methodNames, matchedRule?.rename_to) : action === "reorder" ? buildMoveOperations(deliveryGroups, methodNames) : buildHideOperations(
     deliveryGroups,
     methodNames,
     matchedRule?.method_codes,
-    matchedRule?.protected_method_codes
+    matchedRule?.protected_method_codes,
+    protectedNamePrefixes,
+    protectedNames
   );
   return operations.length > 0 ? { operations } : NO_CHANGES;
 }

@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
-
-function normalizeHostToUrl(raw) {
-  const value = String(raw || '').trim();
-  if (!value) return '';
-  if (/^https?:\/\//i.test(value)) return value.replace(/\/+$/, '');
-  return `https://${value.replace(/\/+$/, '')}`;
-}
+const { spawn, spawnSync } = require('child_process');
+const {
+  normalizeHostToUrl,
+  readAppUrlFromEnv,
+  updateEnvTunnelUrls,
+  tunnelUrlsMatch,
+  isEphemeralTunnelUrl,
+} = require('./lib/devTunnelEnv');
 
 function mergeAllowedOrigins(existing, hostUrl) {
   const defaults = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
@@ -22,57 +21,41 @@ function mergeAllowedOrigins(existing, hostUrl) {
   return Array.from(new Set(values)).join(',');
 }
 
-function syncEnvTunnelUrl(envPath, appUrl) {
-  if (!appUrl || !fs.existsSync(envPath)) {
-    return;
-  }
-  const source = fs.readFileSync(envPath, 'utf8');
-  const hasTrailingNewline = source.endsWith('\n');
-  const keys = [
-    'APP_URL',
-    'SHOPIFY_APP_URL',
-    'RIPX_OAUTH_REDIRECT_BASE',
-    'RIPX_PRICE_RESOLVE_BATCH_URL',
-    'RIPX_SHIPPING_RESOLVE_BATCH_URL',
-    'RIPX_CHECKOUT_ASSIGNMENT_URL',
-    'RIPX_CHECKOUT_CONVERSION_URL',
-  ];
-  let lines = source.split('\n');
-  if (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines = lines.slice(0, -1);
-  }
-  const values = {
-    APP_URL: appUrl,
-    SHOPIFY_APP_URL: appUrl,
-    RIPX_OAUTH_REDIRECT_BASE: appUrl,
-    RIPX_PRICE_RESOLVE_BATCH_URL: `${appUrl}/api/track/price-resolve-batch`,
-    RIPX_SHIPPING_RESOLVE_BATCH_URL: `${appUrl}/api/track/shipping-resolve-batch`,
-    RIPX_CHECKOUT_ASSIGNMENT_URL: `${appUrl}/api/track/checkout-assignment`,
-    RIPX_CHECKOUT_CONVERSION_URL: `${appUrl}/api/track/checkout-conversion`,
-  };
-  keys.forEach(key => {
-    const prefix = `${key}=`;
-    let replaced = false;
-    lines = lines.map(line => {
-      if (!line.startsWith(prefix)) {
-        return line;
-      }
-      replaced = true;
-      return `${prefix}${values[key]}`;
-    });
-    if (!replaced) {
-      lines.push(`${prefix}${values[key]}`);
-    }
+function runAlignTunnel(repoRoot, env) {
+  console.log('[dev-shopify-web] Tunnel host changed; aligning extension config...');
+  const result = spawnSync('npm', ['run', 'dev:align-tunnel'], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env,
   });
-  fs.writeFileSync(envPath, `${lines.join('\n')}${hasTrailingNewline ? '\n' : ''}`, 'utf8');
+  if (result.status !== 0) {
+    console.warn(
+      '[dev-shopify-web] dev:align-tunnel failed; dev will still start. Fix with: npm run dev:switch-tunnel -- <tunnel-url> [shop.myshopify.com]'
+    );
+  }
 }
 
+const repoRoot = path.join(__dirname, '..');
+const envPath = path.join(repoRoot, '.env');
 const hostUrl = normalizeHostToUrl(process.env.HOST);
+let tunnelChanged = false;
+
 if (hostUrl) {
-  const envPath = path.join(__dirname, '..', '.env');
-  syncEnvTunnelUrl(envPath, hostUrl);
+  const previousAppUrl = readAppUrlFromEnv(envPath);
+  tunnelChanged = Boolean(previousAppUrl) && !tunnelUrlsMatch(previousAppUrl, hostUrl);
+  updateEnvTunnelUrls(envPath, hostUrl);
   console.log(`[dev-shopify-web] Synced .env tunnel URLs to ${hostUrl}`);
+
+  if (tunnelChanged) {
+    runAlignTunnel(repoRoot, process.env);
+  } else if (isEphemeralTunnelUrl(hostUrl)) {
+    console.log(
+      `[dev-shopify-web] Ephemeral tunnel detected. If shipping checkout fails, re-apply shipping tests after tunnel changes.`
+    );
+  }
 }
+
 const env = {
   ...process.env,
   ...(hostUrl
@@ -87,19 +70,16 @@ const env = {
 
 if (hostUrl) {
   console.log(`[dev-shopify-web] Using Shopify tunnel host: ${hostUrl}`);
-  console.log(
-    `[dev-shopify-web] After dev is stable, sync .env with: npm run dev:switch-tunnel -- ${hostUrl}`
-  );
-  try {
-    const host = new URL(hostUrl).hostname;
-    if (/\.trycloudflare\.com$/i.test(host) || /\.ngrok-free\.app$/i.test(host)) {
-      console.log(
-        `[dev-shopify-web] If dev preview fails, copy Partner Dashboard URLs:\n` +
-          `  npm run shopify:print:partner-urls -- ${hostUrl}`
-      );
-    }
-  } catch {
-    // ignore invalid HOST
+  if (!tunnelChanged) {
+    console.log(
+      `[dev-shopify-web] Manual full sync (frontend dist + verify): npm run dev:switch-tunnel -- ${hostUrl} [shop.myshopify.com]`
+    );
+  }
+  if (isEphemeralTunnelUrl(hostUrl)) {
+    console.log(
+      `[dev-shopify-web] Partner Dashboard URLs:\n` +
+        `  npm run shopify:print:partner-urls -- ${hostUrl}`
+    );
   }
 }
 

@@ -471,7 +471,10 @@ function TrafficAllocationSlider({
   };
 
   const content = (
-    <div className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}>
+    <div
+      className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}
+      data-ripx-traffic-allocation
+    >
       <Toast message={copySuccess} type="success" onClose={clearCopySuccess} duration={2500} />
       <Toast message={errorMessage} type="error" onClose={clearErrorMessage} duration={3000} />
       {!compact && (
@@ -525,7 +528,12 @@ function TrafficAllocationSlider({
       )}
 
       {/* Traffic split – bar + legend layout */}
-      <div className={styles.sliderSection} role="group" aria-label="Traffic allocation">
+      <div
+        className={styles.sliderSection}
+        role="group"
+        aria-label="Traffic allocation"
+        data-ripx-traffic-section
+      >
         <div className={styles.sliderSectionHeader}>
           <span className={styles.sliderSectionTitle}>Traffic split</span>
           {(() => {
@@ -548,7 +556,7 @@ function TrafficAllocationSlider({
             );
           })()}
         </div>
-        <div className={styles.sliderBarCard}>
+        <div className={styles.sliderBarCard} data-ripx-traffic-slider-card>
           <div className={styles.sliderBarWrap}>
             <span className={styles.sliderScaleLabel} aria-hidden>
               0
@@ -643,7 +651,7 @@ function TrafficAllocationSlider({
       </div>
 
       {/* Variant cards */}
-      <div className={styles.variantCards}>
+      <div className={styles.variantCards} data-ripx-traffic-variant-grid>
         {localVariants.map((variant, index) => {
           const color = COLORS[index % COLORS.length];
           const priceControlVariant = isPriceControlVariant(variant, index);
@@ -655,7 +663,12 @@ function TrafficAllocationSlider({
             : 'Copy storefront-domain customer-view preview link.';
 
           return (
-            <div key={index} className={styles.variantCard} style={{ '--variant-color': color }}>
+            <div
+              key={index}
+              className={styles.variantCard}
+              style={{ '--variant-color': color }}
+              data-ripx-traffic-variant-card
+            >
               <div className={styles.variantCardAccent} style={{ backgroundColor: color }} />
               <div className={styles.variantCardInner}>
                 <div className={styles.variantCardHead}>

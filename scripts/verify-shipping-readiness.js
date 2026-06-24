@@ -23,6 +23,42 @@ function resolveUrl(explicitEnv, fallbackPath) {
   return appUrl ? `${appUrl}${fallbackPath}` : '';
 }
 
+function isLocalOrPrivateUrl(url) {
+  const candidate = String(url || '').trim();
+  if (!candidate) return true;
+  try {
+    const host = new URL(candidate).hostname.toLowerCase();
+    return (
+      host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')
+    );
+  } catch {
+    return true;
+  }
+}
+
+function resolveUrlHost(url) {
+  try {
+    return new URL(String(url || '').trim()).host;
+  } catch {
+    return '';
+  }
+}
+
+const carrierCallbackUrl = resolveUrl(
+  'RIPX_SHIPPING_CARRIER_CALLBACK_URL',
+  '/api/track/shipping-carrier-rates'
+);
+const resolveBatchUrl = resolveUrl(
+  'RIPX_SHIPPING_RESOLVE_BATCH_URL',
+  '/api/track/shipping-resolve-batch'
+);
+const carrierCallbackPublic =
+  Boolean(carrierCallbackUrl) && !isLocalOrPrivateUrl(carrierCallbackUrl);
+const trackHostsMatch =
+  Boolean(carrierCallbackUrl) &&
+  Boolean(resolveBatchUrl) &&
+  resolveUrlHost(carrierCallbackUrl) === resolveUrlHost(resolveBatchUrl);
+
 const rows = [
   {
     name: 'APP_URL',
@@ -58,12 +94,22 @@ const rows = [
   },
   {
     name: 'carrier callback URL',
-    ok: Boolean(
-      resolveUrl('RIPX_SHIPPING_CARRIER_CALLBACK_URL', '/api/track/shipping-carrier-rates')
-    ),
-    detail:
-      resolveUrl('RIPX_SHIPPING_CARRIER_CALLBACK_URL', '/api/track/shipping-carrier-rates') ||
-      '(missing)',
+    ok: Boolean(carrierCallbackUrl),
+    detail: carrierCallbackUrl || '(missing)',
+  },
+  {
+    name: 'carrier callback publicly reachable',
+    ok: carrierCallbackPublic,
+    detail: carrierCallbackPublic
+      ? carrierCallbackUrl
+      : `${carrierCallbackUrl || '(missing)'} is not reachable by Shopify servers`,
+  },
+  {
+    name: 'track URL hosts aligned',
+    ok: trackHostsMatch,
+    detail: trackHostsMatch
+      ? resolveUrlHost(carrierCallbackUrl)
+      : `carrier=${resolveUrlHost(carrierCallbackUrl) || '(missing)'} resolve=${resolveUrlHost(resolveBatchUrl) || '(missing)'}`,
   },
   {
     name: 'checkout assignment secret',
@@ -83,6 +129,11 @@ if (failed) {
   console.log(
     '\nNext steps: fix the WARN items, then run shipping diagnostics from Test Detail or Test Wizard.'
   );
+  if (!carrierCallbackPublic) {
+    console.log(
+      'Carrier callback must use your public tunnel host, not localhost. Run: npm run dev:switch-tunnel -- https://YOUR-CURRENT.trycloudflare.com ripx-plus.myshopify.com'
+    );
+  }
   console.log('See docs/SHOPIFY_SHIPPING_TEST_RUNBOOK.md for the full rollout checklist.');
   process.exitCode = 1;
 } else {

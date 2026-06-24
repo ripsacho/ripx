@@ -1,7 +1,11 @@
 const shopifyService = require('./shopifyService');
 const { buildShippingCapabilityReport } = require('./shippingCapabilityPlanner');
 const { buildShippingCurrentSetupReport } = require('./shippingCurrentSetupService');
-const { buildShippingExecutionPlan } = require('./shippingExecutionPlanner');
+const {
+  buildShippingExecutionPlan,
+  requiresShippingReplacement,
+  hasDeliveryCustomizationTargets,
+} = require('./shippingExecutionPlanner');
 const { resolveVariantProviderConfig } = require('./shippingQuoteProviderService');
 const {
   isActionableShippingConfig,
@@ -164,6 +168,35 @@ function getReplacementRequiredMethodCodes(variant = {}) {
   return Array.from(new Set(rateCodes)).slice(0, 10);
 }
 
+function buildNativeDeliveryMethodCodes(methodNames = []) {
+  const codes = [];
+  methodNames.forEach(name => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) {
+      return;
+    }
+    codes.push(trimmed);
+    codes.push(trimmed.toLowerCase());
+    const slug = String(trimmed)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (slug) {
+      codes.push(slug);
+    }
+    const dashed = String(trimmed)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (dashed) {
+      codes.push(dashed);
+    }
+  });
+  return Array.from(new Set(codes.filter(Boolean))).slice(0, 50);
+}
+
 function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
   const methodNames = toStringArray(
@@ -174,6 +207,21 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
       'Delivery customization requires delivery_method_names/method_names because it can only hide, rename, or reorder existing checkout delivery methods.'
     );
   }
+  const scope =
+    cfg.shipping_scope && typeof cfg.shipping_scope === 'object' ? cfg.shipping_scope : {};
+  const scopedMethodIds = [
+    ...toStringArray(scope.selected_method_definition_ids || scope.selectedMethodDefinitionIds),
+    ...toStringArray(scope.selected_rate_ids || scope.selectedRateIds),
+  ];
+  const methodCodes = Array.from(
+    new Set([
+      ...toStringArray(
+        cfg.delivery_method_codes || cfg.deliveryMethodCodes || cfg.method_codes || cfg.methodCodes
+      ),
+      ...buildNativeDeliveryMethodCodes(methodNames),
+      ...scopedMethodIds,
+    ])
+  ).slice(0, 50);
   const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
   const renameTo = String(
     cfg.delivery_rename_to || cfg.deliveryRenameTo || cfg.rename_to || ''
@@ -182,13 +230,26 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
     throw new Error('Delivery customization rename action requires delivery_rename_to.');
   }
   const variantId = String(variant?.id || variant?.name || 'variant').trim();
+  const variantIndex =
+    variant?.index !== undefined && variant?.index !== null ? String(variant.index).trim() : '';
   const replacementMode = shouldReplaceExistingRates(cfg);
   const carrierServiceName = buildShippingCarrierServiceName(test, variant);
+  const previewLabelPrefix = String(
+    cfg.preview_label_prefix || cfg.previewLabelPrefix || 'RipX Preview'
+  ).trim();
   const replacementCodes = replacementMode ? getReplacementRequiredMethodCodes(variant) : [];
-  const replacementNames =
-    replacementMode && replacementCodes.length === 0
-      ? getReplacementRequiredMethodNames(test, variant)
-      : [];
+  const replacementNames = replacementMode ? getReplacementRequiredMethodNames(test, variant) : [];
+  const requirePresentMethodNames = replacementMode
+    ? Array.from(new Set([...replacementNames, carrierServiceName].filter(Boolean))).slice(0, 10)
+    : [];
+  const addModeHideTargets = !replacementMode && methodNames.length > 0;
+  const previewPrefixes = Array.from(
+    new Set(
+      [previewLabelPrefix, 'RipX Preview', DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+    )
+  );
   return {
     phase: 'delivery_method',
     test_id: String(test?.id || '').trim() || null,
@@ -201,15 +262,22 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
       {
         variant_id: variantId,
         variant_name: String(variant?.name || variantId || 'Variant').trim(),
+        ...(variantIndex ? { variant_index: variantIndex } : {}),
         action: ['hide', 'rename', 'reorder'].includes(action) ? action : 'hide',
         method_names: methodNames,
-        require_present_method_names: replacementNames,
-        require_present_method_codes: replacementCodes,
-        protected_method_codes: replacementCodes,
+        method_codes: methodCodes,
+        require_present_method_names: requirePresentMethodNames,
+        require_present_method_codes: replacementMode ? replacementCodes : [],
+        require_present_method_prefixes:
+          replacementMode || !addModeHideTargets ? [] : previewPrefixes,
+        skip_replacement_presence_gate: addModeHideTargets,
+        protected_method_codes: replacementMode ? replacementCodes : [],
+        protected_method_names: replacementMode ? replacementNames : [],
+        protected_method_name_prefixes: addModeHideTargets ? previewPrefixes : [],
         hide_when_unassigned_method_names:
           replacementMode && replacementCodes.length === 0 ? [carrierServiceName] : [],
-        hide_when_unassigned_method_codes: replacementCodes,
-        rename_to: renameTo,
+        hide_when_unassigned_method_codes: replacementMode ? replacementCodes : [],
+        ...(action === 'rename' && renameTo ? { rename_to: renameTo } : {}),
       },
     ],
   };
@@ -389,6 +457,7 @@ function buildShippingCarrierCallbackUrl(baseUrl, test, variant) {
   if (providerConfig.provider) {
     url.searchParams.set('quote_provider', providerConfig.provider);
   }
+  url.searchParams.set('require_assignment', '1');
   return url.toString();
 }
 
@@ -409,6 +478,27 @@ function readShippingCarrierCallbackIdentity(value) {
   } catch {
     return null;
   }
+}
+
+function resolveCallbackHost(value) {
+  try {
+    return new URL(String(value || '').trim()).host;
+  } catch {
+    return null;
+  }
+}
+
+function matchesRipxShippingRateServiceName(serviceName, test) {
+  const normalized = normalizeLower(serviceName);
+  if (!normalized.startsWith('ripx shipping rate')) {
+    return false;
+  }
+  const testId = normalizeLower(
+    String(test?.id || '')
+      .trim()
+      .slice(0, 8)
+  );
+  return !!(testId && normalized.includes(testId));
 }
 
 function isLegacyShippingCarrierServiceNameMatch(serviceName, test, variant) {
@@ -455,11 +545,20 @@ function getShippingScopeConfig(config = {}) {
 }
 
 function getCarrierParticipantServiceNames(config = {}) {
+  const metadata = config.metadata && typeof config.metadata === 'object' ? config.metadata : {};
+  const fromMetadata = String(
+    metadata.quote_service_name || metadata.quoteServiceName || ''
+  ).trim();
   const names = Array.isArray(config.rates)
     ? config.rates
         .map(rate => String(rate?.name || rate?.service_name || '').trim())
         .filter(Boolean)
     : [];
+  if (fromMetadata) {
+    names.unshift(fromMetadata);
+  } else if (String(config.label || '').trim()) {
+    names.unshift(String(config.label).trim());
+  }
   return names.length > 0 ? Array.from(new Set(names)).slice(0, 10) : ['RipX Shipping'];
 }
 
@@ -803,6 +902,26 @@ function findMatchingCarrierService(
       .trim()
       .slice(0, 8)
       .toLowerCase();
+    const fuzzyMatches = services.filter(service =>
+      matchesRipxShippingRateServiceName(service?.name, test)
+    );
+    if (fuzzyMatches.length === 1) {
+      return fuzzyMatches[0];
+    }
+    if (fuzzyMatches.length > 1) {
+      const variantScoped = fuzzyMatches.filter(service => {
+        const serviceIdentity = readShippingCarrierCallbackIdentity(service?.callback_url);
+        return (
+          serviceIdentity &&
+          callbackIdentity &&
+          serviceIdentity.variantIndex === callbackIdentity.variantIndex
+        );
+      });
+      if (variantScoped.length === 1) {
+        return variantScoped[0];
+      }
+      return variantScoped[variantScoped.length - 1] || fuzzyMatches[fuzzyMatches.length - 1];
+    }
     const byTestRateName = testId
       ? services.find(service => {
           const normalizedName = String(service?.name || '')
@@ -820,25 +939,53 @@ function findMatchingCarrierService(
   );
 }
 
-function collectStaleCarrierServices(services = [], { callbackIdentity, activeService } = {}) {
-  if (!callbackIdentity?.testId || callbackIdentity?.variantIndex === undefined) {
+function collectStaleCarrierServices(
+  services = [],
+  { callbackIdentity, activeService, expectedCallbackUrl } = {}
+) {
+  if (!callbackIdentity?.testId) {
     return [];
   }
   const activeId = String(activeService?.id || '').trim();
   const currentRevision = String(callbackIdentity.configRevision || '').trim();
+  const expectedHost = resolveCallbackHost(expectedCallbackUrl);
+  const testIdPrefix = String(callbackIdentity.testId).trim().slice(0, 8).toLowerCase();
   return (Array.isArray(services) ? services : []).filter(service => {
     if (!service?.id || (activeId && String(service.id) === activeId)) {
       return false;
     }
     const serviceIdentity = readShippingCarrierCallbackIdentity(service?.callback_url);
-    if (!serviceIdentity) {
+    const serviceHost = resolveCallbackHost(service?.callback_url);
+    const normalizedName = String(service?.name || '')
+      .trim()
+      .toLowerCase();
+    const matchesTest =
+      serviceIdentity?.testId === callbackIdentity.testId ||
+      (normalizedName.startsWith('ripx shipping rate') && normalizedName.includes(testIdPrefix));
+    if (!matchesTest) {
       return false;
     }
-    return (
-      serviceIdentity.testId === callbackIdentity.testId &&
-      serviceIdentity.variantIndex === callbackIdentity.variantIndex &&
-      (!currentRevision || serviceIdentity.configRevision !== currentRevision)
-    );
+    const variantMatches =
+      !serviceIdentity ||
+      callbackIdentity.variantIndex === undefined ||
+      serviceIdentity.variantIndex === callbackIdentity.variantIndex;
+    if (!variantMatches) {
+      return false;
+    }
+    if (expectedHost && serviceHost && serviceHost !== expectedHost) {
+      return true;
+    }
+    if (
+      currentRevision &&
+      serviceIdentity?.configRevision &&
+      serviceIdentity.configRevision !== currentRevision
+    ) {
+      return true;
+    }
+    if (currentRevision && serviceIdentity?.configRevision !== currentRevision) {
+      return true;
+    }
+    return normalizedName.startsWith('ripx shipping rate') && normalizedName.includes(testIdPrefix);
   });
 }
 
@@ -934,14 +1081,12 @@ async function ensureShippingCarrierService({
   const serviceName = buildShippingCarrierServiceName(test, variant);
   const existingServices = await fetchCarrierServicesViaAdmin(shopDomain, accessToken);
   const callbackIdentity = readShippingCarrierCallbackIdentity(callbackUrl);
-  const staleRevisionServices = callbackIdentity?.configRevision
-    ? collectStaleCarrierServices(existingServices, { callbackIdentity })
-    : [];
   const existing = findMatchingCarrierService(existingServices, {
     serviceName,
     callbackIdentity,
     test,
     variant,
+    allowFuzzyTestName: true,
   });
   const callbackMatches =
     existing &&
@@ -971,6 +1116,7 @@ async function ensureShippingCarrierService({
           collectStaleCarrierServices(existingServices, {
             callbackIdentity,
             activeService: existing,
+            expectedCallbackUrl: callbackUrl,
           })
         )
       : [];
@@ -1049,6 +1195,7 @@ async function ensureShippingCarrierService({
       collectStaleCarrierServices(existingServices, {
         callbackIdentity,
         activeService: updatedService,
+        expectedCallbackUrl: callbackUrl,
       })
     );
     return {
@@ -1138,6 +1285,7 @@ async function ensureShippingCarrierService({
       collectStaleCarrierServices(refreshedServices, {
         callbackIdentity,
         activeService: updatedService,
+        expectedCallbackUrl: callbackUrl,
       })
     );
     return {
@@ -1186,9 +1334,10 @@ async function ensureShippingCarrierService({
   const staleRevisionCleanup = await cleanupStaleCarrierServices(
     shopDomain,
     accessToken,
-    collectStaleCarrierServices(staleRevisionServices, {
+    collectStaleCarrierServices(existingServices, {
       callbackIdentity,
       activeService: created,
+      expectedCallbackUrl: callbackUrl,
     })
   );
   return {
@@ -1851,6 +2000,36 @@ function upsertShippingResourceRefs(existingRefs = [], nextRef = null) {
   return filtered;
 }
 
+function pruneDeletedShippingResources(resources = [], cleanupEntries = []) {
+  const deletedIds = new Set(
+    (Array.isArray(cleanupEntries) ? cleanupEntries : [])
+      .filter(entry => entry?.ok && entry?.status === 'deleted' && entry?.resource?.id)
+      .map(entry => String(entry.resource.id))
+  );
+  if (deletedIds.size === 0) {
+    return resources;
+  }
+  return (Array.isArray(resources) ? resources : []).filter(
+    item => !deletedIds.has(String(item?.id || ''))
+  );
+}
+
+function pruneStaleShippingResourceHosts(resources = [], expectedHost = null) {
+  if (!expectedHost) {
+    return Array.isArray(resources) ? resources : [];
+  }
+  return (Array.isArray(resources) ? resources : []).filter(resource => {
+    if (!resource || typeof resource !== 'object') {
+      return false;
+    }
+    if (String(resource.resource_type || '').trim() !== 'carrier_service') {
+      return true;
+    }
+    const host = resolveCallbackHost(resource.callback_url);
+    return !host || host === expectedHost;
+  });
+}
+
 function buildPersistedShippingVariants(test, actions = [], cleanup = []) {
   const variants = Array.isArray(test?.variants) ? test.variants : [];
   const actionMap = new Map();
@@ -1884,10 +2063,17 @@ function buildPersistedShippingVariants(test, actions = [], cleanup = []) {
       if (managedRef) {
         resources = upsertShippingResourceRefs(resources, managedRef);
       }
+      resources = pruneDeletedShippingResources(
+        resources,
+        item?.details?.stale_revision_cleanup || []
+      );
     });
     if (cleanupEntry?.cleared_all === true) {
       resources = [];
     }
+
+    const expectedCallbackHost = resolveCallbackHost(resolveShippingCarrierCallbackBaseUrl());
+    resources = pruneStaleShippingResourceHosts(resources, expectedCallbackHost);
 
     metadata.shipping_resources = resources;
     metadata.shipping_last_execution = action
@@ -2172,8 +2358,7 @@ async function executeShippingTestPlan({
       entry.execution_adapter === 'carrier_service' &&
       ['flat_rate', 'carrier_quote'].includes(entry.strategy)
     ) {
-      const replaceExistingRates =
-        entry.strategy === 'flat_rate' && shouldReplaceExistingRates(entry.config || {});
+      const replaceExistingRates = requiresShippingReplacement(entry.config || {});
       let result;
       try {
         result = await ensureShippingCarrierService({
@@ -2207,7 +2392,9 @@ async function executeShippingTestPlan({
           details: result,
         })
       );
-      if (replaceExistingRates) {
+      const shouldApplyDeliveryCustomization =
+        replaceExistingRates || hasDeliveryCustomizationTargets(entry.config || {});
+      if (shouldApplyDeliveryCustomization) {
         const deliveryPlanEntry = {
           ...entry,
           execution_adapter: 'delivery_customization',
@@ -2220,8 +2407,9 @@ async function executeShippingTestPlan({
               reason: 'manual_required',
               details: {
                 status: 'skipped_dependency',
-                message:
-                  'Skipped hiding existing delivery methods because the replacement carrier rate was not ready.',
+                message: replaceExistingRates
+                  ? 'Skipped hiding existing delivery methods because the replacement carrier rate was not ready.'
+                  : 'Skipped hiding selected control methods because the RipX carrier rate was not ready.',
                 dependency_status: result.status,
               },
             })
@@ -2283,13 +2471,78 @@ async function executeShippingTestPlan({
     }
 
     if (entry.execution_adapter === 'delivery_customization') {
+      const replaceExistingRates = requiresShippingReplacement(entry.config || {});
+      if (
+        replaceExistingRates &&
+        ['flat_rate', 'carrier_quote'].includes(entry.strategy) &&
+        Boolean(capabilityReport?.capabilities?.adapter_support?.carrier_service?.available)
+      ) {
+        let carrierResult;
+        try {
+          carrierResult = await ensureShippingCarrierService({
+            shopDomain,
+            accessToken,
+            test,
+            variant: entry,
+            apply: normalizedApply,
+          });
+        } catch (error) {
+          if (!isShopifyAdminUnavailableError(error)) {
+            throw error;
+          }
+          carrierResult = {
+            ok: false,
+            status: 'manual_required',
+            message:
+              'Shopify Admin API is currently unavailable for carrier service provisioning (404/timeout).',
+            upstream_error: error?.message || 'shopify_admin_unavailable',
+          };
+        }
+        actions.push(
+          toActionOutcome({
+            planEntry: { ...entry, execution_adapter: 'carrier_service' },
+            apply: normalizedApply,
+            reason: carrierResult.ok
+              ? carrierResult.status
+              : carrierResult.status === 'manual_required'
+                ? 'manual_required'
+                : 'failed',
+            details: carrierResult,
+          })
+        );
+        if (!carrierResult.ok) {
+          actions.push(
+            toActionOutcome({
+              planEntry: entry,
+              apply: normalizedApply,
+              reason: 'manual_required',
+              details: {
+                status: 'skipped_dependency',
+                message:
+                  'Skipped delivery customization because the replacement carrier service was not ready.',
+                dependency_status: carrierResult.status,
+              },
+            })
+          );
+          continue;
+        }
+      }
+
       let result;
       try {
         result = await ensureShippingDeliveryCustomization({
           shopDomain,
           accessToken,
           test,
-          variant: entry,
+          variant: replaceExistingRates
+            ? {
+                ...entry,
+                config: {
+                  ...(entry.config || {}),
+                  delivery_action: 'hide',
+                },
+              }
+            : entry,
           apply: normalizedApply,
         });
       } catch (error) {
@@ -2475,6 +2728,58 @@ function compareShippingCarrierCallbackUrls(expected, live) {
   return false;
 }
 
+async function syncLiveCarrierCallbacksForTest({
+  test,
+  shopDomain,
+  accessToken,
+  variantIndex = null,
+  apply = true,
+}) {
+  const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
+  const executionPlan = buildShippingExecutionPlan(test, capabilityReport);
+  const selectedEntries = Array.isArray(executionPlan.variants)
+    ? executionPlan.variants.filter(entry => {
+        if (!entry?.actionable || entry.status === 'control') {
+          return false;
+        }
+        if (variantIndex === null || variantIndex === undefined) {
+          return true;
+        }
+        return entry.index === variantIndex;
+      })
+    : [];
+  const results = [];
+  for (const entry of selectedEntries) {
+    if (
+      entry.execution_adapter !== 'carrier_service' ||
+      !['flat_rate', 'carrier_quote'].includes(entry.strategy)
+    ) {
+      continue;
+    }
+    const result = await ensureShippingCarrierService({
+      shopDomain,
+      accessToken,
+      test,
+      variant: entry,
+      apply: normalizeBoolean(apply, true),
+    });
+    results.push({
+      variant_index: entry.index,
+      variant_name: entry.name,
+      ok: Boolean(result?.ok),
+      status: result?.status || null,
+      callback_url: result?.callback_url || null,
+      service_id: result?.service?.id || null,
+      stale_revision_cleanup:
+        result?.details?.stale_revision_cleanup || result?.stale_revision_cleanup || [],
+    });
+  }
+  return {
+    synced_count: results.filter(item => item.ok).length,
+    results,
+  };
+}
+
 module.exports = {
   executeShippingTestPlan,
   cleanupManagedShippingResources,
@@ -2491,4 +2796,6 @@ module.exports = {
   buildShippingCarrierCallbackUrl,
   compareShippingCarrierCallbackUrls,
   fetchCarrierServicesViaAdmin,
+  syncLiveCarrierCallbacksForTest,
+  resolveCallbackHost,
 };

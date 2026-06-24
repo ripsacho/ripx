@@ -347,10 +347,11 @@
   min-width: 190px;
   max-width: 260px;
   flex: 0 0 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 11px 12px 10px;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 4px;
+  padding: 10px 12px;
   border: 1px solid rgba(30, 41, 59, 0.08);
   border-bottom-color: transparent;
   border-radius: 14px 14px 0 0;
@@ -436,14 +437,24 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  width: 100%;
   font-size: 0.9rem;
+  line-height: 1.2;
+  margin: 0;
+  padding: 0;
 }
 
 .shippingBrowserTabTop strong,
 .shippingBrowserTabSummary {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.shippingBrowserTabTop strong {
+  flex: 1 1 auto;
 }
 
 .shippingBrowserTabDot {
@@ -457,7 +468,10 @@
 
 .shippingBrowserTabSummary {
   font-size: 0.76rem;
+  line-height: 1.3;
   color: var(--text-tertiary);
+  margin: 0;
+  padding: 0;
 }
 
 .shippingBrowserTabMeta {
@@ -465,6 +479,23 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.shippingBrowserTabMeta :global(.Polaris-Badge) {
+  max-width: 100%;
+  margin: 0 !important;
+  vertical-align: top;
+}
+
+.shippingBrowserTabMeta :global(.Polaris-Badge span),
+.shippingBrowserTabMeta :global(.Polaris-Badge__Content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shippingBrowserTabMeta > span {
@@ -507,7 +538,7 @@
 
 .shippingVariantWorkspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.36fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -1446,7 +1477,7 @@
   --shipping-rate-columns: minmax(130px, 1.25fr) minmax(150px, 1.35fr) minmax(105px, 0.75fr)
     minmax(130px, 0.9fr) minmax(135px, 0.95fr) auto;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   max-height: 320px;
   overflow: auto;
   padding-right: 4px;
@@ -1484,7 +1515,7 @@
   grid-template-columns: var(--shipping-rate-columns);
   gap: 8px;
   align-items: start;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.82);
@@ -1547,10 +1578,559 @@
   background: rgba(240, 249, 255, 0.56);
 }
 
+.shippingCheckoutOfferPanelHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.shippingCheckoutOfferPanelHeader strong {
+  font-size: 0.92rem;
+}
+
+.shippingCheckoutOfferPanelHeader small {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.shippingCheckoutOfferPriceGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .shippingCheckoutOfferPriceGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.shippingOfferBaselineField {
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.shippingOfferBaselineField span {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.shippingOfferBaselineField strong {
+  font-size: 0.9rem;
+}
+
+.shippingOfferBaselineField small {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.shippingOfferBaselineFieldCompact {
+  display: grid;
+  gap: 2px;
+}
+
+.shippingOfferBaselineFieldCompact strong {
+  font-size: 0.82rem;
+}
+
+.shippingOfferBaselineFieldCompact small {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.shippingOfferTableToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.shippingOfferTableToolbar span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.shippingOfferAttributeToggleRow {
+  display: grid;
+  gap: 6px;
+}
+
+.shippingOfferAttributeToggleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shippingOfferAttributeSummary {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.shippingOfferAttributeToggleGrid {
+  display: none;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.shippingOfferAttributeToggleGridOpen {
+  display: grid;
+}
+
+.shippingOfferAdvancedToggle {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.shippingOfferReviewSummary {
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: rgba(240, 249, 255, 0.56);
+}
+
+.shippingOfferReviewGrid {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.shippingOfferReviewGrid div {
+  display: grid;
+  gap: 2px;
+}
+
+.shippingOfferReviewGrid span {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shippingOfferReviewGrid strong {
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.shippingReviewSetupMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shippingSetupHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shippingSetupTitleGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.shippingSetupTitleGroup strong {
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.shippingSetupTitleGroup small {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.shippingSetupStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(14, 116, 144, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-secondary);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.shippingSetupMetrics {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 780px) {
+  .shippingSetupMetrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.shippingSetupMetric {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.shippingSetupMetricPrimary {
+  grid-column: 1 / -1;
+  gap: 4px;
+  border-color: rgba(14, 116, 144, 0.16);
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.shippingSetupMetricSecondary {
+  min-height: 56px;
+}
+
+.shippingSetupMetric span {
+  color: var(--text-secondary);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.shippingSetupMetric strong {
+  font-size: 0.78rem;
+  line-height: 1.28;
+  color: var(--text-primary);
+}
+
+.shippingSetupInlineChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 1px;
+}
+
+.shippingSetupMetric small {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.shippingReviewPreview {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 6px;
+}
+
+.shippingReviewPreviewLayout {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  margin-bottom: 8px;
+}
+
+@media (max-width: 960px) {
+  .shippingReviewPreviewLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.shippingReviewPreviewBlock {
+  border: 1px solid rgba(14, 116, 144, 0.14);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.86);
+  padding: 7px 9px;
+  display: grid;
+  gap: 4px;
+}
+
+.shippingReviewPreviewBlockMuted {
+  background: rgba(248, 250, 252, 0.9);
+  border-color: rgba(30, 41, 59, 0.12);
+}
+
+.shippingReviewPreviewBlockPrimary {
+  background: rgba(240, 249, 255, 0.72);
+  border-color: rgba(14, 116, 144, 0.2);
+}
+
+.shippingReviewBlockHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shippingReviewBlockHeader small {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.shippingReviewChecklist {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.shippingReviewChecklistItem {
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.86);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.shippingReviewChecklistItemPass {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(236, 253, 245, 0.6);
+}
+
+.shippingReviewChecklistItemWarn {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.shippingReviewChecklistItemFail {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(254, 242, 242, 0.74);
+}
+
+.shippingReviewChecklistHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.shippingReviewChecklistDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.85);
+}
+
+.shippingReviewChecklistDotPass {
+  background: rgba(22, 163, 74, 0.9);
+}
+
+.shippingReviewChecklistDotWarn {
+  background: rgba(245, 158, 11, 0.95);
+}
+
+.shippingReviewChecklistDotFail {
+  background: rgba(239, 68, 68, 0.95);
+}
+
+.shippingReviewChecklistTitle {
+  display: grid;
+  gap: 1px;
+}
+
+.shippingReviewChecklistTitle strong {
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.shippingReviewChecklistTitle small {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.shippingReviewChecklistCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.shippingReviewChecklistCountPass {
+  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(236, 253, 245, 0.95);
+  color: #065f46;
+}
+
+.shippingReviewChecklistCountWarn {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(255, 251, 235, 0.95);
+  color: #92400e;
+}
+
+.shippingReviewChecklistCountFail {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(254, 242, 242, 0.95);
+  color: #991b1b;
+}
+
+.shippingReviewPreviewBlock small {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.shippingReviewRateList {
+  display: grid;
+  gap: 5px;
+}
+
+.shippingReviewRateRow {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.shippingReviewRateHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shippingReviewRateRow strong {
+  font-size: 0.77rem;
+  color: var(--text-primary);
+}
+
+.shippingReviewRateRow span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.shippingReviewRateMeta {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.shippingReviewPromisePill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.14);
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--text-secondary);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.shippingReviewRateRow small {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.shippingCheckoutDisplayControlsCompact {
+  display: grid;
+  gap: 8px;
+}
+
+.shippingRailCheckoutEditor {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(30, 41, 59, 0.08);
+}
+
+.shippingRailCheckoutEditorHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
 .shippingDeliveryDateGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.shippingPromiseCompactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.shippingPromiseCompactRow small {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.shippingPromiseModeSegmented {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.shippingPromiseEditorShell {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.shippingPromiseEditorShell .shippingDeliveryDateGrid {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.shippingPromiseModeHint {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.shippingPromiseCustomSection {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(14, 116, 144, 0.2);
+  border-radius: 8px;
+  background: rgba(240, 249, 255, 0.72);
+}
+
+.shippingPromiseDateField {
+  display: grid;
+  gap: 3px;
+}
+
+.shippingPromiseDateLabel {
+  color: var(--text-secondary);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .shippingRateHealthBadges {
@@ -1603,17 +2183,90 @@
 }
 
 .shippingInlineNote {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid rgba(14, 116, 144, 0.2);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(236, 254, 255, 0.78);
   color: #0f766e;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   line-height: 1.45;
 }
 
 .shippingInlineNote strong {
   font-weight: 850;
+}
+
+.shippingPipelineTimeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.shippingPipelineChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-secondary);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.shippingPipelineChipPass {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(236, 253, 245, 0.95);
+  color: #065f46;
+}
+
+.shippingPipelineChipWarn {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(255, 251, 235, 0.95);
+  color: #92400e;
+}
+
+.shippingPipelineChipSkipped {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.95);
+  color: #475569;
+}
+
+.shippingPipelineDetailsToggle {
+  margin-top: 6px;
+}
+
+.shippingPipelineDetailsList {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.shippingDebugReportLinkRow {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shippingDebugReportPre {
+  margin: 0;
+  max-height: 52vh;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(30, 41, 59, 0.12);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.92);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .shippingAdvancedHeader {
@@ -1868,34 +2521,6 @@
   padding: 12px;
   position: sticky;
   top: 96px;
-}
-
-.shippingRailTabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: fit-content;
-  padding: 3px;
-  border: 1px solid rgba(30, 41, 59, 0.1);
-  border-radius: 999px;
-  background: rgba(248, 250, 252, 0.9);
-}
-
-.shippingRailTabButton {
-  min-height: 24px;
-  padding: 3px 9px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 0.68rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.shippingRailTabButtonActive {
-  background: rgba(14, 116, 144, 0.12);
-  color: #0f766e;
 }
 
 .shippingReadinessCard {
@@ -2251,15 +2876,6 @@
   font-size: 0.66rem;
   font-weight: 700;
   line-height: 1.25;
-}
-
-.shippingOverviewInsightChipAction {
-  width: 100%;
-  border: 1px solid rgba(220, 38, 38, 0.2);
-  background: rgba(254, 242, 242, 0.9);
-  color: #b91c1c;
-  cursor: pointer;
-  text-align: left;
 }
 
 .shippingRailBlockerBanner {
@@ -4406,7 +5022,6 @@
 [data-theme='dark'] .shippingFieldMicroNote,
 [data-theme='dark'] .shippingReadinessRail,
 [data-theme='dark'] .shippingSetupOverviewCard,
-[data-theme='dark'] .shippingRailTabs,
 [data-theme='dark'] .shippingGuidedProgress,
 [data-theme='dark'] .shippingGuidedStep,
 [data-theme='dark'] .shippingGuidedStepIndex,
@@ -4463,15 +5078,12 @@
 [data-theme='dark'] .shippingStrategyOptionActive,
 [data-theme='dark'] .shippingRadioCard:hover,
 [data-theme='dark'] .shippingRadioCardActive,
-[data-theme='dark'] .shippingRailTabButton:hover,
-[data-theme='dark'] .shippingRailTabButtonActive,
 [data-theme='dark'] .shippingSetupTabButton:hover,
 [data-theme='dark'] .shippingSetupTabButtonActive,
 [data-theme='dark'] .shippingGuidedStepActive,
 [data-theme='dark'] .shippingGuidedStepComplete,
 [data-theme='dark'] .shippingGuidedStep:not(:disabled):hover,
 [data-theme='dark'] .shippingChecklistToggle:hover,
-[data-theme='dark'] .shippingOverviewInsightChipAction:hover,
 [data-theme='dark'] .shippingComparisonChip:hover,
 [data-theme='dark'] .shippingComparisonChipActive,
 [data-theme='dark'] .shippingRateTableRow:hover,
@@ -4484,6 +5096,96 @@
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.26),
     0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+/* Final dark override for the Control/Variant browser tabs in shipping config. */
+[data-theme='dark'] .shippingBrowserTabs {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(15, 23, 42, 0.62)),
+    var(--surface-glass) !important;
+  border-bottom-color: rgba(6, 182, 212, 0.22) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 38%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.86)) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  border-bottom-color: rgba(6, 182, 212, 0.12) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 18px rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab:first-child {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.09), transparent 38%),
+    linear-gradient(180deg, rgba(21, 45, 48, 0.92), rgba(15, 23, 42, 0.86)) !important;
+  border-color: rgba(74, 222, 128, 0.2) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTab:hover {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.94), rgba(30, 41, 59, 0.88)) !important;
+  border-color: rgba(6, 182, 212, 0.38) !important;
+  color: #a5f3fc !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabActive,
+[data-theme='dark'] .shippingBrowserTabActive:first-child {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      color-mix(in srgb, var(--shipping-variant-accent) 18%, transparent),
+      transparent 56%
+    ),
+    linear-gradient(180deg, rgba(8, 47, 73, 0.74), rgba(15, 23, 42, 0.96)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--shipping-variant-accent) 52%,
+    rgba(165, 243, 252, 0.2)
+  ) !important;
+  border-bottom-color: transparent !important;
+  color: #f8fafc !important;
+  box-shadow:
+    0 -1px 0 color-mix(in srgb, var(--shipping-variant-accent) 42%, transparent) inset,
+    0 0 0 1px color-mix(in srgb, var(--shipping-variant-accent) 22%, transparent),
+    0 14px 30px rgba(0, 0, 0, 0.34) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabTop strong {
+  color: inherit !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabTop,
+[data-theme='dark'] .shippingBrowserTabSummary,
+[data-theme='dark'] .shippingBrowserTabMeta,
+[data-theme='dark'] .shippingBrowserTabTop:hover,
+[data-theme='dark'] .shippingBrowserTabSummary:hover,
+[data-theme='dark'] .shippingBrowserTabMeta:hover,
+[data-theme='dark'] .shippingBrowserTabTop strong {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabSummary,
+[data-theme='dark'] .shippingBrowserTabMeta > span {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabActive .shippingBrowserTabSummary,
+[data-theme='dark'] .shippingBrowserTabActive .shippingBrowserTabMeta > span {
+  color: rgba(226, 232, 240, 0.88) !important;
+}
+
+[data-theme='dark'] .shippingBrowserTabDot {
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--shipping-variant-accent) 24%, transparent),
+    0 0 16px color-mix(in srgb, var(--shipping-variant-accent) 34%, transparent) !important;
 }
 
 [data-theme='dark'] .shippingStrategySidebar legend,
@@ -4616,8 +5318,84 @@
   color: rgba(187, 247, 208, 0.86) !important;
 }
 
+[data-theme='dark'] .shippingGuidedFooter {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.2), transparent 34%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.48), rgba(15, 23, 42, 0.78)) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  box-shadow:
+    0 14px 30px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(103, 232, 249, 0.12) !important;
+}
+
+[data-theme='dark'] .shippingGuidedFooterHint {
+  color: rgba(207, 250, 254, 0.84) !important;
+}
+
+[data-theme='dark'] .shippingDetailsHero {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.2), transparent 34%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.5), rgba(15, 23, 42, 0.78)) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  box-shadow:
+    0 14px 30px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(103, 232, 249, 0.12) !important;
+}
+
+[data-theme='dark'] .shippingDetailsHero small {
+  color: rgba(207, 250, 254, 0.82) !important;
+}
+
+[data-theme='dark'] .shippingDetailsRecipe span {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(103, 232, 249, 0.28) !important;
+  color: #a5f3fc !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] .shippingSuggestedSetupPanel,
+[data-theme='dark'] .shippingGuidedReviewHero {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.18), transparent 34%),
+    linear-gradient(135deg, rgba(20, 83, 45, 0.5), rgba(8, 47, 73, 0.32) 58%, rgba(15, 23, 42, 0.84)) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  box-shadow:
+    0 14px 30px rgba(34, 197, 94, 0.1),
+    inset 0 1px 0 rgba(187, 247, 208, 0.12) !important;
+}
+
+[data-theme='dark'] .shippingSuggestedSetupPanel strong,
+[data-theme='dark'] .shippingGuidedReviewHero strong {
+  color: #dcfce7 !important;
+}
+
+[data-theme='dark'] .shippingSuggestedSetupPanel small,
+[data-theme='dark'] .shippingGuidedReviewHero span:last-child {
+  color: rgba(187, 247, 208, 0.86) !important;
+}
+
+[data-theme='dark'] .shippingFinishChecklist > div {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] .shippingAdvancedInlineHeader,
+[data-theme='dark'] .shippingSmartSection {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.34), rgba(15, 23, 42, 0.76)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(103, 232, 249, 0.1) !important;
+}
+
 [data-theme='dark'] .shippingRailBlockerBanner,
-[data-theme='dark'] .shippingOverviewInsightChipAction,
 [data-theme='dark'] .shippingInlineBlocker {
   background: rgba(239, 68, 68, 0.14) !important;
   border-color: rgba(248, 113, 113, 0.36) !important;
@@ -4628,4 +5406,947 @@
   background: rgba(6, 182, 212, 0.12) !important;
   border-color: rgba(6, 182, 212, 0.28) !important;
   color: #99f6e4 !important;
+}
+
+/* Must stay last: broad wizard shipping fallbacks should never style rows inside browser tabs. */
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab :is(
+    .shippingBrowserTabTop,
+    .shippingBrowserTabSummary,
+    .shippingBrowserTabMeta,
+    .shippingBrowserTabTop strong
+  ),
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab:hover :is(
+    .shippingBrowserTabTop,
+    .shippingBrowserTabSummary,
+    .shippingBrowserTabMeta,
+    .shippingBrowserTabTop strong
+  ),
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabActive :is(
+    .shippingBrowserTabTop,
+    .shippingBrowserTabSummary,
+    .shippingBrowserTabMeta,
+    .shippingBrowserTabTop strong
+  ) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  outline: 0 !important;
+  transform: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabTop strong {
+  color: inherit !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabSummary,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabMeta,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabMeta * {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabActive .shippingBrowserTabSummary,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabActive .shippingBrowserTabMeta,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabActive .shippingBrowserTabMeta * {
+  color: rgba(226, 232, 240, 0.88) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabDot {
+  background: var(--shipping-variant-accent) !important;
+  border-color: transparent !important;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--shipping-variant-accent) 24%, transparent),
+    0 0 16px color-mix(in srgb, var(--shipping-variant-accent) 34%, transparent) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabMeta :global(.Polaris-Badge),
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTab .shippingBrowserTabMeta [class*='Badge'] {
+  display: inline-flex !important;
+  align-items: center !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 2px 7px !important;
+  border: 1px solid rgba(6, 182, 212, 0.28) !important;
+  border-radius: 999px !important;
+  background: rgba(6, 182, 212, 0.14) !important;
+  color: #a5f3fc !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark']
+  :global(.wizard-page)
+  .shippingBrowserTab
+  .shippingBrowserTabMeta
+  :global(.Polaris-Badge *),
+[data-theme='dark']
+  :global(.wizard-page)
+  .shippingBrowserTab
+  .shippingBrowserTabMeta
+  [class*='Badge'] * {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabs,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabs:hover,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabs:focus-within {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(15, 23, 42, 0.62)),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  border-bottom-color: rgba(6, 182, 212, 0.22) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 18px rgba(0, 0, 0, 0.16) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  filter: none !important;
+  outline: 0 !important;
+  transform: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabs.shippingBrowserTabs,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabs.shippingBrowserTabs:hover,
+[data-theme='dark'] :global(.wizard-page) .shippingBrowserTabs.shippingBrowserTabs:focus-within {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(15, 23, 42, 0.62)),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  border-bottom-color: rgba(6, 182, 212, 0.22) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 18px rgba(0, 0, 0, 0.16) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  filter: none !important;
+  outline: 0 !important;
+  transform: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge) {
+  background: var(--surface-glass) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow: 0 0 0 1px rgba(30, 41, 59, 0.28) inset !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge *),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge__Content) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--statusSuccess) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--statusInfo) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--statusWarning),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--statusAttention) {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--statusCritical) {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.36) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--toneMagic),
+[data-theme='dark'] :global(.wizard-page) :global(.Polaris-Badge--statusNew) {
+  background: rgba(139, 92, 246, 0.16) !important;
+  border-color: rgba(167, 139, 250, 0.34) !important;
+  color: #c4b5fd !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingFieldBadgeRequired,
+[data-theme='dark'] :global(.wizard-page) .reviewCheckoutRuntimeNotes span {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .shippingFieldBadgeRequired *,
+[data-theme='dark'] :global(.wizard-page) .reviewCheckoutRuntimeNotes span * {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep:hover {
+  border-color: rgba(103, 232, 249, 0.34) !important;
+  box-shadow:
+    0 18px 42px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStepHeader {
+  background:
+    linear-gradient(180deg, rgba(8, 47, 73, 0.34), rgba(15, 23, 42, 0.52)) !important;
+  border-bottom-color: rgba(6, 182, 212, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStepContent {
+  background: transparent !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficSummaryBar,
+[data-theme='dark'] :global(.wizard-page) .trafficSummaryValid {
+  background: rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.92) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficSummaryTotal,
+[data-theme='dark'] :global(.wizard-page) .trafficStepTitle {
+  color: rgba(248, 250, 252, 0.98) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStepSubtitle {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+/* Deep dark-theme overrides for the TrafficAllocationSlider rendered inside the wizard.
+   These cross CSS-module boundaries because the slider owns its own generated class names. */
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='wrapper']) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='toolbarBar']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSection_']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderBarCard_']) {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(2, 6, 23, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSection_']) {
+  padding: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 16px;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSectionHeader']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderBarWrap']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardHead']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardTraffic']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='trafficControl']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='previewActionButtons']) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSectionTitle']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderHint']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderScaleLabel']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderLegendName']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderLegendPct']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='trafficLabel']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='trafficUnit']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='previewActionTitle']) {
+  background: transparent !important;
+  color: rgba(203, 213, 225, 0.82) !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSectionTotal']) {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: rgba(203, 213, 225, 0.9) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSectionTotalOk']) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderSectionTotalWarn']) {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderTrack_']) {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.82), rgba(15, 23, 42, 0.9)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderTrack_'][class*='trackDragging']) {
+  border-color: rgba(103, 232, 249, 0.58) !important;
+  box-shadow:
+    0 0 0 2px rgba(6, 182, 212, 0.2),
+    0 12px 28px rgba(6, 182, 212, 0.14),
+    inset 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='segment_']:hover) {
+  filter: brightness(1.16) saturate(1.08) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 8px 22px color-mix(in srgb, var(--segment-color) 34%, transparent) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='handle_']) {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98)) !important;
+  border-color: rgba(103, 232, 249, 0.42) !important;
+  box-shadow:
+    0 0 16px rgba(6, 182, 212, 0.28),
+    0 2px 8px rgba(0, 0, 0, 0.34) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderLegend']) {
+  border-top-color: rgba(6, 182, 212, 0.2) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderLegendItem']) {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.66), rgba(15, 23, 42, 0.76)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: rgba(226, 232, 240, 0.92) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='sliderLegendBadge']) {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCards']) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCard_']) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 18%, transparent), transparent 38%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.78), rgba(15, 23, 42, 0.88)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 32%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCard_']:hover) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 28%, transparent), transparent 44%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.84), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 52%, rgba(103, 232, 249, 0.28)) !important;
+  transform: translateY(-1px);
+  box-shadow:
+    0 18px 38px color-mix(in srgb, var(--variant-color, #06b6d4) 14%, rgba(0, 0, 0, 0.3)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardAccent']) {
+  box-shadow: 0 0 18px color-mix(in srgb, var(--variant-color, #06b6d4) 45%, transparent) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardActions']) {
+  border-top-color: rgba(6, 182, 212, 0.2) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameText']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameDisplay']) {
+  color: rgba(248, 250, 252, 0.98) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameEditHint']) {
+  background: rgba(6, 182, 212, 0.14) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameDisplay']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperBtn']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperInput']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtn_']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardRemoveBtn']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameInput']) {
+  background: rgba(15, 23, 42, 0.84) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperBtn']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtn_']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameDisplay']:hover) {
+  background: rgba(6, 182, 212, 0.18) !important;
+  border-color: rgba(103, 232, 249, 0.46) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperInput']:focus),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameInput']:focus) {
+  border-color: rgba(103, 232, 249, 0.64) !important;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2) !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtnPrimary']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtnPrimary']:hover) {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee) !important;
+  border-color: rgba(103, 232, 249, 0.58) !important;
+  color: #020617 !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtnCustomer']:hover) {
+  background: rgba(34, 197, 94, 0.22) !important;
+  border-color: rgba(74, 222, 128, 0.5) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtnCopy']:hover) {
+  background: rgba(129, 140, 248, 0.22) !important;
+  border-color: rgba(165, 180, 252, 0.5) !important;
+  color: #c4b5fd !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardRemoveBtn']:hover) {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.38) !important;
+  color: #fca5a5 !important;
+}
+
+/* Absolute final traffic allocation dark-theme rules.
+   Kept global and data-attribute based so they beat CSS-module load order and wizard fallbacks. */
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation]) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-section]),
+:global(html[data-theme='dark'] [data-ripx-traffic-slider-card]) {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.16), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.94)) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-section]) {
+  padding: 16px !important;
+  border-radius: 18px !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-slider-card]) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.9)) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderSectionHeader']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderBarWrap']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='variantCardHead']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='variantCardTraffic']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='trafficControl']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons']) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderSectionTitle']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderScaleLabel']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderHint']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderLegendName']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderLegendPct']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='trafficLabel']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='trafficUnit']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionTitle']) {
+  background: transparent !important;
+  color: rgba(203, 213, 225, 0.84) !important;
+  box-shadow: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderSectionTotal']) {
+  background: rgba(15, 23, 42, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: rgba(203, 213, 225, 0.92) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderSectionTotalOk']) {
+  background: rgba(34, 197, 94, 0.17) !important;
+  border-color: rgba(74, 222, 128, 0.36) !important;
+  color: #86efac !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderSectionTotalWarn']) {
+  background: rgba(245, 158, 11, 0.17) !important;
+  border-color: rgba(251, 191, 36, 0.36) !important;
+  color: #fcd34d !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderTrack']) {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.86), rgba(15, 23, 42, 0.94)) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.035) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='trackDragging']) {
+  border-color: rgba(103, 232, 249, 0.62) !important;
+  box-shadow:
+    0 0 0 2px rgba(6, 182, 212, 0.22),
+    0 12px 30px rgba(6, 182, 212, 0.16),
+    inset 0 1px 4px rgba(0, 0, 0, 0.54) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='segment']:hover) {
+  filter: brightness(1.18) saturate(1.1) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 8px 24px color-mix(in srgb, var(--segment-color) 38%, transparent) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='handle']) {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.48) !important;
+  box-shadow:
+    0 0 18px rgba(6, 182, 212, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.36) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-grid]) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 24%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.94)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 42%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.98) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]:hover) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 34%, transparent), transparent 46%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.9), rgba(15, 23, 42, 0.96)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 62%, rgba(103, 232, 249, 0.3)) !important;
+  transform: translateY(-1px);
+  box-shadow:
+    0 20px 42px color-mix(in srgb, var(--variant-color, #06b6d4) 18%, rgba(0, 0, 0, 0.34)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardAccent']) {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--variant-color, #06b6d4) 48%, transparent) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardInner']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardHead']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardTraffic']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='trafficControl']) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardActions']) {
+  border-top-color: rgba(6, 182, 212, 0.22) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameText']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameDisplay']) {
+  color: rgba(248, 250, 252, 0.98) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameEditHint']) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  color: #67e8f9 !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameDisplay']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperBtn']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperInput']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtn']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardRemoveBtn']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameInput']) {
+  background: rgba(15, 23, 42, 0.88) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  color: rgba(226, 232, 240, 0.98) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperBtn']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtn']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameDisplay']:hover) {
+  background: rgba(6, 182, 212, 0.2) !important;
+  border-color: rgba(103, 232, 249, 0.5) !important;
+  color: #67e8f9 !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperInput']:focus),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameInput']:focus) {
+  border-color: rgba(103, 232, 249, 0.68) !important;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.22) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtnPrimary']),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtnPrimary']:hover) {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee) !important;
+  border-color: rgba(103, 232, 249, 0.6) !important;
+  color: #020617 !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtnCustomer']:hover) {
+  background: rgba(34, 197, 94, 0.24) !important;
+  border-color: rgba(74, 222, 128, 0.52) !important;
+  color: #86efac !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtnCopy']:hover) {
+  background: rgba(129, 140, 248, 0.24) !important;
+  border-color: rgba(165, 180, 252, 0.52) !important;
+  color: #c4b5fd !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardRemoveBtn']:hover) {
+  background: rgba(239, 68, 68, 0.18) !important;
+  border-color: rgba(248, 113, 113, 0.42) !important;
+  color: #fca5a5 !important;
+}
+
+/* Final dark hover behavior for the Traffic Allocation block. */
+[data-theme='dark'] :global(.wizard-page) .trafficStep:hover {
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] *) {
+  transition-duration: 0.12s !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-section]:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-slider-card]:hover) {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.16), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.94)) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCard_']:hover) {
+  transform: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCard_']:hover) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 22%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 44%, rgba(103, 232, 249, 0.24)) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='segment']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='segment_']:hover) {
+  filter: brightness(1.06) saturate(1.02) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 14px color-mix(in srgb, var(--segment-color, #06b6d4) 22%, transparent) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='handle']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='handle']:active),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='segmentDragging'] [class*='handle']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='handle_']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='handle_']:active) {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.52) !important;
+  box-shadow:
+    0 0 12px rgba(6, 182, 212, 0.22),
+    0 2px 8px rgba(0, 0, 0, 0.34) !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperBtn']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtn']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameDisplay']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperBtn']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtn_']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameDisplay']:hover) {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(103, 232, 249, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperBtn']:active),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtn']:active),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperBtn']:active),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtn_']:active) {
+  transform: none !important;
+}
+
+/* Dark theme: Traffic Allocation must stay visually static on hover. */
+[data-theme='dark'] :global(.wizard-page) .trafficStep,
+[data-theme='dark'] :global(.wizard-page) .trafficStep *,
+[data-theme='dark'] :global(.wizard-page) .trafficStep *::before,
+[data-theme='dark'] :global(.wizard-page) .trafficStep *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme='dark'] :global(.wizard-page) .trafficStep:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-section]:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-slider-card]:hover) {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.16), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.94)) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCard_']:hover) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 24%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.94)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 42%, rgba(148, 163, 184, 0.22)) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='segment']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='segment_']:hover) {
+  filter: none !important;
+  box-shadow: inherit !important;
+  transform: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='handle']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='handle']:active),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='segmentDragging'] [class*='handle']),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='handle_']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='handle_']:active) {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.48) !important;
+  box-shadow:
+    0 0 18px rgba(6, 182, 212, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.36) !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantNameDisplay']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='stepperBtn']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='cardActionBtn']:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card] [class*='variantCardRemoveBtn']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantNameDisplay']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='stepperBtn']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='cardActionBtn_']:hover),
+[data-theme='dark'] :global(.wizard-page) .trafficStep :global([class*='variantCardRemoveBtn']:hover) {
+  background: rgba(15, 23, 42, 0.88) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  color: rgba(226, 232, 240, 0.98) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+/* Authoritative dark Traffic Allocation colors and preview action tones. */
+:global(html[data-theme='dark'] [data-ripx-traffic-section]) {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.13), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.94)) !important;
+  border: 1px solid rgba(6, 182, 212, 0.28) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-slider-card]) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.76), rgba(15, 23, 42, 0.88)) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]) {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 18%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 34%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.98) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-section]:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-slider-card]:hover),
+:global(html[data-theme='dark'] [data-ripx-traffic-variant-card]:hover) {
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderTrack']) {
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.84), rgba(15, 23, 42, 0.94)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='sliderLegendItem']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='stepperBtn']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='stepperInput']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='variantNameInput']) {
+  background: rgba(15, 23, 42, 0.84) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionTitle']) {
+  color: rgba(203, 213, 225, 0.86) !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtn']) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnPrimary']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnPrimary']:hover) {
+  background: rgba(6, 182, 212, 0.18) !important;
+  border-color: rgba(103, 232, 249, 0.5) !important;
+  color: #67e8f9 !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnPrimary']:hover) {
+  background: rgba(6, 182, 212, 0.26) !important;
+  border-color: rgba(103, 232, 249, 0.68) !important;
+  color: #cffafe !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnCustomer']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnCustomer']:hover) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.42) !important;
+  color: #86efac !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnCustomer']:hover) {
+  background: rgba(34, 197, 94, 0.24) !important;
+  border-color: rgba(134, 239, 172, 0.58) !important;
+  color: #bbf7d0 !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnCopy']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnCopy']:hover) {
+  background: rgba(129, 140, 248, 0.16) !important;
+  border-color: rgba(165, 180, 252, 0.42) !important;
+  color: #c4b5fd !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnCopy']:hover) {
+  background: rgba(129, 140, 248, 0.24) !important;
+  border-color: rgba(196, 181, 253, 0.6) !important;
+  color: #ddd6fe !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnIcon']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnIcon'] .Polaris-Icon),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnIcon'] svg) {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnDisabled']),
+:global(html[data-theme='dark'] [data-ripx-traffic-allocation] [class*='previewActionButtons'] [class*='cardActionBtnDisabled']:hover) {
+  background: rgba(15, 23, 42, 0.58) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: rgba(148, 163, 184, 0.72) !important;
+  opacity: 0.62 !important;
 }

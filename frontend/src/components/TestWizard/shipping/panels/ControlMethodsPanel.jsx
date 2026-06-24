@@ -1,5 +1,6 @@
 import { Button } from '@shopify/polaris';
 import styles from '../ShippingStudio.module.css';
+import { getShippingTypeOptionDetails } from '../config/shippingWizardBlueprint';
 
 function formatAmount(rate) {
   if (rate?.amount_summary) return rate.amount_summary;
@@ -74,41 +75,18 @@ export default function ControlMethodsPanel({
   methods = [],
   selectedMethodNames = [],
   selectedMethodIds = [],
-  selectedCategory = 'replace_rate',
-  replacementRates = [],
+  selectedCategory = '',
   loading = false,
   error = '',
+  embedded = false,
   onToggleMethod,
   onSelectAll,
   onClear,
-  onAddReplacementRate,
-  onRemoveReplacementRate,
 }) {
   const selected = new Set(selectedMethodNames.map(name => String(name || '').toLowerCase()));
   const selectedIds = new Set(selectedMethodIds.map(id => String(id || '').trim()).filter(Boolean));
-  const normalizedCategory = String(selectedCategory || '').trim();
-  const isReplacementFlow = normalizedCategory === 'replace_rate';
-  const isRenameFlow = normalizedCategory === 'rename_method';
-  const findReplacementRate = methodName => {
-    const normalizedMethodName = String(methodName || '')
-      .trim()
-      .toLowerCase();
-    if (!normalizedMethodName) return null;
-    return (
-      replacementRates.find(rate => {
-        const sourceName = String(
-          rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
-        )
-          .trim()
-          .toLowerCase();
-        const visibleName = String(rate?.name || rate?.service_name || '')
-          .trim()
-          .toLowerCase();
-        return sourceName === normalizedMethodName || visibleName === normalizedMethodName;
-      }) || null
-    );
-  };
-  const visibleMethods = mergeMethodRows(methods).slice(0, 12);
+  const mergedMethods = mergeMethodRows(methods);
+  const visibleMethods = mergedMethods;
   const getMethodDetailText = method =>
     [
       formatAmount(method),
@@ -125,70 +103,60 @@ export default function ControlMethodsPanel({
     ]
       .filter(Boolean)
       .join(' · ');
-  const selectedMethodNamesUnique = Array.from(
-    new Map(
-      selectedMethodNames
-        .map(name => String(name || '').trim())
-        .filter(Boolean)
-        .map(name => [name.toLowerCase(), name])
-    ).values()
-  );
-  const selectedMethods = selectedMethodNamesUnique
-    .map(name => {
-      const normalizedName = String(name || '').trim();
-      if (!normalizedName) return null;
-      const source = visibleMethods.find(
-        method =>
-          selectedIds.has(getMethodId(method)) ||
-          (Array.isArray(method.source_ids) && method.source_ids.some(id => selectedIds.has(id))) ||
-          String(method?.name || '')
-            .trim()
-            .toLowerCase() === normalizedName.toLowerCase()
-      );
-      return {
-        name: normalizedName,
-        source,
-        replacementRate: findReplacementRate(normalizedName),
-      };
-    })
-    .filter(Boolean);
-  const selectedCount = selectedMethods.length;
-  const stepTitle = isReplacementFlow
-    ? 'Choose what to replace.'
-    : isRenameFlow
-      ? 'Choose what to rename.'
-      : 'Choose what to hide.';
-  const stepSummary = selectedCount
-    ? isReplacementFlow
-      ? `${selectedCount} native method${selectedCount === 1 ? '' : 's'} will be hidden and replaced only for this variant.`
-      : isRenameFlow
-        ? `${selectedCount} method${selectedCount === 1 ? '' : 's'} will be renamed only for this variant.`
-        : `${selectedCount} method${selectedCount === 1 ? '' : 's'} will be hidden only for this variant.`
-    : 'Select one live Shopify method to continue.';
+  const selectedCount = new Set(
+    selectedMethodNames
+      .map(name =>
+        String(name || '')
+          .trim()
+          .toLowerCase()
+      )
+      .filter(Boolean)
+  ).size;
+  const selectedType = getShippingTypeOptionDetails(selectedCategory);
+  const methodsRequired = Boolean(selectedType.requiresMethodSelection);
+  const isIncentiveType = selectedType.group === 'incentives';
+  const stepTitle = methodsRequired
+    ? isIncentiveType
+      ? 'Select Shopify methods to target.'
+      : 'Select Shopify methods for this variant.'
+    : 'Hide control methods (optional).';
+  const stepSummary = methodsRequired
+    ? selectedCount
+      ? `${selectedCount} method${selectedCount === 1 ? '' : 's'} selected${
+          isIncentiveType ? ' for this incentive.' : '.'
+        }`
+      : selectedType.methodSelectionHint
+    : selectedCount
+      ? `${selectedCount} method${selectedCount === 1 ? '' : 's'} selected to hide for this variant.`
+      : 'No methods hidden. Existing Shopify methods remain visible beside your new variant rate.';
+  const embeddedEyebrow = isIncentiveType
+    ? 'Methods to target'
+    : methodsRequired
+      ? 'Methods to select'
+      : 'Control methods to hide';
 
   return (
-    <section className={styles.panel} aria-label="Variant shipping methods">
-      <div className={styles.panelHeader}>
-        <div>
-          <span className={styles.eyebrow}>Step 2</span>
-          <strong>{stepTitle}</strong>
-          <p className={styles.mutedText}>
-            Pick from active Shopify checkout methods. Control stays unchanged; these changes apply
-            only to this treatment variant.
-          </p>
+    <section
+      className={embedded ? styles.offerAttributeMethodsShell : styles.panel}
+      aria-label="Variant shipping methods"
+    >
+      {!embedded ? (
+        <div className={styles.panelHeader}>
+          <div>
+            <span className={styles.eyebrow}>Step 2</span>
+            <strong>{stepTitle}</strong>
+            <p className={styles.mutedText}>{stepSummary}</p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className={styles.offerAttributeMethodsHeader}>
+          <span className={styles.eyebrow}>{embeddedEyebrow}</span>
+          <strong>{stepTitle}</strong>
+          <p className={styles.mutedText}>{stepSummary}</p>
+        </div>
+      )}
 
       <div className={styles.methodCommandCard}>
-        <div>
-          <span className={styles.eyebrow}>Selection status</span>
-          <strong>{stepSummary}</strong>
-          <small>
-            {isReplacementFlow
-              ? 'Best setup: select the native method, then use the generated linked replacement row in Step 3.'
-              : 'Use this when the test should change only the selected delivery options.'}
-          </small>
-        </div>
         <div className={styles.methodCommandActions}>
           <Button onClick={onSelectAll} disabled={visibleMethods.length === 0} size="slim">
             Select all
@@ -246,70 +214,6 @@ export default function ControlMethodsPanel({
               </label>
             );
           })}
-        </div>
-      ) : null}
-      {selectedMethods.length > 0 ? (
-        <div className={styles.replacementRows}>
-          <span className={styles.eyebrow}>
-            {isReplacementFlow ? 'Variant replacement map' : 'Selected methods'}
-          </span>
-          {selectedMethods.map(method => (
-            <div className={styles.replacementRow} key={method.name}>
-              <div className={styles.replacementFlow}>
-                <div className={styles.replacementNode}>
-                  <span>Current Shopify method</span>
-                  <strong>{method.name}</strong>
-                  <small>{method.source ? formatAmount(method.source) : 'Selected by name'}</small>
-                </div>
-                {isReplacementFlow ? (
-                  <>
-                    <span className={styles.replacementArrow} aria-hidden>
-                      →
-                    </span>
-                    <div className={styles.replacementNode}>
-                      <span>Variant shopper sees</span>
-                      <strong>
-                        {method.replacementRate?.name ||
-                          method.replacementRate?.service_name ||
-                          method.name}
-                      </strong>
-                      <small>
-                        {method.replacementRate?.service_code
-                          ? `Protected by ${method.replacementRate.service_code}`
-                          : 'Replacement row is created automatically'}
-                      </small>
-                    </div>
-                  </>
-                ) : (
-                  <div className={styles.replacementNode}>
-                    <span>Variant action</span>
-                    <strong>{isRenameFlow ? 'Rename in Step 3' : 'Hide from checkout'}</strong>
-                    <small>
-                      {method.source?.method_definition_id ? 'Shopify ID saved' : 'Name target'}
-                    </small>
-                  </div>
-                )}
-              </div>
-              <div className={styles.replacementActions}>
-                <Button onClick={() => onToggleMethod?.(method.name, method.source)} size="slim">
-                  Remove
-                </Button>
-                {isReplacementFlow &&
-                  (method.replacementRate ? (
-                    <Button onClick={() => onRemoveReplacementRate?.(method.name)} size="slim">
-                      Remove new rate
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => onAddReplacementRate?.(method.name, method.source)}
-                      size="slim"
-                    >
-                      Add new rate
-                    </Button>
-                  ))}
-              </div>
-            </div>
-          ))}
         </div>
       ) : null}
     </section>

@@ -190,6 +190,8 @@ git push -u origin hotfix/<short-name>
 
 shopify app dev --reset
 
+npm run dev:switch-tunnel -- "https://tuition-doe-cia-ballet.trycloudflare.com"
+
 cd ~/RipX
 git restore "frontend"
 git restore "backend"

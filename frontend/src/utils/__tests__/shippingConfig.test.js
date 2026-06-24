@@ -4,6 +4,12 @@ import {
   hasActionableShippingConfig,
   normalizeShippingRates,
   shouldReplaceExistingShippingMethods,
+  getShippingOfferMode,
+  getShippingOfferAttributes,
+  normalizeShippingOfferMode,
+  getOfferWizardReadinessIssues,
+  buildOfferAttributeRevertPatch,
+  formatShippingDeliveryPromiseLabel,
 } from '../shippingConfig';
 
 describe('shippingConfig utilities', () => {
@@ -88,5 +94,135 @@ describe('shippingConfig utilities', () => {
         1
       )
     ).toMatchObject({ status: 'ready', label: 'Ready' });
+  });
+
+  it('blocks unified wizard incentives until Shopify methods are targeted', () => {
+    expect(
+      getShippingReadiness(
+        {
+          name: 'Variant A',
+          config: {
+            strategy: 'free_shipping',
+            metadata: {
+              shipping_wizard_path: 'unified',
+              shipping_test_type: 'free_shipping',
+            },
+          },
+        },
+        1
+      )
+    ).toMatchObject({
+      status: 'blocked',
+      issue: 'Pick at least one Shopify method to target',
+    });
+
+    expect(
+      getShippingReadiness(
+        {
+          name: 'Variant A',
+          config: {
+            strategy: 'discount_percentage',
+            percent_off: 15,
+            delivery_method_names: ['Standard Shipping'],
+            metadata: {
+              shipping_wizard_path: 'unified',
+              shipping_test_type: 'discount_percentage',
+            },
+          },
+        },
+        1
+      )
+    ).toMatchObject({ status: 'ready', label: 'Ready' });
+  });
+
+  it('derives offer wizard mode and attributes with backward-compatible defaults', () => {
+    expect(normalizeShippingOfferMode('MULTIPLE')).toBe('multiple');
+    expect(getShippingOfferMode({ rates: [{ name: 'A' }, { name: 'B' }] })).toBe('multiple');
+    expect(getShippingOfferMode({ rates: [{ name: 'A' }] })).toBe('single');
+    expect(
+      getShippingOfferMode({
+        metadata: { shipping_offer_mode: 'multiple' },
+        rates: [{ name: 'A' }],
+      })
+    ).toBe('multiple');
+    expect(getShippingOfferAttributes({})).toEqual({
+      name: true,
+      rate: true,
+      range: true,
+      message: true,
+    });
+    expect(
+      getShippingOfferAttributes({
+        metadata: {
+          shipping_offer_attributes: {
+            update_name: false,
+            update_rate: true,
+            update_range: true,
+            update_message: true,
+          },
+        },
+      })
+    ).toEqual({
+      name: false,
+      rate: true,
+      range: true,
+      message: true,
+    });
+  });
+
+  it('validates offer wizard readiness and reverts unchecked attribute values to baseline', () => {
+    const baseline = {
+      name: 'Standard',
+      rate: 4.99,
+      message: '',
+      range: { mode: 'none', preset: 'none' },
+    };
+    const cfg = {
+      metadata: {
+        shipping_wizard_path: 'offer',
+        shipping_offer_mode: 'multiple',
+        shipping_offer_attributes: { name: true, rate: true, range: false, message: false },
+      },
+      label: 'RipX Express',
+      amount: 9.99,
+      rates: [{ name: 'RipX Express', amount: 9.99 }],
+    };
+    expect(getOfferWizardReadinessIssues(cfg, { normalizeRates: () => cfg.rates })).toEqual([
+      'Multiple shipping mode needs at least two rate rows.',
+    ]);
+
+    const revertPatch = buildOfferAttributeRevertPatch(cfg, 'rate', baseline);
+    expect(revertPatch.amount).toBe(4.99);
+    expect(revertPatch.metadata.quote_amount).toBe(4.99);
+    expect(revertPatch.rates[0].amount).toBe(4.99);
+
+    expect(
+      getShippingReadiness(
+        {
+          name: 'Variant A',
+          config: {
+            ...cfg,
+            rates: [
+              { name: 'Standard', amount: 4.99 },
+              { name: 'Express', amount: 9.99 },
+            ],
+          },
+        },
+        1
+      )
+    ).toMatchObject({ status: 'ready' });
+  });
+
+  it('formats custom delivery promises like checkout business-day labels', () => {
+    expect(
+      formatShippingDeliveryPromiseLabel(
+        {
+          mode: 'custom',
+          min_delivery_date: '2026-06-09',
+          max_delivery_date: '2026-06-10',
+        },
+        new Date('2026-06-05T12:00:00Z')
+      )
+    ).toBe('Delivers in 2-3 business days');
   });
 });

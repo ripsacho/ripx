@@ -1,52 +1,8 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-
-function normalizeUrl(raw) {
-  const candidate = String(raw || '').trim();
-  if (!candidate) return '';
-  try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol !== 'https:') return '';
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return '';
-  }
-}
-
-function upsertEnvKey(lines, key, value) {
-  const prefix = `${key}=`;
-  let replaced = false;
-  const next = lines.map(line => {
-    if (line.startsWith(prefix)) {
-      replaced = true;
-      return `${prefix}${value}`;
-    }
-    return line;
-  });
-  if (!replaced) {
-    next.push(`${prefix}${value}`);
-  }
-  return next;
-}
-
-function updateEnvUrls(envPath, appUrl) {
-  const source = fs.readFileSync(envPath, 'utf8');
-  const hasTrailingNewline = source.endsWith('\n');
-  let lines = source.split('\n');
-  if (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines = lines.slice(0, -1);
-  }
-
-  lines = upsertEnvKey(lines, 'APP_URL', appUrl);
-  lines = upsertEnvKey(lines, 'SHOPIFY_APP_URL', appUrl);
-  lines = upsertEnvKey(lines, 'RIPX_OAUTH_REDIRECT_BASE', appUrl);
-
-  const output = `${lines.join('\n')}${hasTrailingNewline ? '\n' : ''}`;
-  fs.writeFileSync(envPath, output, 'utf8');
-}
+const { normalizeTunnelUrl, updateEnvTunnelUrls } = require('./lib/devTunnelEnv');
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -63,18 +19,31 @@ function run(command, args, options = {}) {
 function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const envPath = path.join(repoRoot, '.env');
-  const inputUrl = process.argv[2] || '';
-  const inputShop = process.argv[3] || '';
-  const nextUrl = normalizeUrl(inputUrl);
+  const rawArgs = process.argv.slice(2);
+  const buildFrontend = rawArgs.includes('--build-frontend');
+  const skipFrontendBuild = rawArgs.includes('--skip-frontend-build');
+  const positionalArgs = rawArgs.filter(
+    arg => arg !== '--build-frontend' && arg !== '--skip-frontend-build'
+  );
+  const inputUrl = positionalArgs[0] || '';
+  const inputShop = positionalArgs[1] || '';
+  const nextUrl = normalizeTunnelUrl(inputUrl);
 
   if (!nextUrl) {
     console.error(
-      'Usage: npm run dev:switch-tunnel -- <https://your-current-host> [shop.myshopify.com]'
+      'Usage: npm run dev:switch-tunnel -- <https://your-current-host> [shop.myshopify.com] [--build-frontend] [--skip-frontend-build]'
     );
     process.exit(1);
   }
 
-  updateEnvUrls(envPath, nextUrl);
+  if (!skipFrontendBuild) {
+    const ensureArgs = ['scripts/ensure-frontend-dist.js'];
+    if (buildFrontend) ensureArgs.push('--force');
+    console.log('[dev:switch-tunnel] Ensuring frontend/dist matches shipping wizard sources...');
+    run('node', ensureArgs, { cwd: repoRoot });
+  }
+
+  updateEnvTunnelUrls(envPath, nextUrl);
   console.log(`[dev:switch-tunnel] Updated .env to ${nextUrl}`);
 
   const nextEnv = { ...process.env };

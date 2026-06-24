@@ -60,6 +60,34 @@ function shouldReplaceExistingRates(config = {}) {
   return Boolean(config.replace_existing_rates || config.replaceExistingRates);
 }
 
+function hasConfiguredShippingReplacementRate(config = {}) {
+  const hasAmount =
+    config.amount !== null && config.amount !== undefined && String(config.amount).trim() !== '';
+  const hasRates =
+    Array.isArray(config.rates) &&
+    config.rates.some(rate => rate?.amount !== null && Number(rate.amount) >= 0);
+  return hasAmount || hasRates;
+}
+
+function requiresShippingReplacement(config = {}) {
+  const strategy = String(config.strategy || '')
+    .trim()
+    .toLowerCase();
+  if (!['flat_rate', 'carrier_quote'].includes(strategy)) {
+    return false;
+  }
+  if (!shouldReplaceExistingRates(config)) {
+    return false;
+  }
+  if (strategy === 'flat_rate') {
+    return hasConfiguredShippingReplacementRate(config);
+  }
+  const provider = String(
+    config.metadata?.quote_provider || config.quote_provider || config.quoteProvider || ''
+  ).trim();
+  return Boolean(provider) || hasConfiguredShippingReplacementRate(config);
+}
+
 function resolveExecutionAdapter(
   strategy,
   executionHint = 'auto',
@@ -72,6 +100,9 @@ function resolveExecutionAdapter(
   const hasDeliveryTargets = hasDeliveryCustomizationTargets(config);
   if (hint === 'manual') {
     return 'manual';
+  }
+  if (requiresShippingReplacement(config)) {
+    return 'carrier_service';
   }
   if (strategy === 'flat_rate') {
     return 'carrier_service';
@@ -109,8 +140,7 @@ function buildShippingExecutionPlan(test, capabilityReport) {
   const variants = Array.isArray(normalizedTest?.variants) ? normalizedTest.variants : [];
   const variantPlans = variants.map((variant, index) => {
     const config = normalizeShippingVariantConfig(variant?.config || {});
-    const requiresReplacement =
-      config.strategy === 'flat_rate' && shouldReplaceExistingRates(config);
+    const requiresReplacement = requiresShippingReplacement(config);
     const hasReplacementRate =
       config.amount !== null || config.rates.some(rate => rate.amount !== null && rate.amount >= 0);
     const actionable =
@@ -121,9 +151,14 @@ function buildShippingExecutionPlan(test, capabilityReport) {
       capabilityReport,
       config
     );
+    const needsDeliveryCustomization =
+      hasDeliveryCustomizationTargets(config) &&
+      ['flat_rate', 'carrier_quote'].includes(config.strategy);
+    const needsCarrierAndDeliveryPair =
+      requiresReplacement || (needsDeliveryCustomization && config.strategy === 'flat_rate');
     const adapterAvailable =
       adapter === 'manual' ||
-      (requiresReplacement
+      (needsCarrierAndDeliveryPair
         ? isAdapterAvailable(capabilityReport, 'carrier_service') &&
           isAdapterAvailable(capabilityReport, 'delivery_customization')
         : isAdapterAvailable(capabilityReport, adapter));
@@ -146,7 +181,7 @@ function buildShippingExecutionPlan(test, capabilityReport) {
       name: variant?.name || `Variant ${index + 1}`,
       strategy: config.strategy,
       execution_adapter: adapter,
-      execution_adapters: requiresReplacement
+      execution_adapters: needsCarrierAndDeliveryPair
         ? ['carrier_service', 'delivery_customization']
         : [adapter],
       replace_existing_rates: requiresReplacement,
@@ -199,4 +234,7 @@ module.exports = {
   buildShippingExecutionPlan,
   requiredAdapterForStrategy,
   resolveExecutionAdapter,
+  requiresShippingReplacement,
+  shouldReplaceExistingRates,
+  hasDeliveryCustomizationTargets,
 };

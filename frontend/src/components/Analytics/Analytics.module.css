@@ -1356,6 +1356,25 @@
   border-color: rgba(6, 182, 212, 0.14);
 }
 
+[data-theme='dark'] .variantScoreCard {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 18%, transparent), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.8));
+  border-color: color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 28%, rgba(6, 182, 212, 0.12));
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 10%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .checkoutJourneyStep,
+[data-theme='dark'] .checkoutOpsCard,
+[data-theme='dark'] .checkoutSignalSummary > div {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(6, 182, 212, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.62), rgba(15, 23, 42, 0.76));
+  border-color: rgba(6, 182, 212, 0.22);
+}
+
 .variantScoreCardLeader {
   border-color: color-mix(
     in srgb,

@@ -1316,3 +1316,481 @@
   border-color: var(--traffic-border);
   color: var(--traffic-text);
 }
+
+/* Final dark theme pass for the traffic allocation editor. */
+[data-theme='dark'] .wrapper {
+  --traffic-border: rgba(6, 182, 212, 0.2);
+  --traffic-bg: rgba(15, 23, 42, 0.72);
+  --traffic-text: rgba(241, 245, 249, 0.96);
+  --traffic-muted: rgba(203, 213, 225, 0.78);
+}
+
+[data-theme='dark'] .toolbarBar,
+[data-theme='dark'] .sliderBarCard {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .sliderSectionTitle,
+[data-theme='dark'] .previewActionTitle,
+[data-theme='dark'] .variantNameText,
+[data-theme='dark'] .trafficLabel,
+[data-theme='dark'] .trafficUnit,
+[data-theme='dark'] .sliderScaleLabel,
+[data-theme='dark'] .sliderHint,
+[data-theme='dark'] .sliderLegendName,
+[data-theme='dark'] .sliderLegendPct {
+  color: inherit;
+}
+
+[data-theme='dark'] .sliderSectionTotal {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: rgba(203, 213, 225, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .sliderTrack {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.76), rgba(15, 23, 42, 0.86)) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme='dark'] .sliderTrack.trackDragging {
+  border-color: rgba(103, 232, 249, 0.52) !important;
+  box-shadow:
+    0 0 0 2px rgba(6, 182, 212, 0.18),
+    0 12px 28px rgba(6, 182, 212, 0.12),
+    inset 0 1px 3px rgba(0, 0, 0, 0.48) !important;
+}
+
+[data-theme='dark'] .sliderLegend {
+  border-top-color: rgba(6, 182, 212, 0.18) !important;
+}
+
+[data-theme='dark'] .sliderLegendItem {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.58), rgba(15, 23, 42, 0.72)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: rgba(226, 232, 240, 0.92) !important;
+}
+
+[data-theme='dark'] .variantCard {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color) 16%, transparent), transparent 38%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.74), rgba(15, 23, 42, 0.86)) !important;
+  border-color: color-mix(in srgb, var(--variant-color) 28%, rgba(148, 163, 184, 0.2)) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .variantCard:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color) 24%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.8), rgba(15, 23, 42, 0.88)) !important;
+  border-color: color-mix(in srgb, var(--variant-color) 46%, rgba(103, 232, 249, 0.24)) !important;
+  box-shadow:
+    0 16px 34px color-mix(in srgb, var(--variant-color) 12%, rgba(0, 0, 0, 0.28)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+
+[data-theme='dark'] .variantCardActions {
+  border-top-color: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .variantNameDisplay:hover,
+[data-theme='dark'] .variantNameEditHint,
+[data-theme='dark'] .stepperBtn,
+[data-theme='dark'] .stepperInput,
+[data-theme='dark'] .cardActionBtn,
+[data-theme='dark'] .variantCardRemoveBtn {
+  background: rgba(15, 23, 42, 0.78) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+}
+
+[data-theme='dark'] .stepperBtn:hover,
+[data-theme='dark'] .cardActionBtn:hover,
+[data-theme='dark'] .variantNameDisplay:hover {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(103, 232, 249, 0.42) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .stepperInput:focus,
+[data-theme='dark'] .variantNameInput:focus {
+  border-color: rgba(103, 232, 249, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.18) !important;
+}
+
+[data-theme='dark'] .variantNameInput {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .cardActionBtnPrimary,
+[data-theme='dark'] .cardActionBtnPrimary:hover {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee) !important;
+  border-color: rgba(103, 232, 249, 0.58) !important;
+  color: #020617 !important;
+}
+
+[data-theme='dark'] .cardActionBtnCustomer:hover {
+  background: rgba(34, 197, 94, 0.22) !important;
+  border-color: rgba(74, 222, 128, 0.5) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] .cardActionBtnCopy:hover {
+  background: rgba(129, 140, 248, 0.22) !important;
+  border-color: rgba(165, 180, 252, 0.5) !important;
+  color: #c4b5fd !important;
+}
+
+[data-theme='dark'] .variantCardRemoveBtn:hover {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.38) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme='dark'] .cardActionBtnDisabled,
+[data-theme='dark'] .cardActionBtnDisabled:hover {
+  background: rgba(15, 23, 42, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  color: rgba(148, 163, 184, 0.72) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section],
+[data-theme='dark'] [data-ripx-traffic-slider-card] {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section] {
+  padding: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 16px;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-grid] {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 20%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 36%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 30%, transparent), transparent 44%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.86), rgba(15, 23, 42, 0.94)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 56%, rgba(103, 232, 249, 0.28)) !important;
+  box-shadow:
+    0 18px 38px color-mix(in srgb, var(--variant-color, #06b6d4) 16%, rgba(0, 0, 0, 0.32)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantCardInner,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantCardHead,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantCardTraffic,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .trafficControl {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Dark hover reset: keep interactions visible without bright lift/glow flashes. */
+[data-theme='dark'] [data-ripx-traffic-allocation] *,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::before,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::after {
+  transition-duration: 0.12s !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover,
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card],
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  transform: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 22%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 44%, rgba(103, 232, 249, 0.24)) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .segment:hover {
+  filter: brightness(1.06) saturate(1.02) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 14px color-mix(in srgb, var(--segment-color, #06b6d4) 22%, transparent) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:active,
+[data-theme='dark'] [data-ripx-traffic-allocation] .segmentDragging .handle {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.52) !important;
+  box-shadow:
+    0 0 12px rgba(6, 182, 212, 0.22),
+    0 2px 8px rgba(0, 0, 0, 0.34) !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] .stepperBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .cardActionBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantNameDisplay:hover {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(103, 232, 249, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] .stepperBtn:active,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .cardActionBtn:active {
+  transform: none !important;
+}
+
+/* Dark theme: no hover animation/effect for Traffic Allocation. */
+[data-theme='dark'] [data-ripx-traffic-allocation],
+[data-theme='dark'] [data-ripx-traffic-allocation] *,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::before,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover,
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .sliderTrack:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .segment:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantNameDisplay:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .cardActionBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantCardRemoveBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .toolbarBtn:hover {
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 20%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 36%, rgba(148, 163, 184, 0.22)) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .segment:hover {
+  box-shadow: inherit !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:active,
+[data-theme='dark'] [data-ripx-traffic-allocation] .segmentDragging .handle {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.48) !important;
+  box-shadow:
+    0 0 18px rgba(6, 182, 212, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.36) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantNameDisplay:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .cardActionBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantCardRemoveBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .toolbarBtn:hover {
+  background: rgba(15, 23, 42, 0.88) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  color: rgba(226, 232, 240, 0.98) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+/* Authoritative dark Traffic Allocation colors. Keep cards stable, but preserve semantic preview actions. */
+[data-theme='dark'] [data-ripx-traffic-section] {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.13), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.94)) !important;
+  border: 1px solid rgba(6, 182, 212, 0.28) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-slider-card] {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.76), rgba(15, 23, 42, 0.88)) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 18%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 34%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.98) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover,
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .sliderTrack {
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.84), rgba(15, 23, 42, 0.94)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .sliderLegendItem,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperBtn,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperInput,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantNameInput {
+  background: rgba(15, 23, 42, 0.84) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionTitle {
+  color: rgba(203, 213, 225, 0.86) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnPrimary,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnPrimary:hover {
+  background: rgba(6, 182, 212, 0.18) !important;
+  border-color: rgba(103, 232, 249, 0.5) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnPrimary:hover {
+  background: rgba(6, 182, 212, 0.26) !important;
+  border-color: rgba(103, 232, 249, 0.68) !important;
+  color: #cffafe !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCustomer,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCustomer:hover {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.42) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCustomer:hover {
+  background: rgba(34, 197, 94, 0.24) !important;
+  border-color: rgba(134, 239, 172, 0.58) !important;
+  color: #bbf7d0 !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCopy,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCopy:hover {
+  background: rgba(129, 140, 248, 0.16) !important;
+  border-color: rgba(165, 180, 252, 0.42) !important;
+  color: #c4b5fd !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCopy:hover {
+  background: rgba(129, 140, 248, 0.24) !important;
+  border-color: rgba(196, 181, 253, 0.6) !important;
+  color: #ddd6fe !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnIcon,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnIcon :global(.Polaris-Icon),
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnIcon svg {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnDisabled,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnDisabled:hover {
+  background: rgba(15, 23, 42, 0.58) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: rgba(148, 163, 184, 0.72) !important;
+  opacity: 0.62 !important;
+}
