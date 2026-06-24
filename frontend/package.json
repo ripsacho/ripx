@@ -30,7 +30,7 @@
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
-    "@babel/core": "^7.26.0",
+    "@babel/core": "^7.29.0",
     "@babel/preset-env": "^7.26.0",
     "@babel/preset-react": "^7.28.5",
     "@playwright/test": "^1.58.2",
