@@ -53,9 +53,13 @@ describe('shippingConfig utilities', () => {
     ).toBe(true);
   });
 
-  it('strips legacy preview prefixes from saved shipping configs', () => {
-    expect(stripLegacyPreviewLabelFromName('RipX Preview: Economy')).toBe('Economy');
-    expect(stripLegacyPreviewLabelFromName('New: Express')).toBe('Express');
+  it('strips legacy preview prefixes only when preview_label_prefix is configured', () => {
+    expect(stripLegacyPreviewLabelFromName('RipX Preview: Economy')).toBe('RipX Preview: Economy');
+    expect(stripLegacyPreviewLabelFromName('New York Express')).toBe('New York Express');
+    expect(stripLegacyPreviewLabelFromName('RipX Preview: Economy', ['RipX Preview'])).toBe(
+      'Economy'
+    );
+    expect(stripLegacyPreviewLabelFromName('New: Express', ['New'])).toBe('Express');
     expect(
       sanitizeLegacyShippingPreviewConfig({
         preview_label_prefix: 'New',
@@ -69,6 +73,11 @@ describe('shippingConfig utilities', () => {
         preview_label_prefix: 'New',
       }).preview_label_prefix
     ).toBeUndefined();
+    expect(
+      sanitizeLegacyShippingPreviewConfig({
+        rates: [{ name: 'New York Express', amount: 9 }],
+      }).rates[0].name
+    ).toBe('New York Express');
   });
 
   it('normalizes configured rates while ignoring generated placeholder flat rates', () => {

@@ -126,6 +126,18 @@ describe('shippingTestConfigService', () => {
     expect(cfg.rates[0].name).toBe('Express');
   });
 
+  it('does not strip default legacy prefixes when preview_label_prefix is absent', () => {
+    const cfg = normalizeShippingVariantConfig({
+      strategy: 'flat_rate',
+      rates: [
+        { name: 'New York Express', amount: 9 },
+        { name: 'RipX Preview Standard', amount: 5 },
+      ],
+    });
+    expect(cfg.rates[0].name).toBe('New York Express');
+    expect(cfg.rates[1].name).toBe('RipX Preview Standard');
+  });
+
   it('sorts configured rates by priority and sort order', () => {
     const cfg = normalizeShippingVariantConfig({
       strategy: 'flat_rate',

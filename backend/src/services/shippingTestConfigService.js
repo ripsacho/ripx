@@ -22,19 +22,16 @@ const SHIPPING_EXECUTION_HINTS = new Set([
 ]);
 
 const SHIPPING_DISPLAY_MODES = new Set(['add_preview_method', 'replace_existing_methods']);
-const DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES = ['RipX Preview', 'New'];
 
 function collectLegacyPreviewLabelPrefixes(raw = {}) {
   const configured = toOptionalString(
     raw.preview_label_prefix || raw.previewLabelPrefix || raw.label_prefix || raw.labelPrefix,
     40
   );
-  return Array.from(
-    new Set([configured, ...DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES].filter(Boolean))
-  );
+  return configured ? [configured] : [];
 }
 
-function stripLegacyPreviewLabelFromName(name, prefixes = DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES) {
+function stripLegacyPreviewLabelFromName(name, prefixes = []) {
   const normalizedName = String(name || '').trim();
   if (!normalizedName) {
     return '';

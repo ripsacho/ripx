@@ -4,15 +4,10 @@ export function collectLegacyPreviewLabelPrefixes(cfg = {}) {
   const configured = String(
     cfg.preview_label_prefix || cfg.previewLabelPrefix || cfg.label_prefix || cfg.labelPrefix || ''
   ).trim();
-  return Array.from(
-    new Set([configured, ...DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES].filter(Boolean))
-  );
+  return configured ? [configured] : [];
 }
 
-export function stripLegacyPreviewLabelFromName(
-  name,
-  prefixes = DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES
-) {
+export function stripLegacyPreviewLabelFromName(name, prefixes = []) {
   const normalizedName = String(name || '').trim();
   if (!normalizedName) return '';
 
