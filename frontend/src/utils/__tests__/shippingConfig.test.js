@@ -5,11 +5,14 @@ import {
   normalizeShippingRates,
   shouldReplaceExistingShippingMethods,
   getShippingOfferMode,
+  buildPromoteShippingOfferToMultiplePatch,
   getShippingOfferAttributes,
   normalizeShippingOfferMode,
   getOfferWizardReadinessIssues,
   buildOfferAttributeRevertPatch,
   formatShippingDeliveryPromiseLabel,
+  sanitizeLegacyShippingPreviewConfig,
+  stripLegacyPreviewLabelFromName,
 } from '../shippingConfig';
 
 describe('shippingConfig utilities', () => {
@@ -34,14 +37,38 @@ describe('shippingConfig utilities', () => {
       shipping_display_mode: 'replace_existing_methods',
     };
 
-    expect(shouldReplaceExistingShippingMethods(base)).toBe(true);
-    expect(hasActionableShippingConfig(base)).toBe(false);
+    expect(shouldReplaceExistingShippingMethods(base)).toBe(false);
+    expect(hasActionableShippingConfig(base)).toBe(true);
+    expect(
+      shouldReplaceExistingShippingMethods({
+        ...base,
+        delivery_method_names: ['Standard', 'Express'],
+      })
+    ).toBe(true);
     expect(
       hasActionableShippingConfig({
         ...base,
         delivery_method_names: ['Standard', 'Express'],
       })
     ).toBe(true);
+  });
+
+  it('strips legacy preview prefixes from saved shipping configs', () => {
+    expect(stripLegacyPreviewLabelFromName('RipX Preview: Economy')).toBe('Economy');
+    expect(stripLegacyPreviewLabelFromName('New: Express')).toBe('Express');
+    expect(
+      sanitizeLegacyShippingPreviewConfig({
+        preview_label_prefix: 'New',
+        rates: [{ name: 'New: Express', amount: 9 }],
+      })
+    ).toMatchObject({
+      rates: [{ name: 'Express', amount: 9 }],
+    });
+    expect(
+      sanitizeLegacyShippingPreviewConfig({
+        preview_label_prefix: 'New',
+      }).preview_label_prefix
+    ).toBeUndefined();
   });
 
   it('normalizes configured rates while ignoring generated placeholder flat rates', () => {
@@ -145,6 +172,12 @@ describe('shippingConfig utilities', () => {
         rates: [{ name: 'A' }],
       })
     ).toBe('multiple');
+    expect(
+      getShippingOfferMode({
+        metadata: { shipping_offer_mode: 'single' },
+        rates: [{ name: 'A' }, { name: 'B' }],
+      })
+    ).toBe('multiple');
     expect(getShippingOfferAttributes({})).toEqual({
       name: true,
       rate: true,
@@ -167,6 +200,41 @@ describe('shippingConfig utilities', () => {
       rate: true,
       range: true,
       message: true,
+    });
+  });
+
+  it('promotes single checkout offer fields into a multi-row rate table', () => {
+    expect(
+      buildPromoteShippingOfferToMultiplePatch(
+        {
+          label: 'RipX Standard',
+          amount: 7.5,
+          currency: 'USD',
+          checkout_display: {
+            message: 'Arrives in 2-3 days',
+            delivery_promise: { mode: 'preset', preset: '2_3_business_days' },
+          },
+        },
+        { name: 'Standard', rate: 5 }
+      )
+    ).toMatchObject({
+      metadata: { shipping_offer_mode: 'multiple' },
+      rates: [
+        {
+          name: 'RipX Standard',
+          amount: 7.5,
+          currency: 'USD',
+          description: 'Arrives in 2-3 days',
+        },
+      ],
+    });
+    expect(
+      buildPromoteShippingOfferToMultiplePatch(
+        { rates: [{ name: 'Linked Standard', amount: 5 }] },
+        { name: 'Standard', rate: 5 }
+      )
+    ).toEqual({
+      metadata: { shipping_offer_mode: 'multiple' },
     });
   });
 

@@ -115,9 +115,18 @@ function getUnassignedHiddenMethodCodes(config) {
 
 function normalizeComparableTitle(value) {
   return normalizeText(value)
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[·•|–—-].*$/, '')
+    .replace(/\best\.?\b/g, '')
     .replace(/\bshipping\b/g, '')
+    .replace(/\bdelivery\b/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isRipXDeliveryOptionCode(code) {
+  const normalized = normalizeText(code);
+  return normalized.startsWith('ripx_') || normalized.includes('ripx_flat');
 }
 
 function matchesOptionTitle(title, wantedNames = []) {
@@ -175,13 +184,31 @@ function matchesOptionCode(code, wantedCodes = []) {
   });
 }
 
+function matchesProtectedOptionCode(code, protectedCodes = []) {
+  const normalizedCode = normalizeText(code);
+  if (!normalizedCode) {
+    return false;
+  }
+  return protectedCodes.some(item => normalizeText(item) === normalizedCode);
+}
+
 function shouldProtectOption(
   option,
   protectedCodes = [],
   protectedNamePrefixes = [],
-  protectedNames = []
+  protectedNames = [],
+  hideNames = [],
+  hideCodes = []
 ) {
-  if (matchesOptionCode(option?.code, protectedCodes)) {
+  if (isRipXDeliveryOptionCode(option?.code)) {
+    return true;
+  }
+  const hideTitleMatch = matchesOptionTitle(option?.title, hideNames);
+  const hideCodeMatch = matchesOptionCode(option?.code, hideCodes);
+  if (hideTitleMatch || hideCodeMatch) {
+    return false;
+  }
+  if (matchesProtectedOptionCode(option?.code, protectedCodes)) {
     return true;
   }
   if (matchesOptionTitlePrefix(option?.title, protectedNamePrefixes)) {
@@ -242,7 +269,16 @@ function buildHideOperations(
       if (!option?.handle) {
         continue;
       }
-      if (shouldProtectOption(option, protectedCodes, protectedNamePrefixes, protectedNames)) {
+      if (
+        shouldProtectOption(
+          option,
+          protectedCodes,
+          protectedNamePrefixes,
+          protectedNames,
+          wantedNames,
+          wantedCodes
+        )
+      ) {
         continue;
       }
       const matchesCode = matchesOptionCode(option?.code, wantedCodes);

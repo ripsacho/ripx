@@ -38,6 +38,7 @@ describe('shippingQuoteProviderService', () => {
       config: {
         strategy: 'carrier_quote',
         shipping_display_mode: 'replace_existing_methods',
+        delivery_method_names: ['Standard Delivery'],
         metadata: {
           quote_provider: 'static_rate',
         },
@@ -82,6 +83,7 @@ describe('shippingQuoteProviderService', () => {
       config: {
         strategy: 'carrier_quote',
         shipping_display_mode: 'replace_existing_methods',
+        delivery_method_names: ['Standard Delivery'],
         metadata: {
           quote_provider: 'static_rate',
           quote_amount: 45,

@@ -22,6 +22,85 @@ const SHIPPING_EXECUTION_HINTS = new Set([
 ]);
 
 const SHIPPING_DISPLAY_MODES = new Set(['add_preview_method', 'replace_existing_methods']);
+const DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES = ['RipX Preview', 'New'];
+
+function collectLegacyPreviewLabelPrefixes(raw = {}) {
+  const configured = toOptionalString(
+    raw.preview_label_prefix || raw.previewLabelPrefix || raw.label_prefix || raw.labelPrefix,
+    40
+  );
+  return Array.from(
+    new Set([configured, ...DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES].filter(Boolean))
+  );
+}
+
+function stripLegacyPreviewLabelFromName(name, prefixes = DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES) {
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName) {
+    return '';
+  }
+  for (const prefix of prefixes) {
+    const normalizedPrefix = String(prefix || '').trim();
+    if (!normalizedPrefix) {
+      continue;
+    }
+    const lowerName = normalizedName.toLowerCase();
+    const lowerPrefix = normalizedPrefix.toLowerCase();
+    if (lowerName.startsWith(`${lowerPrefix}:`)) {
+      return normalizedName.slice(normalizedPrefix.length + 1).trim();
+    }
+    if (lowerName.startsWith(`${lowerPrefix} `)) {
+      return normalizedName.slice(normalizedPrefix.length + 1).trim();
+    }
+  }
+  return normalizedName;
+}
+
+function stripLegacyShippingPreviewMetadata(config = {}) {
+  const raw = config && typeof config === 'object' ? config : {};
+  const prefixes = collectLegacyPreviewLabelPrefixes(raw);
+  const cleaned = { ...raw };
+  delete cleaned.preview_label_prefix;
+  delete cleaned.previewLabelPrefix;
+  delete cleaned.label_prefix;
+  delete cleaned.labelPrefix;
+
+  if (Array.isArray(cleaned.rates)) {
+    cleaned.rates = cleaned.rates.map(rate => {
+      const item = rate && typeof rate === 'object' ? { ...rate } : {};
+      ['name', 'service_name', 'serviceName'].forEach(field => {
+        if (item[field]) {
+          item[field] = stripLegacyPreviewLabelFromName(item[field], prefixes);
+        }
+      });
+      return item;
+    });
+  }
+
+  if (cleaned.label) {
+    cleaned.label = stripLegacyPreviewLabelFromName(cleaned.label, prefixes);
+  }
+
+  const metadata =
+    cleaned.metadata && typeof cleaned.metadata === 'object' ? { ...cleaned.metadata } : null;
+  if (metadata) {
+    if (metadata.quote_service_name) {
+      metadata.quote_service_name = stripLegacyPreviewLabelFromName(
+        metadata.quote_service_name,
+        prefixes
+      );
+    }
+    if (metadata.quoteServiceName) {
+      metadata.quoteServiceName = stripLegacyPreviewLabelFromName(
+        metadata.quoteServiceName,
+        prefixes
+      );
+    }
+    cleaned.metadata = metadata;
+  }
+
+  return cleaned;
+}
 
 function toLowerString(value) {
   return String(value || '')
@@ -321,7 +400,7 @@ function normalizeShippingDisplayMode(value, replaceExistingRates = false) {
 }
 
 function normalizeShippingVariantConfig(config = {}) {
-  const raw = config && typeof config === 'object' ? config : {};
+  const raw = stripLegacyShippingPreviewMetadata(config);
   const strategy = inferStrategy(raw);
   const amount = toOptionalNumber(raw.amount ?? raw.rate ?? raw.shipping_rate);
   const currency = toCurrency(raw.currency);
@@ -372,20 +451,10 @@ function normalizeShippingVariantConfig(config = {}) {
       : toCountryCodes(raw.zone_countries || raw.zoneCountries),
     shipping_display_mode: shippingDisplayMode,
     replace_existing_rates: shippingDisplayMode === 'replace_existing_methods',
-    preview_label_prefix: toOptionalString(
-      raw.preview_label_prefix || raw.previewLabelPrefix || raw.label_prefix || raw.labelPrefix,
-      40
-    ),
     execution_hint: normalizeExecutionHint(raw.execution_hint || raw.executionHint),
     metadata: raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {},
   };
 
-  if (
-    normalized.delivery_method_names.length === 0 &&
-    shippingScope.selected_rate_names.length > 0
-  ) {
-    normalized.delivery_method_names = [...shippingScope.selected_rate_names];
-  }
   if (
     normalized.delivery_method_codes.length === 0 &&
     normalized.delivery_method_names.length > 0
@@ -393,6 +462,31 @@ function normalizeShippingVariantConfig(config = {}) {
     normalized.delivery_method_codes = buildNativeDeliveryMethodCodes(
       normalized.delivery_method_names
     );
+  }
+
+  if (Array.isArray(normalized.shipping_scope?.selected_rate_names)) {
+    const scopedNames = normalized.shipping_scope.selected_rate_names
+      .map(name => String(name || '').trim())
+      .filter(Boolean);
+    if (scopedNames.length > 0) {
+      normalized.delivery_method_names = Array.from(
+        new Set([...normalized.delivery_method_names, ...scopedNames])
+      ).slice(0, 50);
+      normalized.delivery_method_codes = Array.from(
+        new Set([
+          ...normalized.delivery_method_codes,
+          ...buildNativeDeliveryMethodCodes(normalized.delivery_method_names),
+        ])
+      ).slice(0, 50);
+    }
+  }
+
+  if (
+    normalized.shipping_display_mode === 'replace_existing_methods' &&
+    normalized.delivery_method_names.length === 0
+  ) {
+    normalized.shipping_display_mode = 'add_preview_method';
+    normalized.replace_existing_rates = false;
   }
 
   if (strategy === 'discount_fixed' && normalized.amount === null) {
@@ -483,12 +577,6 @@ function isActionableShippingConfig(config = {}) {
   const normalized = normalizeShippingVariantConfig(config);
   switch (normalized.strategy) {
     case 'flat_rate':
-      if (
-        normalized.shipping_display_mode === 'replace_existing_methods' &&
-        normalized.delivery_method_names.length === 0
-      ) {
-        return false;
-      }
       return (
         (normalized.amount !== null && normalized.amount >= 0) ||
         normalized.rates.some(rate => rate.amount !== null && rate.amount >= 0)
@@ -567,11 +655,6 @@ function validateShippingVariants(variants = []) {
         errors.push(`${label}: flat_rate requires an amount >= 0.`);
       }
       const replacesExistingRates = config.shipping_display_mode === 'replace_existing_methods';
-      if (replacesExistingRates && config.delivery_method_names.length === 0) {
-        errors.push(
-          `${label}: replacement flat_rate requires at least one delivery_method_names target to hide.`
-        );
-      }
       if (replacesExistingRates && config.delivery_action !== 'hide') {
         errors.push(`${label}: replacement flat_rate can only hide existing delivery methods.`);
       }

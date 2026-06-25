@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Badge, InlineStack, Text } from '@shopify/polaris';
 import useRenderDebugCounter from '../hooks/useRenderDebugCounter';
+import ShippingVariantRail from './ShippingVariantRail';
 
 function ShippingVariantWorkspaceShell({
   stepStyles,
@@ -16,6 +17,7 @@ function ShippingVariantWorkspaceShell({
   activeReadiness,
   renderEditorPanel,
   shippingReadinessList,
+  previewProps,
 }) {
   useRenderDebugCounter('ShippingVariantWorkspaceShell', () => ({
     activeVariantIndex: activeShippingVariantIndex,
@@ -146,7 +148,12 @@ function ShippingVariantWorkspaceShell({
             </InlineStack>
           </div>
 
-          <div className={stepStyles.shippingVariantWorkspace}>{renderEditorPanel()}</div>
+          <div className={stepStyles.shippingVariantWorkspace}>
+            {renderEditorPanel()}
+            {previewProps ? (
+              <ShippingVariantRail stepStyles={stepStyles} {...previewProps} />
+            ) : null}
+          </div>
         </div>
       </div>
 

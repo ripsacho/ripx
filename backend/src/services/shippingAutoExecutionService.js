@@ -37,6 +37,9 @@ function normalizeBoolean(value, fallback = false) {
 }
 
 function shouldReplaceExistingRates(config = {}) {
+  if (!hasDeliveryCustomizationTargets(config)) {
+    return false;
+  }
   const displayMode = normalizeLower(
     config.shipping_display_mode || config.shippingDisplayMode || config.display_mode
   );
@@ -197,11 +200,50 @@ function buildNativeDeliveryMethodCodes(methodNames = []) {
   return Array.from(new Set(codes.filter(Boolean))).slice(0, 50);
 }
 
+function extractScopedDeliveryMethodCodes(scope = {}) {
+  const ids = [
+    ...toStringArray(scope.selected_method_definition_ids || scope.selectedMethodDefinitionIds),
+    ...toStringArray(scope.selected_rate_ids || scope.selectedRateIds),
+  ];
+  const codes = [];
+  ids.forEach(id => {
+    const raw = String(id || '').trim();
+    if (!raw) {
+      return;
+    }
+    codes.push(raw);
+    codes.push(raw.toLowerCase());
+    const tail = raw.split('/').pop();
+    if (tail) {
+      codes.push(tail);
+      codes.push(tail.toLowerCase());
+    }
+    const numeric = raw.match(/(\d{4,})\s*$/);
+    if (numeric) {
+      codes.push(numeric[1]);
+    }
+  });
+  return Array.from(new Set(codes.filter(Boolean))).slice(0, 50);
+}
+
+function mergeHideTargetMethodNames(cfg = {}) {
+  const scope =
+    cfg.shipping_scope && typeof cfg.shipping_scope === 'object' ? cfg.shipping_scope : {};
+  return Array.from(
+    new Set([
+      ...toStringArray(
+        cfg.delivery_method_names || cfg.deliveryMethodNames || cfg.method_names || cfg.methodNames
+      ),
+      ...toStringArray(scope.selected_rate_names || scope.selectedRateNames),
+    ])
+  )
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
 function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
-  const methodNames = toStringArray(
-    cfg.delivery_method_names || cfg.deliveryMethodNames || cfg.method_names || cfg.methodNames
-  );
+  const methodNames = mergeHideTargetMethodNames(cfg);
   if (methodNames.length === 0) {
     throw new Error(
       'Delivery customization requires delivery_method_names/method_names because it can only hide, rename, or reorder existing checkout delivery methods.'
@@ -209,17 +251,13 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   }
   const scope =
     cfg.shipping_scope && typeof cfg.shipping_scope === 'object' ? cfg.shipping_scope : {};
-  const scopedMethodIds = [
-    ...toStringArray(scope.selected_method_definition_ids || scope.selectedMethodDefinitionIds),
-    ...toStringArray(scope.selected_rate_ids || scope.selectedRateIds),
-  ];
   const methodCodes = Array.from(
     new Set([
       ...toStringArray(
         cfg.delivery_method_codes || cfg.deliveryMethodCodes || cfg.method_codes || cfg.methodCodes
       ),
       ...buildNativeDeliveryMethodCodes(methodNames),
-      ...scopedMethodIds,
+      ...extractScopedDeliveryMethodCodes(scope),
     ])
   ).slice(0, 50);
   const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
@@ -234,22 +272,24 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
     variant?.index !== undefined && variant?.index !== null ? String(variant.index).trim() : '';
   const replacementMode = shouldReplaceExistingRates(cfg);
   const carrierServiceName = buildShippingCarrierServiceName(test, variant);
-  const previewLabelPrefix = String(
-    cfg.preview_label_prefix || cfg.previewLabelPrefix || 'RipX Preview'
-  ).trim();
+  const configuredRateNames = getCarrierParticipantServiceNames(cfg);
   const replacementCodes = replacementMode ? getReplacementRequiredMethodCodes(variant) : [];
   const replacementNames = replacementMode ? getReplacementRequiredMethodNames(test, variant) : [];
   const requirePresentMethodNames = replacementMode
     ? Array.from(new Set([...replacementNames, carrierServiceName].filter(Boolean))).slice(0, 10)
     : [];
   const addModeHideTargets = !replacementMode && methodNames.length > 0;
-  const previewPrefixes = Array.from(
-    new Set(
-      [previewLabelPrefix, 'RipX Preview', DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX]
-        .map(value => String(value || '').trim())
-        .filter(Boolean)
-    )
+  const carrierProtectionPrefixes = Array.from(
+    new Set([DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX, carrierServiceName].filter(Boolean))
   );
+  const ripXProtectedCodes = Array.from(
+    new Set([
+      ...getReplacementRequiredMethodCodes(variant),
+      ...configuredRateNames.flatMap(name => buildNativeDeliveryMethodCodes([name])),
+    ])
+  ).slice(0, 20);
+  const addModeProtectedNames = replacementMode ? replacementNames : [];
+  const addModeProtectedCodes = replacementMode ? replacementCodes : ripXProtectedCodes;
   return {
     phase: 'delivery_method',
     test_id: String(test?.id || '').trim() || null,
@@ -266,20 +306,117 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
         action: ['hide', 'rename', 'reorder'].includes(action) ? action : 'hide',
         method_names: methodNames,
         method_codes: methodCodes,
-        require_present_method_names: requirePresentMethodNames,
-        require_present_method_codes: replacementMode ? replacementCodes : [],
+        require_present_method_names: replacementMode
+          ? requirePresentMethodNames
+          : configuredRateNames.slice(0, 10),
+        require_present_method_codes: replacementMode ? replacementCodes : ripXProtectedCodes,
         require_present_method_prefixes:
-          replacementMode || !addModeHideTargets ? [] : previewPrefixes,
+          replacementMode || !addModeHideTargets ? [] : carrierProtectionPrefixes,
         skip_replacement_presence_gate: addModeHideTargets,
-        protected_method_codes: replacementMode ? replacementCodes : [],
-        protected_method_names: replacementMode ? replacementNames : [],
-        protected_method_name_prefixes: addModeHideTargets ? previewPrefixes : [],
+        protected_method_codes: addModeProtectedCodes,
+        protected_method_names: addModeProtectedNames,
+        protected_method_name_prefixes: addModeHideTargets ? carrierProtectionPrefixes : [],
         hide_when_unassigned_method_names:
           replacementMode && replacementCodes.length === 0 ? [carrierServiceName] : [],
         hide_when_unassigned_method_codes: replacementMode ? replacementCodes : [],
         ...(action === 'rename' && renameTo ? { rename_to: renameTo } : {}),
       },
     ],
+  };
+}
+
+function buildShippingDeliveryCustomizationPassthroughConfig(test = {}, _variant = {}) {
+  return {
+    phase: 'delivery_method',
+    test_id: String(test?.id || '').trim() || null,
+    test_name: String(test?.name || '').trim() || null,
+    assignment_keys: {
+      test: '_ripx_price_test',
+      variant: '_ripx_variant',
+    },
+    variant_rules: [],
+  };
+}
+
+function variantHasDeliveryCustomizationResource(variant = {}) {
+  return getVariantShippingResourceRefs(variant).some(
+    resource => String(resource?.resource_type || '').trim() === 'delivery_customization'
+  );
+}
+
+async function ensureShippingDeliveryCustomizationCleared({
+  shopDomain,
+  accessToken,
+  test,
+  variant,
+  apply = false,
+}) {
+  if (!variantHasDeliveryCustomizationResource(variant)) {
+    return {
+      ok: true,
+      status: 'noop',
+      message: 'No delivery customization hide rules are active for this variant.',
+      config: buildShippingDeliveryCustomizationPassthroughConfig(test, variant),
+      dry_run: !apply,
+    };
+  }
+
+  const customizationTitle = buildShippingDeliveryCustomizationTitle(test, variant);
+  const clearConfig = buildShippingDeliveryCustomizationPassthroughConfig(test, variant);
+  const existingCustomizations = await fetchDeliveryCustomizationsViaAdmin(shopDomain, accessToken);
+  const existing = existingCustomizations.find(
+    item =>
+      String(item?.title || '')
+        .trim()
+        .toLowerCase() === customizationTitle.toLowerCase()
+  );
+  if (!existing?.id) {
+    return {
+      ok: true,
+      status: 'already_cleared',
+      message: 'Delivery customization resource was already removed from Shopify.',
+      config: clearConfig,
+      dry_run: !apply,
+    };
+  }
+  if (!apply) {
+    return {
+      ok: true,
+      status: 'would_clear',
+      message: 'Apply shipping to clear stale hide rules for this variant.',
+      customization: existing,
+      config: clearConfig,
+      title: customizationTitle,
+      dry_run: true,
+    };
+  }
+  const metafieldResult = await setShippingDeliveryCustomizationMetafield(
+    shopDomain,
+    accessToken,
+    existing.id,
+    clearConfig
+  );
+  if (metafieldResult.user_errors.length > 0) {
+    return {
+      ok: false,
+      status: 'configure_failed',
+      message:
+        metafieldResult.user_errors[0]?.message ||
+        'Could not clear stale delivery customization hide rules.',
+      customization: existing,
+      config: clearConfig,
+      user_errors: metafieldResult.user_errors,
+      dry_run: false,
+    };
+  }
+  return {
+    ok: true,
+    status: 'cleared',
+    message: 'Cleared stale delivery customization hide rules for this variant.',
+    customization: existing,
+    config: clearConfig,
+    title: customizationTitle,
+    dry_run: false,
   };
 }
 
@@ -377,9 +514,6 @@ function buildShippingCarrierCallbackUrl(baseUrl, test, variant) {
   )
     .trim()
     .toLowerCase();
-  const previewLabelPrefix = String(
-    config.preview_label_prefix || config.previewLabelPrefix || ''
-  ).trim();
   const checkoutDisplay = normalizeCheckoutDisplayConfig(
     config.checkout_display || config.checkoutDisplay || config
   );
@@ -421,9 +555,6 @@ function buildShippingCarrierCallbackUrl(baseUrl, test, variant) {
   }
   if (shippingDisplayMode) {
     url.searchParams.set('shipping_display_mode', shippingDisplayMode);
-  }
-  if (previewLabelPrefix) {
-    url.searchParams.set('preview_label_prefix', previewLabelPrefix);
   }
   if (configuredRates.length > 0) {
     url.searchParams.set('rates_count', String(configuredRates.length));
@@ -2392,8 +2523,7 @@ async function executeShippingTestPlan({
           details: result,
         })
       );
-      const shouldApplyDeliveryCustomization =
-        replaceExistingRates || hasDeliveryCustomizationTargets(entry.config || {});
+      const shouldApplyDeliveryCustomization = hasDeliveryCustomizationTargets(entry.config || {});
       if (shouldApplyDeliveryCustomization) {
         const deliveryPlanEntry = {
           ...entry,
@@ -2465,6 +2595,45 @@ async function executeShippingTestPlan({
               lastAction.details.rollback_result = rollbackResult;
             }
           }
+        }
+      } else if (result.ok && normalizedApply && variantHasDeliveryCustomizationResource(entry)) {
+        let clearResult;
+        try {
+          clearResult = await ensureShippingDeliveryCustomizationCleared({
+            shopDomain,
+            accessToken,
+            test,
+            variant: entry,
+            apply: normalizedApply,
+          });
+        } catch (error) {
+          if (!isShopifyAdminUnavailableError(error)) {
+            throw error;
+          }
+          clearResult = {
+            ok: false,
+            status: 'manual_required',
+            message:
+              'Shopify Admin API is currently unavailable while clearing stale delivery customization rules.',
+            upstream_error: error?.message || 'shopify_admin_unavailable',
+          };
+        }
+        if (clearResult.status !== 'noop') {
+          actions.push(
+            toActionOutcome({
+              planEntry: {
+                ...entry,
+                execution_adapter: 'delivery_customization',
+              },
+              apply: normalizedApply,
+              reason: clearResult.ok
+                ? clearResult.status
+                : clearResult.status === 'manual_required'
+                  ? 'manual_required'
+                  : 'failed',
+              details: clearResult,
+            })
+          );
         }
       }
       continue;

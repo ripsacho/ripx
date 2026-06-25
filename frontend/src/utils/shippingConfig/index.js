@@ -168,7 +168,14 @@ export function getShippingDisplayMode(cfg = {}) {
 }
 
 export function shouldReplaceExistingShippingMethods(cfg = {}) {
+  if (getShippingDeliveryTargets(cfg).length === 0) {
+    return false;
+  }
   return getShippingDisplayMode(cfg) === 'replace_existing_methods';
+}
+
+export function hasShippingHideTargets(cfg = {}) {
+  return getShippingDeliveryTargets(cfg).length > 0;
 }
 
 export function isControlLikeShippingVariant(variant, index) {
@@ -418,6 +425,7 @@ export {
   DEFAULT_SHIPPING_OFFER_ATTRIBUTES,
   normalizeShippingOfferMode,
   getShippingOfferMode,
+  buildPromoteShippingOfferToMultiplePatch,
   normalizeShippingOfferAttributes,
   getShippingOfferAttributes,
   buildShippingOfferAttributesPatch,
@@ -429,3 +437,20 @@ export {
   resolveControlShippingBaseline,
   formatShippingOfferBaselineValue,
 } from './offerWizard';
+
+export {
+  DEFAULT_LEGACY_PREVIEW_LABEL_PREFIXES,
+  collectLegacyPreviewLabelPrefixes,
+  stripLegacyPreviewLabelFromName,
+  sanitizeLegacyShippingPreviewConfig,
+} from './legacyPreview';
+
+export {
+  normalizeComparableDeliveryTitle,
+  matchesDeliveryMethodTitle,
+  getShippingRateIdentityTokens,
+  extractScopedDeliveryMethodCodes,
+  buildDeliveryHideTargetingCodes,
+  shouldHideNativeShippingRate,
+  partitionNativeShippingRates,
+} from './deliveryMethodMatching';

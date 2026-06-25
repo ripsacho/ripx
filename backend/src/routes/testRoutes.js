@@ -668,7 +668,6 @@ function buildShippingVariantDisplaySummary(test = {}) {
         strategy,
         actionable,
         display_mode: mode,
-        preview_label_prefix: normalized.preview_label_prefix || null,
         configured_rate_count: Array.isArray(normalized.rates) ? normalized.rates.length : 0,
         configured_rates: (Array.isArray(normalized.rates) ? normalized.rates : [])
           .slice(0, 5)
@@ -733,10 +732,7 @@ function buildShippingRateNameCollisionWarnings(variantDisplaySummary = {}, curr
       if (!rawName) {
         return;
       }
-      const visibleName =
-        variant.display_mode === 'replace_existing_methods'
-          ? rawName
-          : `${variant.preview_label_prefix || 'RipX Preview'}: ${rawName}`;
+      const visibleName = rawName;
       if (nativeNames.has(visibleName.toLowerCase())) {
         warnings.push(
           `${variant.variant_name || 'Variant'} returns "${visibleName}", which matches an existing native Shopify rate name. Rename the RipX rate or native rate to avoid partial checkout rendering.`
@@ -2181,6 +2177,11 @@ router.get(
       summary: analyticsReport?.summary || null,
     };
     if (isShippingTestPayload(test)) {
+      const normalizedShippingTest = normalizeShippingTestPayload({
+        ...test,
+        variants: Array.isArray(test.variants) ? test.variants : [],
+      });
+      test.variants = normalizedShippingTest.variants;
       const variants = Array.isArray(test.variants) ? test.variants : [];
       const strategy_counts = variants.reduce((acc, variant) => {
         const strategy =

@@ -13,6 +13,7 @@ export default function useShippingVariantStudio({ stepStyles, state, actions, r
     activeReadiness,
     shippingReadinessList,
     editor,
+    preview,
   } = state;
   const { onSelectVariant } = actions;
   const reviewPanelProps = useMemo(
@@ -34,6 +35,7 @@ export default function useShippingVariantStudio({ stepStyles, state, actions, r
       strategyGuidance,
       activeReadiness,
       shippingReadinessList,
+      previewProps: preview,
     }),
     [
       stepStyles,
@@ -48,6 +50,7 @@ export default function useShippingVariantStudio({ stepStyles, state, actions, r
       strategyGuidance,
       activeReadiness,
       shippingReadinessList,
+      preview,
     ]
   );
   const editorPanelProps = useMemo(

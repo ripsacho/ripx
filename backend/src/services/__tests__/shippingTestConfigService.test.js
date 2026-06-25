@@ -103,16 +103,27 @@ describe('shippingTestConfigService', () => {
     });
   });
 
-  it('normalizes additive display mode and preview label prefix', () => {
+  it('strips legacy preview label metadata during normalization', () => {
     const cfg = normalizeShippingVariantConfig({
       strategy: 'flat_rate',
       amount: 5.99,
       shipping_display_mode: 'add_preview_method',
       preview_label_prefix: 'Intelligems Preview',
+      rates: [{ name: 'Intelligems Preview: Economy', amount: 5.99 }],
     });
     expect(cfg.shipping_display_mode).toBe('add_preview_method');
     expect(cfg.replace_existing_rates).toBe(false);
-    expect(cfg.preview_label_prefix).toBe('Intelligems Preview');
+    expect(cfg.preview_label_prefix).toBeUndefined();
+    expect(cfg.rates[0].name).toBe('Economy');
+  });
+
+  it('strips default RipX Preview prefix from saved rate names', () => {
+    const cfg = normalizeShippingVariantConfig({
+      strategy: 'flat_rate',
+      rates: [{ name: 'RipX Preview: Express', amount: 9 }],
+      preview_label_prefix: 'RipX Preview',
+    });
+    expect(cfg.rates[0].name).toBe('Express');
   });
 
   it('sorts configured rates by priority and sort order', () => {
@@ -184,7 +195,16 @@ describe('shippingTestConfigService', () => {
     expect(errors).toEqual([]);
   });
 
-  it('requires method targets when a flat rate replaces existing rates', () => {
+  it('downgrades replace flags to add mode when hide targets are missing', () => {
+    const normalized = normalizeShippingVariantConfig({
+      strategy: 'flat_rate',
+      amount: 44,
+      replace_existing_rates: true,
+      shipping_display_mode: 'replace_existing_methods',
+    });
+    expect(normalized.shipping_display_mode).toBe('add_preview_method');
+    expect(normalized.replace_existing_rates).toBe(false);
+
     const errors = validateShippingVariants([
       { name: 'Control', allocation: 50, config: { strategy: 'control' } },
       {
@@ -193,14 +213,14 @@ describe('shippingTestConfigService', () => {
         config: { strategy: 'flat_rate', amount: 44, replace_existing_rates: true },
       },
     ]);
-    expect(errors.some(error => error.includes('replacement flat_rate requires'))).toBe(true);
+    expect(errors.some(error => error.includes('replacement flat_rate requires'))).toBe(false);
     expect(
       isActionableShippingConfig({
         strategy: 'flat_rate',
         amount: 44,
         replace_existing_rates: true,
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('accepts replacement flat rate when method targets are present', () => {

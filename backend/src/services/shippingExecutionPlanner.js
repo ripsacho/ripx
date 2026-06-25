@@ -29,11 +29,15 @@ function isAdapterAvailable(capabilityReport, adapter) {
 }
 
 function hasDeliveryCustomizationTargets(config = {}) {
+  const scope =
+    config.shipping_scope && typeof config.shipping_scope === 'object' ? config.shipping_scope : {};
   const candidates = [
     config.delivery_method_names,
     config.deliveryMethodNames,
     config.method_names,
     config.methodNames,
+    scope.selected_rate_names,
+    scope.selectedRateNames,
   ];
   return candidates.some(value => {
     if (Array.isArray(value)) {
@@ -46,6 +50,9 @@ function hasDeliveryCustomizationTargets(config = {}) {
 }
 
 function shouldReplaceExistingRates(config = {}) {
+  if (!hasDeliveryCustomizationTargets(config)) {
+    return false;
+  }
   const displayMode = String(
     config.shipping_display_mode || config.shippingDisplayMode || config.display_mode || ''
   )

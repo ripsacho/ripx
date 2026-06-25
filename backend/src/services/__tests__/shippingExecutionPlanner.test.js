@@ -97,6 +97,49 @@ describe('shippingExecutionPlanner', () => {
     expect(plan.variants[1].replace_existing_rates).toBe(true);
   });
 
+  it('pairs carrier service with delivery customization when hide targets live in shipping scope only', () => {
+    const plan = buildShippingExecutionPlan(
+      {
+        id: 't-scope-hide',
+        name: 'Shipping scope hide test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 12,
+              shipping_display_mode: 'add_preview_method',
+              shipping_scope: {
+                selected_rate_names: ['Standard Shipping', 'Express'],
+              },
+              rates: [{ name: 'Economy', amount: 12 }],
+            },
+          },
+        ],
+      },
+      {
+        capabilities: {
+          adapter_support: {
+            carrier_service: { available: true },
+            delivery_customization: { available: true },
+            manual: { available: true },
+          },
+        },
+        recommended_execution_path: 'carrier_service',
+      }
+    );
+    expect(plan.variants[1].execution_adapters).toEqual([
+      'carrier_service',
+      'delivery_customization',
+    ]);
+    expect(plan.variants[1].config.delivery_method_names).toEqual(
+      expect.arrayContaining(['Standard Shipping', 'Express'])
+    );
+  });
+
   it('blocks replacement flat rate when delivery targets are missing', () => {
     const plan = buildShippingExecutionPlan(
       {
@@ -127,8 +170,43 @@ describe('shippingExecutionPlanner', () => {
         recommended_execution_path: 'carrier_service',
       }
     );
-    expect(plan.variants[1].status).toBe('manual_required');
-    expect(plan.variants[1].execution_mode).toBe('manual');
+    expect(plan.variants[1].replace_existing_rates).toBe(false);
+    expect(plan.variants[1].status).toBe('ready');
+    expect(plan.variants[1].execution_adapters).toEqual(['carrier_service']);
+  });
+
+  it('does not treat replace display mode as replacement without explicit hide targets', () => {
+    const plan = buildShippingExecutionPlan(
+      {
+        id: 't-display-replace-no-targets',
+        name: 'Shipping display mode test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 22,
+              shipping_display_mode: 'replace_existing_methods',
+            },
+          },
+        ],
+      },
+      {
+        capabilities: {
+          adapter_support: {
+            carrier_service: { available: true },
+            delivery_customization: { available: true },
+            manual: { available: true },
+          },
+        },
+        recommended_execution_path: 'carrier_service',
+      }
+    );
+    expect(plan.variants[1].replace_existing_rates).toBe(false);
+    expect(plan.variants[1].execution_adapters).toEqual(['carrier_service']);
   });
 
   it('treats replace display mode as replacement behavior', () => {

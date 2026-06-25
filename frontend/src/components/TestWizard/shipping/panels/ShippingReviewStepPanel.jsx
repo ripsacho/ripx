@@ -5,13 +5,18 @@ import {
   getConfigureFormKind,
   isIncentiveShippingCategory,
 } from '../config/shippingWizardBlueprint';
+import { partitionNativeShippingRates } from '../../../../utils/shippingConfig/deliveryMethodMatching';
 
 export default function ShippingReviewStepPanel({
   stepStyles,
   selectedShippingCategory,
   selectedShippingCategoryLabel,
   activeDeliveryMethodNames,
+  activeSelectedMethodIds = [],
+  activeDeliveryMethodCodes = [],
   activeConfiguredRates,
+  shippingCurrentRates = [],
+  replacesExistingRates = false,
   thresholdAmount,
   percentOff,
   discountAmount,
@@ -71,6 +76,26 @@ export default function ShippingReviewStepPanel({
   const configuredRateCount = activeConfiguredRates.length;
   const hiddenMethodPreview = activeDeliveryMethodNames.slice(0, 3);
   const remainingHiddenMethodCount = Math.max(0, hiddenMethodCount - hiddenMethodPreview.length);
+  const visibleNativeMethods = React.useMemo(() => {
+    const grouped = new Map();
+    (Array.isArray(shippingCurrentRates) ? shippingCurrentRates : []).forEach(rate => {
+      const name = String(rate?.name || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!grouped.has(key)) grouped.set(key, rate);
+    });
+    const { visible } = partitionNativeShippingRates(Array.from(grouped.values()), {
+      hideNames: activeDeliveryMethodNames,
+      hideIds: activeSelectedMethodIds,
+      hideCodes: activeDeliveryMethodCodes,
+    });
+    return visible;
+  }, [
+    shippingCurrentRates,
+    activeDeliveryMethodNames,
+    activeSelectedMethodIds,
+    activeDeliveryMethodCodes,
+  ]);
   const isIncentiveType = isIncentiveShippingCategory(selectedShippingCategory);
   const isFlatRateType = getConfigureFormKind(selectedShippingCategory) === 'flat_rate';
   const formatCurrencyAmount = value => {
@@ -242,7 +267,9 @@ export default function ShippingReviewStepPanel({
               <small>
                 {isFlatRateType
                   ? configuredRateCount > 0
-                    ? 'Configured rows shown at checkout.'
+                    ? hiddenMethodCount > 0
+                      ? 'RipX rows plus any unselected Shopify methods shoppers still see.'
+                      : 'RipX rows are added beside existing Shopify methods such as Standard.'
                     : 'Control checkout rate remains visible.'
                   : isIncentiveType
                     ? `${selectedShippingCategoryLabel || 'Incentive'} applied to targeted methods.`
@@ -259,21 +286,49 @@ export default function ShippingReviewStepPanel({
           </header>
           {isFlatRateType && configuredRateCount > 0 ? (
             <div className={stepStyles.shippingReviewRateList}>
-              {activeConfiguredRates.map((rate, index) => (
-                <div className={stepStyles.shippingReviewRateRow} key={`review-rate-${index}`}>
-                  <div className={stepStyles.shippingReviewRateHeader}>
-                    <strong>
-                      {String(rate?.name || `Rate ${index + 1}`).trim() || `Rate ${index + 1}`}
-                    </strong>
-                    <span>{formatRateAmount(rate)}</span>
-                  </div>
-                  <div className={stepStyles.shippingReviewRateMeta}>
-                    <small className={stepStyles.shippingReviewPromisePill}>
-                      {getRatePromiseLabel(rate)}
-                    </small>
-                  </div>
-                </div>
-              ))}
+              {hiddenMethodCount === 0 && visibleNativeMethods.length > 0 ? (
+                <>
+                  <small className={stepStyles.shippingReviewSectionLabel}>
+                    Stays visible (no Step 2 hide selection)
+                  </small>
+                  {visibleNativeMethods.map(rate => (
+                    <div
+                      className={`${stepStyles.shippingReviewRateRow} ${stepStyles.shippingReviewRateRowNative}`}
+                      key={`review-native-${rate?.name}`}
+                    >
+                      <div className={stepStyles.shippingReviewRateHeader}>
+                        <strong>{String(rate?.name || 'Shopify method').trim()}</strong>
+                        <span>{formatRateAmount(rate)}</span>
+                      </div>
+                      <div className={stepStyles.shippingReviewRateMeta}>
+                        <small>Existing Shopify method</small>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : null}
+              {configuredRateCount > 0 ? (
+                <>
+                  {hiddenMethodCount === 0 && visibleNativeMethods.length > 0 ? (
+                    <small className={stepStyles.shippingReviewSectionLabel}>Added by RipX</small>
+                  ) : null}
+                  {activeConfiguredRates.map((rate, index) => (
+                    <div className={stepStyles.shippingReviewRateRow} key={`review-rate-${index}`}>
+                      <div className={stepStyles.shippingReviewRateHeader}>
+                        <strong>
+                          {String(rate?.name || `Rate ${index + 1}`).trim() || `Rate ${index + 1}`}
+                        </strong>
+                        <span>{formatRateAmount(rate)}</span>
+                      </div>
+                      <div className={stepStyles.shippingReviewRateMeta}>
+                        <small className={stepStyles.shippingReviewPromisePill}>
+                          {getRatePromiseLabel(rate)}
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : null}
             </div>
           ) : isIncentiveType && hiddenMethodCount > 0 ? (
             <div className={stepStyles.shippingReviewRateList}>
@@ -289,7 +344,9 @@ export default function ShippingReviewStepPanel({
           ) : (
             <small>
               {isFlatRateType
-                ? 'No custom rows configured. Control checkout rate remains visible.'
+                ? hiddenMethodCount > 0
+                  ? 'Hidden methods apply only to Step 2 selections.'
+                  : 'No Step 2 hide selection. Existing Shopify methods remain visible beside RipX rows.'
                 : isIncentiveType
                   ? 'Select targeted methods in Step 2 to preview shopper impact.'
                   : 'Complete setup details to preview shopper impact.'}

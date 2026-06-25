@@ -313,15 +313,6 @@ export function getWizardStepErrors(stepId, options) {
     ) {
       errors.push(`${label}: rate priority and sort order must be positive integers.`);
     }
-    if (
-      strategy === 'flat_rate' &&
-      replacesExistingRates &&
-      deliveryTargets.length === 0 &&
-      !isControl &&
-      !isOfferWizardConfig(cfg)
-    ) {
-      errors.push(`${label}: replacement flat rate requires at least one delivery method target.`);
-    }
     if (isOfferWizardConfig(cfg) && !isControl) {
       getOfferWizardReadinessIssues(cfg, {
         normalizeRates: config => normalizeShippingRates(config),

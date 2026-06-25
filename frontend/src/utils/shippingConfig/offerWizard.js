@@ -50,11 +50,60 @@ export function getShippingOfferMode(cfg = {}) {
   const fromMetadata = normalizeShippingOfferMode(
     metadata.shipping_offer_mode || metadata.shippingOfferMode
   );
+  const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
   if (metadata.shipping_offer_mode || metadata.shippingOfferMode) {
+    if (fromMetadata === 'single' && rates.length > 1) {
+      return 'multiple';
+    }
     return fromMetadata;
   }
-  const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
   return rates.length > 1 ? 'multiple' : 'single';
+}
+
+export function buildPromoteShippingOfferToMultiplePatch(cfg = {}, baseline = {}) {
+  const metadata = cfg.metadata && typeof cfg.metadata === 'object' ? { ...cfg.metadata } : {};
+  const checkoutDisplay =
+    cfg.checkout_display && typeof cfg.checkout_display === 'object'
+      ? cfg.checkout_display
+      : cfg.checkoutDisplay && typeof cfg.checkoutDisplay === 'object'
+        ? cfg.checkoutDisplay
+        : {};
+  const rates = Array.isArray(cfg.rates) ? cfg.rates.map(rate => ({ ...rate })) : [];
+  const patch = {
+    metadata: {
+      ...metadata,
+      shipping_offer_mode: 'multiple',
+    },
+  };
+
+  if (rates.length > 0) {
+    return patch;
+  }
+
+  const amount = cfg.amount ?? cfg.rate ?? cfg.shipping_rate ?? baseline.rate ?? null;
+  const numericAmount =
+    amount === null || amount === undefined || amount === '' ? null : Number(amount);
+  const name =
+    String(
+      cfg.label || metadata.quote_service_name || metadata.quoteServiceName || baseline.name || ''
+    ).trim() || 'Shipping';
+  patch.rates = [
+    {
+      name,
+      amount: Number.isFinite(numericAmount) ? numericAmount : null,
+      currency: String(cfg.currency || baseline.currency || 'USD')
+        .trim()
+        .toUpperCase(),
+      description: String(checkoutDisplay.message || checkoutDisplay.description || '').trim(),
+      delivery_promise:
+        checkoutDisplay.delivery_promise && typeof checkoutDisplay.delivery_promise === 'object'
+          ? { ...checkoutDisplay.delivery_promise }
+          : { mode: 'none', preset: 'none' },
+      priority: 1,
+      sort_order: 1,
+    },
+  ];
+  return patch;
 }
 
 export function normalizeShippingOfferAttributes(raw = {}) {

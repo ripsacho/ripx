@@ -499,12 +499,10 @@
     var cartSnapshot = await debugCartSnapshot({ log: false });
     var desiredProps = getRipxLinePropertiesPayload(_ripxCartAttributeState);
     var lineState = _ripxCartAttributeState || null;
-    var debugTestId =
-      (lineState && lineState.testId) || PREVIEW_TEST_ID || null;
+    var debugTestId = (lineState && lineState.testId) || PREVIEW_TEST_ID || null;
     var cartEmpty = !cartSnapshot || !cartSnapshot.ok || Number(cartSnapshot.itemCount || 0) === 0;
     var assignmentInjected = Boolean(
-      lineState &&
-        (lineState._ripx_price_test || lineState.testId || debugTestId)
+      lineState && (lineState._ripx_price_test || lineState.testId || debugTestId)
     );
     var cartHasAssignment =
       Array.isArray(cartSnapshot && cartSnapshot.items) &&
@@ -522,7 +520,8 @@
       primaryBlocker = {
         code: 'cart_empty',
         title: 'Cart is empty',
-        detail: 'Add the product to cart first, then run debug again on /cart or after add-to-cart.',
+        detail:
+          'Add the product to cart first, then run debug again on /cart or after add-to-cart.',
       };
     } else if (!cartHasAssignment) {
       primaryBlocker = {
@@ -562,16 +561,15 @@
         'If checkout still shows native Standard, run RipX Diagnostics > Run live debug, then Apply shipping.',
         'In RipX app: Diagnostics tab > Run live debug to probe carrier callback and list stale Shopify carriers.',
         debugTestId
-          ? 'Carrier debug trace: GET /api/track/shipping-carrier-rates/debug?test_id=' + debugTestId
+          ? 'Carrier debug trace: GET /api/track/shipping-carrier-rates/debug?test_id=' +
+            debugTestId
           : 'Carrier debug trace: GET /api/track/shipping-carrier-rates/debug?test_id=<test_id>',
       ],
       debugEndpoints: {
         carrierTrace: debugTestId
           ? '/api/track/shipping-carrier-rates/debug?test_id=' + debugTestId
           : null,
-        liveDebug: debugTestId
-          ? '/api/tests/' + debugTestId + '/shipping/live-debug'
-          : null,
+        liveDebug: debugTestId ? '/api/tests/' + debugTestId + '/shipping/live-debug' : null,
       },
       primaryBlocker: primaryBlocker,
     };
@@ -4675,9 +4673,7 @@
             reason: reason || 'unknown',
             itemCount: Array.isArray(cartState && cartState.items) ? cartState.items.length : 0,
             cartEmpty:
-              !cartState ||
-              !Array.isArray(cartState.items) ||
-              cartState.items.length === 0,
+              !cartState || !Array.isArray(cartState.items) || cartState.items.length === 0,
           });
           if (DEBUG) {
             debugLog('cart props repair skipped:', reason || 'unknown', 'no matching line');
@@ -12513,8 +12509,7 @@
           title: resource.title || null,
           callback_host: callbackHost || null,
           callback_url: callbackUrl,
-          stale:
-            !!(currentApiHost && callbackHost && callbackHost !== currentApiHost),
+          stale: !!(currentApiHost && callbackHost && callbackHost !== currentApiHost),
         });
       });
       var staleCallbacks = carrierResources.filter(function (entry) {

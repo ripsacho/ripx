@@ -17,6 +17,7 @@ import {
   normalizeShippingWizardStepKey,
   shouldManageReplacementRatesForCategory,
   shouldShowMethodSelectionStep,
+  shouldUseMultiRowRateEditor,
 } from '../shippingWizardBlueprint';
 
 describe('shippingWizardBlueprint', () => {
@@ -49,8 +50,9 @@ describe('shippingWizardBlueprint', () => {
     expect(buildShippingCategoryConfigPatch('replace_rate', { metadata: { foo: 'bar' } })).toEqual({
       strategy: 'flat_rate',
       execution_hint: 'auto',
-      shipping_display_mode: 'replace_existing_methods',
-      replace_existing_rates: true,
+      shipping_display_mode: 'add_preview_method',
+      replace_existing_rates: false,
+      delivery_method_names: [],
       delivery_action: 'hide',
       delivery_rename_to: null,
       metadata: {
@@ -87,6 +89,17 @@ describe('shippingWizardBlueprint', () => {
     expect(getConfigureFormKind('threshold_free_shipping')).toBe('primary_fields');
     expect(getConfigureFormKind('discount_percentage')).toBe('primary_fields');
     expect(getConfigureFormKind('discount_fixed')).toBe('primary_fields');
+  });
+
+  it('uses multi-row rate editor for flat-rate categories in step 3', () => {
+    expect(shouldUseMultiRowRateEditor('replace_rate', { rates: [] })).toBe(true);
+    expect(shouldUseMultiRowRateEditor('add_rate', { rates: [{ name: 'A' }] })).toBe(true);
+    expect(shouldUseMultiRowRateEditor('free_shipping', { rates: [{ name: 'A' }] })).toBe(false);
+    expect(
+      shouldUseMultiRowRateEditor('free_shipping', {
+        metadata: { shipping_offer_mode: 'multiple' },
+      })
+    ).toBe(true);
   });
 
   it('builds method targeting patches without replace mode for incentives or add_rate', () => {

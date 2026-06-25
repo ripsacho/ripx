@@ -498,14 +498,14 @@ describe('API integration', () => {
       expect(res.status).toBe(200);
       expect(res.body.rates).toEqual([
         expect.objectContaining({
-          service_name: 'RipX Preview: Economy',
+          service_name: 'Economy',
           description: 'Economy shipping',
           service_code: 'economy',
           total_price: '450',
           currency: 'USD',
         }),
         expect.objectContaining({
-          service_name: 'RipX Preview: Express',
+          service_name: 'Express',
           description: '',
           service_code: 'express',
           total_price: '900',
@@ -611,7 +611,7 @@ describe('API integration', () => {
       expect(res.status).toBe(200);
       expect(res.body.rates).toEqual([
         expect.objectContaining({
-          service_name: 'RipX Preview: Custom ETA',
+          service_name: 'Custom ETA',
           service_code: 'custom_eta',
           total_price: '700',
           min_delivery_date: '2026-07-04',

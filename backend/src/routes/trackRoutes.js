@@ -3138,22 +3138,6 @@ router.post(
         .trim()
         .replace(/[^a-zA-Z0-9_-]/g, '')
         .slice(0, 48) || 'shipping';
-    const withPreviewPrefix = (name, prefix) => {
-      const normalizedName = String(name || '').trim();
-      const normalizedPrefix = String(prefix || '').trim();
-      if (!normalizedName) {
-        return '';
-      }
-      if (!normalizedPrefix) {
-        return normalizedName;
-      }
-      const lowerName = normalizedName.toLowerCase();
-      const lowerPrefix = normalizedPrefix.toLowerCase();
-      if (lowerName.startsWith(lowerPrefix + ':')) {
-        return normalizedName;
-      }
-      return `${normalizedPrefix}: ${normalizedName}`;
-    };
     const toRateSortValue = value => {
       const n = Number.parseInt(String(value ?? '').trim(), 10);
       return Number.isFinite(n) ? n : null;
@@ -3269,10 +3253,6 @@ router.post(
           shipping_config_revision: String(req.query?.cfg_rev || '').trim(),
         },
       };
-      let displayMode = String(req.query?.shipping_display_mode || '')
-        .trim()
-        .toLowerCase();
-      let previewLabelPrefix = String(req.query?.preview_label_prefix || '').trim();
       if (resolvedShippingVariant?.variant && resolvedShippingConfig) {
         variantConfig = resolvedShippingConfig;
         if (resolvedShippingConfig.amount !== null && resolvedShippingConfig.amount !== undefined) {
@@ -3281,14 +3261,6 @@ router.post(
         configuredRates = Array.isArray(resolvedShippingConfig.rates)
           ? resolvedShippingConfig.rates
           : [];
-        displayMode = String(
-          resolvedShippingConfig.shipping_display_mode ||
-            resolvedShippingConfig.shippingDisplayMode ||
-            ''
-        )
-          .trim()
-          .toLowerCase();
-        previewLabelPrefix = String(resolvedShippingConfig.preview_label_prefix || '').trim();
       }
       if (configuredRates.length === 0) {
         configuredRates = parseRatesFromQuery(String(req.query?.rates_json || '').trim());
@@ -3300,13 +3272,6 @@ router.post(
       candidateRates.forEach((rateConfig, index) => {
         const normalizedRateConfig =
           rateConfig && typeof rateConfig === 'object' ? { ...rateConfig } : { amount, currency };
-        if (displayMode !== 'replace_existing_methods') {
-          const fallbackPrefix = previewLabelPrefix || 'RipX Preview';
-          normalizedRateConfig.name = withPreviewPrefix(
-            normalizedRateConfig.name || normalizedRateConfig.service_name || serviceName,
-            fallbackPrefix
-          );
-        }
         const rate = formatCarrierRateForCheckout({
           rateConfig: normalizedRateConfig,
           variantConfig,

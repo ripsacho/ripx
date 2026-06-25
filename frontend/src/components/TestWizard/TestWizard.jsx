@@ -242,13 +242,16 @@ import {
   formatShippingDeliveryPromiseLabel,
   SHIPPING_DELIVERY_PROMISE_OPTIONS,
   getShippingOfferMode,
+  buildPromoteShippingOfferToMultiplePatch,
   getShippingOfferAttributes,
   buildShippingOfferAttributesPatch,
   buildOfferAttributeRevertPatch,
-  buildNativeDeliveryMethodCodes,
+  buildDeliveryHideTargetingCodes,
   resolveControlShippingBaseline,
   formatShippingOfferBaselineValue,
   SHIPPING_OFFER_ATTRIBUTE_OPTIONS,
+  shouldReplaceExistingShippingMethods,
+  sanitizeLegacyShippingPreviewConfig,
 } from '../../utils/shippingConfig';
 const ShippingVariantStudio = React.lazy(() => import('./shipping/ShippingVariantStudio'));
 import buildShippingVariantStudioBindings from './shipping/buildShippingVariantStudioBindings';
@@ -266,6 +269,7 @@ import {
   shouldShowMethodSelectionStep,
   getShippingTestTypeByKey,
   getConfigureFormKind,
+  shouldUseMultiRowRateEditor,
 } from './shipping/config/shippingWizardBlueprint';
 
 function getCheckoutOptionLabel(options = [], value, fallback = '') {
@@ -2935,6 +2939,12 @@ function TestWizard({
           const variant = normalizeVariantPriceConfigShape(rawVariant);
           const config =
             variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
+          const shippingSanitizedConfig =
+            String(initialData.type || '')
+              .trim()
+              .toLowerCase() === 'shipping'
+              ? sanitizeLegacyShippingPreviewConfig(config)
+              : config;
           const serverCode = variant?.code ?? variant?.config?.code ?? config?.code ?? '';
           const veRules = Array.isArray(config.visual_editor_rules)
             ? Array.from({ length: 5 }, (_, i) =>
@@ -2955,7 +2965,7 @@ function TestWizard({
             ...variant,
             allocation: variant.allocation ?? 0,
             code: serverCode,
-            config: { ...config, code: serverCode, visual_editor_rules: veRules },
+            config: { ...shippingSanitizedConfig, code: serverCode, visual_editor_rules: veRules },
           };
         }),
         segments: (() => {
@@ -3028,11 +3038,17 @@ function TestWizard({
           const v = normalizeVariantPriceConfigShape(rawVariant);
           const serverCode = v?.code ?? v?.config?.code ?? '';
           const config = v?.config && typeof v.config === 'object' ? { ...v.config } : {};
+          const nextConfig =
+            String(initialData.type || '')
+              .trim()
+              .toLowerCase() === 'shipping'
+              ? sanitizeLegacyShippingPreviewConfig(config)
+              : config;
           return {
             ...v,
             allocation: v.allocation ?? 0,
             code: serverCode,
-            config: { ...config, code: serverCode },
+            config: { ...nextConfig, code: serverCode },
           };
         }),
       }));
@@ -3378,6 +3394,8 @@ function TestWizard({
       String(data.type || '').toLowerCase() === 'theme' ||
       templateKey === 'theme' ||
       templateKey === 'template';
+    const isShippingTest =
+      String(data.type || '').toLowerCase() === 'shipping' || templateKey === 'shipping';
 
     const goal = {
       type: data.goal?.type || 'conversion',
@@ -3413,6 +3431,8 @@ function TestWizard({
       } else if (isThemeFamilyTest) {
         const fallbackThemeMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
         nextVariant.config = normalizeThemeConfig(nextVariant.config || {}, fallbackThemeMode);
+      } else if (isShippingTest) {
+        nextVariant.config = sanitizeLegacyShippingPreviewConfig(nextVariant.config || {});
       }
       return nextVariant;
     });
@@ -12739,26 +12759,7 @@ function TestWizard({
     const methodHandlesValue = normalizeCheckoutListInput(
       activeShippingConfig.method_handles || activeShippingConfig.methodHandles
     ).join(', ');
-    const activeShippingDisplayMode = String(
-      activeShippingConfig.shipping_display_mode ||
-        activeShippingConfig.shippingDisplayMode ||
-        activeShippingConfig.display_mode ||
-        ''
-    )
-      .trim()
-      .toLowerCase();
-    const replacesExistingRates =
-      activeShippingDisplayMode === 'replace_existing_methods'
-        ? true
-        : activeShippingDisplayMode === 'add_preview_method'
-          ? false
-          : Boolean(
-              activeShippingConfig.replace_existing_rates ||
-              activeShippingConfig.replaceExistingRates
-            );
-    const previewLabelPrefix = String(
-      activeShippingConfig.preview_label_prefix || activeShippingConfig.previewLabelPrefix || ''
-    ).trim();
+    const replacesExistingRates = shouldReplaceExistingShippingMethods(activeShippingConfig);
     const strategyGuidance =
       activeStrategy === 'flat_rate'
         ? 'Best for simple fixed-price shipping tests. Watch for multi-profile carts where combined rates can be confusing.'
@@ -12881,7 +12882,6 @@ function TestWizard({
     };
     const selectedShippingCategory = getSelectedShippingCategory();
     const selectedCategoryNeedsMethods = shouldShowMethodSelectionStep(selectedShippingCategory);
-    const shippingOfferMode = getShippingOfferMode(activeShippingConfig);
     const shippingOfferAttributes = getShippingOfferAttributes(activeShippingConfig);
     const controlVariantForBaseline = (formData.variants || [])[0] || null;
     const shippingOfferBaseline = resolveControlShippingBaseline({
@@ -13075,9 +13075,14 @@ function TestWizard({
     const availableDeliveryMethodNames = uniqueShippingValues(
       shippingCurrentRates.map(rate => rate?.name)
     ).slice(0, 8);
-    const activeDeliveryMethodNames = normalizeCheckoutListInput(
-      activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
-    );
+    const activeDeliveryMethodNames = uniqueShippingValues([
+      ...normalizeCheckoutListInput(
+        activeShippingConfig.delivery_method_names || activeShippingConfig.deliveryMethodNames
+      ),
+      ...(Array.isArray(activeShippingScope.selected_rate_names)
+        ? activeShippingScope.selected_rate_names
+        : []),
+    ]);
     const existingDeliveryMethodText =
       availableDeliveryMethodNames.length > 0
         ? availableDeliveryMethodNames.slice(0, 3).join(', ')
@@ -13259,6 +13264,12 @@ function TestWizard({
     ]
       .map(id => String(id || '').trim())
       .filter(Boolean);
+    const activeDeliveryMethodCodes = uniqueShippingValues([
+      ...normalizeCheckoutListInput(
+        activeShippingConfig.delivery_method_codes || activeShippingConfig.deliveryMethodCodes
+      ),
+      ...buildDeliveryHideTargetingCodes(activeDeliveryMethodNames, activeShippingScope),
+    ]);
     const getReplacementSourceName = rate =>
       String(
         rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
@@ -13316,12 +13327,23 @@ function TestWizard({
         delivery_promise: { mode: 'none', preset: 'none' },
       };
     };
-    const buildHideTargetsPatch = (methodNames = []) => {
+    const extractScopedTargetsFromScope = scope =>
+      [
+        ...(Array.isArray(scope?.selected_method_definition_ids)
+          ? scope.selected_method_definition_ids
+          : []),
+        ...(Array.isArray(scope?.selected_rate_ids) ? scope.selected_rate_ids : []),
+      ]
+        .map(id => String(id || '').trim())
+        .filter(Boolean);
+    const buildHideTargetsPatch = (methodNames = [], scope = activeShippingScope) => {
       const normalizedNames = normalizeCheckoutListInput(methodNames);
       return {
         ...buildMethodTargetingPatch(selectedShippingCategory, normalizedNames),
         delivery_method_codes:
-          normalizedNames.length > 0 ? buildNativeDeliveryMethodCodes(normalizedNames) : [],
+          normalizedNames.length > 0 || extractScopedTargetsFromScope(scope).length > 0
+            ? buildDeliveryHideTargetingCodes(normalizedNames, scope)
+            : [],
       };
     };
     const findShippingCurrentRateByName = methodName => {
@@ -13368,14 +13390,18 @@ function TestWizard({
     const updateActiveDeliveryMethodNames = (nextNames, { clearScopeTargets = false } = {}) => {
       if (isActiveControlLike) return;
       const normalizedNames = normalizeCheckoutListInput(nextNames);
-      const patch = buildHideTargetsPatch(normalizedNames);
-      if (clearScopeTargets && normalizeCheckoutListInput(nextNames).length === 0) {
-        patch.shipping_scope = {
-          ...activeShippingScope,
-          selected_rate_ids: [],
-          selected_rate_names: [],
-          selected_method_definition_ids: [],
-        };
+      const nextScope =
+        clearScopeTargets && normalizedNames.length === 0
+          ? {
+              ...activeShippingScope,
+              selected_rate_ids: [],
+              selected_rate_names: [],
+              selected_method_definition_ids: [],
+            }
+          : activeShippingScope;
+      const patch = buildHideTargetsPatch(normalizedNames, nextScope);
+      if (clearScopeTargets && normalizedNames.length === 0) {
+        patch.shipping_scope = nextScope;
       }
       updateShippingVariantConfig(activeShippingVariantIndex, patch);
     };
@@ -13456,7 +13482,18 @@ function TestWizard({
         }
       }
       updateShippingVariantConfig(activeShippingVariantIndex, {
-        ...buildHideTargetsPatch(nextNames),
+        ...buildHideTargetsPatch(nextNames, {
+          ...activeShippingScope,
+          selected_method_definition_ids: exists
+            ? removeValues(selectedDefinitionIds, idsToRemove)
+            : addValue(selectedDefinitionIds, methodDefinitionId),
+          selected_rate_ids: exists
+            ? removeValues(selectedRateIds, idsToRemove)
+            : addValue(selectedRateIds, rateId),
+          selected_rate_names: exists
+            ? selectedRateNames.filter(name => name.toLowerCase() !== normalizedName.toLowerCase())
+            : addValue(selectedRateNames, normalizedName),
+        }),
         ...(shouldReplaceFlow
           ? { rates: renumberShippingRateOrdering(nextRates), ...nextAmountPatch }
           : {}),
@@ -13510,8 +13547,14 @@ function TestWizard({
       const firstReplacementAmount = replacementRatesForSelection.find(rate =>
         hasShippingNumericValue(rate?.amount)
       )?.amount;
+      const nextScope = {
+        ...activeShippingScope,
+        selected_method_definition_ids: Array.from(new Set(definitionIds)),
+        selected_rate_ids: Array.from(new Set(rateIds)),
+        selected_rate_names: names,
+      };
       updateShippingVariantConfig(activeShippingVariantIndex, {
-        ...buildHideTargetsPatch(names),
+        ...buildHideTargetsPatch(names, nextScope),
         ...(names.length > 0 && replacementRatesForSelection.length > 0
           ? {
               rates: replacementRatesForSelection,
@@ -13520,12 +13563,7 @@ function TestWizard({
                 : {}),
             }
           : {}),
-        shipping_scope: {
-          ...activeShippingScope,
-          selected_method_definition_ids: Array.from(new Set(definitionIds)),
-          selected_rate_ids: Array.from(new Set(rateIds)),
-          selected_rate_names: names,
-        },
+        shipping_scope: nextScope,
       });
     };
     const addReplacementRateForMethod = (methodName, sourceRate = null) => {
@@ -13553,30 +13591,32 @@ function TestWizard({
         : [];
       const nextRate = buildReplacementRateForMethod(normalizedName, sourceRate);
       if (!nextRate) return;
+      const nextScope = {
+        ...activeShippingScope,
+        selected_method_definition_ids:
+          methodDefinitionId && !selectedDefinitionIds.includes(methodDefinitionId)
+            ? [...selectedDefinitionIds, methodDefinitionId]
+            : selectedDefinitionIds,
+        selected_rate_ids:
+          rateId && !selectedRateIds.includes(rateId)
+            ? [...selectedRateIds, rateId]
+            : selectedRateIds,
+        selected_rate_names: selectedRateNames.some(
+          name => name.toLowerCase() === normalizedName.toLowerCase()
+        )
+          ? selectedRateNames
+          : [...selectedRateNames, normalizedName],
+      };
       updateShippingVariantConfig(activeShippingVariantIndex, {
         ...buildHideTargetsPatch(
-          appendShippingListValue(activeDeliveryMethodNames, normalizedName)
+          appendShippingListValue(activeDeliveryMethodNames, normalizedName),
+          nextScope
         ),
         strategy: activeStrategy === 'control' ? 'flat_rate' : activeStrategy,
         ...(activeConfiguredRates.length === 0 && hasShippingNumericValue(nextRate.amount)
           ? { amount: nextRate.amount }
           : {}),
-        shipping_scope: {
-          ...activeShippingScope,
-          selected_method_definition_ids:
-            methodDefinitionId && !selectedDefinitionIds.includes(methodDefinitionId)
-              ? [...selectedDefinitionIds, methodDefinitionId]
-              : selectedDefinitionIds,
-          selected_rate_ids:
-            rateId && !selectedRateIds.includes(rateId)
-              ? [...selectedRateIds, rateId]
-              : selectedRateIds,
-          selected_rate_names: selectedRateNames.some(
-            name => name.toLowerCase() === normalizedName.toLowerCase()
-          )
-            ? selectedRateNames
-            : [...selectedRateNames, normalizedName],
-        },
+        shipping_scope: nextScope,
         rates: renumberShippingRateOrdering([...activeConfiguredRates, nextRate]),
       });
     };
@@ -13794,21 +13834,41 @@ function TestWizard({
     };
     const addShippingRateRow = () => {
       setShippingLastAutoFixSnapshot(null);
-      const nextRateIndex = activeConfiguredRates.length;
-      const nextRates = [
-        ...activeConfiguredRates,
+      const shouldPromoteOfferMode =
+        shouldUseMultiRowRateEditor(selectedShippingCategory, activeShippingConfig) &&
+        getShippingOfferMode(activeShippingConfig) === 'single' &&
+        activeConfiguredRates.length <= 1;
+      const promotePatch = shouldPromoteOfferMode
+        ? buildPromoteShippingOfferToMultiplePatch(activeShippingConfig, shippingOfferBaseline)
+        : null;
+      const baseRates =
+        activeConfiguredRates.length > 0
+          ? activeConfiguredRates
+          : Array.isArray(promotePatch?.rates)
+            ? promotePatch.rates
+            : [];
+      const nextRateIndex = baseRates.length;
+      const nextRates = renumberShippingRateOrdering([
+        ...baseRates,
         {
           name: '',
           amount: null,
           currency: String(activeShippingConfig.currency || 'USD')
             .trim()
             .toUpperCase(),
-          priority: activeConfiguredRates.length + 1,
-          sort_order: activeConfiguredRates.length + 1,
+          priority: baseRates.length + 1,
+          sort_order: baseRates.length + 1,
         },
-      ];
+      ]);
       updateShippingVariantConfig(activeShippingVariantIndex, {
-        rates: renumberShippingRateOrdering(nextRates),
+        rates: nextRates,
+        metadata: {
+          ...(activeShippingConfig.metadata && typeof activeShippingConfig.metadata === 'object'
+            ? activeShippingConfig.metadata
+            : {}),
+          ...(promotePatch?.metadata || {}),
+          shipping_offer_mode: 'multiple',
+        },
       });
       focusShippingRateNameInput(nextRateIndex);
     };
@@ -14170,17 +14230,8 @@ function TestWizard({
             delivery_promise: { mode: 'none', preset: 'none' },
           }
         : null);
-    const checkoutPreviewTitle = (() => {
-      const rawName =
-        String(checkoutPreviewSourceRate?.name || 'RipX Shipping').trim() || 'RipX Shipping';
-      if (activeStrategy !== 'flat_rate' || replacesExistingRates) {
-        return rawName;
-      }
-      const prefix = previewLabelPrefix || 'RipX Preview';
-      return rawName.toLowerCase().startsWith(`${prefix.toLowerCase()}:`)
-        ? rawName
-        : `${prefix}: ${rawName}`;
-    })();
+    const checkoutPreviewTitle =
+      String(checkoutPreviewSourceRate?.name || 'RipX Shipping').trim() || 'RipX Shipping';
     const checkoutPreviewDescription =
       String(checkoutPreviewSourceRate?.description || '').trim() ||
       String(activeCheckoutDisplay.default_description || '').trim();
@@ -14202,14 +14253,18 @@ function TestWizard({
         };
       }
       if (activeStrategy === 'flat_rate') {
+        const hideTargetText =
+          targetedDeliveryMethods.length > 0
+            ? targetedDeliveryMethods.join(', ')
+            : existingDeliveryMethodText;
         return {
           beforeTitle: 'Current checkout',
           before: currentShippingRateText,
           afterTitle: 'Variant checkout',
           after: hasShippingNumericValue(activePrimaryRateAmount)
             ? replacesExistingRates
-              ? `After apply, RipX shows ${activeConfiguredValidRates.length > 1 ? `up to ${activeConfiguredValidRates.length} configured carrier rates (starting at ${formatShippingMoney(activePrimaryRateAmount)})` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`} and hides ${targetedDeliveryMethods.length > 0 ? targetedDeliveryMethods.join(', ') : existingDeliveryMethodText} for this variant.`
-              : `After apply, RipX adds ${activeConfiguredValidRates.length > 1 ? `${activeConfiguredValidRates.length} configured carrier rates` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`}${previewLabelPrefix ? ` labeled with "${previewLabelPrefix}"` : ' labeled as RipX Preview'}${targetedDeliveryMethods.length > 0 ? ` and hides ${targetedDeliveryMethods.join(', ')} for this variant` : ''}.`
+              ? `After apply, RipX shows ${activeConfiguredValidRates.length > 1 ? `up to ${activeConfiguredValidRates.length} configured carrier rates (starting at ${formatShippingMoney(activePrimaryRateAmount)})` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`} and hides ${hideTargetText} for this variant.`
+              : `After apply, RipX adds ${activeConfiguredValidRates.length > 1 ? `${activeConfiguredValidRates.length} configured carrier rates` : `a ${formatShippingMoney(activePrimaryRateAmount)} carrier rate`} using the checkout rate name${targetedDeliveryMethods.length > 0 ? ` and hides ${targetedDeliveryMethods.join(', ')} for this variant` : '. Existing Shopify methods such as Standard stay visible until you select hide targets in Step 2'}.`
             : 'Add a flat amount to preview the variant shipping rate.',
         };
       }
@@ -14317,6 +14372,10 @@ function TestWizard({
     );
     const renderShippingOfferStep = () => {
       const shouldShowOfferBlocker = activeReadiness?.status === 'blocked';
+      const usesMultiRowRateEditor = shouldUseMultiRowRateEditor(
+        selectedShippingCategory,
+        activeShippingConfig
+      );
       const showNameColumn = shippingOfferAttributes.name;
       const showRateColumn = shippingOfferAttributes.rate;
       const showMessageColumn = shippingOfferAttributes.message;
@@ -14355,10 +14414,11 @@ function TestWizard({
       };
       return renderShippingSmartSection({
         title: 'New shipping for this test',
-        description:
-          shippingOfferMode === 'multiple'
-            ? 'Add one row per shopper-visible shipping option.'
-            : 'Set the shopper-visible shipping option for this variant.',
+        description: usesMultiRowRateEditor
+          ? replacesExistingRates
+            ? 'Configure one linked row per selected method. Add more rows only for extra shopper choices.'
+            : 'Add one row per shopper-visible shipping option.'
+          : 'Set the shopper-visible shipping option for this variant.',
         badges: [renderShippingFieldBadge('Required', 'attention')],
         children: (
           <>
@@ -14368,7 +14428,7 @@ function TestWizard({
                 {activeReadiness?.issue || 'Configuration blocked.'}
               </div>
             )}
-            {shippingOfferMode === 'single' ? (
+            {!usesMultiRowRateEditor ? (
               renderShippingCheckoutOfferFields({
                 showUncheckedBaselines: true,
                 offerAttributes: shippingOfferAttributes,
@@ -14378,7 +14438,11 @@ function TestWizard({
               <>
                 <div className={stepStyles.shippingOfferTableToolbar}>
                   <Button icon={PlusIcon} size="slim" onClick={handleAddShippingRateRow}>
-                    {tableRates.length === 0 ? 'Add first shipping row' : 'Add shipping row'}
+                    {tableRates.length === 0
+                      ? 'Add first shipping row'
+                      : replacesExistingRates
+                        ? 'Add another service'
+                        : 'Add shipping row'}
                   </Button>
                   <span>
                     {tableRates.length} option{tableRates.length === 1 ? '' : 's'} configured
@@ -15007,9 +15071,6 @@ function TestWizard({
                         <span className={stepStyles.shippingConfigSummaryChip}>
                           Mode: {replacesExistingRates ? 'Replace' : 'Compare'}
                         </span>
-                        <span className={stepStyles.shippingConfigSummaryChip}>
-                          Prefix: {previewLabelPrefix || 'RipX Preview'}
-                        </span>
                       </div>
                       {visibleShippingRateEntries.length > 0 ? (
                         <div className={stepStyles.shippingRateTable}>
@@ -15534,27 +15595,6 @@ function TestWizard({
                       }),
                   })}
                 </>
-              ) : !shippingStudioEnhancementsEnabled ? (
-                <>
-                  <TextField
-                    label="Preview label prefix"
-                    value={previewLabelPrefix}
-                    onChange={value =>
-                      updateShippingVariantConfig(activeShippingVariantIndex, {
-                        preview_label_prefix: value,
-                        shipping_display_mode: 'add_preview_method',
-                        replace_existing_rates: false,
-                      })
-                    }
-                    placeholder="RipX Preview"
-                    helpText="Prefix shown before additive rate labels."
-                    autoComplete="off"
-                  />
-                  <div className={stepStyles.shippingFieldNote}>
-                    Additive mode keeps {existingDeliveryMethodText} visible so shoppers can
-                    compare.
-                  </div>
-                </>
               ) : null}
             </>
           ),
@@ -15992,6 +16032,7 @@ function TestWizard({
       selectedCategoryNeedsMethods,
       activeDeliveryMethodNames,
       activeSelectedMethodIds,
+      activeDeliveryMethodCodes,
       activeConfiguredRates,
       shippingUiAdvancedOpen,
       selectedShippingCategoryLabel,
@@ -16008,7 +16049,7 @@ function TestWizard({
       checkoutPreviewPrice,
       checkoutPreviewDescription,
       checkoutPreviewPromiseLabel,
-      shippingBeforeAfter,
+      replacesExistingRates,
       canShowShippingOperations,
       shippingOperationsDisabled,
       shippingOperationsDisabledReason,

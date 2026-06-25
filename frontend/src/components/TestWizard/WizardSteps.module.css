@@ -543,6 +543,12 @@
   align-items: start;
 }
 
+@media (min-width: 1180px) {
+  .shippingVariantWorkspace {
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
+  }
+}
+
 .shippingVariantFormCard,
 .shippingReadinessRail {
   min-width: 0;
@@ -1994,6 +2000,19 @@
   gap: 5px;
 }
 
+.shippingReviewSectionLabel {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shippingReviewRateRowNative {
+  border-style: dashed;
+  background: rgba(248, 250, 252, 0.92);
+}
+
 .shippingReviewRateRow {
   display: grid;
   gap: 4px;
@@ -2800,6 +2819,225 @@
   box-shadow:
     0 10px 22px rgba(30, 41, 59, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.shippingCheckoutMockStack {
+  display: grid;
+  gap: 8px;
+}
+
+.shippingPreviewSliderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shippingPreviewSliderCounter {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shippingPreviewSlider {
+  display: grid;
+  gap: 10px;
+}
+
+.shippingPreviewSliderTabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.shippingPreviewSliderTab {
+  display: grid;
+  gap: 2px;
+  min-width: 92px;
+  max-width: 132px;
+  padding: 8px 10px;
+  border: 1px solid rgba(30, 41, 59, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.shippingPreviewSliderTab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.shippingPreviewSliderTab small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.shippingPreviewSliderTabActive {
+  border-color: rgba(14, 116, 144, 0.34);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(14, 116, 144, 0.08), transparent 42%),
+    rgba(236, 254, 255, 0.92);
+  box-shadow: 0 8px 18px rgba(14, 116, 144, 0.08);
+  color: var(--text-primary);
+}
+
+.shippingPreviewSliderTabVariant.shippingPreviewSliderTabActive {
+  border-color: rgba(14, 116, 144, 0.42);
+}
+
+.shippingPreviewSliderEmpty {
+  display: grid;
+  place-items: center;
+  min-height: 132px;
+  padding: 16px;
+  border: 1px dashed rgba(14, 116, 144, 0.22);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.72);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.shippingPreviewSliderRadioSelected {
+  background: rgba(14, 116, 144, 0.75);
+}
+
+.shippingPreviewSliderViewport {
+  position: relative;
+  min-height: 132px;
+}
+
+.shippingPreviewSliderCard {
+  position: relative;
+  animation: shippingPreviewSlideIn 220ms ease;
+}
+
+@keyframes shippingPreviewSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shippingPreviewSliderCardBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 2px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.shippingCheckoutMockCardVariant .shippingPreviewSliderCardBadge {
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+}
+
+.shippingPreviewSliderNav {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.shippingPreviewSliderDots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shippingPreviewSliderDot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    width 160ms ease;
+}
+
+.shippingPreviewSliderDot:hover {
+  background: rgba(14, 116, 144, 0.45);
+}
+
+.shippingPreviewSliderDotActive {
+  width: 18px;
+  background: rgba(14, 116, 144, 0.82);
+}
+
+.shippingPreviewSliderArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(14, 116, 144, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f766e;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.shippingPreviewSliderArrow:hover:not(:disabled) {
+  border-color: rgba(14, 116, 144, 0.34);
+  background: rgba(236, 254, 255, 0.92);
+}
+
+.shippingPreviewSliderArrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.shippingCheckoutMockCardVariant {
+  border-color: rgba(14, 116, 144, 0.28);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(14, 116, 144, 0.08), transparent 42%),
+    linear-gradient(180deg, rgba(236, 254, 255, 0.92), rgba(248, 250, 252, 0.9));
 }
 
 .shippingCheckoutMockHeader {
@@ -5297,6 +5535,59 @@
   box-shadow:
     inset 0 0 0 3px var(--surface-slate-solid),
     0 0 0 1px rgba(6, 182, 212, 0.14) !important;
+}
+
+[data-theme='dark'] .shippingPreviewSliderCounter,
+[data-theme='dark'] .shippingPreviewSliderCardBadge {
+  color: rgba(203, 213, 225, 0.82) !important;
+}
+
+[data-theme='dark'] .shippingPreviewSliderCardBadge {
+  background: rgba(148, 163, 184, 0.14) !important;
+}
+
+[data-theme='dark'] .shippingCheckoutMockCardVariant .shippingPreviewSliderCardBadge {
+  background: rgba(6, 182, 212, 0.16) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .shippingPreviewSliderDot {
+  background: rgba(148, 163, 184, 0.34);
+}
+
+[data-theme='dark'] .shippingPreviewSliderDotActive {
+  background: rgba(6, 182, 212, 0.82);
+}
+
+[data-theme='dark'] .shippingPreviewSliderArrow {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .shippingPreviewSliderArrow:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.42);
+}
+
+[data-theme='dark'] .shippingPreviewSliderTab {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: rgba(203, 213, 225, 0.82);
+}
+
+[data-theme='dark'] .shippingPreviewSliderTabActive {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 42%),
+    rgba(15, 23, 42, 0.92);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: rgba(241, 245, 249, 0.96);
+}
+
+[data-theme='dark'] .shippingPreviewSliderEmpty {
+  background: rgba(15, 23, 42, 0.58);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(203, 213, 225, 0.82);
 }
 
 [data-theme='dark'] .shippingStrategyOptionActive .shippingStrategyRadio,

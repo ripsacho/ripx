@@ -1,5 +1,6 @@
 const { normalizeShippingVariantConfig } = require('./shippingTestConfigService');
 const { formatCarrierRateForCheckout } = require('./shippingCarrierRateFormatter');
+const { shouldReplaceExistingRates } = require('./shippingExecutionPlanner');
 
 function toFiniteNumber(value) {
   const parsed = Number.parseFloat(String(value ?? '').trim());
@@ -101,9 +102,7 @@ function resolveVariantProviderConfig(variant = {}) {
       config.checkout_display?.default_description
     )
   );
-  const replaceExistingRates =
-    config.shipping_display_mode === 'replace_existing_methods' ||
-    config.replace_existing_rates === true;
+  const replaceExistingRates = shouldReplaceExistingRates(config);
   const countryRates = parseCountryRateMap(
     metadata.country_rates ||
       metadata.countryRates ||

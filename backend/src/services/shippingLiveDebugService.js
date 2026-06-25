@@ -8,6 +8,7 @@ const {
   compareShippingCarrierCallbackUrls,
   buildShippingCarrierCallbackUrl,
 } = require('./shippingAutoExecutionService');
+const { shouldReplaceExistingRates } = require('./shippingExecutionPlanner');
 
 function resolveShippingCarrierCallbackBaseUrl() {
   const explicit = String(process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL || '').trim();
@@ -286,7 +287,7 @@ async function buildShippingLiveDebugReport({
       callbackProbe.ok && callbackProbe.rates_count === 0
         ? 'Carrier callback responded but returned zero rates for an assigned cart probe. Re-apply shipping and confirm quote amount/name are set in Checkout offer.'
         : null,
-      treatmentVariant?.config?.shipping_display_mode === 'replace_existing_methods' &&
+      shouldReplaceExistingRates(treatmentVariant?.config || {}) &&
       callbackProbe.ok &&
       callbackProbe.rates_count === 0
         ? 'Replace mode is active but the carrier probe returned no replacement rate. Checkout may hide native methods and show nothing until this is fixed.'

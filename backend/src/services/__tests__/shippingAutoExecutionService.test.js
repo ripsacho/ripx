@@ -460,7 +460,6 @@ describe('shippingAutoExecutionService', () => {
     expect(action.details?.callback_url).toContain('amount=4.00');
     expect(action.details?.callback_url).toContain('shop_domain=plus.myshopify.com');
     expect(action.details?.callback_url).toContain('shipping_display_mode=add_preview_method');
-    expect(action.details?.callback_url).toContain('preview_label_prefix=RipX+Preview');
     expect(action.details?.callback_url).toContain('rates_count=2');
     expect(action.details?.callback_url).toContain('rates_json=');
     const callbackUrl = new URL(action.details?.callback_url);
@@ -1416,7 +1415,8 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
       method_names: ['Standard Shipping'],
       skip_replacement_presence_gate: true,
-      protected_method_name_prefixes: expect.arrayContaining(['RipX Preview']),
+      protected_method_names: [],
+      protected_method_name_prefixes: expect.arrayContaining(['RipX Shipping']),
     });
   });
 
@@ -1469,6 +1469,152 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].details?.status).toBe('skipped_dependency');
     expect(restSpy).not.toHaveBeenCalled();
     expect(graphSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not apply delivery customization for replace flags without hide targets', async () => {
+    process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL =
+      'https://ripx.example.com/api/track/shipping-carrier-rates';
+    process.env.APP_URL = 'https://ripx.example.com';
+
+    jest.spyOn(shopifyService, 'requestAdminGraphql').mockResolvedValueOnce({
+      data: {
+        shop: {
+          id: 'shop-1',
+          myshopifyDomain: 'plus.myshopify.com',
+          plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+        },
+      },
+    });
+    const restSpy = jest.spyOn(shopifyService, 'requestAdminRest');
+    restSpy.mockResolvedValueOnce({ carrier_services: [] }).mockResolvedValueOnce({
+      carrier_service: {
+        id: 123,
+        name: 'RipX Shipping Carrier test-46 Variant Replace',
+        callback_url:
+          'https://ripx.example.com/api/track/shipping-carrier-rates?test_id=test-46&variant_index=1&strategy=flat_rate&amount=44.00',
+        service_discovery: true,
+      },
+    });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-46',
+        name: 'Shipping replace without targets',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant Replace',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 44,
+              shipping_display_mode: 'replace_existing_methods',
+              replace_existing_rates: true,
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const actions = result.execution_result.actions;
+    expect(actions).toHaveLength(1);
+    expect(actions[0].execution_adapter).toBe('carrier_service');
+    expect(actions[0].status).toBe('created');
+    expect(restSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears stale delivery customization when hide targets are removed', async () => {
+    process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL =
+      'https://ripx.example.com/api/track/shipping-carrier-rates';
+    process.env.APP_URL = 'https://ripx.example.com';
+
+    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    graphSpy
+      .mockResolvedValueOnce({
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'plus.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizations: {
+            edges: [
+              {
+                node: {
+                  id: 'gid://shopify/DeliveryCustomization/46',
+                  title: 'RipX Shipping Delivery test-46 Variant Replace',
+                  enabled: true,
+                },
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [{ id: 'gid://shopify/Metafield/46' }],
+            userErrors: [],
+          },
+        },
+      });
+    const restSpy = jest.spyOn(shopifyService, 'requestAdminRest');
+    restSpy.mockResolvedValueOnce({ carrier_services: [] }).mockResolvedValueOnce({
+      carrier_service: {
+        id: 123,
+        name: 'RipX Shipping Carrier test-46 Variant Replace',
+        callback_url:
+          'https://ripx.example.com/api/track/shipping-carrier-rates?test_id=test-46&variant_index=1&strategy=flat_rate&amount=44.00',
+        service_discovery: true,
+      },
+    });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-46',
+        name: 'Shipping replace without targets',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant Replace',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 44,
+              metadata: {
+                shipping_resources: [
+                  {
+                    resource_type: 'delivery_customization',
+                    id: 'gid://shopify/DeliveryCustomization/46',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const actions = result.execution_result.actions;
+    expect(actions).toHaveLength(2);
+    expect(actions[0].execution_adapter).toBe('carrier_service');
+    expect(actions[1].execution_adapter).toBe('delivery_customization');
+    expect(actions[1].status).toBe('cleared');
+    expect(actions[1].details?.config?.variant_rules).toEqual([]);
   });
 
   it('auto-selects carrier service for carrier_quote and requires a quote provider', async () => {

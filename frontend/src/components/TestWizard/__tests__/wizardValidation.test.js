@@ -1003,7 +1003,7 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('carrier quote requires'))).toBe(false);
       });
 
-      it('requires delivery method targets for replacement flat rates', () => {
+      it('allows flat rates without hide targets when replace flag is stale', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,
           reviewStepId: 6,
@@ -1025,7 +1025,7 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
           selectedTemplate: 'shipping',
         });
-        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(true);
+        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(false);
       });
 
       it('accepts replacement flat rates with delivery method targets', () => {
@@ -1077,7 +1077,7 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
           selectedTemplate: 'shipping',
         });
-        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(true);
+        expect(errors.some(e => e.includes('replacement flat rate requires'))).toBe(false);
       });
 
       it('rejects replacement flat rates that do not hide existing methods', () => {

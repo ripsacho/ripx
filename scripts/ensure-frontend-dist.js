@@ -10,6 +10,8 @@ const distAssetsDir = path.join(repoRoot, 'frontend/dist/assets');
 const sourceWatchRoots = [
   path.join(repoRoot, 'frontend/src/components/TestWizard/shipping'),
   path.join(repoRoot, 'frontend/src/components/TestWizard/TestWizard.jsx'),
+  path.join(repoRoot, 'frontend/src/components/TestWizard/WizardSteps.module.css'),
+  path.join(repoRoot, 'frontend/src/utils/shippingConfig'),
 ];
 
 const STEP1_DIST_MARKERS = ['Free over threshold', 'Select a shipping test type'];

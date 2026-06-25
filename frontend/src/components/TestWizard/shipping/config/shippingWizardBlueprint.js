@@ -353,8 +353,9 @@ export function buildShippingCategoryConfigPatch(
     return {
       strategy: 'flat_rate',
       execution_hint: 'auto',
-      shipping_display_mode: 'replace_existing_methods',
-      replace_existing_rates: true,
+      shipping_display_mode: 'add_preview_method',
+      replace_existing_rates: false,
+      delivery_method_names: [],
       delivery_action: 'hide',
       delivery_rename_to: null,
       metadata: {
@@ -425,6 +426,22 @@ export function buildShippingCategoryConfigPatch(
       ...advancedWizardMetadataPatch,
     },
   };
+}
+
+export function shouldUseMultiRowRateEditor(typeKey, cfg = {}) {
+  const type = getShippingTypeOptionDetails(typeKey);
+  if (type.supportsMultiRow) {
+    return true;
+  }
+  const metadata = cfg.metadata && typeof cfg.metadata === 'object' ? cfg.metadata : {};
+  const explicitMode = String(metadata.shipping_offer_mode || metadata.shippingOfferMode || '')
+    .trim()
+    .toLowerCase();
+  if (explicitMode === 'multiple') {
+    return true;
+  }
+  const rates = Array.isArray(cfg?.rates) ? cfg.rates : [];
+  return rates.length > 1;
 }
 
 export function getGuidedShippingStepBlockedReason({
