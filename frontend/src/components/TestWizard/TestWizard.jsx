@@ -13726,7 +13726,7 @@ function TestWizard({
       goToGuidedShippingStep(Math.max(activeShippingGuidedStepIndex - 1, 0));
     const handleFinishGuidedShippingSetup = async () => {
       if (mode === 'edit') {
-        const saved = await handleSubmit();
+        const saved = await handleSubmit({ silent: true, skipShippingSync: true });
         if (!saved) return;
         await runShippingFinishPipeline();
         return;

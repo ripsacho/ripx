@@ -646,6 +646,16 @@ function TestDetail() {
         if (!['flat_rate', 'carrier_quote'].includes(strategy)) {
           return null;
         }
+        const displayMode = String(
+          config.shipping_display_mode || config.shippingDisplayMode || config.display_mode || ''
+        )
+          .trim()
+          .toLowerCase();
+        const requiresProfileScope =
+          displayMode === 'replace_existing_methods' || config.replace_existing_rates === true;
+        if (!requiresProfileScope) {
+          return null;
+        }
         const scope =
           config.shipping_scope && typeof config.shipping_scope === 'object'
             ? config.shipping_scope
@@ -1168,7 +1178,8 @@ function TestDetail() {
       }
       invalidateTests(id);
       setHasUnsavedChanges(false);
-      const shouldRunShippingSaveFlow = isShippingTest && !isDraft && !options.silent;
+      const shouldRunShippingSaveFlow =
+        isShippingTest && !isDraft && !options.silent && !options.skipShippingSync;
       if (shouldRunShippingSaveFlow) {
         const syncStartedAt = Date.now();
         const minimumBlockingMs = 1500;

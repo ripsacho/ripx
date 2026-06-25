@@ -30,6 +30,7 @@ export default function ShippingReviewStepPanel({
     : [];
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [debugModalOpen, setDebugModalOpen] = useState(false);
+  const [debugCopyState, setDebugCopyState] = useState('idle');
   const detailItems = Array.isArray(shippingOperationResult?.details)
     ? shippingOperationResult.details
     : [];
@@ -37,6 +38,30 @@ export default function ShippingReviewStepPanel({
     shippingOperationResult?.debugReport && typeof shippingOperationResult.debugReport === 'object'
       ? shippingOperationResult.debugReport
       : null;
+  const debugReportText = debugReport ? JSON.stringify(debugReport, null, 2) : '';
+  const handleCopyDebugReport = async () => {
+    if (!debugReportText) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(debugReportText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = debugReportText;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setDebugCopyState('copied');
+      window.setTimeout(() => setDebugCopyState('idle'), 2000);
+    } catch {
+      setDebugCopyState('failed');
+      window.setTimeout(() => setDebugCopyState('idle'), 2500);
+    }
+  };
   const formatRateAmount = rate => {
     const amount = Number(rate?.amount);
     const currency = String(rate?.currency || 'USD').toUpperCase();
@@ -418,17 +443,41 @@ export default function ShippingReviewStepPanel({
       {debugReport ? (
         <Modal
           open={debugModalOpen}
-          onClose={() => setDebugModalOpen(false)}
+          onClose={() => {
+            setDebugModalOpen(false);
+            setDebugCopyState('idle');
+          }}
           title="Shipping debug report"
           primaryAction={{
             content: 'Close',
-            onAction: () => setDebugModalOpen(false),
+            onAction: () => {
+              setDebugModalOpen(false);
+              setDebugCopyState('idle');
+            },
           }}
+          secondaryActions={[
+            {
+              content:
+                debugCopyState === 'copied'
+                  ? 'Copied'
+                  : debugCopyState === 'failed'
+                    ? 'Copy failed'
+                    : 'Copy report',
+              onAction: handleCopyDebugReport,
+            },
+          ]}
         >
           <Modal.Section>
-            <pre className={stepStyles.shippingDebugReportPre}>
-              {JSON.stringify(debugReport, null, 2)}
-            </pre>
+            <div className={stepStyles.shippingDebugReportToolbar}>
+              <Button size="slim" onClick={handleCopyDebugReport}>
+                {debugCopyState === 'copied'
+                  ? 'Copied'
+                  : debugCopyState === 'failed'
+                    ? 'Copy failed'
+                    : 'Copy report'}
+              </Button>
+            </div>
+            <pre className={stepStyles.shippingDebugReportPre}>{debugReportText}</pre>
           </Modal.Section>
         </Modal>
       ) : null}
