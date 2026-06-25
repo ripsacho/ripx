@@ -1416,6 +1416,7 @@ describe('shippingAutoExecutionService', () => {
       method_names: ['Standard Shipping'],
       skip_replacement_presence_gate: true,
       protected_method_names: [],
+      protected_method_codes: expect.arrayContaining([expect.stringMatching(/^ripx_flat_/i)]),
       protected_method_name_prefixes: expect.arrayContaining(['RipX Shipping']),
     });
   });

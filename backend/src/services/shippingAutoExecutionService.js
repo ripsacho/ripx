@@ -11,7 +11,10 @@ const {
   isActionableShippingConfig,
   summarizeShippingConfigNormalization,
 } = require('./shippingTestConfigService');
-const { normalizeCheckoutDisplayConfig } = require('./shippingCarrierRateFormatter');
+const {
+  normalizeCheckoutDisplayConfig,
+  formatCarrierRateForCheckout,
+} = require('./shippingCarrierRateFormatter');
 const { getTestsByShop } = require('../models/test');
 const logger = require('../utils/logger');
 
@@ -171,6 +174,63 @@ function getReplacementRequiredMethodCodes(variant = {}) {
   return Array.from(new Set(rateCodes)).slice(0, 10);
 }
 
+function buildRipXCarrierProtectedCodes(test = {}, variant = {}) {
+  const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+  const explicitRipXCodes = getReplacementRequiredMethodCodes(variant).filter(code =>
+    String(code).toLowerCase().includes('ripx')
+  );
+  if (explicitRipXCodes.length > 0) {
+    return Array.from(new Set(explicitRipXCodes)).slice(0, 20);
+  }
+
+  const serviceCodeBase =
+    String(variant?.id || variant?.name || variant?.index || test?.id || 'shipping')
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .slice(0, 48) || 'shipping';
+  const serviceName = buildShippingCarrierServiceName(test, variant);
+  const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
+  const codes = [];
+
+  if (rates.length > 0) {
+    rates.forEach((rate, index) => {
+      const formatted = formatCarrierRateForCheckout({
+        rateConfig: rate,
+        variantConfig: cfg,
+        index,
+        serviceName,
+        serviceCodeBase,
+        fallbackAmount: rate?.amount ?? cfg.amount,
+        fallbackCurrency: rate?.currency || cfg.currency || 'USD',
+      });
+      const serviceCode = String(formatted?.service_code || '').trim();
+      if (serviceCode) {
+        codes.push(serviceCode);
+        codes.push(serviceCode.toLowerCase());
+      }
+    });
+  } else if (cfg.amount !== null && cfg.amount !== undefined) {
+    const formatted = formatCarrierRateForCheckout({
+      rateConfig: { amount: cfg.amount, name: serviceName },
+      variantConfig: cfg,
+      index: 0,
+      serviceName,
+      serviceCodeBase,
+      fallbackAmount: cfg.amount,
+      fallbackCurrency: cfg.currency || 'USD',
+    });
+    const serviceCode = String(formatted?.service_code || '').trim();
+    if (serviceCode) {
+      codes.push(serviceCode);
+      codes.push(serviceCode.toLowerCase());
+    }
+  }
+
+  return Array.from(
+    new Set(codes.filter(code => String(code).toLowerCase().includes('ripx')))
+  ).slice(0, 20);
+}
+
 function buildNativeDeliveryMethodCodes(methodNames = []) {
   const codes = [];
   methodNames.forEach(name => {
@@ -282,12 +342,7 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   const carrierProtectionPrefixes = Array.from(
     new Set([DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX, carrierServiceName].filter(Boolean))
   );
-  const ripXProtectedCodes = Array.from(
-    new Set([
-      ...getReplacementRequiredMethodCodes(variant),
-      ...configuredRateNames.flatMap(name => buildNativeDeliveryMethodCodes([name])),
-    ])
-  ).slice(0, 20);
+  const ripXProtectedCodes = buildRipXCarrierProtectedCodes(test, variant);
   const addModeProtectedNames = replacementMode ? replacementNames : [];
   const addModeProtectedCodes = replacementMode ? replacementCodes : ripXProtectedCodes;
   return {

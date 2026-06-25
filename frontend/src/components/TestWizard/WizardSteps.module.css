@@ -2215,6 +2215,18 @@
   font-weight: 850;
 }
 
+.shippingInlineNoteSuccess {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: rgba(240, 253, 244, 0.92);
+  color: #166534;
+}
+
+.shippingInlineNoteWarn {
+  border-color: rgba(217, 119, 6, 0.28);
+  background: rgba(255, 251, 235, 0.92);
+  color: #92400e;
+}
+
 .shippingPipelineTimeline {
   display: flex;
   flex-wrap: wrap;

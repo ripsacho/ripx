@@ -60,13 +60,29 @@ function variantAssignmentMatches(rule, assignedVariant) {
   ].filter((value) => value !== void 0 && value !== null).map((value) => normalizeToken(value)).filter(Boolean);
   return candidates.includes(assigned);
 }
+function testAssignmentMatchesConfig(configTestId, assignedTestId) {
+  const config = normalizeToken(configTestId);
+  const assigned = normalizeToken(assignedTestId);
+  if (!config || !assigned) {
+    return true;
+  }
+  if (config === assigned) {
+    return true;
+  }
+  if (assigned.startsWith(config) || config.startsWith(assigned)) {
+    return true;
+  }
+  const configPrefix = config.replace(/[^a-z0-9]/g, "").slice(0, 8);
+  const assignedPrefix = assigned.replace(/[^a-z0-9]/g, "").slice(0, 8);
+  return Boolean(configPrefix && assignedPrefix && configPrefix === assignedPrefix);
+}
 function getMatchedRule(config, assignment) {
   const rules = Array.isArray(config?.variant_rules) ? config.variant_rules : [];
   return rules.find((rule) => {
     if (!rule || typeof rule !== "object") {
       return false;
     }
-    if (config?.test_id && assignment?.testId && normalizeToken(config.test_id) !== normalizeToken(assignment.testId)) {
+    if (config?.test_id && assignment?.testId && !testAssignmentMatchesConfig(config.test_id, assignment.testId)) {
       return false;
     }
     const assignedVariant = String(assignment?.variantId || "").trim();

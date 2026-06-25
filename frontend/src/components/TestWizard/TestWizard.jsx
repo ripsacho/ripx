@@ -693,6 +693,8 @@ function TestWizard({
       const cleanupPayload = unwrapData(cleanupResponse) || cleanupResponse || {};
       const applyPayload = unwrapData(applyResponse) || applyResponse || {};
       const summary = applyPayload?.execution_result?.summary || {};
+      const applyFailedCount = Number(summary?.failed_count || 0);
+      const applyManualCount = Number(summary?.manual_required_count || 0);
       const details = [
         'Dry run completed',
         cleanupPayload?.cleaned_count
@@ -702,8 +704,46 @@ function TestWizard({
       if (summary?.action_count !== undefined) {
         details.push(`${summary.action_count} action${summary.action_count === 1 ? '' : 's'}`);
       }
-      if (summary?.failed_count !== undefined) {
-        details.push(`${summary.failed_count} failed`);
+      if (applyFailedCount > 0) {
+        details.push(`${applyFailedCount} failed`);
+      }
+      if (applyManualCount > 0) {
+        details.push(`${applyManualCount} manual`);
+      }
+      if (applyFailedCount > 0 || applyManualCount > 0) {
+        setShippingOperationResult({
+          title: 'Setup saved, apply incomplete',
+          message:
+            applyPayload?.message ||
+            'Dry run and cleanup completed, but Shopify apply reported issues. Open the debug report for action details.',
+          details,
+          debugReport: {
+            generatedAt: new Date().toISOString(),
+            variantIndex: shippingVariantTabIndex,
+            dryRun: {
+              message: dryRunPayload?.message || '',
+              summary: dryRunSummary,
+              executionResult: dryRunPayload?.execution_result || null,
+            },
+            cleanup: {
+              message: cleanupPayload?.message || '',
+              cleanedCount: Number(cleanupPayload?.cleaned_count || 0),
+              payload: cleanupPayload,
+            },
+            apply: {
+              message: applyPayload?.message || '',
+              summary,
+              executionResult: applyPayload?.execution_result || null,
+            },
+          },
+          pipelineTimeline: timelineAfterCleanup.map(step =>
+            step.key === 'apply' ? { ...step, status: 'warn' } : step
+          ),
+        });
+        if (typeof onRefreshTest === 'function') {
+          onRefreshTest();
+        }
+        return false;
       }
       setShippingOperationResult({
         title: 'Setup saved and applied',

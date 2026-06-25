@@ -147,6 +147,10 @@ export default function ShippingReviewStepPanel({
       : 'Variant change';
   const hasPipelineWarn = timelineSteps.some(step => step?.status === 'warn');
   const hasPipelinePass = timelineSteps.some(step => step?.status === 'pass');
+  const pipelineSucceeded =
+    shippingOperationResult?.title === 'Setup saved and applied' &&
+    hasPipelinePass &&
+    !hasPipelineWarn;
   const baseChecklistTone = hasShippingBlocker
     ? 'fail'
     : hasPipelineWarn
@@ -355,7 +359,11 @@ export default function ShippingReviewStepPanel({
         </article>
       </div>
       {shippingOperationResult ? (
-        <div className={stepStyles.shippingInlineNote}>
+        <div
+          className={`${stepStyles.shippingInlineNote} ${
+            pipelineSucceeded ? stepStyles.shippingInlineNoteSuccess : ''
+          } ${hasPipelineWarn ? stepStyles.shippingInlineNoteWarn : ''}`}
+        >
           <strong>{shippingOperationResult.title}</strong>
           <div>{shippingOperationResult.message}</div>
           {timelineSteps.length > 0 ? (

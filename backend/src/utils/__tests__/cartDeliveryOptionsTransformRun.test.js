@@ -93,21 +93,20 @@ describe('cartDeliveryOptionsTransformRun', () => {
     expect(result.operations).toHaveLength(2);
   });
 
-  it('hides multiple add-mode targets while still protecting RipX carrier rates', () => {
+  it('hides add-mode targets when config test_id uses a short prefix of the assigned cart test id', () => {
     const run = loadDeliveryCustomizationRunFunction();
     const result = run({
       deliveryCustomization: {
         metafield: {
           jsonValue: {
-            test_id: 'test-1',
+            test_id: '9450d503',
             variant_rules: [
               {
-                variant_id: 'variant-b',
+                variant_id: 'Variant A',
                 action: 'hide',
-                method_names: ['Standard Shipping', 'Express Shipping'],
-                method_codes: ['standard_shipping', 'express_shipping'],
-                protected_method_codes: ['express', 'standard_shipping'],
-                protected_method_name_prefixes: ['RipX Shipping Rate'],
+                method_names: ['Standard', 'Express'],
+                method_codes: ['816241836221', '816241901757'],
+                protected_method_codes: ['ripx_flat_varianta_1', 'ripx_flat_varianta_2'],
                 skip_replacement_presence_gate: true,
               },
             ],
@@ -116,23 +115,31 @@ describe('cartDeliveryOptionsTransformRun', () => {
       },
       cart: {
         deliveryGroups: [
-          buildDeliveryGroup([
-            {
-              handle: 'native-standard',
-              title: 'Standard Shipping',
-              code: 'standard_shipping',
-            },
-            {
-              handle: 'native-express',
-              title: 'Express Shipping',
-              code: 'express_shipping',
-            },
-            {
-              handle: 'ripx-rate',
-              title: 'RipX Shipping Rate: Express',
-              code: 'ripx_flat_express',
-            },
-          ]),
+          {
+            cartLines: [
+              {
+                ripxTest: { value: '9450d503-7391-4e65-ba0a-7e742622f029' },
+                ripxVariant: { value: 'Variant A' },
+              },
+            ],
+            deliveryOptions: [
+              {
+                handle: 'native-standard',
+                title: 'Standard',
+                code: '816241836221',
+              },
+              {
+                handle: 'native-express',
+                title: 'Express',
+                code: '816241901757',
+              },
+              {
+                handle: 'ripx-standard',
+                title: 'Standard',
+                code: 'ripx_flat_varianta_1',
+              },
+            ],
+          },
         ],
       },
     });
