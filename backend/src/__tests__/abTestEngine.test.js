@@ -199,6 +199,30 @@ describe('ABTestEngine.isUserEligible', () => {
     expect(ABTestEngine.isUserEligible(test, { traffic_source: 'paid_search' })).toBe(false);
   });
 
+  it('supports include and exclude traffic_source_rules', () => {
+    const test = {
+      segments: {
+        traffic_source_rules: [
+          { type: 'include', value: 'organic' },
+          { type: 'exclude', value: 'direct' },
+        ],
+      },
+    };
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'organic_search' })).toBe(true);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'direct' })).toBe(false);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'paid_search' })).toBe(false);
+  });
+
+  it('allows all non-excluded sources when only exclude traffic_source_rules are set', () => {
+    const test = {
+      segments: {
+        traffic_source_rules: [{ type: 'exclude', value: 'direct' }],
+      },
+    };
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'email' })).toBe(true);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'direct' })).toBe(false);
+  });
+
   it('ignores legacy url_pattern for price tests in all-products scope', () => {
     const test = {
       type: 'price',

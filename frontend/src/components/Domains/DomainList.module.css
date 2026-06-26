@@ -1293,6 +1293,12 @@
   border-color: rgba(13, 148, 136, 0.35);
 }
 
+.shopifyInstallBadge_scopes_stale {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(217, 119, 6, 0.35);
+}
+
 .shopifyInstallBadge_needs_install {
   color: #9a3412;
   background: rgba(251, 146, 60, 0.16);

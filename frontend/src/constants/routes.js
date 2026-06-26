@@ -64,6 +64,8 @@ export const ROUTES = {
     OAUTH_EXPIRED: 'oauth_expired',
     /** OAuth callback had different shop than started → back to Domains to retry */
     OAUTH_WRONG_STORE: 'oauth_wrong_store',
+    /** Stale Shopify scopes — re-run OAuth to grant new permissions */
+    SCOPE_UPDATE: 'scope_update',
   },
 
   // Admin panel

@@ -63,6 +63,12 @@ Guard commands (run standalone if needed):
 ```bash
 npm run shopify:guard:local
 npm run shopify:guard:production
+npm run verify:all
+npm run env:profile -- save-tunnel
+npm run env:profile -- production
+npm run env:profile -- tunnel
+# Production server credentials check (uses .env.production):
+# npm run shopify:guard:production:env
 # Custom env file example:
 node scripts/verify-shopify-config-match.js --config shopify.app.production.toml --env-file .env.production
 ```

@@ -13,3 +13,4 @@ export * from './useCursorGlow';
 export * from './useAppRoutes';
 export * from './useAccountCurrentStore';
 export * from './useShopifyInstallStatus';
+export * from './useStorefrontSetupReadiness';

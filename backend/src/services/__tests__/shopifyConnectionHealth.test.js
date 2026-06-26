@@ -15,6 +15,18 @@ describe('evaluateShopifyConnectionHealth', () => {
     process.env.SHOPIFY_SCOPES = 'read_products,write_products';
   });
 
+  it('quick mode treats empty stored scope as connected until scopes sync', async () => {
+    const result = await evaluateShopifyConnectionHealth({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'shpca_test',
+      sessionScope: '',
+      quick: true,
+    });
+    expect(result.connection.code).toBe('SESSION_OK_UNVERIFIED_SCOPES');
+    expect(result.connection.state).toBe('connected');
+    expect(result.tokenHealth.missingScopes).toEqual([]);
+  });
+
   it('quick mode treats stale scopes as openable with reauthorize', async () => {
     const result = await evaluateShopifyConnectionHealth({
       shopDomain: 'demo.myshopify.com',

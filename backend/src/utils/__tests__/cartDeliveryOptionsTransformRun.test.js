@@ -152,4 +152,233 @@ describe('cartDeliveryOptionsTransformRun', () => {
     );
     expect(result.operations).toHaveLength(2);
   });
+
+  it('matches variant assignment when cart uses plus-encoded labels', () => {
+    const run = loadDeliveryCustomizationRunFunction();
+    const result = run({
+      deliveryCustomization: {
+        metafield: {
+          jsonValue: {
+            test_id: '131bdc89-4f54-41ec-ba73-8e296b357865',
+            variant_rules: [
+              {
+                variant_id: 'Variant A',
+                variant_index: '1',
+                action: 'hide',
+                method_names: ['Standard'],
+                method_codes: ['standard'],
+                protected_method_codes: ['ripx_replace_standard', 'ripx_flat_varianta_2'],
+                skip_replacement_presence_gate: true,
+              },
+            ],
+          },
+        },
+      },
+      cart: {
+        deliveryGroups: [
+          {
+            cartLines: [
+              {
+                ripxTest: { value: '131bdc89-4f54-41ec-ba73-8e296b357865' },
+                ripxVariant: { value: 'Variant+A' },
+              },
+            ],
+            deliveryOptions: [
+              { handle: 'native-standard', title: 'Standard', code: 'standard' },
+              { handle: 'ripx-standard', title: 'Standard', code: 'ripx_replace_standard' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.operations).toEqual([
+      { deliveryOptionHide: { deliveryOptionHandle: 'native-standard' } },
+    ]);
+  });
+
+  it('hides scoped native methods by delivery option handle', () => {
+    const run = loadDeliveryCustomizationRunFunction();
+    const result = run({
+      deliveryCustomization: {
+        metafield: {
+          jsonValue: {
+            test_id: 'test-1',
+            variant_rules: [
+              {
+                variant_id: 'variant-b',
+                action: 'hide',
+                method_names: ['Standard Shipping'],
+                method_codes: ['standard-shipping', 'standard'],
+                protected_method_codes: ['ripx_flat_variantb_1'],
+                skip_replacement_presence_gate: true,
+              },
+            ],
+          },
+        },
+      },
+      cart: {
+        deliveryGroups: [
+          {
+            cartLines: [
+              {
+                ripxTest: { value: 'test-1' },
+                ripxVariant: { value: 'variant-b' },
+              },
+            ],
+            deliveryOptions: [
+              {
+                handle: 'standard-shipping',
+                title: 'Standard Shipping',
+                code: '816241836221',
+              },
+              {
+                handle: 'ripx-rate',
+                title: 'Standard Shipping',
+                code: 'ripx_flat_variantb_1',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.operations).toEqual([
+      { deliveryOptionHide: { deliveryOptionHandle: 'standard-shipping' } },
+    ]);
+  });
+
+  it('uses cart-level assignment attributes when line attributes are missing', () => {
+    const run = loadDeliveryCustomizationRunFunction();
+    const result = run({
+      deliveryCustomization: {
+        metafield: {
+          jsonValue: {
+            test_id: 'test-1',
+            variant_rules: [
+              {
+                variant_id: 'Variant A',
+                variant_index: '1',
+                action: 'hide',
+                method_names: ['Standard'],
+                method_codes: ['standard'],
+                protected_method_codes: ['ripx_flat_varianta_1'],
+                skip_replacement_presence_gate: true,
+              },
+            ],
+          },
+        },
+      },
+      cart: {
+        ripxTest: { value: 'test-1' },
+        ripxVariant: { value: '1' },
+        deliveryGroups: [
+          {
+            cartLines: [{ merchandise: { __typename: 'ProductVariant' } }],
+            deliveryOptions: [
+              { handle: 'native-standard', title: 'Standard', code: 'standard' },
+              { handle: 'ripx-standard', title: 'Standard', code: 'ripx_flat_varianta_1' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.operations).toEqual([
+      { deliveryOptionHide: { deliveryOptionHandle: 'native-standard' } },
+    ]);
+  });
+
+  it('does not hide native methods when RipX replacement rates are not present yet', () => {
+    const run = loadDeliveryCustomizationRunFunction();
+    const result = run({
+      deliveryCustomization: {
+        metafield: {
+          jsonValue: {
+            test_id: 'test-1',
+            variant_rules: [
+              {
+                variant_id: 'variant-b',
+                action: 'hide',
+                method_names: ['Standard Shipping'],
+                method_codes: ['standard-shipping'],
+                protected_method_codes: ['ripx_flat_variantb_1'],
+                skip_replacement_presence_gate: false,
+              },
+            ],
+          },
+        },
+      },
+      cart: {
+        deliveryGroups: [
+          {
+            cartLines: [
+              {
+                ripxTest: { value: 'test-1' },
+                ripxVariant: { value: 'variant-b' },
+              },
+            ],
+            deliveryOptions: [
+              {
+                handle: 'standard-shipping',
+                title: 'Standard Shipping',
+                code: '816241836221',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.operations).toEqual([]);
+  });
+
+  it('avoids hiding every delivery option when replacement rates are missing', () => {
+    const run = loadDeliveryCustomizationRunFunction();
+    const result = run({
+      deliveryCustomization: {
+        metafield: {
+          jsonValue: {
+            test_id: 'test-1',
+            variant_rules: [
+              {
+                variant_id: 'variant-b',
+                action: 'hide',
+                method_names: ['Standard Shipping', 'Express Shipping'],
+                method_codes: ['standard-shipping', 'express-shipping'],
+                protected_method_codes: ['ripx_flat_variantb_1'],
+                skip_replacement_presence_gate: true,
+              },
+            ],
+          },
+        },
+      },
+      cart: {
+        deliveryGroups: [
+          {
+            cartLines: [
+              {
+                ripxTest: { value: 'test-1' },
+                ripxVariant: { value: 'variant-b' },
+              },
+            ],
+            deliveryOptions: [
+              {
+                handle: 'standard-shipping',
+                title: 'Standard Shipping',
+                code: '816241836221',
+              },
+              {
+                handle: 'express-shipping',
+                title: 'Express Shipping',
+                code: '816241901757',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.operations).toEqual([]);
+  });
 });

@@ -5,6 +5,7 @@
  * Template selection is optional for edit mode.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Card,
   FormLayout,
@@ -58,7 +59,7 @@ import {
   ViewIcon,
 } from '@shopify/polaris-icons';
 import { Icon } from '@shopify/polaris';
-import { TooltipWrapper } from '../Shared';
+import { TooltipWrapper, BlockingOverlay } from '../Shared';
 import CodeEditorIDE from '../CodeEditorIDE/CodeEditorIDE';
 import SampleSizeCalculator from '../TestCreator/SampleSizeCalculator';
 import TrafficAllocationSlider from '../TestCreator/TrafficAllocationSlider';
@@ -129,6 +130,13 @@ import {
   resolveCustomRuleGroupsFromSegments,
   syncSegmentsCustomAudience,
 } from './customAudienceRules';
+import TrafficSourceRulesPanel from './panels/TrafficSourceRulesPanel';
+import {
+  hydrateTrafficSourceSegments,
+  syncTrafficSourceSegments,
+  hasTrafficSourceTargeting,
+  summarizeTrafficSourceRules,
+} from './trafficSourceTargeting';
 import PriceSurfaceMappingsPanel from './PriceSurfaceMappingsPanel';
 import {
   normalizePriceSurfaceMappingsForEditor,
@@ -272,6 +280,35 @@ import {
   shouldUseMultiRowRateEditor,
 } from './shipping/config/shippingWizardBlueprint';
 
+const SHIPPING_FINISH_PROGRESS_STEPS = [
+  { id: 'save', label: 'Save shipping setup changes' },
+  { id: 'dryRun', label: 'Preview shipping setup changes' },
+  { id: 'cleanup', label: 'Clean stale callback refs' },
+  { id: 'apply', label: 'Apply shipping setup to Shopify' },
+];
+
+function buildShippingFinishProgress(activeStepId, failedStepId = '') {
+  const activeIndex = SHIPPING_FINISH_PROGRESS_STEPS.findIndex(step => step.id === activeStepId);
+  const failedIndex = SHIPPING_FINISH_PROGRESS_STEPS.findIndex(step => step.id === failedStepId);
+  return SHIPPING_FINISH_PROGRESS_STEPS.map((step, index) => {
+    if (failedIndex >= 0) {
+      if (index < failedIndex) return { label: step.label, state: 'complete' };
+      if (index === failedIndex) return { label: step.label, state: 'error' };
+      return { label: step.label, state: 'pending' };
+    }
+    if (activeIndex < 0) {
+      return { label: step.label, state: 'pending' };
+    }
+    if (index < activeIndex) return { label: step.label, state: 'complete' };
+    if (index === activeIndex) return { label: step.label, state: 'active' };
+    return { label: step.label, state: 'pending' };
+  });
+}
+
+function buildShippingFinishProgressComplete() {
+  return SHIPPING_FINISH_PROGRESS_STEPS.map(step => ({ label: step.label, state: 'complete' }));
+}
+
 function getCheckoutOptionLabel(options = [], value, fallback = '') {
   const normalizedValue = String(value || '').trim();
   return (
@@ -299,25 +336,6 @@ function getCheckoutSectionStarterTypes() {
       : []),
   ];
 }
-
-const AUDIENCE_SOURCE_OPTIONS = [
-  { label: 'All Sources', value: 'all' },
-  { label: 'Direct', value: 'direct' },
-  { label: 'Email', value: 'email' },
-  { label: 'Referral', value: 'referral' },
-  { label: 'Organic Social', value: 'organic_social' },
-  { label: 'Paid Social', value: 'paid_social' },
-  { label: 'Organic Search', value: 'organic_search' },
-  { label: 'Paid Search', value: 'paid_search' },
-  { label: 'Paid Shopping', value: 'paid_shopping' },
-  { label: 'SMS', value: 'sms' },
-  { label: 'Google', value: 'google' },
-  { label: 'Facebook', value: 'facebook' },
-  { label: 'Instagram', value: 'instagram' },
-  { label: 'TikTok', value: 'tiktok' },
-  { label: 'Twitter', value: 'twitter' },
-  { label: 'YouTube', value: 'youtube' },
-];
 
 const AUDIENCE_OS_OPTIONS = [
   { label: 'All OS', value: 'all' },
@@ -385,6 +403,26 @@ function TestWizard({
   const [isDirty, setIsDirty] = useState(false);
   const [shippingOperationLoading, setShippingOperationLoading] = useState('');
   const [shippingOperationResult, setShippingOperationResult] = useState(null);
+  const [shippingFinishBlockingVisible, setShippingFinishBlockingVisible] = useState(false);
+  const [shippingFinishBlockingState, setShippingFinishBlockingState] = useState({
+    title: '',
+    message: '',
+    accessibilityLabel: '',
+    steps: [],
+  });
+  const updateShippingFinishBlockingOverlay = useCallback(next => {
+    setShippingFinishBlockingState(current => {
+      const patch = typeof next === 'function' ? next(current) : next;
+      return {
+        title: '',
+        message: '',
+        accessibilityLabel: '',
+        steps: [],
+        ...(current || {}),
+        ...(patch || {}),
+      };
+    });
+  }, []);
   const [shippingVariantTabIndex, setShippingVariantTabIndex] = useState(0);
   const [autosaveState, setAutosaveState] = useState('idle');
   const [lastSavedAt, setLastSavedAt] = useState(null);
@@ -628,6 +666,12 @@ function TestWizard({
     }
     setShippingOperationLoading('finishSetup');
     setShippingOperationResult(null);
+    updateShippingFinishBlockingOverlay({
+      title: 'Previewing shipping setup…',
+      message: 'Validating planned Shopify changes before apply.',
+      accessibilityLabel: 'Previewing shipping setup',
+      steps: buildShippingFinishProgress('dryRun'),
+    });
     try {
       const baseTimeline = [
         { key: 'saved', label: 'Saved', status: 'pass' },
@@ -645,6 +689,13 @@ function TestWizard({
       const dryRunFailedCount = Number(dryRunSummary?.failed_count || 0);
       const dryRunManualCount = Number(dryRunSummary?.manual_required_count || 0);
       if (dryRunFailedCount > 0 || dryRunManualCount > 0) {
+        updateShippingFinishBlockingOverlay({
+          title: 'Setup save completed, apply blocked',
+          message:
+            'Dry run reported failures or manual steps. Fix those first, then run Finish and Save Setup again.',
+          accessibilityLabel: 'Shipping setup apply blocked',
+          steps: buildShippingFinishProgress('', 'dryRun'),
+        });
         const details = [];
         if (dryRunSummary?.action_count !== undefined) {
           details.push(
@@ -675,12 +726,24 @@ function TestWizard({
       const timelineAfterDryRun = baseTimeline.map(step =>
         step.key === 'dryRun' ? { ...step, status: 'pass' } : step
       );
+      updateShippingFinishBlockingOverlay({
+        title: 'Cleaning stale shipping callbacks…',
+        message: 'Syncing live carrier callback URLs before apply.',
+        accessibilityLabel: 'Cleaning stale shipping callbacks',
+        steps: buildShippingFinishProgress('cleanup'),
+      });
       const cleanupResponse = await apiPost(`/tests/${testId}/shipping/cleanup-stale-callbacks`, {
         dry_run: false,
       });
       const timelineAfterCleanup = timelineAfterDryRun.map(step =>
         step.key === 'cleanup' ? { ...step, status: 'pass' } : step
       );
+      updateShippingFinishBlockingOverlay({
+        title: 'Applying shipping setup to Shopify…',
+        message: 'Publishing carrier service and delivery customization changes.',
+        accessibilityLabel: 'Applying shipping setup to Shopify',
+        steps: buildShippingFinishProgress('apply'),
+      });
       const applyResponse = await apiPost(
         `/tests/${testId}/shipping/execute`,
         {
@@ -778,6 +841,12 @@ function TestWizard({
       if (typeof onRefreshTest === 'function') {
         onRefreshTest();
       }
+      updateShippingFinishBlockingOverlay({
+        title: 'Shipping setup saved',
+        message: 'Dry run, cleanup, and apply completed successfully.',
+        accessibilityLabel: 'Shipping setup saved',
+        steps: buildShippingFinishProgressComplete(),
+      });
       return true;
     } catch (err) {
       setShippingOperationResult({
@@ -794,7 +863,12 @@ function TestWizard({
     } finally {
       setShippingOperationLoading('');
     }
-  }, [initialData?.id, onRefreshTest, shippingVariantTabIndex]);
+  }, [
+    initialData?.id,
+    onRefreshTest,
+    shippingVariantTabIndex,
+    updateShippingFinishBlockingOverlay,
+  ]);
   useEffect(() => {
     if (!isDirty) {
       setVisualEditorDirty(false);
@@ -3015,7 +3089,7 @@ function TestWizard({
               normalizeVisualEditorRule(initialData.segments.visual_editor_rules[i])
             );
           }
-          return seg;
+          return hydrateTrafficSourceSegments(seg);
         })(),
         holdout_percent: initialData.holdout_percent ?? DEFAULT_FORM_DATA.holdout_percent,
         pricePerProduct:
@@ -3306,7 +3380,7 @@ function TestWizard({
         ? data.segments.countries.filter(Boolean)
         : [],
       operating_system: data.segments?.operating_system || 'all',
-      traffic_source: data.segments?.traffic_source || 'all',
+      traffic_source: 'all',
       anti_flicker_mode: data.segments?.anti_flicker_mode === 'strict' ? 'strict' : 'balanced',
       url_pattern: data.segments?.url_pattern ?? '',
       min_sessions: data.segments?.min_sessions ?? '',
@@ -3385,6 +3459,19 @@ function TestWizard({
     }
     if (Array.isArray(data.segments?.audience_rules) && data.segments.audience_rules.length > 0) {
       normalizedSegments.audience_rules = data.segments.audience_rules;
+    }
+    const syncedTrafficSourceSegments = syncTrafficSourceSegments(
+      data.segments || {},
+      data.segments?.traffic_source_rules || []
+    );
+    if (syncedTrafficSourceSegments.traffic_source_rules?.length > 0) {
+      normalizedSegments.traffic_source_rules = syncedTrafficSourceSegments.traffic_source_rules;
+      normalizedSegments.traffic_source = 'all';
+    } else if (
+      data.segments?.traffic_source &&
+      String(data.segments.traffic_source).toLowerCase() !== 'all'
+    ) {
+      normalizedSegments.traffic_source = String(data.segments.traffic_source).toLowerCase();
     }
     if (
       data.segments?.js_targeting?.enabled &&
@@ -8007,7 +8094,7 @@ function TestWizard({
                                   (formData.segments?.device_rules || []).length > 0 ||
                                   (formData.segments?.customer || 'all') !== 'all' ||
                                   (formData.segments?.countries || []).length > 0 ||
-                                  (formData.segments?.traffic_source || 'all') !== 'all' ||
+                                  hasTrafficSourceTargeting(formData.segments) ||
                                   (formData.segments?.operating_system || 'all') !== 'all' ||
                                   hasCustomAudienceRules(formData.segments)) && (
                                   <span className={styles.placementTabDot} />
@@ -8161,29 +8248,20 @@ function TestWizard({
                                         <div
                                           className={`${styles.panelSection} ${styles.panelSectionFull}`}
                                         >
-                                          <span className={styles.panelSectionTitle}>
-                                            Source Sites
-                                          </span>
-                                          <div className={styles.quickSelectChips}>
-                                            {AUDIENCE_SOURCE_OPTIONS.map(option => (
-                                              <button
-                                                key={option.value}
-                                                type="button"
-                                                className={`${styles.quickSelectChip} ${(formData.segments?.traffic_source || 'all') === option.value ? styles.quickSelectChipActive : ''}`}
-                                                onClick={() =>
-                                                  setFormData(prev => ({
-                                                    ...prev,
-                                                    segments: {
-                                                      ...prev.segments,
-                                                      traffic_source: option.value,
-                                                    },
-                                                  }))
-                                                }
-                                              >
-                                                {option.label}
-                                              </button>
-                                            ))}
-                                          </div>
+                                          <TrafficSourceRulesPanel
+                                            stepStyles={styles}
+                                            rules={formData.segments?.traffic_source_rules || []}
+                                            onChange={rules => {
+                                              setIsDirty(true);
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                segments: syncTrafficSourceSegments(
+                                                  prev.segments,
+                                                  rules
+                                                ),
+                                              }));
+                                            }}
+                                          />
                                         </div>
                                         <div
                                           className={`${styles.panelSection} ${styles.panelSectionFull}`}
@@ -8273,6 +8351,8 @@ function TestWizard({
                                             device: formData.segments?.device,
                                             countries: formData.segments?.countries,
                                             traffic_source: formData.segments?.traffic_source,
+                                            traffic_source_rules:
+                                              formData.segments?.traffic_source_rules,
                                             operating_system: formData.segments?.operating_system,
                                           }}
                                           onChangeGroups={groups => {
@@ -13726,9 +13806,22 @@ function TestWizard({
       goToGuidedShippingStep(Math.max(activeShippingGuidedStepIndex - 1, 0));
     const handleFinishGuidedShippingSetup = async () => {
       if (mode === 'edit') {
-        const saved = await handleSubmit({ silent: true, skipShippingSync: true });
-        if (!saved) return;
-        await runShippingFinishPipeline();
+        flushSync(() => {
+          updateShippingFinishBlockingOverlay({
+            title: 'Saving shipping setup changes…',
+            message: 'Running save, dry run, cleanup, and apply automatically.',
+            accessibilityLabel: 'Saving shipping setup changes',
+            steps: buildShippingFinishProgress('save'),
+          });
+          setShippingFinishBlockingVisible(true);
+        });
+        try {
+          const saved = await handleSubmit({ silent: true, skipShippingSync: true });
+          if (!saved) return;
+          await runShippingFinishPipeline();
+        } finally {
+          setShippingFinishBlockingVisible(false);
+        }
         return;
       }
       if (currentStep < steps.length) {
@@ -23140,7 +23233,10 @@ function TestWizard({
       (reviewSegments.audience_rules || []).length > 0
         ? `${reviewSegments.audience_rules.length} audience rule(s)`
         : `${reviewSegments.customer || 'all'} customers, ${reviewCountries}`,
-    ];
+      hasTrafficSourceTargeting(reviewSegments)
+        ? summarizeTrafficSourceRules(reviewSegments.traffic_source_rules)
+        : null,
+    ].filter(Boolean);
     if (reviewSegments.js_targeting?.enabled) {
       targetingParts.push('Custom JS');
     }
@@ -24046,6 +24142,17 @@ function TestWizard({
 
   return (
     <>
+      <BlockingOverlay
+        open={shippingFinishBlockingVisible}
+        title={shippingFinishBlockingState.title || 'Saving shipping setup changes…'}
+        message={
+          shippingFinishBlockingState.message || 'Please wait while shipping setup is processed.'
+        }
+        accessibilityLabel={
+          shippingFinishBlockingState.accessibilityLabel || 'Saving shipping setup changes'
+        }
+        steps={shippingFinishBlockingState.steps}
+      />
       <Toast message={error} type="error" onClose={() => setError(null)} duration={5000} />
       {visualPreviewToast && (
         <Toast

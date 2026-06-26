@@ -173,6 +173,85 @@ function setLocalTomlApplicationUrl(configPath, nextUrl) {
   return { previous, next: deployBase };
 }
 
+function normalizeOAuthHost(rawUrl) {
+  const value = String(rawUrl || '').trim();
+  if (!value) {
+    return '';
+  }
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function parseTomlRedirectUrl(rawToml) {
+  const match = String(rawToml || '').match(/redirect_urls\s*=\s*\[\s*"([^"]+)"/m);
+  return match ? match[1].trim() : '';
+}
+
+function evaluateOAuthUrlAlignment({ env = {}, tomlRaw = '', configLabel = 'config' }) {
+  const applicationUrl = parseTomlQuotedValue(tomlRaw, 'application_url');
+  const redirectUrl = parseTomlRedirectUrl(tomlRaw);
+  const appHost = normalizeOAuthHost(applicationUrl);
+  const redirectHost = normalizeOAuthHost(redirectUrl);
+  const errors = [];
+  const warnings = [];
+
+  if (!applicationUrl) {
+    errors.push(`${configLabel} is missing application_url.`);
+  }
+  if (!redirectUrl) {
+    errors.push(`${configLabel} is missing auth redirect_urls.`);
+  }
+  if (appHost && redirectHost && appHost !== redirectHost) {
+    errors.push(
+      `${configLabel} application_url host (${appHost}) does not match redirect_urls host (${redirectHost}).`
+    );
+  }
+  if (applicationUrl && isEphemeralTunnelUrl(applicationUrl)) {
+    errors.push(`${configLabel} application_url uses an ephemeral tunnel host.`);
+  }
+  if (redirectUrl && isEphemeralTunnelUrl(redirectUrl)) {
+    errors.push(`${configLabel} redirect_urls uses an ephemeral tunnel host.`);
+  }
+
+  const envKeys = ['APP_URL', 'SHOPIFY_APP_URL', 'RIPX_OAUTH_REDIRECT_BASE'];
+  const envHosts = {};
+  envKeys.forEach(key => {
+    const raw = String(env[key] || '').trim();
+    if (!raw) {
+      return;
+    }
+    envHosts[key] = normalizeOAuthHost(raw);
+    if (isEphemeralTunnelUrl(raw)) {
+      warnings.push(`${key} uses an ephemeral tunnel host (${envHosts[key]}).`);
+    }
+    if (appHost && envHosts[key] && envHosts[key] !== appHost) {
+      errors.push(
+        `${key} host (${envHosts[key]}) does not match ${configLabel} application_url host (${appHost}).`
+      );
+    }
+  });
+
+  const uniqueEnvHosts = Array.from(new Set(Object.values(envHosts).filter(Boolean)));
+  if (uniqueEnvHosts.length > 1) {
+    errors.push(
+      `Env URL hosts disagree (${uniqueEnvHosts.join(', ')}). Set APP_URL, SHOPIFY_APP_URL, and RIPX_OAUTH_REDIRECT_BASE to the same host.`
+    );
+  }
+
+  return {
+    applicationUrl,
+    redirectUrl,
+    appHost,
+    redirectHost,
+    envHosts,
+    errors,
+    warnings,
+  };
+}
+
 module.exports = {
   DEFAULT_LOCAL_APPLICATION_URL,
   EPHEMERAL_HOST_PATTERNS,
@@ -187,4 +266,5 @@ module.exports = {
   setTomlQuotedValue,
   resolveLocalConfigPath,
   getRepoRoot,
+  evaluateOAuthUrlAlignment,
 };

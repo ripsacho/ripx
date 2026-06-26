@@ -12,6 +12,7 @@ const {
   PRICE_PRODUCT_BINDINGS,
   PRICE_MAPPING_SOURCES,
 } = require('./priceSurfaceRegistry');
+const { normalizeTrafficSourceRules } = require('./trafficSourceRules');
 
 /** Values the wizard + storefront can persist on `segments.traffic_source` (keep aligned with TestWizard AUDIENCE_SOURCE_OPTIONS + legacy buckets). */
 const AUDIENCE_TRAFFIC_SOURCE_VALUES = new Set([
@@ -159,7 +160,11 @@ function normalizeSegments(segments) {
     result.excluded_product_ids = excludedProductIds;
   }
 
-  if (segments.traffic_source && typeof segments.traffic_source === 'string') {
+  const trafficSourceRules = normalizeTrafficSourceRules(segments.traffic_source_rules);
+  if (trafficSourceRules.length > 0) {
+    result.traffic_source_rules = trafficSourceRules;
+    result.traffic_source = 'all';
+  } else if (segments.traffic_source && typeof segments.traffic_source === 'string') {
     const ts = segments.traffic_source.toLowerCase();
     if (AUDIENCE_TRAFFIC_SOURCE_VALUES.has(ts)) {
       result.traffic_source = ts;

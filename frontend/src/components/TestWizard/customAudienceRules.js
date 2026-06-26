@@ -1,3 +1,5 @@
+import { hasTrafficSourceTargeting, summarizeTrafficSourceRules } from './trafficSourceTargeting';
+
 export const CUSTOM_RULE_OPERATORS = [
   { label: 'equals', value: 'equals' },
   { label: 'contains', value: 'contains' },
@@ -594,7 +596,9 @@ export function summarizeStandardAudienceSegments(segments = {}, countriesSummar
   if (countries.length > 0) {
     parts.push(countriesSummary || `${countries.length} countries`);
   }
-  if (trafficSource !== 'all') {
+  if (hasTrafficSourceTargeting(segments)) {
+    parts.push(summarizeTrafficSourceRules(segments.traffic_source_rules));
+  } else if (trafficSource !== 'all') {
     parts.push(
       STANDARD_TRAFFIC_SOURCE_LABELS.get(String(trafficSource).toLowerCase()) ||
         String(trafficSource).replace(/_/g, ' ')
@@ -695,11 +699,7 @@ export function getCustomRuleWarnings(rules, segments = {}, groups) {
       'Standard audience already limits countries. Custom country rules stack on top of that list.'
     );
   }
-  if (
-    segments.traffic_source &&
-    segments.traffic_source !== 'all' &&
-    fields.includes('traffic_source')
-  ) {
+  if (hasTrafficSourceTargeting(segments) && fields.includes('traffic_source')) {
     warnings.push(
       'Standard audience already filters traffic source. Custom traffic source rules may overlap.'
     );

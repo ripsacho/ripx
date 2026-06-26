@@ -21,8 +21,10 @@ yarn.lock
 .env.test
 .env.staging
 .env.*.local
+.env.tunnel.snapshot.json
 # Allow .env.example as template only
 !.env.example
+!.env.production.example
 
 # Credentials, keys, certificates
 *.pem

@@ -14,6 +14,7 @@ function run_default(userfunction) {
 
 // extensions/ripx-delivery-customization/src/run.js
 var NO_CHANGES = { operations: [] };
+var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -24,9 +25,18 @@ function getConfiguration(input) {
   const raw = input?.deliveryCustomization?.metafield?.jsonValue;
   return raw && typeof raw === "object" ? raw : {};
 }
-function resolveAssignment(deliveryGroups = []) {
+function resolveAssignment(input) {
+  const cart = input?.cart;
+  const cartTestId = String(cart?.ripxTest?.value || cart?.ripxPublicTest?.value || "").trim();
+  const cartVariantId = String(
+    cart?.ripxVariant?.value || cart?.ripxPublicVariant?.value || ""
+  ).trim();
+  if (cartTestId && cartVariantId) {
+    return { testId: cartTestId, variantId: cartVariantId };
+  }
+  const deliveryGroups = Array.isArray(cart?.deliveryGroups) ? cart.deliveryGroups : [];
   let chosen = null;
-  for (const group of Array.isArray(deliveryGroups) ? deliveryGroups : []) {
+  for (const group of deliveryGroups) {
     for (const line of Array.isArray(group?.cartLines) ? group.cartLines : []) {
       const testId = String(line?.ripxTest?.value || line?.ripxPublicTest?.value || "").trim();
       const variantId = String(
@@ -37,7 +47,7 @@ function resolveAssignment(deliveryGroups = []) {
           chosen = { testId, variantId };
           continue;
         }
-        if (chosen.testId !== testId || chosen.variantId !== variantId) {
+        if (!testAssignmentMatchesConfig(chosen.testId, testId) || !labelsEqual(chosen.variantId, variantId)) {
           return null;
         }
       }
@@ -45,8 +55,30 @@ function resolveAssignment(deliveryGroups = []) {
   }
   return chosen;
 }
+function normalizeComparableLabel(value) {
+  return String(value || "").trim().replace(/\+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function labelsEqual(a, b) {
+  const left = String(a ?? "").trim();
+  const right = String(b ?? "").trim();
+  if (!left || !right) {
+    return false;
+  }
+  if (left === right) {
+    return true;
+  }
+  const leftIsUuid = UUID_RE.test(left);
+  const rightIsUuid = UUID_RE.test(right);
+  if (leftIsUuid && rightIsUuid) {
+    return left === right;
+  }
+  if (leftIsUuid || rightIsUuid) {
+    return false;
+  }
+  return normalizeComparableLabel(left) === normalizeComparableLabel(right);
+}
 function variantAssignmentMatches(rule, assignedVariant) {
-  const assigned = normalizeToken(assignedVariant);
+  const assigned = String(assignedVariant || "").trim();
   if (!assigned) {
     return false;
   }
@@ -57,8 +89,10 @@ function variantAssignmentMatches(rule, assignedVariant) {
     rule?.variantName,
     rule?.variant_index,
     rule?.variantIndex
-  ].filter((value) => value !== void 0 && value !== null).map((value) => normalizeToken(value)).filter(Boolean);
-  return candidates.includes(assigned);
+  ].filter((value) => value !== void 0 && value !== null).map((value) => String(value).trim()).filter(Boolean);
+  return candidates.some(
+    (candidate) => labelsEqual(assigned, candidate) || normalizeToken(assigned) === normalizeToken(candidate)
+  );
 }
 function testAssignmentMatchesConfig(configTestId, assignedTestId) {
   const config = normalizeToken(configTestId);
@@ -163,12 +197,43 @@ function matchesOptionTitlePrefix(title, wantedPrefixes = []) {
 }
 function matchesOptionCode(code, wantedCodes = []) {
   const normalizedCode = normalizeText(code);
+  if (!normalizedCode) {
+    return false;
+  }
   return wantedCodes.some((item) => {
     const wanted = normalizeText(item);
     if (!wanted) {
       return false;
     }
-    return normalizedCode === wanted || normalizedCode.includes(wanted) || wanted.includes(normalizedCode);
+    if (normalizedCode === wanted) {
+      return true;
+    }
+    if (wanted.startsWith("gid://") || /^\d{8,}$/.test(wanted)) {
+      return normalizedCode === wanted || normalizedCode.endsWith(`/${wanted}`) || normalizedCode.endsWith(wanted);
+    }
+    if (wanted.length >= 3) {
+      return normalizedCode.includes(wanted) || wanted.includes(normalizedCode);
+    }
+    return false;
+  });
+}
+function matchesOptionHandle(handle, wantedCodes = []) {
+  const normalizedHandle = normalizeText(handle);
+  if (!normalizedHandle) {
+    return false;
+  }
+  return wantedCodes.some((item) => {
+    const wanted = normalizeText(item);
+    if (!wanted) {
+      return false;
+    }
+    if (normalizedHandle === wanted) {
+      return true;
+    }
+    if (wanted.length >= 3) {
+      return normalizedHandle.includes(wanted) || wanted.includes(normalizedHandle);
+    }
+    return false;
   });
 }
 function matchesProtectedOptionCode(code, protectedCodes = []) {
@@ -183,7 +248,7 @@ function shouldProtectOption(option, protectedCodes = [], protectedNamePrefixes 
     return true;
   }
   const hideTitleMatch = matchesOptionTitle(option?.title, hideNames);
-  const hideCodeMatch = matchesOptionCode(option?.code, hideCodes);
+  const hideCodeMatch = matchesOptionCode(option?.code, hideCodes) || matchesOptionHandle(option?.handle, hideCodes);
   if (hideTitleMatch || hideCodeMatch) {
     return false;
   }
@@ -226,6 +291,29 @@ function hasRequiredVisibleOption(deliveryGroups = [], wantedNames = [], wantedC
 function shouldSkipReplacementPresenceGate(rule = {}) {
   return Boolean(rule?.skip_replacement_presence_gate);
 }
+function countDeliveryOptions(deliveryGroups = []) {
+  let total = 0;
+  for (const group of deliveryGroups) {
+    total += (Array.isArray(group?.deliveryOptions) ? group.deliveryOptions : []).filter(
+      (option) => option?.handle
+    ).length;
+  }
+  return total;
+}
+function countHiddenDeliveryOptions(deliveryGroups = [], hideOperations = []) {
+  const hiddenHandles = new Set(
+    hideOperations.map((operation) => operation?.deliveryOptionHide?.deliveryOptionHandle).filter(Boolean)
+  );
+  let remaining = 0;
+  for (const group of deliveryGroups) {
+    for (const option of Array.isArray(group?.deliveryOptions) ? group.deliveryOptions : []) {
+      if (option?.handle && !hiddenHandles.has(option.handle)) {
+        remaining += 1;
+      }
+    }
+  }
+  return remaining;
+}
 function buildHideOperations(deliveryGroups = [], wantedNames = [], wantedCodes = [], protectedCodes = [], protectedNamePrefixes = [], protectedNames = []) {
   const operations = [];
   for (const group of deliveryGroups) {
@@ -243,7 +331,7 @@ function buildHideOperations(deliveryGroups = [], wantedNames = [], wantedCodes 
       )) {
         continue;
       }
-      const matchesCode = matchesOptionCode(option?.code, wantedCodes);
+      const matchesCode = matchesOptionCode(option?.code, wantedCodes) || matchesOptionHandle(option?.handle, wantedCodes);
       const matchesTitle = matchesOptionTitle(option?.title, wantedNames);
       if (!matchesCode && !matchesTitle) {
         continue;
@@ -301,7 +389,7 @@ function buildMoveOperations(deliveryGroups = [], wantedNames = []) {
 function cartDeliveryOptionsTransformRun(input) {
   const config = getConfiguration(input);
   const deliveryGroups = Array.isArray(input?.cart?.deliveryGroups) ? input.cart.deliveryGroups : [];
-  const assignment = resolveAssignment(deliveryGroups);
+  const assignment = resolveAssignment(input);
   const unassignedHideOperations = buildHideOperations(
     deliveryGroups,
     getUnassignedHiddenMethodNames(config),
@@ -338,6 +426,13 @@ function cartDeliveryOptionsTransformRun(input) {
     protectedNamePrefixes,
     protectedNames
   );
+  if (action === "hide" && operations.length > 0) {
+    const totalOptions = countDeliveryOptions(deliveryGroups);
+    const remainingOptions = countHiddenDeliveryOptions(deliveryGroups, operations);
+    if (totalOptions > 0 && remainingOptions === 0) {
+      return NO_CHANGES;
+    }
+  }
   return operations.length > 0 ? { operations } : NO_CHANGES;
 }
 

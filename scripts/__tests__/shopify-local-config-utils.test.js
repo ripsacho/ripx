@@ -6,7 +6,9 @@ const {
   isLocalhostAppUrl,
   setLocalTomlApplicationUrl,
   sanitizeShopifyLocalToml,
+  evaluateOAuthUrlAlignment,
 } = require('../shopify-local-config-utils');
+const { EXAMPLE_TUNNEL_URL } = require('../lib/devTunnelEnv');
 
 describe('shopify-local-config-utils', () => {
   it('detects ephemeral tunnel hosts', () => {
@@ -51,5 +53,23 @@ describe('shopify-local-config-utils', () => {
     const updated = fs.readFileSync(configPath, 'utf8');
     expect(updated).toContain('application_url = "https://127.0.0.1/"');
     expect(updated).not.toContain('trycloudflare.com');
+  });
+
+  it('flags env host mismatches against production toml', () => {
+    const tomlRaw = [
+      'application_url = "https://splitter.echologyx.com/home"',
+      '[auth]',
+      'redirect_urls = [ "https://splitter.echologyx.com/api/auth/callback" ]',
+    ].join('\n');
+    const result = evaluateOAuthUrlAlignment({
+      env: {
+        APP_URL: EXAMPLE_TUNNEL_URL,
+        RIPX_OAUTH_REDIRECT_BASE: EXAMPLE_TUNNEL_URL,
+      },
+      tomlRaw,
+      configLabel: 'shopify.app.production.toml',
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.warnings.length).toBeGreaterThan(0);
   });
 });

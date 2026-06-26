@@ -262,50 +262,78 @@ function isHeatmapVariantAllowedForTest(test, variantId) {
   });
 }
 
+function appendCarrierRequestAttributes(attributes, candidate) {
+  if (!candidate) {
+    return;
+  }
+  if (Array.isArray(candidate)) {
+    candidate.forEach(entry => {
+      if (!entry) {
+        return;
+      }
+      const key = String(entry.name || entry.key || '').trim();
+      const value = String(entry.value || '').trim();
+      if (key && value) {
+        attributes.push({ key, value });
+      }
+    });
+    return;
+  }
+  if (typeof candidate === 'object') {
+    Object.entries(candidate).forEach(([key, value]) => {
+      const normalizedKey = String(key || '').trim();
+      const normalizedValue = String(value || '').trim();
+      if (normalizedKey && normalizedValue) {
+        attributes.push({ key: normalizedKey, value: normalizedValue });
+      }
+    });
+  }
+}
+
 function collectCarrierRequestAttributes(req) {
+  const attributes = [];
+  appendCarrierRequestAttributes(attributes, req.body?.attributes);
+  appendCarrierRequestAttributes(attributes, req.body?.rate?.attributes);
+  appendCarrierRequestAttributes(attributes, req.body?.rate?.cart?.attributes);
+  appendCarrierRequestAttributes(attributes, req.body?.cart?.attributes);
   const containers = [
     req.body?.rate?.items,
     req.body?.items,
     req.body?.rate?.line_items,
     req.body?.line_items,
   ];
-  const attributes = [];
   for (const container of containers) {
     if (!Array.isArray(container)) {
       continue;
     }
     for (const item of container) {
-      const candidates = [item?.properties, item?.attributes, item?.line_item?.properties];
+      const candidates = [
+        item?.properties,
+        item?.attributes,
+        item?.line_item?.properties,
+        item?.product_properties,
+        item?.property,
+      ];
       for (const candidate of candidates) {
-        if (!candidate) {
-          continue;
-        }
-        if (Array.isArray(candidate)) {
-          candidate.forEach(entry => {
-            if (!entry) {
-              return;
-            }
-            const key = String(entry.name || entry.key || '').trim();
-            const value = String(entry.value || '').trim();
-            if (key && value) {
-              attributes.push({ key, value });
-            }
-          });
-          continue;
-        }
-        if (typeof candidate === 'object') {
-          Object.entries(candidate).forEach(([key, value]) => {
-            const normalizedKey = String(key || '').trim();
-            const normalizedValue = String(value || '').trim();
-            if (normalizedKey && normalizedValue) {
-              attributes.push({ key: normalizedKey, value: normalizedValue });
-            }
-          });
-        }
+        appendCarrierRequestAttributes(attributes, candidate);
       }
     }
   }
   return attributes;
+}
+
+function carrierVariantTokensMatch(actual, expected) {
+  const left = String(actual ?? '').trim();
+  const right = String(expected ?? '').trim();
+  if (!left || !right) {
+    return false;
+  }
+  if (left === right || previewLabelEquals(left, right)) {
+    return true;
+  }
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber;
 }
 
 function carrierRequestMatchesAssignment(
@@ -334,7 +362,7 @@ function carrierRequestMatchesAssignment(
   return allowedVariants.length === 0
     ? variantValues.length > 0
     : variantValues.some(value =>
-        allowedVariants.some(expected => value === expected || previewLabelEquals(value, expected))
+        allowedVariants.some(expected => carrierVariantTokensMatch(value, expected))
       );
 }
 

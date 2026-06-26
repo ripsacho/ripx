@@ -78,7 +78,8 @@ function evaluateShopifyConnectionHealthQuick({ shopDomain, accessToken, session
     .trim()
     .toLowerCase();
   const token = String(accessToken || '').trim();
-  const scopeMissing = missingShopifyScopes(sessionScope);
+  const scopeRaw = String(sessionScope || '').trim();
+  const scopeMissing = scopeRaw ? missingShopifyScopes(sessionScope) : [];
 
   if (!token) {
     return buildConnectionPayload({
@@ -116,9 +117,11 @@ function evaluateShopifyConnectionHealthQuick({ shopDomain, accessToken, session
     connected: true,
     state: 'connected',
     action: 'none',
-    code: 'SESSION_OK',
-    message: 'Store session is present (token not verified with Shopify in quick mode).',
-    tokenValid: null,
+    code: scopeRaw ? 'SESSION_OK' : 'SESSION_OK_UNVERIFIED_SCOPES',
+    message: scopeRaw
+      ? 'Store session is present (token not verified with Shopify in quick mode).'
+      : 'Store is connected. Permissions will sync on the next authorization.',
+    tokenValid: true,
     missingScopes: [],
   });
 }
@@ -140,7 +143,8 @@ async function evaluateShopifyConnectionHealth({
     }
   }
   const token = String(accessToken || '').trim();
-  const scopeMissing = missingShopifyScopes(sessionScope);
+  const scopeRaw = String(sessionScope || '').trim();
+  const scopeMissing = scopeRaw ? missingShopifyScopes(sessionScope) : [];
 
   if (quick) {
     const payload = evaluateShopifyConnectionHealthQuick({

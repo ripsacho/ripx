@@ -38,11 +38,25 @@ export function shouldOpenShopifyApp(status) {
   if (code === 'SESSION_OK' && status.connected) {
     return true;
   }
+  if (code === 'SESSION_OK_UNVERIFIED_SCOPES' && status.connected) {
+    return true;
+  }
   return false;
 }
 
 export function isShopifyStoreOpenableState(state) {
   return ['connected', 'scopes_stale'].includes(String(state || '').toLowerCase());
+}
+
+export function needsScopeReauthorization(status) {
+  if (!status || typeof status !== 'object') {
+    return false;
+  }
+  const code = String(status.connection?.code || status.raw?.connection?.code || '')
+    .trim()
+    .toUpperCase();
+  const missingScopes = status.tokenHealth?.missingScopes || status.missingScopes || [];
+  return code === 'SCOPES_STALE' && Array.isArray(missingScopes) && missingScopes.length > 0;
 }
 
 export function getShopifyConnectionUiState(status, errorMeta = null) {

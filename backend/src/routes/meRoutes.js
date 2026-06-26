@@ -26,6 +26,7 @@ const validators = require('../utils/validators');
 const { isShopifyDomain } = require('../models/tenant');
 const { isUserStatusAllowedForSession } = require('../constants');
 const { linkShopifyStoreToUserAccount } = require('../services/shopifyStoreLinkService');
+const { probeStorefrontReadinessBatch } = require('../services/storefrontSetupService');
 
 /**
  * POST /api/me/domains/link-shopify
@@ -136,6 +137,67 @@ router.get(
     );
 
     return sendSuccess(res, HTTP_STATUS.OK, { domains });
+  })
+);
+
+/**
+ * GET /api/me/domains/storefront-readiness
+ * Batch App Proxy + theme embed probes for Shopify stores the user can access.
+ * Query: shops=shop1.myshopify.com,shop2.myshopify.com (optional; defaults to all user Shopify domains)
+ */
+router.get(
+  '/domains/storefront-readiness',
+  asyncHandler(async (req, res) => {
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
+    if (!email) {
+      return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
+    }
+
+    const user = await userModel.getByEmail(email);
+    if (!user) {
+      return sendSuccess(res, HTTP_STATUS.OK, { shops: {} });
+    }
+    if (!isUserStatusAllowedForSession(user.status)) {
+      return sendError(
+        res,
+        HTTP_STATUS.FORBIDDEN,
+        'Account not yet approved or is restricted. Contact support if you have already been approved.'
+      );
+    }
+
+    const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, user.account_id);
+    if (tenantIds.length === 0) {
+      return sendSuccess(res, HTTP_STATUS.OK, { shops: {} });
+    }
+
+    const placeholders = tenantIds.map((_, i) => `$${i + 1}`).join(', ');
+    const tenantsResult = await query(
+      `SELECT domain FROM tenants WHERE id IN (${placeholders})`,
+      tenantIds
+    );
+    const allowedShopifyDomains = tenantsResult.rows
+      .map(row =>
+        String(row.domain || '')
+          .trim()
+          .toLowerCase()
+      )
+      .filter(domain => isShopifyDomain(domain));
+
+    const requestedRaw = String(req.query.shops || req.query.shop || '').trim();
+    const requestedShops = requestedRaw
+      ? requestedRaw
+          .split(/[,\s]+/)
+          .map(value => value.trim().toLowerCase())
+          .filter(Boolean)
+      : allowedShopifyDomains;
+
+    const allowedSet = new Set(allowedShopifyDomains);
+    const shopsToProbe = requestedShops.filter(shop => allowedSet.has(shop));
+    const shops = await probeStorefrontReadinessBatch(shopsToProbe);
+
+    return sendSuccess(res, HTTP_STATUS.OK, { shops });
   })
 );
 

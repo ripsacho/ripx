@@ -32,6 +32,11 @@ const {
   AUDIENCE_TRAFFIC_SOURCE_VALUES,
   AUDIENCE_OPERATING_SYSTEM_VALUES,
 } = require('../utils/segments');
+const {
+  matchesTrafficSourceRules,
+  matchesLegacyTrafficSource,
+  normalizeTrafficSourceRules: normalizeTrafficSourceRulesForValidation,
+} = require('../utils/trafficSourceRules');
 
 const MAX_TEST_VARIANTS = 10;
 
@@ -1030,27 +1035,19 @@ class ABTestEngine {
       }
     }
 
-    // Advanced targeting: traffic source
-    const trafficSource = (segments.traffic_source || 'all').toLowerCase();
-    if (trafficSource !== 'all' && context.traffic_source) {
-      const ctxSource = String(context.traffic_source).toLowerCase();
-      const trafficSourceGroups = {
-        organic: ['organic', 'direct', 'organic_search', 'organic_social', 'google'],
-        paid: ['paid', 'paid_search', 'paid_social', 'paid_shopping'],
-        social: [
-          'social',
-          'organic_social',
-          'paid_social',
-          'facebook',
-          'instagram',
-          'tiktok',
-          'twitter',
-          'youtube',
-        ],
-      };
-      const allowedSources = trafficSourceGroups[trafficSource] || [trafficSource];
-      if (!allowedSources.includes(ctxSource)) {
+    // Advanced targeting: traffic source (include/exclude rules or legacy single value)
+    const trafficSourceRules = segments.traffic_source_rules;
+    if (Array.isArray(trafficSourceRules) && trafficSourceRules.length > 0) {
+      const ruleMatch = matchesTrafficSourceRules(trafficSourceRules, context.traffic_source);
+      if (ruleMatch === false) {
         return false;
+      }
+    } else {
+      const trafficSource = (segments.traffic_source || 'all').toLowerCase();
+      if (trafficSource !== 'all' && context.traffic_source) {
+        if (!matchesLegacyTrafficSource(trafficSource, context.traffic_source)) {
+          return false;
+        }
       }
     }
 
@@ -1594,6 +1591,19 @@ class ABTestEngine {
       ) {
         errors.push(
           'Segment traffic_source must be a supported audience value (Standard/Advanced), e.g. all, direct, organic_search, paid_social, instagram, or legacy organic, paid, social, email, referral'
+        );
+      }
+
+      const trafficSourceRules = normalizeTrafficSourceRulesForValidation(
+        testConfig.segments.traffic_source_rules
+      );
+      if (
+        Array.isArray(testConfig.segments.traffic_source_rules) &&
+        testConfig.segments.traffic_source_rules.length > 0 &&
+        trafficSourceRules.length === 0
+      ) {
+        errors.push(
+          'Segment traffic_source_rules must contain valid include/exclude source values such as direct, paid_search, or instagram'
         );
       }
 

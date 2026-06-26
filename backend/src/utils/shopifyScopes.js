@@ -7,7 +7,7 @@ const path = require('path');
 
 function parseShopifyScopes(raw) {
   return String(raw || '')
-    .split(',')
+    .split(/[,\s]+/)
     .map(s => s.trim())
     .filter(Boolean)
     .sort();

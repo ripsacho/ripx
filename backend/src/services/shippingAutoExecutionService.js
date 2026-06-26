@@ -179,10 +179,6 @@ function buildRipXCarrierProtectedCodes(test = {}, variant = {}) {
   const explicitRipXCodes = getReplacementRequiredMethodCodes(variant).filter(code =>
     String(code).toLowerCase().includes('ripx')
   );
-  if (explicitRipXCodes.length > 0) {
-    return Array.from(new Set(explicitRipXCodes)).slice(0, 20);
-  }
-
   const serviceCodeBase =
     String(variant?.id || variant?.name || variant?.index || test?.id || 'shipping')
       .trim()
@@ -190,7 +186,7 @@ function buildRipXCarrierProtectedCodes(test = {}, variant = {}) {
       .slice(0, 48) || 'shipping';
   const serviceName = buildShippingCarrierServiceName(test, variant);
   const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
-  const codes = [];
+  const codes = [...explicitRipXCodes];
 
   if (rates.length > 0) {
     rates.forEach((rate, index) => {
@@ -286,6 +282,19 @@ function extractScopedDeliveryMethodCodes(scope = {}) {
   return Array.from(new Set(codes.filter(Boolean))).slice(0, 50);
 }
 
+function extractConfiguredMethodHandles(cfg = {}) {
+  return toStringArray(cfg.method_handles || cfg.methodHandles)
+    .flatMap(handle => {
+      const raw = String(handle || '').trim();
+      if (!raw) {
+        return [];
+      }
+      return [raw, raw.toLowerCase()];
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function mergeHideTargetMethodNames(cfg = {}) {
   const scope =
     cfg.shipping_scope && typeof cfg.shipping_scope === 'object' ? cfg.shipping_scope : {};
@@ -318,6 +327,7 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
       ),
       ...buildNativeDeliveryMethodCodes(methodNames),
       ...extractScopedDeliveryMethodCodes(scope),
+      ...extractConfiguredMethodHandles(cfg),
     ])
   ).slice(0, 50);
   const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
@@ -328,11 +338,25 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
     throw new Error('Delivery customization rename action requires delivery_rename_to.');
   }
   const variantId = String(variant?.id || variant?.name || 'variant').trim();
-  const variantIndex =
-    variant?.index !== undefined && variant?.index !== null ? String(variant.index).trim() : '';
+  const resolvedVariantIndex = (() => {
+    if (variant?.index !== undefined && variant?.index !== null) {
+      return String(variant.index).trim();
+    }
+    const variants = Array.isArray(test?.variants) ? test.variants : [];
+    const idx = variants.findIndex(item => {
+      const id = String(item?.id || '').trim();
+      const name = String(item?.name || '').trim();
+      return (
+        (variantId && (id === variantId || name === variantId)) ||
+        (variant?.name &&
+          (name === String(variant.name).trim() || id === String(variant.name).trim()))
+      );
+    });
+    return idx >= 0 ? String(idx) : '';
+  })();
+  const variantIndex = resolvedVariantIndex;
   const replacementMode = shouldReplaceExistingRates(cfg);
   const carrierServiceName = buildShippingCarrierServiceName(test, variant);
-  const configuredRateNames = getCarrierParticipantServiceNames(cfg);
   const replacementCodes = replacementMode ? getReplacementRequiredMethodCodes(variant) : [];
   const replacementNames = replacementMode ? getReplacementRequiredMethodNames(test, variant) : [];
   const requirePresentMethodNames = replacementMode
@@ -361,13 +385,11 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
         action: ['hide', 'rename', 'reorder'].includes(action) ? action : 'hide',
         method_names: methodNames,
         method_codes: methodCodes,
-        require_present_method_names: replacementMode
-          ? requirePresentMethodNames
-          : configuredRateNames.slice(0, 10),
+        require_present_method_names: requirePresentMethodNames,
         require_present_method_codes: replacementMode ? replacementCodes : ripXProtectedCodes,
         require_present_method_prefixes:
           replacementMode || !addModeHideTargets ? [] : carrierProtectionPrefixes,
-        skip_replacement_presence_gate: addModeHideTargets,
+        skip_replacement_presence_gate: false,
         protected_method_codes: addModeProtectedCodes,
         protected_method_names: addModeProtectedNames,
         protected_method_name_prefixes: addModeHideTargets ? carrierProtectionPrefixes : [],

@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
 const fs = require('fs');
 
+const EXAMPLE_TUNNEL_URL = 'https://ripx-test-tunnel.trycloudflare.com';
+
 const TRACK_URL_KEYS = {
   RIPX_SHIPPING_CARRIER_CALLBACK_URL: '/api/track/shipping-carrier-rates',
   RIPX_SHIPPING_RESOLVE_BATCH_URL: '/api/track/shipping-resolve-batch',
@@ -8,6 +10,52 @@ const TRACK_URL_KEYS = {
   RIPX_CHECKOUT_ASSIGNMENT_URL: '/api/track/checkout-assignment',
   RIPX_CHECKOUT_CONVERSION_URL: '/api/track/checkout-conversion',
 };
+
+const DERIVED_APP_URL_KEYS = [
+  'SHOPIFY_APP_URL',
+  'RIPX_OAUTH_REDIRECT_BASE',
+  ...Object.keys(TRACK_URL_KEYS),
+];
+
+function buildExampleTunnelUrl(subdomain = 'ripx-test-tunnel') {
+  const slug = String(subdomain || 'ripx-test-tunnel')
+    .trim()
+    .replace(/[^a-z0-9-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63);
+  return `https://${slug || 'ripx-test-tunnel'}.trycloudflare.com`;
+}
+
+function buildTrackUrl(appUrl, pathSuffix) {
+  const base = String(appUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const path = String(pathSuffix || '').trim();
+  if (!base || !path) {
+    return '';
+  }
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function deriveEnvUrlsFromAppUrl(appUrl) {
+  const base =
+    normalizeTunnelUrl(appUrl) ||
+    String(appUrl || '')
+      .trim()
+      .replace(/\/+$/, '');
+  if (!base) {
+    return {};
+  }
+  const derived = {
+    APP_URL: base,
+    SHOPIFY_APP_URL: base,
+    RIPX_OAUTH_REDIRECT_BASE: base,
+  };
+  Object.entries(TRACK_URL_KEYS).forEach(([key, pathSuffix]) => {
+    derived[key] = buildTrackUrl(base, pathSuffix);
+  });
+  return derived;
+}
 
 function normalizeTunnelUrl(raw) {
   const candidate = String(raw || '').trim();
@@ -61,6 +109,13 @@ function upsertEnvKey(lines, key, value) {
   return next;
 }
 
+function removeEnvKeys(lines, keys) {
+  const prefixes = new Set(
+    (Array.isArray(keys) ? keys : []).map(key => `${String(key || '').trim()}=`)
+  );
+  return lines.filter(line => !Array.from(prefixes).some(prefix => line.startsWith(prefix)));
+}
+
 function updateEnvTunnelUrls(envPath, appUrl) {
   if (!appUrl || !fs.existsSync(envPath)) {
     return false;
@@ -72,12 +127,8 @@ function updateEnvTunnelUrls(envPath, appUrl) {
     lines = lines.slice(0, -1);
   }
 
+  lines = removeEnvKeys(lines, DERIVED_APP_URL_KEYS);
   lines = upsertEnvKey(lines, 'APP_URL', appUrl);
-  lines = upsertEnvKey(lines, 'SHOPIFY_APP_URL', appUrl);
-  lines = upsertEnvKey(lines, 'RIPX_OAUTH_REDIRECT_BASE', appUrl);
-  Object.entries(TRACK_URL_KEYS).forEach(([key, pathSuffix]) => {
-    lines = upsertEnvKey(lines, key, `${appUrl}${pathSuffix}`);
-  });
 
   const output = `${lines.join('\n')}${hasTrailingNewline ? '\n' : ''}`;
   fs.writeFileSync(envPath, output, 'utf8');
@@ -104,7 +155,12 @@ function tunnelUrlsMatch(left, right) {
 }
 
 module.exports = {
+  EXAMPLE_TUNNEL_URL,
   TRACK_URL_KEYS,
+  DERIVED_APP_URL_KEYS,
+  buildExampleTunnelUrl,
+  buildTrackUrl,
+  deriveEnvUrlsFromAppUrl,
   normalizeTunnelUrl,
   normalizeHostToUrl,
   readEnvValue,

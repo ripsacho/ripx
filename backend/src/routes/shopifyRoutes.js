@@ -13,6 +13,10 @@ const validators = require('../utils/validators');
 const { getShopSession } = require('../models/shopSession');
 const { evaluateShopifyConnectionHealth } = require('../services/shopifyConnectionHealth');
 const { runStorefrontSetupProbe } = require('../services/storefrontSetupService');
+const {
+  buildShopifyScopeReauthorizeUrl,
+  buildScopeReauthorizeFailureRedirect,
+} = require('../services/shopifyReauthorizeService');
 
 /**
  * GET /api/shopify/connection-status
@@ -32,6 +36,53 @@ router.get(
       quick,
     });
     res.json(payload);
+  })
+);
+
+/**
+ * GET /api/shopify/reauthorize?shop=...
+ * Start Shopify OAuth for an already-connected store (scope refresh).
+ * Authenticates via shop session (or email session + store access). Does not require email JWT in localStorage.
+ */
+router.get(
+  '/reauthorize',
+  asyncHandler(async (req, res) => {
+    try {
+      const redirectUrl = await buildShopifyScopeReauthorizeUrl(req, res);
+      return res.json({ success: true, redirectUrl });
+    } catch (error) {
+      const status = error.status || 500;
+      return res.status(status).json({
+        success: false,
+        error: error.message || 'Could not start permission update',
+        code: error.code || 'REAUTHORIZE_FAILED',
+      });
+    }
+  })
+);
+
+/**
+ * GET /api/shopify/reauthorize-redirect?shop=...
+ * Browser navigation entrypoint for scope refresh (sets OAuth cookies, then 302 to Shopify).
+ * Works with shop session auth and httpOnly email session cookie (no localStorage JWT required).
+ */
+router.get(
+  '/reauthorize-redirect',
+  asyncHandler(async (req, res) => {
+    const shop = String(req.shopDomain || req.query?.shop || '')
+      .trim()
+      .toLowerCase();
+    try {
+      const redirectUrl = await buildShopifyScopeReauthorizeUrl(req, res);
+      return res.redirect(redirectUrl);
+    } catch (error) {
+      logger.warn('Shopify scope reauthorize redirect failed', {
+        shop,
+        code: error.code,
+        message: error.message,
+      });
+      return res.redirect(buildScopeReauthorizeFailureRedirect(req, shop, 'scope_update'));
+    }
   })
 );
 

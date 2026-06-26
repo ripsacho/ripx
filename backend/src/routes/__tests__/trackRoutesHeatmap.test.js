@@ -169,6 +169,28 @@ describe('track heatmap route helpers', () => {
     ).toBe(true);
   });
 
+  it('matches carrier callback assignments from cart-level attributes', () => {
+    const req = {
+      body: {
+        attributes: {
+          _ripx_price_test: 'test-cart-attrs',
+          _ripx_variant: '1',
+        },
+        rate: {
+          destination: { country: 'US' },
+          items: [{ quantity: 1, grams: 1000, price: 1000 }],
+        },
+      },
+    };
+    expect(
+      carrierRequestMatchesAssignment(req, {
+        testId: 'test-cart-attrs',
+        variantId: 'Variant A',
+        variantIndex: '1',
+      })
+    ).toBe(true);
+  });
+
   it('matches carrier callback assignments when variant labels differ only by plus encoding', () => {
     const req = {
       body: {

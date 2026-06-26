@@ -4,6 +4,7 @@ import {
 } from './wizardCheckoutConstants';
 import { advancedSectionHasActivity, buildAdvancedSummary } from './advancedTargeting';
 import { hasCustomAudienceRules, summarizeAudienceTargeting } from './customAudienceRules';
+import { hasTrafficSourceTargeting } from './trafficSourceTargeting';
 
 function normalizeHoldoutPercent(raw) {
   if (raw === '' || raw === null || raw === undefined) {
@@ -91,7 +92,7 @@ function audienceSectionHasActivity(formData) {
     (segments.device || 'all') !== 'all' ||
     (segments.customer || 'all') !== 'all' ||
     (segments.countries || []).length > 0 ||
-    (segments.traffic_source || 'all') !== 'all' ||
+    hasTrafficSourceTargeting(segments) ||
     (segments.operating_system || 'all') !== 'all'
   );
 }

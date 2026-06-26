@@ -2030,6 +2030,8 @@
   var _ripxCartSubmitGuardsInstalled = false;
   var _ripxCartPropsRepairInFlight = null;
   var _ripxCartPropsRepairLastAt = 0;
+  var _ripxCartLevelAttributeSyncInFlight = null;
+  var _ripxCartLevelAttributeSyncLastAt = 0;
   var _ripxCartPropsRepairTimers = [];
   var _ripxCheckoutNavigationGuardsInstalled = false;
   var _ripxCartNativeState = {
@@ -4545,6 +4547,50 @@
     return { changed: false, body: body };
   }
 
+  function getRipxCartLevelAttributesPayload(state) {
+    var src = state || _ripxCartAttributeState;
+    if (!src || !src._ripx_price_test || !src._ripx_variant) return null;
+    return {
+      _ripx_price_test: String(src._ripx_price_test).trim(),
+      _ripx_variant: String(src._ripx_variant).trim(),
+      ripx_price_test: String(src._ripx_price_test).trim(),
+      ripx_variant: String(src._ripx_variant).trim(),
+    };
+  }
+
+  function syncRipxCartLevelAttributes(reason) {
+    var attrs = getRipxCartLevelAttributesPayload(_ripxCartAttributeState);
+    if (!attrs || !_ripxNativeFetch) return Promise.resolve(false);
+    if (_ripxCartLevelAttributeSyncInFlight) return _ripxCartLevelAttributeSyncInFlight;
+    var now = Date.now();
+    if (now - _ripxCartLevelAttributeSyncLastAt < 400) return Promise.resolve(false);
+    _ripxCartLevelAttributeSyncLastAt = now;
+    _ripxCartLevelAttributeSyncInFlight = _ripxNativeFetch('/cart/update.js', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ attributes: attrs }),
+    })
+      .then(function (response) {
+        var ok = !!(response && response.ok);
+        recordShippingDebugStep(ok ? 'cart_level_attrs_synced' : 'cart_level_attrs_sync_failed', {
+          reason: reason || 'unknown',
+          status: response && response.status ? response.status : null,
+        });
+        return ok;
+      })
+      .catch(function () {
+        recordShippingDebugStep('cart_level_attrs_sync_exception', {
+          reason: reason || 'unknown',
+        });
+        return false;
+      })
+      .finally(function () {
+        _ripxCartLevelAttributeSyncInFlight = null;
+      });
+    return _ripxCartLevelAttributeSyncInFlight;
+  }
+
   function getRipxLinePropertiesPayload(state) {
     var src = state || _ripxCartAttributeState;
     if (!src || !src._ripx_price_test || !src._ripx_variant) return null;
@@ -4624,6 +4670,56 @@
     return countRipxRepairCandidates(cartState, desiredProps) === 0;
   }
 
+  function findAllRipxRepairLineIndexes(cartState, desiredProps) {
+    if (!cartState || !Array.isArray(cartState.items) || !cartState.items.length) return [];
+    var indexes = [];
+    for (var i = 0; i < cartState.items.length; i += 1) {
+      if (linePropertiesNeedRipxRepair(cartState.items[i], desiredProps)) {
+        indexes.push(i);
+      }
+    }
+    return indexes;
+  }
+
+  function repairRipxCartLineAtIndex(cartState, lineIndex, desiredProps, reason) {
+    var item = cartState.items[lineIndex] || {};
+    var mergedProps = Object.assign({}, item.properties || {}, desiredProps);
+    var requestBody = JSON.stringify({
+      line: lineIndex + 1,
+      quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+      properties: mergedProps,
+    });
+    return _ripxNativeFetch('/cart/change.js', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: requestBody,
+    })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          recordShippingDebugStep('cart_repair_failed', {
+            reason: reason || 'unknown',
+            status: res && res.status ? res.status : null,
+            line: lineIndex + 1,
+          });
+          return false;
+        }
+        recordShippingDebugStep('cart_repair_succeeded', {
+          reason: reason || 'unknown',
+          line: lineIndex + 1,
+          keys: Object.keys(mergedProps || {}),
+        });
+        return true;
+      })
+      .catch(function () {
+        recordShippingDebugStep('cart_repair_change_exception', {
+          reason: reason || 'unknown',
+          line: lineIndex + 1,
+        });
+        return false;
+      });
+  }
+
   function maybeRepairRipxCartLineProperties(reason) {
     var desiredProps = getRipxLinePropertiesPayload(_ripxCartAttributeState);
     if (!desiredProps || !_ripxNativeFetch) {
@@ -4660,13 +4756,20 @@
         });
       })
       .then(function (cartState) {
-        var lineIndex = findRipxRepairLineIndex(cartState, desiredProps);
-        if (lineIndex < 0) {
+        var shippingRepairAllLines = isRipxShippingCartState(_ripxCartAttributeState);
+        var lineIndexes = shippingRepairAllLines
+          ? findAllRipxRepairLineIndexes(cartState, desiredProps)
+          : (function () {
+              var singleIndex = findRipxRepairLineIndex(cartState, desiredProps);
+              return singleIndex >= 0 ? [singleIndex] : [];
+            })();
+        if (lineIndexes.length === 0) {
           if (cartLinesAlreadyHaveRipxAssignment(cartState, desiredProps)) {
             recordShippingDebugStep('cart_repair_already_complete', {
               reason: reason || 'unknown',
               itemCount: Array.isArray(cartState && cartState.items) ? cartState.items.length : 0,
             });
+            syncRipxCartLevelAttributes(reason || 'repair-already-complete');
             return true;
           }
           recordShippingDebugStep('cart_repair_no_matching_line', {
@@ -4680,51 +4783,19 @@
           }
           return false;
         }
-        var item = cartState.items[lineIndex] || {};
-        var mergedProps = Object.assign({}, item.properties || {}, desiredProps);
-        var requestBody = JSON.stringify({
-          line: lineIndex + 1,
-          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-          properties: mergedProps,
+        var repairChain = Promise.resolve(true);
+        for (var li = 0; li < lineIndexes.length; li += 1) {
+          (function (lineIndex) {
+            repairChain = repairChain.then(function () {
+              return repairRipxCartLineAtIndex(cartState, lineIndex, desiredProps, reason);
+            });
+          })(lineIndexes[li]);
+        }
+        return repairChain.then(function () {
+          scheduleRipxCartNativeStateRefreshBurst();
+          syncRipxCartLevelAttributes(reason || 'repair-complete');
+          return true;
         });
-        return _ripxNativeFetch('/cart/change.js', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: requestBody,
-        })
-          .then(function (res) {
-            if (!res || !res.ok) {
-              recordShippingDebugStep('cart_repair_failed', {
-                reason: reason || 'unknown',
-                status: res && res.status ? res.status : null,
-              });
-              if (DEBUG) {
-                debugLog(
-                  'cart props repair failed:',
-                  reason || 'unknown',
-                  res && res.status ? res.status : 'no-response'
-                );
-              }
-              return false;
-            }
-            recordShippingDebugStep('cart_repair_succeeded', {
-              reason: reason || 'unknown',
-              line: lineIndex + 1,
-              keys: Object.keys(mergedProps || {}),
-            });
-            if (DEBUG) {
-              debugLog('cart props repaired:', reason || 'unknown', 'line', lineIndex + 1);
-            }
-            scheduleRipxCartNativeStateRefreshBurst();
-            return true;
-          })
-          .catch(function () {
-            recordShippingDebugStep('cart_repair_change_exception', {
-              reason: reason || 'unknown',
-            });
-            return false;
-          });
       })
       .catch(function () {
         recordShippingDebugStep('cart_repair_exception', { reason: reason || 'unknown' });
@@ -4854,6 +4925,7 @@
 
   function scheduleRipxCartPropsRepairBurst(reason) {
     maybeRepairRipxCartLineProperties(reason || 'immediate');
+    syncRipxCartLevelAttributes(reason || 'burst');
     var delays = PRICE_PREVIEW_FRAME ? [120, 420, 1100, 2200, 4200] : [120, 420, 1100];
     for (var i = 0; i < delays.length; i++) {
       (function (delayMs) {
@@ -10255,11 +10327,31 @@
         (test.targetId || test.target_id ? [test.targetId || test.target_id] : []));
     return Array.isArray(ids) && ids.length > 0 ? ids : null;
   }
+  function resolveShippingVariantIdForCart(variant) {
+    if (!variant || typeof variant !== 'object') return '';
+    var candidates = [
+      variant.variantId,
+      variant.variant_id,
+      variant.id,
+      variant.variantName,
+      variant.variant_name,
+      variant.name,
+      variant.index,
+      variant.variant_index,
+    ];
+    for (var i = 0; i < candidates.length; i += 1) {
+      var value = candidates[i];
+      if (value === undefined || value === null) continue;
+      var normalized = String(value).trim();
+      if (normalized) return normalized;
+    }
+    return '';
+  }
   function injectShippingTestCartAttributes(test, variant) {
     if (!test || !variant || !testTypeIsShipping(test)) return;
     var tt = getNormalizedTargetType(test);
-    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
-    if (variantIdForCart == null || String(variantIdForCart).trim() === '') return;
+    var variantIdForCart = resolveShippingVariantIdForCart(variant);
+    if (!variantIdForCart) return;
     clearRipxPriceOnlyCartHints();
     injectPriceTestCartAttributes(
       test.id,
@@ -10281,6 +10373,7 @@
       targetType: tt,
       targetProductIds: getShippingTargetProductIdsForCartAttrs(test),
     });
+    syncRipxCartLevelAttributes('shipping-assignment');
     scheduleRipxCartPropsRepairBurst('shipping-assignment');
   }
 

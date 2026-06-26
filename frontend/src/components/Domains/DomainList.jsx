@@ -156,6 +156,7 @@ import {
   invalidateShopifyConnectionQueries,
   invalidateShopifyDomainListQueries,
 } from '../../utils/shopifyQueryInvalidation';
+import { getShopifyDomainStatusPresentation } from '../../utils/commandCenterPresentation';
 
 /** postMessage type from OAuth success tab when store connected from embed */
 const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
@@ -466,8 +467,11 @@ function DomainList() {
   const error = useEmailDomains ? meError : accountStoresError;
   const domains = React.useMemo(() => data?.domains ?? [], [data]);
   const canAddDomains = useEmailDomains;
-  const { getState: getShopifyInstallStateFromHook, getMessage: getShopifyInstallMessage } =
-    useShopifyInstallStatus(domains, 'domains-list');
+  const {
+    getState: getShopifyInstallStateFromHook,
+    getMessage: getShopifyInstallMessage,
+    getDetail: getShopifyInstallDetail,
+  } = useShopifyInstallStatus(domains, 'domains-list');
 
   useEffect(() => {
     if (searchParams.get('action') !== 'add' || !canAddDomains || addModalOpen) return;
@@ -510,14 +514,13 @@ function DomainList() {
   const getShopifyInstallBadge = domainValue => {
     const status = getShopifyInstallState(domainValue);
     if (!status) return null;
-    const labels = {
-      connected: 'Connected',
-      needs_install: 'Needs install',
-      needs_link: 'Needs link',
-      restricted: 'Restricted',
-      checking: 'Checking…',
-      unknown: 'Status unknown',
-    };
+    const detail = getShopifyInstallDetail(domainValue);
+    const { statusLabel } = getShopifyDomainStatusPresentation({
+      installState: status,
+      installDetail: detail,
+      isShopify: true,
+      canOpen: true,
+    });
     const detailMessage = getShopifyInstallMessage(domainValue);
     const defaultTitle =
       status === 'needs_install'
@@ -526,13 +529,13 @@ function DomainList() {
           ? 'RipX app is installed but this store is not linked to your account yet'
           : status === 'restricted'
             ? 'This store is connected but your account access is currently restricted'
-            : labels[status];
+            : statusLabel;
     return (
       <span
         className={`${styles.shopifyInstallBadge} ${styles[`shopifyInstallBadge_${status}`]}`}
         title={detailMessage || defaultTitle}
       >
-        {labels[status]}
+        {statusLabel}
       </span>
     );
   };

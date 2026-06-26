@@ -1414,11 +1414,116 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].status).toBe('created');
     expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
       method_names: ['Standard Shipping'],
-      skip_replacement_presence_gate: true,
+      skip_replacement_presence_gate: false,
       protected_method_names: [],
       protected_method_codes: expect.arrayContaining([expect.stringMatching(/^ripx_flat_/i)]),
       protected_method_name_prefixes: expect.arrayContaining(['RipX Shipping']),
     });
+  });
+
+  it('protects every add-mode RipX rate code when one rate already has an explicit ripx service code', async () => {
+    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    graphSpy
+      .mockResolvedValueOnce({
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'plus.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          shopifyFunctions: {
+            nodes: [
+              {
+                id: 'fn-delivery-1',
+                title: 'RipX Delivery Customization',
+                apiType: 'DELIVERY_CUSTOMIZATION',
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizationCreate: {
+            deliveryCustomization: {
+              id: 'gid://shopify/DeliveryCustomization/47',
+              title: 'RipX Shipping Delivery test-mixed-codes Variant A',
+              enabled: true,
+            },
+            userErrors: [],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [{ id: 'gid://shopify/Metafield/47' }],
+            userErrors: [],
+          },
+        },
+      });
+    const restSpy = jest.spyOn(shopifyService, 'requestAdminRest');
+    restSpy.mockResolvedValueOnce({ carrier_services: [] }).mockResolvedValueOnce({
+      carrier_service: {
+        id: 447,
+        name: 'RipX Shipping Rate - test-mixed-codes',
+        callback_url:
+          'https://ripx.example.com/api/track/shipping-carrier-rates?test_id=test-mixed-codes&variant_index=1&strategy=flat_rate&amount=33.00',
+        service_discovery: true,
+      },
+    });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-mixed-codes',
+        name: 'Shipping mixed codes test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            id: 'Variant A',
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 33,
+              shipping_display_mode: 'add_preview_method',
+              delivery_method_names: ['Standard', 'Express'],
+              delivery_action: 'hide',
+              method_handles: ['standard'],
+              rates: [
+                {
+                  name: 'Standard',
+                  amount: 33,
+                  currency: 'USD',
+                  service_code: 'ripx_replace_standard',
+                },
+                {
+                  name: 'Express',
+                  amount: 64,
+                  currency: 'USD',
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const rule = result.execution_result.actions[1].details?.config?.variant_rules[0];
+    expect(rule.method_codes).toEqual(expect.arrayContaining(['standard']));
+    expect(rule.require_present_method_names).toEqual([]);
+    expect(rule.protected_method_codes).toEqual(
+      expect.arrayContaining(['ripx_replace_standard', expect.stringMatching(/^ripx_flat_/i)])
+    );
   });
 
   it('does not hide existing methods when replacement carrier service is not ready', async () => {
