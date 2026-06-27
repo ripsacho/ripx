@@ -889,10 +889,11 @@ router.get(
 
     const tokenData = await tokenResponse.json();
 
+    const { normalizeGrantedShopifyScopeString } = require('../utils/shopifyScopes');
     await upsertShopSession({
       shopDomain: normalizedShop,
       accessToken: tokenData.access_token,
-      scope: tokenData.scope,
+      scope: normalizeGrantedShopifyScopeString(tokenData.scope) || tokenData.scope || null,
     });
     const { clearConnectionHealthCache } = require('../services/shopifyConnectionHealth');
     clearConnectionHealthCache(normalizedShop);

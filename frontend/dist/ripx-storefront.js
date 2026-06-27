@@ -549,6 +549,7 @@
           entry &&
           (entry.step === 'cart_repair_already_complete' ||
             entry.step === 'cart_repair_succeeded' ||
+            entry.step === 'cart_level_attrs_synced' ||
             entry.step === 'checkout_handoff_repair_result')
         );
       }),
@@ -644,10 +645,16 @@
         if (console.log) console.log('cart', cart);
         if (console.groupEnd) console.groupEnd();
       }
+      var cartAttributes =
+        cart && cart.attributes && typeof cart.attributes === 'object' ? cart.attributes : {};
       return {
         ok: true,
         itemCount: items.length,
         currency: cart && cart.currency ? cart.currency : null,
+        attributes: {
+          _ripx_price_test: cartAttributes._ripx_price_test || cartAttributes.ripx_price_test || null,
+          _ripx_variant: cartAttributes._ripx_variant || cartAttributes.ripx_variant || null,
+        },
         items: items,
         cart: opts.includeRaw ? cart : undefined,
       };
@@ -944,6 +951,7 @@
     return {
       preview: obj.preview === true || obj.preview === '1',
       testId: obj.testId ? String(obj.testId) : null,
+      testType: obj.testType ? String(obj.testType) : null,
       variantId: obj.variantId ? String(obj.variantId) : null,
       variantName: obj.variantName ? String(obj.variantName) : null,
       tenantDomain: obj.tenantDomain ? String(obj.tenantDomain) : null,
@@ -1019,6 +1027,7 @@
   const _urlPreviewTest = getPreviewParam('ab_preview_test');
   const _urlPreviewVariantId = getPreviewParam('ab_preview_variant');
   const _urlPreviewVariantName = getPreviewParam('ab_preview_variant_name');
+  const _urlPreviewTestType = getPreviewParam('ab_preview_test_type');
   const _urlPreviewTenantDomain = getPreviewParam('ab_preview_domain');
   const PREVIEW_SIMPLE_MODE =
     getPreviewParam('ab_preview_simple') === '1' ||
@@ -1030,6 +1039,7 @@
     _urlPreviewTest ||
     _urlPreviewVariantId ||
     _urlPreviewVariantName ||
+    _urlPreviewTestType ||
     _urlPreviewTenantDomain
   );
 
@@ -1051,6 +1061,12 @@
     (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.variantName : null) ||
     (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantName : null) ||
+    null;
+  const PREVIEW_TEST_TYPE =
+    _urlPreviewTestType ||
+    (CONFIG.previewTestType && String(CONFIG.previewTestType)) ||
+    (persistedPreview && persistedPreview.preview ? persistedPreview.testType : null) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.testType : null) ||
     null;
   const PREVIEW_TENANT_DOMAIN =
     _urlPreviewTenantDomain ||
@@ -1089,7 +1105,9 @@
         tests.push({
           id: PREVIEW_TEST_ID,
           type:
-            embeddedPreviewConfig && configLooksLikeShipping(embeddedPreviewConfig)
+            String(PREVIEW_TEST_TYPE || '')
+              .trim()
+              .toLowerCase() === 'shipping' || resolvePreviewLooksLikeShipping(null)
               ? 'shipping'
               : 'price',
           targetType: 'all-products',
@@ -1344,6 +1362,7 @@
     writePersistedPreviewCtx({
       preview: true,
       testId: PREVIEW_TEST_ID || null,
+      testType: PREVIEW_TEST_TYPE || null,
       variantId: PREVIEW_VARIANT_ID || null,
       variantName: PREVIEW_VARIANT_NAME || null,
       tenantDomain: PREVIEW_TENANT_DOMAIN || null,
@@ -1368,6 +1387,7 @@
         'ab_preview',
         'ab_preview_simple',
         'ab_preview_test',
+        'ab_preview_test_type',
         'ab_preview_variant',
         'ab_preview_variant_name',
         'ab_preview_domain',
@@ -1409,6 +1429,13 @@
   }
 
   function resolvePreviewLooksLikeShipping(variant) {
+    var hintedType = String(PREVIEW_TEST_TYPE || '')
+      .trim()
+      .toLowerCase();
+    if (hintedType === 'shipping') return true;
+    if (hintedType === 'price' || hintedType === 'offer' || hintedType === 'checkout') {
+      return false;
+    }
     var previewTest = PREVIEW_TEST_ID ? getActiveTestById(PREVIEW_TEST_ID) : null;
     if (previewTest && testTypeIsShipping(previewTest)) return true;
     var embeddedPreviewConfig =
@@ -1507,6 +1534,8 @@
       if (PREVIEW_MODE) parsed.searchParams.set('ab_preview', '1');
       if (PREVIEW_SIMPLE_MODE) parsed.searchParams.set('ab_preview_simple', '1');
       if (PREVIEW_TEST_ID) parsed.searchParams.set('ab_preview_test', String(PREVIEW_TEST_ID));
+      if (PREVIEW_TEST_TYPE)
+        parsed.searchParams.set('ab_preview_test_type', String(PREVIEW_TEST_TYPE));
       if (PREVIEW_VARIANT_ID)
         parsed.searchParams.set('ab_preview_variant', String(PREVIEW_VARIANT_ID));
       if (PREVIEW_VARIANT_NAME) {
@@ -4558,12 +4587,16 @@
     };
   }
 
-  function syncRipxCartLevelAttributes(reason) {
+  function syncRipxCartLevelAttributes(reason, options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    var force = Boolean(opts.force);
     var attrs = getRipxCartLevelAttributesPayload(_ripxCartAttributeState);
     if (!attrs || !_ripxNativeFetch) return Promise.resolve(false);
-    if (_ripxCartLevelAttributeSyncInFlight) return _ripxCartLevelAttributeSyncInFlight;
+    if (_ripxCartLevelAttributeSyncInFlight) {
+      return _ripxCartLevelAttributeSyncInFlight;
+    }
     var now = Date.now();
-    if (now - _ripxCartLevelAttributeSyncLastAt < 400) return Promise.resolve(false);
+    if (!force && now - _ripxCartLevelAttributeSyncLastAt < 400) return Promise.resolve(false);
     _ripxCartLevelAttributeSyncLastAt = now;
     _ripxCartLevelAttributeSyncInFlight = _ripxNativeFetch('/cart/update.js', {
       method: 'POST',
@@ -4735,7 +4768,11 @@
       return _ripxCartPropsRepairInFlight;
     }
     var now = Date.now();
-    if (now - _ripxCartPropsRepairLastAt < 300) {
+    var checkoutHandoffReason = String(reason || '')
+      .trim()
+      .toLowerCase()
+      .indexOf('checkout') === 0;
+    if (!checkoutHandoffReason && now - _ripxCartPropsRepairLastAt < 300) {
       recordShippingDebugStep('cart_repair_throttled', { reason: reason || 'unknown' });
       return Promise.resolve(false);
     }
@@ -4889,11 +4926,19 @@
       if (event && typeof event.preventDefault === 'function') event.preventDefault();
       if (event && typeof event.stopImmediatePropagation === 'function') {
         event.stopImmediatePropagation();
-      } else if (event && typeof event.stopPropagation === 'function') {
+      } else       if (event && typeof event.stopPropagation === 'function') {
         event.stopPropagation();
       }
-      maybeRepairRipxCartLineProperties('checkout-start').finally(function (result) {
-        recordShippingDebugStep('checkout_handoff_repair_result', { repaired: Boolean(result) });
+      Promise.all([
+        syncRipxCartLevelAttributes('checkout-start', { force: true }),
+        maybeRepairRipxCartLineProperties('checkout-start'),
+      ]).then(function (results) {
+        var cartLevelSynced = Array.isArray(results) ? Boolean(results[0]) : false;
+        var linePropsRepaired = Array.isArray(results) ? Boolean(results[1]) : false;
+        recordShippingDebugStep('checkout_handoff_repair_result', {
+          cartLevelSynced: cartLevelSynced,
+          linePropsRepaired: linePropsRepaired,
+        });
         continueCheckoutAfterRepair(control, form);
       });
       return true;
@@ -11686,7 +11731,12 @@
             // storefront test shape in background so first paint is not blocked on network.
             testsToRun.push({
               id: PREVIEW_TEST_ID,
-              type: resolvePreviewLooksLikeShipping(null) ? 'shipping' : 'price',
+              type:
+                String(PREVIEW_TEST_TYPE || '')
+                  .trim()
+                  .toLowerCase() === 'shipping' || resolvePreviewLooksLikeShipping(null)
+                  ? 'shipping'
+                  : 'price',
               targetType: 'all-products',
               targetIds: null,
               targetId: null,

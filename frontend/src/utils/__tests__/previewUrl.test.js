@@ -32,6 +32,19 @@ describe('previewUrl', () => {
     );
   });
 
+  it('includes test type hint when provided', () => {
+    const result = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'Variant A',
+      variantName: 'Variant A',
+      testType: 'shipping',
+    });
+
+    const url = new URL(result);
+    expect(url.searchParams.get(PREVIEW_PARAMS.TEST_TYPE)).toBe('shipping');
+  });
+
   it('omits saved tenant domain when not provided', () => {
     const result = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',

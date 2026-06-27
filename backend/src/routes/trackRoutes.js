@@ -551,6 +551,14 @@ function parsePreviewSessionFlag(value) {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+function normalizeCallbackVariantToken(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function findShippingVariantByCallbackQuery(test, queryInput = {}) {
   const variants = Array.isArray(test?.variants) ? test.variants : [];
   const rawIndex = queryInput?.variant_index ?? queryInput?.variantIndex;
@@ -560,13 +568,15 @@ function findShippingVariantByCallbackQuery(test, queryInput = {}) {
       return { variant: variants[parsedIndex], index: parsedIndex };
     }
   }
-  const rawVariantId = String(queryInput?.variant_id || queryInput?.variantId || '').trim();
+  const rawVariantId = normalizeCallbackVariantToken(
+    queryInput?.variant_id || queryInput?.variantId || ''
+  );
   if (!rawVariantId) {
     return { variant: null, index: -1 };
   }
   const index = variants.findIndex(variant => {
-    const id = String(variant?.id || '').trim();
-    const name = String(variant?.name || '').trim();
+    const id = normalizeCallbackVariantToken(variant?.id);
+    const name = normalizeCallbackVariantToken(variant?.name);
     return (id && id === rawVariantId) || (name && name === rawVariantId);
   });
   return {
@@ -1322,12 +1332,15 @@ router.get(
       req.query.ab_preview_variant || targetPreview.get('ab_preview_variant') || null;
     const previewVariantName =
       req.query.ab_preview_variant_name || targetPreview.get('ab_preview_variant_name') || null;
+    const previewTestType =
+      req.query.ab_preview_test_type || targetPreview.get('ab_preview_test_type') || null;
     const previewTenantDomain =
       req.query.ab_preview_domain || targetPreview.get('ab_preview_domain') || null;
 
     const previewCtx = {
       preview: previewFlag,
       testId: previewTestId ? String(previewTestId) : null,
+      testType: previewTestType ? String(previewTestType) : null,
       variantId: previewVariantId ? String(previewVariantId) : null,
       variantName: previewVariantName ? String(previewVariantName) : null,
       tenantDomain: previewTenantDomain ? String(previewTenantDomain) : null,

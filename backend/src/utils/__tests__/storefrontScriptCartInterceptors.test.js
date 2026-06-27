@@ -253,6 +253,12 @@ function getCartChangeFetchCalls(fetchCalls) {
   );
 }
 
+function getCartUpdateFetchCalls(fetchCalls) {
+  return (Array.isArray(fetchCalls) ? fetchCalls : []).filter(call =>
+    /\/cart\/update(?:\.js)?(?:[?#]|$)/i.test(getFetchInputUrl(call))
+  );
+}
+
 function getTrackCalls(fetchCalls) {
   return (Array.isArray(fetchCalls) ? fetchCalls : []).filter(call =>
     /\/track(?:[?#]|$)/i.test(getFetchInputUrl(call))
@@ -313,7 +319,9 @@ async function waitForTrackEvent(fetchCalls, eventName) {
         return false;
       }
     });
-    if (match) {return match;}
+    if (match) {
+      return match;
+    }
     await new Promise(resolve => setTimeout(resolve, 0));
   }
   return undefined;
@@ -1820,6 +1828,12 @@ describe('storefront script cart/add interceptors', () => {
       _ripx_price_test: '26262626-2626-4262-8262-262626262626',
       _ripx_variant: 'Variant A',
       _ripx_assignment_sig: 'j'.repeat(64),
+    });
+    const updateCall = getCartUpdateFetchCalls(fetchCalls)[0] || null;
+    expect(updateCall).toBeTruthy();
+    expect(JSON.parse(updateCall.init.body).attributes).toMatchObject({
+      _ripx_price_test: '26262626-2626-4262-8262-262626262626',
+      _ripx_variant: 'Variant A',
     });
     expect(checkoutForm.submit).toHaveBeenCalled();
   });

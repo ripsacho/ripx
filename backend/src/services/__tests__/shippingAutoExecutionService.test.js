@@ -1,5 +1,8 @@
 const shopifyService = require('../shopifyService');
-const { executeShippingTestPlan } = require('../shippingAutoExecutionService');
+const {
+  executeShippingTestPlan,
+  dedupeDeliveryCustomizationsForVariant,
+} = require('../shippingAutoExecutionService');
 const { getTestsByShop } = require('../../models/test');
 
 jest.mock('../../models/test', () => ({
@@ -457,30 +460,13 @@ describe('shippingAutoExecutionService', () => {
 
     const action = result.execution_result.actions[0];
     expect(action.status).toBe('created');
-    expect(action.details?.callback_url).toContain('amount=4.00');
     expect(action.details?.callback_url).toContain('shop_domain=plus.myshopify.com');
-    expect(action.details?.callback_url).toContain('shipping_display_mode=add_preview_method');
-    expect(action.details?.callback_url).toContain('rates_count=2');
-    expect(action.details?.callback_url).toContain('rates_json=');
+    expect(action.details?.callback_url).toContain('require_assignment=1');
+    expect(action.details?.callback_url).not.toContain('rates_json=');
     const callbackUrl = new URL(action.details?.callback_url);
     expect(callbackUrl.searchParams.get('cfg_rev')).toBe('2026-06-01T23:00:00.000Z');
-    const ratesJson = JSON.parse(callbackUrl.searchParams.get('rates_json'));
-    expect(ratesJson).toEqual([
-      expect.objectContaining({
-        name: 'Economy',
-        description: 'Budget shipping',
-        delivery_promise: expect.objectContaining({
-          mode: 'preset',
-          preset: '2_3_business_days',
-        }),
-      }),
-      expect.objectContaining({
-        name: 'Express',
-        description: 'Fast tracked shipping',
-        min_delivery_date: '2026-07-04',
-        max_delivery_date: '2026-07-05',
-      }),
-    ]);
+    expect(callbackUrl.searchParams.get('variant_index')).toBe('1');
+    expect(action.details?.callback_url.length).toBeLessThanOrEqual(255);
     expect(restSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -1414,8 +1400,8 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].status).toBe('created');
     expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
       method_names: ['Standard Shipping'],
-      skip_replacement_presence_gate: false,
-      protected_method_names: [],
+      skip_replacement_presence_gate: true,
+      protected_method_names: ['Express'],
       protected_method_codes: expect.arrayContaining([expect.stringMatching(/^ripx_flat_/i)]),
       protected_method_name_prefixes: expect.arrayContaining(['RipX Shipping']),
     });
@@ -1519,10 +1505,107 @@ describe('shippingAutoExecutionService', () => {
     });
 
     const rule = result.execution_result.actions[1].details?.config?.variant_rules[0];
-    expect(rule.method_codes).toEqual(expect.arrayContaining(['standard']));
+    expect(rule.method_codes).toEqual(
+      expect.arrayContaining(['standard', 'Standard', 'express', 'Express'])
+    );
     expect(rule.require_present_method_names).toEqual([]);
     expect(rule.protected_method_codes).toEqual(
-      expect.arrayContaining(['ripx_replace_standard', expect.stringMatching(/^ripx_flat_/i)])
+      expect.arrayContaining(['ripx_replace_standard', expect.stringMatching(/^ripx_flat_1_/i)])
+    );
+  });
+
+  it('includes custom carrier service codes in protected_method_codes even without ripx prefix', async () => {
+    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    graphSpy
+      .mockResolvedValueOnce({
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'plus.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          shopifyFunctions: {
+            nodes: [
+              {
+                id: 'fn-delivery-1',
+                title: 'RipX Delivery Customization',
+                apiType: 'DELIVERY_CUSTOMIZATION',
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { deliveryCustomizations: { edges: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizationCreate: {
+            deliveryCustomization: {
+              id: 'gid://shopify/DeliveryCustomization/48',
+              title: 'RipX Shipping Delivery test-custom-codes Variant A',
+              enabled: true,
+            },
+            userErrors: [],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [{ id: 'gid://shopify/Metafield/48' }],
+            userErrors: [],
+          },
+        },
+      });
+    jest
+      .spyOn(shopifyService, 'requestAdminRest')
+      .mockResolvedValueOnce({ carrier_services: [] })
+      .mockResolvedValueOnce({
+        carrier_service: {
+          id: 448,
+          name: 'RipX Shipping Rate - test-custom-codes',
+          callback_url:
+            'https://ripx.example.com/api/track/shipping-carrier-rates?test_id=test-custom-codes&variant_index=1',
+          service_discovery: true,
+        },
+      });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-custom-codes',
+        name: 'Shipping custom codes test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'flat_rate',
+              amount: 12,
+              shipping_display_mode: 'add_preview_method',
+              delivery_method_names: ['Standard', 'Express'],
+              delivery_action: 'hide',
+              rates: [
+                { name: 'Standard', amount: 12, currency: 'USD', service_code: 'preview_standard' },
+                { name: 'Express', amount: 20, currency: 'USD', service_code: 'preview_express' },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const rule = result.execution_result.actions[1].details?.config?.variant_rules[0];
+    expect(rule.protected_method_codes).toEqual(
+      expect.arrayContaining(['preview_standard', 'preview_express'])
     );
   });
 
@@ -1822,7 +1905,8 @@ describe('shippingAutoExecutionService', () => {
     expect(action.execution_adapter).toBe('carrier_service');
     expect(action.status).toBe('created');
     expect(action.details?.provider).toBe('static_rate');
-    expect(action.details?.callback_url).toContain('quote_provider=static_rate');
+    expect(action.details?.callback_url).toContain('require_assignment=1');
+    expect(action.details?.callback_url).toContain('strategy=carrier_quote');
   });
 
   it('cleans up stale managed shipping resources on apply', async () => {
@@ -1957,5 +2041,83 @@ describe('shippingAutoExecutionService', () => {
 
     expect(result.execution_result.summary.conflict_count).toBe(1);
     expect(result.execution_result.actions[0].status).toBe('manual_required');
+  });
+
+  it('dedupes duplicate delivery customizations by title', async () => {
+    const spy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    spy.mockResolvedValueOnce({
+      data: {
+        deliveryCustomizations: {
+          edges: [
+            {
+              node: {
+                id: 'dc-old',
+                title: 'RipX Shipping Delivery 131bdc89 Variant A',
+                enabled: false,
+              },
+            },
+            {
+              node: {
+                id: 'dc-keep',
+                title: 'RipX Shipping Delivery 131bdc89 Variant A',
+                enabled: true,
+              },
+            },
+            { node: { id: 'dc-other', title: 'Some other customization', enabled: true } },
+          ],
+        },
+      },
+    });
+
+    const dryRun = await dedupeDeliveryCustomizationsForVariant({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'token',
+      customizationTitle: 'RipX Shipping Delivery 131bdc89 Variant A',
+      apply: false,
+    });
+    expect(dryRun.duplicate_count).toBe(2);
+    expect(dryRun.kept_id).toBe('dc-keep');
+    expect(dryRun.deleted_ids).toEqual(['dc-old']);
+    expect(dryRun.dry_run).toBe(true);
+  });
+
+  it('deletes duplicate delivery customizations in apply mode', async () => {
+    const spy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    spy
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizations: {
+            edges: [
+              {
+                node: {
+                  id: 'dc-old',
+                  title: 'RipX Shipping Delivery 131bdc89 Variant A',
+                  enabled: false,
+                },
+              },
+              {
+                node: {
+                  id: 'dc-keep',
+                  title: 'RipX Shipping Delivery 131bdc89 Variant A',
+                  enabled: true,
+                },
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: { deliveryCustomizationDelete: { deletedId: 'dc-old', userErrors: [] } },
+      });
+
+    const applied = await dedupeDeliveryCustomizationsForVariant({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'token',
+      customizationTitle: 'RipX Shipping Delivery 131bdc89 Variant A',
+      apply: true,
+    });
+    expect(applied.kept_id).toBe('dc-keep');
+    expect(applied.deleted_ids).toEqual(['dc-old']);
+    expect(applied.dry_run).toBe(false);
   });
 });

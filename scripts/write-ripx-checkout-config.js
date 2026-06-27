@@ -19,14 +19,31 @@
  *   node scripts/write-ripx-checkout-config.js
  *   node scripts/write-ripx-checkout-config.js --target=discount
  *   node scripts/write-ripx-checkout-config.js --target=ui
+ *   node scripts/write-ripx-checkout-config.js --env-file=.env.production
  *   npm run shopify:checkout-discount:sync-config
  *   npm run shopify:checkout-ui:sync-config
  */
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
+const { isEphemeralTunnelUrl } = require('./lib/devTunnelEnv');
 
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+function getArg(flagName) {
+  const eqArg = process.argv.find(arg => arg.startsWith(`${flagName}=`));
+  if (eqArg) {
+    return eqArg.slice(flagName.length + 1).trim();
+  }
+  const idx = process.argv.indexOf(flagName);
+  if (idx >= 0 && process.argv[idx + 1]) {
+    return String(process.argv[idx + 1]).trim();
+  }
+  return '';
+}
+
+const repoRoot = path.join(__dirname, '..');
+const envFileArg = getArg('--env-file') || '.env';
+const envPath = path.isAbsolute(envFileArg) ? envFileArg : path.join(repoRoot, envFileArg);
+require('dotenv').config({ path: envPath });
 
 const targetArg = process.argv.find(arg => arg.startsWith('--target='));
 const syncTarget = targetArg ? targetArg.split('=')[1] : 'all';
@@ -73,24 +90,6 @@ const probeAttributeMatrix =
     .trim()
     .toLowerCase() === 'true';
 
-function isEphemeralTunnelUrl(rawUrl) {
-  if (!rawUrl) {
-    return false;
-  }
-  try {
-    const host = new URL(rawUrl).hostname.toLowerCase();
-    return (
-      host.endsWith('.trycloudflare.com') ||
-      host.endsWith('.ngrok.io') ||
-      host.endsWith('.ngrok-free.app') ||
-      host.endsWith('.loca.lt') ||
-      host.endsWith('.serveo.net')
-    );
-  } catch {
-    return false;
-  }
-}
-
 const allowEphemeralCheckoutConfig =
   String(process.env.RIPX_ALLOW_EPHEMERAL_CHECKOUT_CONFIG || '')
     .trim()
@@ -124,6 +123,18 @@ if (!checkoutAssignmentUrl && appUrl) {
 if (!checkoutConversionUrl && appUrl) {
   checkoutConversionUrl = `${appUrl}/api/track/checkout-conversion`;
 }
+if (appUrl && isEphemeralTunnelUrl(checkoutAssignmentUrl) && !isEphemeralTunnelUrl(appUrl)) {
+  console.warn(
+    '[write-ripx-checkout-config] RIPX_CHECKOUT_ASSIGNMENT_URL is an ephemeral tunnel; using APP_URL instead.'
+  );
+  checkoutAssignmentUrl = `${appUrl}/api/track/checkout-assignment`;
+}
+if (appUrl && isEphemeralTunnelUrl(checkoutConversionUrl) && !isEphemeralTunnelUrl(appUrl)) {
+  console.warn(
+    '[write-ripx-checkout-config] RIPX_CHECKOUT_CONVERSION_URL is an ephemeral tunnel; using APP_URL instead.'
+  );
+  checkoutConversionUrl = `${appUrl}/api/track/checkout-conversion`;
+}
 if (shouldWriteUiConfig && !checkoutAssignmentUrl) {
   console.error(
     '[write-ripx-checkout-config] Set APP_URL or RIPX_CHECKOUT_ASSIGNMENT_URL in .env (repo root), then re-run.'
@@ -148,7 +159,7 @@ const urlsToCheck = [
 const ephemeralUrls = urlsToCheck.filter(([, value]) => isEphemeralTunnelUrl(value));
 if (ephemeralUrls.length > 0 && !allowEphemeralCheckoutConfig) {
   console.error(
-    '[write-ripx-checkout-config] Refusing to write checkout config with ephemeral tunnel URLs.'
+    `[write-ripx-checkout-config] Refusing to write checkout config with ephemeral tunnel URLs (env: ${path.basename(envPath)}).`
   );
   ephemeralUrls.forEach(([name, value]) => console.error(`  ${name} = ${value}`));
   console.error(
@@ -210,6 +221,7 @@ if (shouldWriteUiConfig) {
 }
 
 console.log('[write-ripx-checkout-config] TARGET    =', syncTarget);
+console.log('[write-ripx-checkout-config] ENV_FILE  =', path.basename(envPath));
 if (shouldWriteDiscountConfig) {
   console.log('[write-ripx-checkout-config] BATCH_URL =', batchUrl);
   console.log('[write-ripx-checkout-config] SHIPPING  =', shippingBatchUrl);

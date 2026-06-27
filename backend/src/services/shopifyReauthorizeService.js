@@ -28,13 +28,13 @@ function buildScopeReauthorizeFailureRedirect(req, shop, reason = 'scope_update'
  * @returns {Promise<string>} Shopify OAuth authorize URL
  */
 async function buildShopifyScopeReauthorizeUrl(req, res) {
-  const shop = String(req.shopDomain || '')
+  const shop = String(req.shopDomain || req.query?.shop || '')
     .trim()
     .toLowerCase();
-  if (!shop || !req.shopifyAccessToken) {
-    const error = new Error('Shop not connected');
-    error.status = 401;
-    error.code = 'SHOP_NOT_AUTHENTICATED';
+  if (!shop) {
+    const error = new Error('Shop domain required');
+    error.status = 400;
+    error.code = 'SHOP_REQUIRED';
     throw error;
   }
   if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_SCOPES || !process.env.APP_URL) {
@@ -52,6 +52,12 @@ async function buildShopifyScopeReauthorizeUrl(req, res) {
   if (!email) {
     const user = await userModel.getByDomain(shop);
     email = user?.email ? String(user.email).trim().toLowerCase() : '';
+  }
+  if (!email) {
+    const error = new Error('Sign in to connect this store');
+    error.status = 401;
+    error.code = 'SIGN_IN_REQUIRED';
+    throw error;
   }
 
   const callbackBase =

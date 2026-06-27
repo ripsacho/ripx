@@ -211,11 +211,22 @@ function matchesOptionCode(code, wantedCodes = []) {
     if (wanted.startsWith("gid://") || /^\d{8,}$/.test(wanted)) {
       return normalizedCode === wanted || normalizedCode.endsWith(`/${wanted}`) || normalizedCode.endsWith(wanted);
     }
-    if (wanted.length >= 3) {
-      return normalizedCode.includes(wanted) || wanted.includes(normalizedCode);
-    }
     return false;
   });
+}
+function matchesGenericHideCode(code, wantedCodes = []) {
+  const normalizedCode = normalizeText(code);
+  if (!normalizedCode) {
+    return false;
+  }
+  return wantedCodes.some((item) => normalizeText(item) === normalizedCode);
+}
+function matchesNativeMethodHandle(handle, genericCodes = []) {
+  const normalizedHandle = normalizeText(handle);
+  if (!normalizedHandle) {
+    return false;
+  }
+  return genericCodes.some((item) => normalizeText(item) === normalizedHandle);
 }
 function matchesOptionHandle(handle, wantedCodes = []) {
   const normalizedHandle = normalizeText(handle);
@@ -230,8 +241,8 @@ function matchesOptionHandle(handle, wantedCodes = []) {
     if (normalizedHandle === wanted) {
       return true;
     }
-    if (wanted.length >= 3) {
-      return normalizedHandle.includes(wanted) || wanted.includes(normalizedHandle);
+    if (isScopedNativeDeliveryCode(wanted)) {
+      return normalizedHandle === wanted || normalizedHandle.endsWith(`/${wanted}`) || normalizedHandle.endsWith(wanted);
     }
     return false;
   });
@@ -242,6 +253,130 @@ function matchesProtectedOptionCode(code, protectedCodes = []) {
     return false;
   }
   return protectedCodes.some((item) => normalizeText(item) === normalizedCode);
+}
+function handleLooksLikeRipXCarrier(option) {
+  const handle = normalizeText(option?.handle);
+  return Boolean(handle && handle.includes("ripx"));
+}
+function isConfiguredNativeHideTarget(option, methodNames = [], scopedCodes = [], genericCodes = []) {
+  if (isScopedNativeOption(option, scopedCodes)) {
+    return true;
+  }
+  if (methodNames.some((name) => matchesOptionTitle(option?.title, [name]))) {
+    return true;
+  }
+  if (matchesGenericHideCode(option?.code, genericCodes) || matchesNativeMethodHandle(option?.handle, genericCodes)) {
+    return true;
+  }
+  return false;
+}
+function isLikelyNativeShopifyOption(option, methodNames = [], scopedCodes = [], genericCodes = [], matchedRule = {}) {
+  if (isRipXReplacementOption(option, matchedRule)) {
+    return false;
+  }
+  if (isScopedNativeOption(option, scopedCodes)) {
+    return true;
+  }
+  const code = normalizeText(option?.code);
+  if (/^\d{8,}$/.test(code)) {
+    return true;
+  }
+  if (matchesGenericHideCode(option?.code, genericCodes)) {
+    return true;
+  }
+  if (matchesNativeMethodHandle(option?.handle, genericCodes)) {
+    return true;
+  }
+  return methodNames.some((name) => matchesOptionTitle(option?.title, [name]));
+}
+function isRipXReplacementOption(option, matchedRule = {}) {
+  const protectedCodes = Array.isArray(matchedRule?.protected_method_codes) ? matchedRule.protected_method_codes : [];
+  const protectedPrefixes = Array.isArray(matchedRule?.protected_method_name_prefixes) ? matchedRule.protected_method_name_prefixes : [];
+  const protectedNames = Array.isArray(matchedRule?.protected_method_names) ? matchedRule.protected_method_names : [];
+  if (isRipXDeliveryOptionCode(option?.code)) {
+    return true;
+  }
+  if (matchesProtectedOptionCode(option?.code, protectedCodes)) {
+    return true;
+  }
+  if (handleLooksLikeRipXCarrier(option)) {
+    return true;
+  }
+  if (matchesOptionTitlePrefix(option?.title, protectedPrefixes)) {
+    return true;
+  }
+  if (matchesOptionTitle(option?.title, protectedNames)) {
+    return true;
+  }
+  return false;
+}
+function isScopedNativeOption(option, scopedCodes = []) {
+  return matchesOptionCode(option?.code, scopedCodes) || matchesOptionHandle(option?.handle, scopedCodes);
+}
+function collectDeliveryOptions(deliveryGroups = []) {
+  const options = [];
+  for (const group of deliveryGroups) {
+    for (const option of Array.isArray(group?.deliveryOptions) ? group.deliveryOptions : []) {
+      if (option?.handle) {
+        options.push(option);
+      }
+    }
+  }
+  return options;
+}
+function hasAnyRipXOption(options = [], matchedRule = {}) {
+  return options.some((option) => isRipXReplacementOption(option, matchedRule));
+}
+function buildAddModeHideOperations(deliveryGroups = [], matchedRule = {}) {
+  const methodNames = Array.isArray(matchedRule?.method_names) ? matchedRule.method_names : [];
+  const allHideCodes = Array.isArray(matchedRule?.method_codes) ? matchedRule.method_codes : [];
+  const scopedCodes = getAddModeNativeHideCodes(matchedRule);
+  const genericCodes = allHideCodes.filter((code) => !isScopedNativeDeliveryCode(code));
+  const options = collectDeliveryOptions(deliveryGroups);
+  if (!hasAnyRipXOption(options, matchedRule)) {
+    return [];
+  }
+  const hiddenHandles = /* @__PURE__ */ new Set();
+  const operations = [];
+  const pushHide = (handle) => {
+    if (!handle || hiddenHandles.has(handle)) {
+      return;
+    }
+    hiddenHandles.add(handle);
+    operations.push({
+      deliveryOptionHide: {
+        deliveryOptionHandle: handle
+      }
+    });
+  };
+  for (const option of options) {
+    if (isRipXReplacementOption(option, matchedRule)) {
+      continue;
+    }
+    if (!isConfiguredNativeHideTarget(option, methodNames, scopedCodes, genericCodes)) {
+      continue;
+    }
+    const matchedTitle = methodNames.find((name) => matchesOptionTitle(option?.title, [name]));
+    if (matchedTitle) {
+      const siblings = options.filter(
+        (sibling) => matchesOptionTitle(sibling?.title, [matchedTitle])
+      );
+      if (siblings.length > 1) {
+        const hasRipXSibling = siblings.some(
+          (sibling) => sibling?.handle !== option?.handle && isRipXReplacementOption(sibling, matchedRule)
+        );
+        if (hasRipXSibling) {
+          if (isLikelyNativeShopifyOption(option, methodNames, scopedCodes, genericCodes, matchedRule)) {
+            pushHide(option.handle);
+          }
+          continue;
+        }
+        continue;
+      }
+    }
+    pushHide(option.handle);
+  }
+  return operations;
 }
 function shouldProtectOption(option, protectedCodes = [], protectedNamePrefixes = [], protectedNames = [], hideNames = [], hideCodes = []) {
   if (isRipXDeliveryOptionCode(option?.code)) {
@@ -262,6 +397,21 @@ function shouldProtectOption(option, protectedCodes = [], protectedNamePrefixes 
     return true;
   }
   return false;
+}
+function isScopedNativeDeliveryCode(code) {
+  const raw = String(code || "").trim();
+  if (!raw) {
+    return false;
+  }
+  if (/^\d{8,}$/.test(raw)) {
+    return true;
+  }
+  return raw.toLowerCase().includes("deliverymethoddefinition");
+}
+function getAddModeNativeHideCodes(matchedRule = {}) {
+  return (Array.isArray(matchedRule?.method_codes) ? matchedRule.method_codes : []).filter(
+    (code) => isScopedNativeDeliveryCode(code)
+  );
 }
 function hasRequiredVisibleOption(deliveryGroups = [], wantedNames = [], wantedCodes = [], wantedPrefixes = []) {
   const names = Array.isArray(wantedNames) ? wantedNames : [];
@@ -299,6 +449,20 @@ function countDeliveryOptions(deliveryGroups = []) {
     ).length;
   }
   return total;
+}
+function hasVisibleRipXAfterHide(deliveryGroups = [], hideOperations = [], matchedRule = {}) {
+  const hiddenHandles = new Set(
+    hideOperations.map((operation) => operation?.deliveryOptionHide?.deliveryOptionHandle).filter(Boolean)
+  );
+  for (const option of collectDeliveryOptions(deliveryGroups)) {
+    if (!option?.handle || hiddenHandles.has(option.handle)) {
+      continue;
+    }
+    if (isRipXReplacementOption(option, matchedRule)) {
+      return true;
+    }
+  }
+  return false;
 }
 function countHiddenDeliveryOptions(deliveryGroups = [], hideOperations = []) {
   const hiddenHandles = new Set(
@@ -418,7 +582,7 @@ function cartDeliveryOptionsTransformRun(input) {
   const protectedNamePrefixes = Array.isArray(matchedRule?.protected_method_name_prefixes) ? matchedRule.protected_method_name_prefixes : [];
   const protectedNames = Array.isArray(matchedRule?.protected_method_names) ? matchedRule.protected_method_names : [];
   const action = normalizeText(matchedRule?.action || "hide");
-  const operations = action === "rename" ? buildRenameOperations(deliveryGroups, methodNames, matchedRule?.rename_to) : action === "reorder" ? buildMoveOperations(deliveryGroups, methodNames) : buildHideOperations(
+  const operations = action === "rename" ? buildRenameOperations(deliveryGroups, methodNames, matchedRule?.rename_to) : action === "reorder" ? buildMoveOperations(deliveryGroups, methodNames) : skipReplacementPresenceGate ? buildAddModeHideOperations(deliveryGroups, matchedRule) : buildHideOperations(
     deliveryGroups,
     methodNames,
     matchedRule?.method_codes,
@@ -429,7 +593,8 @@ function cartDeliveryOptionsTransformRun(input) {
   if (action === "hide" && operations.length > 0) {
     const totalOptions = countDeliveryOptions(deliveryGroups);
     const remainingOptions = countHiddenDeliveryOptions(deliveryGroups, operations);
-    if (totalOptions > 0 && remainingOptions === 0) {
+    const ripXStillVisible = !skipReplacementPresenceGate || hasVisibleRipXAfterHide(deliveryGroups, operations, matchedRule);
+    if (totalOptions > 0 && (remainingOptions === 0 || !ripXStillVisible)) {
       return NO_CHANGES;
     }
   }

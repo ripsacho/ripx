@@ -116,6 +116,7 @@ e2e/test-results/
 .shopify/
 
 # Generated Shopify extension config (contains environment URLs/secrets)
+extensions/ripx-checkout-ui/dist/
 extensions/ripx-checkout-ui/src/ripxConfig.generated.js
 extensions/ripx-checkout-discount/src/ripxConfig.js
 

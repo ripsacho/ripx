@@ -16,8 +16,6 @@ import {
   BookIcon,
   NotificationIcon,
   ChevronRightIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   PlusIcon,
   SearchIcon,
 } from '@shopify/polaris-icons';
@@ -1396,6 +1394,11 @@ function UserPanel() {
                         })}
                       </div>
                     </div>
+                    <div className={styles.domainListHeader} aria-hidden="true">
+                      <span className={styles.domainListHeaderStore}>Store</span>
+                      <span className={styles.domainListHeaderSetup}>Setup progress</span>
+                      <span className={styles.domainListHeaderActions}>Actions</span>
+                    </div>
                     <div className={styles.domainList}>
                       {displayDomains.length === 0 ? (
                         <div className={styles.domainListEmpty}>
@@ -1461,15 +1464,21 @@ function UserPanel() {
                               {hasSetupDetails ? (
                                 <button
                                   type="button"
-                                  className={styles.domainRowExpand}
+                                  className={`${styles.domainRowExpand} ${
+                                    isExpanded ? styles.domainRowExpandOpen : ''
+                                  }`}
                                   onClick={() => toggleDomainExpanded(domain)}
                                   aria-expanded={isExpanded}
                                   aria-label={`${isExpanded ? 'Hide' : 'Show'} setup details for ${domain}`}
                                 >
-                                  <Icon
-                                    source={isExpanded ? ChevronUpIcon : ChevronDownIcon}
-                                    tone="subdued"
-                                  />
+                                  <span
+                                    className={`${styles.domainRowExpandIcon} ${
+                                      isExpanded ? styles.domainRowExpandIconOpen : ''
+                                    }`}
+                                    aria-hidden="true"
+                                  >
+                                    <Icon source={ChevronRightIcon} tone="subdued" />
+                                  </span>
                                 </button>
                               ) : (
                                 <span className={styles.domainRowExpandSpacer} aria-hidden="true" />
@@ -1477,6 +1486,7 @@ function UserPanel() {
                               {isShopify && setupSummary.total > 0 ? (
                                 <SetupProgressRing
                                   percent={setupPercent}
+                                  size={36}
                                   label={`Setup ${setupPercent}% complete for ${domain}`}
                                 />
                               ) : (
@@ -1486,18 +1496,24 @@ function UserPanel() {
                               )}
                               <div className={styles.domainRowMeta}>
                                 <div className={styles.domainRowHeader}>
-                                  <span className={styles.domainRowName}>{domain}</span>
-                                  {isPinned ? (
-                                    <span className={styles.domainRowBadgePinned}>Pinned</span>
-                                  ) : null}
-                                  {isRecent ? (
-                                    <span className={styles.domainRowBadgeRecent}>Recent</span>
-                                  ) : null}
-                                  {platform && platform !== 'shopify' ? (
-                                    <span className={styles.domainTileBadge}>{platform}</span>
-                                  ) : isShopify ? (
-                                    <span className={styles.domainTileBadgeShopify}>Shopify</span>
-                                  ) : null}
+                                  <div className={styles.domainRowHeaderMain}>
+                                    <span className={styles.domainRowName}>{domain}</span>
+                                    <div className={styles.domainRowHeaderTags}>
+                                      {isPinned ? (
+                                        <span className={styles.domainRowBadgePinned}>Pinned</span>
+                                      ) : null}
+                                      {isRecent ? (
+                                        <span className={styles.domainRowBadgeRecent}>Recent</span>
+                                      ) : null}
+                                      {platform && platform !== 'shopify' ? (
+                                        <span className={styles.domainTileBadge}>{platform}</span>
+                                      ) : isShopify ? (
+                                        <span className={styles.domainTileBadgeShopify}>
+                                          Shopify
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
                                   <button
                                     type="button"
                                     className={`${styles.domainPinButton} ${

@@ -81,7 +81,11 @@ router.get(
         code: error.code,
         message: error.message,
       });
-      return res.redirect(buildScopeReauthorizeFailureRedirect(req, shop, 'scope_update'));
+      const reason =
+        error.code === 'SIGN_IN_REQUIRED' || error.code === 'SHOP_NOT_AUTHENTICATED'
+          ? 'sign_in_to_connect'
+          : 'scope_update';
+      return res.redirect(buildScopeReauthorizeFailureRedirect(req, shop, reason));
     }
   })
 );

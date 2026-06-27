@@ -80,6 +80,18 @@ describe('evaluateShopifyConnectionHealth', () => {
     expect(result.tokenHealth.shopName).toBe('Demo Shop');
   });
 
+  it('treats write-only OAuth scope strings as fully granted when read is implied', async () => {
+    const result = await evaluateShopifyConnectionHealth({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'shpca_test',
+      sessionScope: 'write_products',
+      quick: true,
+    });
+    expect(result.connection.code).toBe('SESSION_OK');
+    expect(result.connection.state).toBe('connected');
+    expect(result.tokenHealth.missingScopes).toEqual([]);
+  });
+
   it('returns scopes_stale when token works but required scopes are missing', async () => {
     shopifyService.requestAdminGraphql.mockResolvedValue({
       data: { shop: { name: 'Demo Shop' } },

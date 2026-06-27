@@ -21,6 +21,7 @@ const logger = require('../utils/logger');
 const DEFAULT_SHIPPING_DISCOUNT_TITLE_PREFIX = 'RipX Shipping Test';
 const DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX = 'RipX Shipping';
 const DEFAULT_SHIPPING_DELIVERY_TITLE_PREFIX = 'RipX Shipping Delivery';
+const SHOPIFY_CARRIER_CALLBACK_URL_MAX_LENGTH = 255;
 
 function normalizeBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === '') {
@@ -174,16 +175,30 @@ function getReplacementRequiredMethodCodes(variant = {}) {
   return Array.from(new Set(rateCodes)).slice(0, 10);
 }
 
+function resolveShippingCarrierServiceCodeBase(test = {}, variant = {}) {
+  if (variant?.index !== undefined && variant?.index !== null) {
+    const indexBase = String(variant.index)
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .slice(0, 48);
+    if (indexBase) {
+      return indexBase;
+    }
+  }
+  return (
+    String(variant?.id || variant?.name || test?.id || 'shipping')
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .slice(0, 48) || 'shipping'
+  );
+}
+
 function buildRipXCarrierProtectedCodes(test = {}, variant = {}) {
   const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
   const explicitRipXCodes = getReplacementRequiredMethodCodes(variant).filter(code =>
     String(code).toLowerCase().includes('ripx')
   );
-  const serviceCodeBase =
-    String(variant?.id || variant?.name || variant?.index || test?.id || 'shipping')
-      .trim()
-      .replace(/[^a-zA-Z0-9_-]/g, '')
-      .slice(0, 48) || 'shipping';
+  const serviceCodeBase = resolveShippingCarrierServiceCodeBase(test, variant);
   const serviceName = buildShippingCarrierServiceName(test, variant);
   const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
   const codes = [...explicitRipXCodes];
@@ -222,9 +237,7 @@ function buildRipXCarrierProtectedCodes(test = {}, variant = {}) {
     }
   }
 
-  return Array.from(
-    new Set(codes.filter(code => String(code).toLowerCase().includes('ripx')))
-  ).slice(0, 20);
+  return Array.from(new Set(codes.filter(Boolean))).slice(0, 20);
 }
 
 function buildNativeDeliveryMethodCodes(methodNames = []) {
@@ -320,17 +333,45 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   }
   const scope =
     cfg.shipping_scope && typeof cfg.shipping_scope === 'object' ? cfg.shipping_scope : {};
-  const methodCodes = Array.from(
+  const scopedHideCodes = extractScopedDeliveryMethodCodes(scope);
+  const rateScopedIds = Array.isArray(cfg.rates)
+    ? cfg.rates.flatMap(rate =>
+        [
+          rate?.source_method_definition_id,
+          rate?.source_method_definitionId,
+          rate?.source_rate_id,
+          rate?.sourceRateId,
+        ].filter(Boolean)
+      )
+    : [];
+  const rateScopedCodes =
+    rateScopedIds.length > 0
+      ? extractScopedDeliveryMethodCodes({ selected_method_definition_ids: rateScopedIds })
+      : [];
+  const genericMethodCodes = Array.from(
     new Set([
       ...toStringArray(
         cfg.delivery_method_codes || cfg.deliveryMethodCodes || cfg.method_codes || cfg.methodCodes
       ),
       ...buildNativeDeliveryMethodCodes(methodNames),
-      ...extractScopedDeliveryMethodCodes(scope),
       ...extractConfiguredMethodHandles(cfg),
     ])
+  );
+  const methodCodes = Array.from(
+    new Set([...genericMethodCodes, ...scopedHideCodes, ...rateScopedCodes])
   ).slice(0, 50);
   const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
+  const replacementMode = shouldReplaceExistingRates(cfg);
+  const hideMethodCodesForRule = replacementMode
+    ? methodCodes
+    : Array.from(
+        new Set([
+          ...scopedHideCodes,
+          ...rateScopedCodes,
+          ...buildNativeDeliveryMethodCodes(methodNames),
+          ...extractConfiguredMethodHandles(cfg),
+        ])
+      ).slice(0, 50);
   const renameTo = String(
     cfg.delivery_rename_to || cfg.deliveryRenameTo || cfg.rename_to || ''
   ).trim();
@@ -355,7 +396,6 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
     return idx >= 0 ? String(idx) : '';
   })();
   const variantIndex = resolvedVariantIndex;
-  const replacementMode = shouldReplaceExistingRates(cfg);
   const carrierServiceName = buildShippingCarrierServiceName(test, variant);
   const replacementCodes = replacementMode ? getReplacementRequiredMethodCodes(variant) : [];
   const replacementNames = replacementMode ? getReplacementRequiredMethodNames(test, variant) : [];
@@ -367,7 +407,30 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
     new Set([DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX, carrierServiceName].filter(Boolean))
   );
   const ripXProtectedCodes = buildRipXCarrierProtectedCodes(test, variant);
-  const addModeProtectedNames = replacementMode ? replacementNames : [];
+  const configuredRateNames = Array.isArray(cfg.rates)
+    ? cfg.rates.map(rate => String(rate?.name || '').trim()).filter(Boolean)
+    : [];
+  const hideTargetNameKeys = new Set(
+    methodNames.map(name =>
+      String(name || '')
+        .trim()
+        .toLowerCase()
+    )
+  );
+  const addModeProtectedNames = replacementMode
+    ? replacementNames
+    : Array.from(
+        new Set(
+          configuredRateNames.filter(
+            name =>
+              !hideTargetNameKeys.has(
+                String(name || '')
+                  .trim()
+                  .toLowerCase()
+              )
+          )
+        )
+      ).slice(0, 10);
   const addModeProtectedCodes = replacementMode ? replacementCodes : ripXProtectedCodes;
   return {
     phase: 'delivery_method',
@@ -384,12 +447,12 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
         ...(variantIndex ? { variant_index: variantIndex } : {}),
         action: ['hide', 'rename', 'reorder'].includes(action) ? action : 'hide',
         method_names: methodNames,
-        method_codes: methodCodes,
+        method_codes: hideMethodCodesForRule,
         require_present_method_names: requirePresentMethodNames,
         require_present_method_codes: replacementMode ? replacementCodes : ripXProtectedCodes,
         require_present_method_prefixes:
           replacementMode || !addModeHideTargets ? [] : carrierProtectionPrefixes,
-        skip_replacement_presence_gate: false,
+        skip_replacement_presence_gate: !replacementMode,
         protected_method_codes: addModeProtectedCodes,
         protected_method_names: addModeProtectedNames,
         protected_method_name_prefixes: addModeHideTargets ? carrierProtectionPrefixes : [],
@@ -530,81 +593,6 @@ function buildShippingCarrierCallbackUrl(baseUrl, test, variant) {
   const strategy = String(variant?.strategy || config.strategy || 'flat_rate')
     .trim()
     .toLowerCase();
-  const configuredRates = Array.isArray(config.rates)
-    ? config.rates
-        .map((rate, index) => {
-          const raw = rate && typeof rate === 'object' ? rate : {};
-          const amount = toFiniteNumber(raw.amount ?? raw.price ?? raw.rate);
-          const priority = Number.parseInt(String(raw.priority ?? index + 1), 10);
-          const sortOrder = Number.parseInt(
-            String(raw.sort_order ?? raw.sortOrder ?? raw.priority ?? index + 1),
-            10
-          );
-          return {
-            name: String(raw.name || raw.service_name || '').trim() || null,
-            description: String(raw.description || '').trim() || null,
-            delivery_promise: raw.delivery_promise || raw.deliveryPromise || null,
-            min_delivery_date:
-              String(
-                raw.min_delivery_date ||
-                  raw.minDeliveryDate ||
-                  raw.delivery_promise?.min_delivery_date ||
-                  raw.deliveryPromise?.minDeliveryDate ||
-                  ''
-              ).trim() || null,
-            max_delivery_date:
-              String(
-                raw.max_delivery_date ||
-                  raw.maxDeliveryDate ||
-                  raw.delivery_promise?.max_delivery_date ||
-                  raw.deliveryPromise?.maxDeliveryDate ||
-                  ''
-              ).trim() || null,
-            amount: amount !== null && amount >= 0 ? amount : null,
-            currency: String(raw.currency || config.currency || 'USD')
-              .trim()
-              .toUpperCase(),
-            service_code: String(raw.service_code || raw.serviceCode || '').trim() || null,
-            priority: Number.isFinite(priority) ? priority : index + 1,
-            sort_order: Number.isFinite(sortOrder) ? sortOrder : index + 1,
-          };
-        })
-        .filter(rate => rate.amount !== null)
-        .sort((a, b) => {
-          if (a.priority !== b.priority) {
-            return a.priority - b.priority;
-          }
-          if (a.sort_order !== b.sort_order) {
-            return a.sort_order - b.sort_order;
-          }
-          return String(a.name || '').localeCompare(String(b.name || ''));
-        })
-    : [];
-  const amountFromConfig =
-    config.amount !== undefined && config.amount !== null && String(config.amount).trim() !== ''
-      ? toFiniteNumber(config.amount)
-      : null;
-  const amount =
-    amountFromConfig !== null ? amountFromConfig : (configuredRates[0]?.amount ?? null);
-  const shippingDisplayMode = String(
-    config.shipping_display_mode || config.shippingDisplayMode || config.display_mode || ''
-  )
-    .trim()
-    .toLowerCase();
-  const checkoutDisplay = normalizeCheckoutDisplayConfig(
-    config.checkout_display || config.checkoutDisplay || config
-  );
-  const profileId =
-    config.profile_id !== undefined && config.profile_id !== null
-      ? String(config.profile_id).trim()
-      : '';
-  const methodHandles = Array.isArray(config.method_handles)
-    ? config.method_handles
-        .map(handle => String(handle || '').trim())
-        .filter(Boolean)
-        .join(',')
-    : '';
-  const providerConfig = resolveVariantProviderConfig(variant);
 
   if (test?.id) {
     url.searchParams.set('test_id', String(test.id));
@@ -620,53 +608,68 @@ function buildShippingCarrierCallbackUrl(baseUrl, test, variant) {
   if (variant?.index !== undefined && variant?.index !== null) {
     url.searchParams.set('variant_index', String(variant.index));
   }
-  if (variant?.id) {
-    url.searchParams.set('variant_id', String(variant.id));
-  }
-  if (variant?.name) {
-    url.searchParams.set('variant_name', String(variant.name));
-  }
   url.searchParams.set('strategy', strategy || 'flat_rate');
-  if (amount !== null) {
-    url.searchParams.set('amount', amount.toFixed(2));
-  }
-  if (shippingDisplayMode) {
-    url.searchParams.set('shipping_display_mode', shippingDisplayMode);
-  }
-  if (configuredRates.length > 0) {
-    url.searchParams.set('rates_count', String(configuredRates.length));
-    url.searchParams.set(
-      'rates_json',
-      JSON.stringify(
-        configuredRates.slice(0, 5).map(rate => ({
-          name: rate.name,
-          description: rate.description,
-          delivery_promise: rate.delivery_promise,
-          min_delivery_date: rate.min_delivery_date,
-          max_delivery_date: rate.max_delivery_date,
-          amount: rate.amount,
-          currency: rate.currency,
-          service_code: rate.service_code,
-          priority: rate.priority,
-          sort_order: rate.sort_order,
-        }))
-      )
-    );
-  }
-  if (checkoutDisplay.default_description || checkoutDisplay.delivery_promise?.mode !== 'none') {
-    url.searchParams.set('checkout_display_json', JSON.stringify(checkoutDisplay));
-  }
-  if (profileId) {
-    url.searchParams.set('profile_id', profileId);
-  }
-  if (methodHandles) {
-    url.searchParams.set('method_handles', methodHandles);
-  }
-  if (providerConfig.provider) {
-    url.searchParams.set('quote_provider', providerConfig.provider);
-  }
   url.searchParams.set('require_assignment', '1');
-  return url.toString();
+  return compactShippingCarrierCallbackUrl(url.toString());
+}
+
+function compactShippingCarrierCallbackUrl(rawUrl) {
+  const value = String(rawUrl || '').trim();
+  if (!value) {
+    return '';
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return value.slice(0, SHOPIFY_CARRIER_CALLBACK_URL_MAX_LENGTH);
+  }
+  const keepParams = [
+    'test_id',
+    'cfg_rev',
+    'shop_domain',
+    'variant_index',
+    'strategy',
+    'require_assignment',
+  ];
+  const next = new URL(parsed.toString());
+  [...next.searchParams.keys()].forEach(key => {
+    if (!keepParams.includes(key)) {
+      next.searchParams.delete(key);
+    }
+  });
+  if (next.searchParams.get('require_assignment') !== '1') {
+    next.searchParams.set('require_assignment', '1');
+  }
+  let compact = next.toString();
+  if (compact.length <= SHOPIFY_CARRIER_CALLBACK_URL_MAX_LENGTH) {
+    return compact;
+  }
+  next.searchParams.delete('cfg_rev');
+  compact = next.toString();
+  if (compact.length <= SHOPIFY_CARRIER_CALLBACK_URL_MAX_LENGTH) {
+    return compact;
+  }
+  return compact.slice(0, SHOPIFY_CARRIER_CALLBACK_URL_MAX_LENGTH);
+}
+
+function carrierCallbackUrlNeedsRefresh(expectedUrl, liveUrl) {
+  const live = String(liveUrl || '').trim();
+  if (!live) {
+    return true;
+  }
+  if (live.length >= SHOPIFY_CARRIER_CALLBACK_URL_MAX_LENGTH) {
+    return true;
+  }
+  try {
+    const parsed = new URL(live);
+    if (parsed.searchParams.get('require_assignment') !== '1') {
+      return true;
+    }
+  } catch {
+    return true;
+  }
+  return !compareShippingCarrierCallbackUrls(expectedUrl, liveUrl);
 }
 
 function readShippingCarrierCallbackIdentity(value) {
@@ -1298,9 +1301,8 @@ async function ensureShippingCarrierService({
   });
   const callbackMatches =
     existing &&
-    String(existing.callback_url || '')
-      .trim()
-      .toLowerCase() === callbackUrl.trim().toLowerCase();
+    compareShippingCarrierCallbackUrls(callbackUrl, existing.callback_url) &&
+    !carrierCallbackUrlNeedsRefresh(callbackUrl, existing.callback_url);
   const nameMatches =
     existing &&
     String(existing?.name || '')
@@ -1612,6 +1614,65 @@ async function fetchDeliveryCustomizationsViaAdmin(shopDomain, accessToken) {
   return edges.map(edge => edge?.node).filter(Boolean);
 }
 
+async function dedupeDeliveryCustomizationsForVariant({
+  shopDomain,
+  accessToken,
+  customizationTitle,
+  keepId = null,
+  apply = false,
+  existingCustomizations = null,
+}) {
+  const normalizedTitle = String(customizationTitle || '')
+    .trim()
+    .toLowerCase();
+  if (!normalizedTitle) {
+    return { kept_id: keepId || null, deleted_ids: [], dry_run: !apply };
+  }
+  const customizations = Array.isArray(existingCustomizations)
+    ? existingCustomizations
+    : await fetchDeliveryCustomizationsViaAdmin(shopDomain, accessToken);
+  const matches = customizations.filter(item => {
+    const title = String(item?.title || '')
+      .trim()
+      .toLowerCase();
+    return title === normalizedTitle;
+  });
+  if (matches.length <= 1) {
+    return {
+      kept_id: keepId || matches[0]?.id || null,
+      deleted_ids: [],
+      dry_run: !apply,
+    };
+  }
+  const keep =
+    matches.find(item => keepId && String(item?.id || '') === String(keepId)) ||
+    matches.find(item => item?.enabled) ||
+    matches[0];
+  const deletedIds = [];
+  for (const item of matches) {
+    if (!item?.id || String(item.id) === String(keep?.id || '')) {
+      continue;
+    }
+    if (!apply) {
+      deletedIds.push(String(item.id));
+      continue;
+    }
+    const result = await deleteManagedShippingResource(shopDomain, accessToken, {
+      resource_type: 'delivery_customization',
+      id: item.id,
+    });
+    if (result.ok) {
+      deletedIds.push(String(item.id));
+    }
+  }
+  return {
+    kept_id: keep?.id || null,
+    deleted_ids: deletedIds,
+    duplicate_count: matches.length,
+    dry_run: !apply,
+  };
+}
+
 async function ensureShippingDeliveryCustomization({
   shopDomain,
   accessToken,
@@ -1672,11 +1733,27 @@ async function ensureShippingDeliveryCustomization({
 
   const customizationTitle = buildShippingDeliveryCustomizationTitle(test, variant);
   const existingCustomizations = await fetchDeliveryCustomizationsViaAdmin(shopDomain, accessToken);
-  const existing = existingCustomizations.find(
+  const dedupeResult = await dedupeDeliveryCustomizationsForVariant({
+    shopDomain,
+    accessToken,
+    customizationTitle,
+    apply,
+    existingCustomizations,
+  });
+  const deletedCustomizationIds = new Set(
+    (Array.isArray(dedupeResult?.deleted_ids) ? dedupeResult.deleted_ids : []).map(id =>
+      String(id || '').trim()
+    )
+  );
+  const activeCustomizations = existingCustomizations.filter(
+    item => item?.id && !deletedCustomizationIds.has(String(item.id))
+  );
+  const existing = activeCustomizations.find(
     item =>
       String(item?.title || '')
         .trim()
-        .toLowerCase() === customizationTitle.toLowerCase()
+        .toLowerCase() === customizationTitle.toLowerCase() ||
+      (dedupeResult?.kept_id && String(item?.id || '') === String(dedupeResult.kept_id))
   );
   if (existing?.id) {
     if (apply) {
@@ -1725,6 +1802,7 @@ async function ensureShippingDeliveryCustomization({
       },
       config: functionConfig,
       title: customizationTitle,
+      dedupe: dedupeResult,
       dry_run: !apply,
     };
   }
@@ -1744,6 +1822,7 @@ async function ensureShippingDeliveryCustomization({
       },
       config: functionConfig,
       title: customizationTitle,
+      dedupe: dedupeResult,
       dry_run: true,
     };
   }
@@ -3039,7 +3118,9 @@ module.exports = {
   buildShippingDiscountTitle,
   buildShippingCarrierServiceName,
   buildShippingDeliveryCustomizationTitle,
+  dedupeDeliveryCustomizationsForVariant,
   buildShippingCarrierCallbackUrl,
+  compactShippingCarrierCallbackUrl,
   compareShippingCarrierCallbackUrls,
   fetchCarrierServicesViaAdmin,
   syncLiveCarrierCallbacksForTest,

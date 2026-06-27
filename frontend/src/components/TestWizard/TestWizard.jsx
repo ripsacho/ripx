@@ -5406,6 +5406,7 @@ function TestWizard({
       variantId,
       variantName,
       tenantDomain: previewTenantDomain,
+      testType: isShippingPreview ? 'shipping' : isPricePreview ? 'price' : undefined,
       visualEditor: false,
       simplePreview: Boolean(options.simplePreview),
       resetPreviewSession: Boolean(options.resetPreviewSession),

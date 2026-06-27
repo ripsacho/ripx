@@ -92,7 +92,8 @@ function main() {
   });
   console.error(
     '\nFix: run npm run shopify:checkout-discount:sync-config with a stable APP_URL, ' +
-      'remove tunnel hosts from tracked dist/config, and keep ripxConfig.js gitignored.'
+      'remove tunnel hosts from tracked dist/config, gitignore extensions/ripx-checkout-ui/dist/, ' +
+      'and keep ripxConfig*.js gitignored. Shopify CLI bundles src/Checkout.jsx at deploy after sync-config.'
   );
   process.exit(1);
 }

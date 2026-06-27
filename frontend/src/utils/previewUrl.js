@@ -9,6 +9,7 @@
 export const PREVIEW_PARAMS = {
   PREVIEW: 'ab_preview',
   TEST_ID: 'ab_preview_test',
+  TEST_TYPE: 'ab_preview_test_type',
   VARIANT_ID: 'ab_preview_variant',
   VARIANT_NAME: 'ab_preview_variant_name',
   TENANT_DOMAIN: 'ab_preview_domain',
@@ -138,6 +139,7 @@ export function normalizePreviewBaseUrl(input) {
  * @param {boolean} [options.simplePreview=false] - Add ab_preview_simple=1 for no-shell preview
  * @param {boolean} [options.resetPreviewSession=false] - Clear prior tab preview state before seeding this URL
  * @param {string} [options.previewSessionId] - Optional preview session nonce for diagnostics/cache boundaries
+ * @param {string} [options.testType] - Optional test type hint (`shipping`, `price`, etc.) for storefront preview bootstrap
  * @returns {string|null} Full preview URL or null if baseUrl/testId invalid
  */
 export function buildPreviewUrl({
@@ -146,6 +148,7 @@ export function buildPreviewUrl({
   variantId,
   variantName,
   tenantDomain,
+  testType,
   visualEditor = false,
   visualPicker = false,
   simplePreview = false,
@@ -167,6 +170,12 @@ export function buildPreviewUrl({
       url.searchParams.set(PREVIEW_PARAMS.VARIANT_NAME, String(variantName).trim());
     if (tenantDomain !== null && tenantDomain !== undefined && String(tenantDomain).trim()) {
       url.searchParams.set(PREVIEW_PARAMS.TENANT_DOMAIN, String(tenantDomain).trim());
+    }
+    const normalizedTestType = String(testType || '')
+      .trim()
+      .toLowerCase();
+    if (normalizedTestType) {
+      url.searchParams.set(PREVIEW_PARAMS.TEST_TYPE, normalizedTestType);
     }
     if (visualEditor) url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
     if (visualPicker) url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
@@ -257,6 +266,7 @@ export function buildPreviewDocumentUrl({
     [
       PREVIEW_PARAMS.PREVIEW,
       PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
@@ -404,6 +414,7 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
     [
       PREVIEW_PARAMS.PREVIEW,
       PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
