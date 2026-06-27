@@ -1336,6 +1336,10 @@ router.get(
       req.query.ab_preview_test_type || targetPreview.get('ab_preview_test_type') || null;
     const previewTenantDomain =
       req.query.ab_preview_domain || targetPreview.get('ab_preview_domain') || null;
+    const previewSimple =
+      req.query.ab_preview_simple === '1' || targetPreview.get('ab_preview_simple') === '1';
+    const previewSessionId =
+      req.query.ab_preview_session || targetPreview.get('ab_preview_session') || null;
 
     const previewCtx = {
       preview: previewFlag,
@@ -1344,12 +1348,16 @@ router.get(
       variantId: previewVariantId ? String(previewVariantId) : null,
       variantName: previewVariantName ? String(previewVariantName) : null,
       tenantDomain: previewTenantDomain ? String(previewTenantDomain) : null,
+      simple: previewSimple,
+      sessionId: previewSessionId ? String(previewSessionId) : null,
       persistedAtMs: Date.now(),
     };
 
     const targetUrl = parsed.toString();
     const previewLaunchTarget = /\.myshopify\.com$/i.test(parsed.hostname || '')
-      ? `https://${parsed.hostname}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(targetUrl)}`
+      ? previewSimple
+        ? targetUrl
+        : `https://${parsed.hostname}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(targetUrl)}`
       : targetUrl;
     const html = `<!doctype html>
 <html lang="en">
@@ -1367,7 +1375,11 @@ router.get(
     <script>
       (function () {
         try {
-          window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(${JSON.stringify(previewCtx)});
+          var ctx = ${JSON.stringify(previewCtx)};
+          window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(ctx);
+          try {
+            window.sessionStorage.setItem("__ripx_preview_ctx_v1__", JSON.stringify(ctx));
+          } catch (_se) {}
         } catch (e) {}
         var target = ${JSON.stringify(previewLaunchTarget)};
         // Deterministic bootstrap: seed window.name first, then redirect.

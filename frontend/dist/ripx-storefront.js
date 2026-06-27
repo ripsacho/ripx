@@ -652,7 +652,8 @@
         itemCount: items.length,
         currency: cart && cart.currency ? cart.currency : null,
         attributes: {
-          _ripx_price_test: cartAttributes._ripx_price_test || cartAttributes.ripx_price_test || null,
+          _ripx_price_test:
+            cartAttributes._ripx_price_test || cartAttributes.ripx_price_test || null,
           _ripx_variant: cartAttributes._ripx_variant || cartAttributes.ripx_variant || null,
         },
         items: items,
@@ -4768,10 +4769,11 @@
       return _ripxCartPropsRepairInFlight;
     }
     var now = Date.now();
-    var checkoutHandoffReason = String(reason || '')
-      .trim()
-      .toLowerCase()
-      .indexOf('checkout') === 0;
+    var checkoutHandoffReason =
+      String(reason || '')
+        .trim()
+        .toLowerCase()
+        .indexOf('checkout') === 0;
     if (!checkoutHandoffReason && now - _ripxCartPropsRepairLastAt < 300) {
       recordShippingDebugStep('cart_repair_throttled', { reason: reason || 'unknown' });
       return Promise.resolve(false);
@@ -4926,21 +4928,30 @@
       if (event && typeof event.preventDefault === 'function') event.preventDefault();
       if (event && typeof event.stopImmediatePropagation === 'function') {
         event.stopImmediatePropagation();
-      } else       if (event && typeof event.stopPropagation === 'function') {
+      } else if (event && typeof event.stopPropagation === 'function') {
         event.stopPropagation();
       }
       Promise.all([
         syncRipxCartLevelAttributes('checkout-start', { force: true }),
         maybeRepairRipxCartLineProperties('checkout-start'),
-      ]).then(function (results) {
-        var cartLevelSynced = Array.isArray(results) ? Boolean(results[0]) : false;
-        var linePropsRepaired = Array.isArray(results) ? Boolean(results[1]) : false;
-        recordShippingDebugStep('checkout_handoff_repair_result', {
-          cartLevelSynced: cartLevelSynced,
-          linePropsRepaired: linePropsRepaired,
+      ])
+        .then(function (results) {
+          var cartLevelSynced = Array.isArray(results) ? Boolean(results[0]) : false;
+          var linePropsRepaired = Array.isArray(results) ? Boolean(results[1]) : false;
+          recordShippingDebugStep('checkout_handoff_repair_result', {
+            cartLevelSynced: cartLevelSynced,
+            linePropsRepaired: linePropsRepaired,
+          });
+        })
+        .catch(function (error) {
+          recordShippingDebugStep('checkout_handoff_repair_failed', {
+            message:
+              error && error.message ? String(error.message) : String(error || 'unknown error'),
+          });
+        })
+        .finally(function () {
+          continueCheckoutAfterRepair(control, form);
         });
-        continueCheckoutAfterRepair(control, form);
-      });
       return true;
     }
     document.addEventListener(

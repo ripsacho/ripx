@@ -80,7 +80,6 @@ import { getGoalMetricDefinitions, saveGoalMetricDefinition } from '../../servic
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
   buildPreviewUrl as buildPreviewUrlUtil,
-  resolveShopifySimplePreviewUrl,
   buildPreviewDocumentUrl,
   buildPreviewLaunchUrl,
   buildShopifyPricePreviewBootstrapUrl,
@@ -5456,20 +5455,17 @@ function TestWizard({
           }
         }
       } else if (options.simplePreview) {
-        finalPreviewUrl =
-          resolveShopifySimplePreviewUrl({
-            directPreviewUrl,
-            apiBaseUrl: getApiBaseUrl(),
-            storefrontPassword: resolveStorefrontPasswordForPreview(
-              scopedShopDomain || domain,
-              visualEditorStorefrontPassword,
-              [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
-            ),
-            parentOrigin:
-              typeof window !== 'undefined' && window.location?.origin
-                ? window.location.origin
-                : undefined,
-          }) || directPreviewUrl;
+        if (options.usePreviewLaunch) {
+          // Brief RipX launcher seeds preview context, then lands on the storefront URL.
+          finalPreviewUrl =
+            buildPreviewLaunchUrl({
+              apiBaseUrl: getApiBaseUrl(),
+              previewUrl: directPreviewUrl,
+            }) || directPreviewUrl;
+        } else {
+          // Copied/shared links stay on the store domain with ab_preview_* query params.
+          finalPreviewUrl = directPreviewUrl;
+        }
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
@@ -5593,6 +5589,7 @@ function TestWizard({
     const url = buildPreviewUrl(variant, index, {
       pricePreviewProduct: pricePreviewProductOverride,
       simplePreview: true,
+      usePreviewLaunch: true,
       resetPreviewSession: true,
       previewSessionId: `customer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });

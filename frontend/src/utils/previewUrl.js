@@ -137,6 +137,7 @@ export function normalizePreviewBaseUrl(input) {
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 for visual editor iframe
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 for picker mode
  * @param {boolean} [options.simplePreview=false] - Add ab_preview_simple=1 for no-shell preview
+ * @param {boolean} [options.usePreviewLaunch=false] - TestWizard only: open via /api/track/preview-launch
  * @param {boolean} [options.resetPreviewSession=false] - Clear prior tab preview state before seeding this URL
  * @param {string} [options.previewSessionId] - Optional preview session nonce for diagnostics/cache boundaries
  * @param {string} [options.testType] - Optional test type hint (`shipping`, `price`, etc.) for storefront preview bootstrap
@@ -493,49 +494,6 @@ export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
   } catch {
     return null;
   }
-}
-
-/**
- * Resolve a customer-facing Shopify preview URL that survives password gates and missing theme embeds.
- * Password-protected stores use preview-document (app-proxy bootstrap still redirects to /password).
- *
- * @param {Object} options
- * @param {string} options.directPreviewUrl - URL from buildPreviewUrl()
- * @param {string} [options.apiBaseUrl] - RipX API base for preview-document / preview-launch
- * @param {string} [options.storefrontPassword] - Shopify storefront password when the shop is gated
- * @param {string} [options.parentOrigin] - RipX app origin (preview-document parent_origin)
- * @returns {string}
- */
-export function resolveShopifySimplePreviewUrl({
-  directPreviewUrl,
-  apiBaseUrl,
-  storefrontPassword,
-  parentOrigin,
-}) {
-  const url = typeof directPreviewUrl === 'string' ? directPreviewUrl.trim() : '';
-  if (!url) return '';
-  if (!isShopifyPreviewUrl(url)) return url;
-
-  const password = String(storefrontPassword || '').trim();
-  if (password) {
-    return (
-      buildPreviewDocumentUrl({
-        apiBaseUrl,
-        previewUrl: url,
-        storefrontPassword: password,
-        parentOrigin,
-      }) ||
-      ensureShopifyPreviewBootstrapUrl(url) ||
-      buildPreviewLaunchUrl({ apiBaseUrl, previewUrl: url }) ||
-      url
-    );
-  }
-
-  return (
-    ensureShopifyPreviewBootstrapUrl(url) ||
-    buildPreviewLaunchUrl({ apiBaseUrl, previewUrl: url }) ||
-    url
-  );
 }
 
 /**

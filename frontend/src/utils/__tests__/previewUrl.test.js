@@ -11,7 +11,6 @@ import {
   loadPersistedStorefrontPassword,
   persistStorefrontPassword,
   getDevStorefrontPasswordDefault,
-  resolveShopifySimplePreviewUrl,
   resolveStorefrontPasswordForPreview,
   stripPreviewDocumentSecretParams,
 } from '../previewUrl';
@@ -398,48 +397,5 @@ describe('previewUrl', () => {
     const bootstrap =
       'https://makripon.myshopify.com/apps/ripx/price-preview-bootstrap-v1?url=https%3A%2F%2Fmakripon.myshopify.com%2Fproducts%2Ftest%3Fab_preview%3D1';
     expect(ensureShopifyPreviewBootstrapUrl(bootstrap)).toBe(bootstrap);
-  });
-
-  it('wraps shipping simple preview URLs in Shopify bootstrap', () => {
-    const direct = buildPreviewUrl({
-      baseUrl: 'https://splitter-plus.myshopify.com/products/the-videographer-snowboard',
-      testId: '9450d503-7391-4e65-ba0a-7e742622f029',
-      variantId: 'Variant A',
-      variantName: 'Variant A',
-      tenantDomain: 'splitter-plus.myshopify.com',
-      testType: 'shipping',
-      simplePreview: true,
-    });
-    const resolved = resolveShopifySimplePreviewUrl({
-      directPreviewUrl: direct,
-      apiBaseUrl: 'https://splitter.echologyx.com/api',
-    });
-    const url = new URL(resolved);
-    expect(url.hostname).toBe('splitter-plus.myshopify.com');
-    expect(url.pathname).toBe('/apps/ripx/preview-bootstrap-v2');
-    expect(url.searchParams.get('url')).toContain('ab_preview_test_type=shipping');
-  });
-
-  it('uses preview-document for password-protected shipping simple previews', () => {
-    const direct = buildPreviewUrl({
-      baseUrl: 'https://splitter-plus.myshopify.com/products/the-videographer-snowboard',
-      testId: '9450d503-7391-4e65-ba0a-7e742622f029',
-      variantId: 'Variant A',
-      variantName: 'Variant A',
-      tenantDomain: 'splitter-plus.myshopify.com',
-      testType: 'shipping',
-      simplePreview: true,
-    });
-    const resolved = resolveShopifySimplePreviewUrl({
-      directPreviewUrl: direct,
-      apiBaseUrl: 'https://splitter.echologyx.com/api',
-      storefrontPassword: 'sp',
-      parentOrigin: 'https://splitter.echologyx.com',
-    });
-    const url = new URL(resolved);
-    expect(url.hostname).toBe('splitter.echologyx.com');
-    expect(url.pathname).toBe('/api/track/preview-document');
-    expect(url.searchParams.get('storefront_password')).toBe('sp');
-    expect(url.searchParams.get('ab_preview_test_type')).toBe('shipping');
   });
 });
