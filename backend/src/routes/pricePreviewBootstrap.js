@@ -20,10 +20,12 @@ function buildPreviewCtx() {
     return {
       preview: tu.searchParams.get('ab_preview') === '1',
       testId: tu.searchParams.get('ab_preview_test') || null,
+      testType: tu.searchParams.get('ab_preview_test_type') || null,
       variantId: tu.searchParams.get('ab_preview_variant') || null,
       variantName: tu.searchParams.get('ab_preview_variant_name') || null,
       tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
       simple: tu.searchParams.get('ab_preview_simple') === '1',
+      sessionId: tu.searchParams.get('ab_preview_session') || null,
       persistedAtMs: Date.now()
     };
   } catch (_e) {

@@ -1909,6 +1909,52 @@ describe('storefront script cart/add interceptors', () => {
     expect(checkoutForm.submit).toHaveBeenCalled();
   });
 
+  it('continues checkout submit when cart repair rejects before checkout', async () => {
+    const checkoutForm = createCheckoutFormStub();
+    const { hooks, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      documentQuerySelectorAll: () => [],
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (/\/cart\.js(?:[?#]|$)/i.test(url)) {
+          return Promise.reject(new Error('cart snapshot unavailable'));
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '29292929-2929-4292-9292-292929292929',
+      'Variant A',
+      'ripx-plus.myshopify.com',
+      { sig: 'n'.repeat(64), ts: '1710000000000', user: 'user-shipping' },
+      null,
+      null
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      __ripx_shipping_test: true,
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    const submitRegistrations = windowObj.document.addEventListener.mock.calls.filter(
+      call => call[0] === 'submit'
+    );
+    const event = {
+      target: checkoutForm,
+      preventDefault: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+    };
+    submitRegistrations.forEach(call => call[1](event));
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    await new Promise(resolve => setTimeout(resolve, 180));
+    expect(checkoutForm.submit).toHaveBeenCalled();
+  });
+
   it('auto-repairs existing cart line when shipping preview assignment hydrates', async () => {
     const testId = '27272727-2727-4272-8272-272727272727';
     const { hooks, fetchCalls } = bootStorefrontScriptHarness({

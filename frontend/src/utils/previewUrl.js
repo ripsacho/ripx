@@ -476,6 +476,7 @@ export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
     [
       PREVIEW_PARAMS.PREVIEW,
       PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
@@ -492,6 +493,49 @@ export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve a customer-facing Shopify preview URL that survives password gates and missing theme embeds.
+ * Password-protected stores use preview-document (app-proxy bootstrap still redirects to /password).
+ *
+ * @param {Object} options
+ * @param {string} options.directPreviewUrl - URL from buildPreviewUrl()
+ * @param {string} [options.apiBaseUrl] - RipX API base for preview-document / preview-launch
+ * @param {string} [options.storefrontPassword] - Shopify storefront password when the shop is gated
+ * @param {string} [options.parentOrigin] - RipX app origin (preview-document parent_origin)
+ * @returns {string}
+ */
+export function resolveShopifySimplePreviewUrl({
+  directPreviewUrl,
+  apiBaseUrl,
+  storefrontPassword,
+  parentOrigin,
+}) {
+  const url = typeof directPreviewUrl === 'string' ? directPreviewUrl.trim() : '';
+  if (!url) return '';
+  if (!isShopifyPreviewUrl(url)) return url;
+
+  const password = String(storefrontPassword || '').trim();
+  if (password) {
+    return (
+      buildPreviewDocumentUrl({
+        apiBaseUrl,
+        previewUrl: url,
+        storefrontPassword: password,
+        parentOrigin,
+      }) ||
+      ensureShopifyPreviewBootstrapUrl(url) ||
+      buildPreviewLaunchUrl({ apiBaseUrl, previewUrl: url }) ||
+      url
+    );
+  }
+
+  return (
+    ensureShopifyPreviewBootstrapUrl(url) ||
+    buildPreviewLaunchUrl({ apiBaseUrl, previewUrl: url }) ||
+    url
+  );
 }
 
 /**

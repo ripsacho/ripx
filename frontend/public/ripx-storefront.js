@@ -4934,15 +4934,24 @@
       Promise.all([
         syncRipxCartLevelAttributes('checkout-start', { force: true }),
         maybeRepairRipxCartLineProperties('checkout-start'),
-      ]).then(function (results) {
-        var cartLevelSynced = Array.isArray(results) ? Boolean(results[0]) : false;
-        var linePropsRepaired = Array.isArray(results) ? Boolean(results[1]) : false;
-        recordShippingDebugStep('checkout_handoff_repair_result', {
-          cartLevelSynced: cartLevelSynced,
-          linePropsRepaired: linePropsRepaired,
+      ])
+        .then(function (results) {
+          var cartLevelSynced = Array.isArray(results) ? Boolean(results[0]) : false;
+          var linePropsRepaired = Array.isArray(results) ? Boolean(results[1]) : false;
+          recordShippingDebugStep('checkout_handoff_repair_result', {
+            cartLevelSynced: cartLevelSynced,
+            linePropsRepaired: linePropsRepaired,
+          });
+        })
+        .catch(function (error) {
+          recordShippingDebugStep('checkout_handoff_repair_failed', {
+            message:
+              error && error.message ? String(error.message) : String(error || 'unknown error'),
+          });
+        })
+        .finally(function () {
+          continueCheckoutAfterRepair(control, form);
         });
-        continueCheckoutAfterRepair(control, form);
-      });
       return true;
     }
     document.addEventListener(

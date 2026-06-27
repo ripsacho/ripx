@@ -352,6 +352,7 @@ async function servePreviewBootstrap(req, res) {
             var previewCtx = {
               preview: tu.searchParams.get('ab_preview') === '1',
               testId: tu.searchParams.get('ab_preview_test') || null,
+              testType: tu.searchParams.get('ab_preview_test_type') || null,
               variantId: tu.searchParams.get('ab_preview_variant') || null,
               variantName: tu.searchParams.get('ab_preview_variant_name') || null,
               tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
@@ -359,7 +360,7 @@ async function servePreviewBootstrap(req, res) {
               sessionId: tu.searchParams.get('ab_preview_session') || null,
               persistedAtMs: Date.now(),
             };
-            if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+            if (previewCtx.preview || previewCtx.testId || previewCtx.testType || previewCtx.variantId || previewCtx.variantName) {
               try {
                 window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
               } catch (_se) {}
@@ -438,6 +439,7 @@ async function servePreviewBootstrap(req, res) {
             'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
               'if(ctx.preview===true||ctx.preview==="1") u.searchParams.set("ab_preview","1");' +
               'if(ctx.testId) u.searchParams.set("ab_preview_test",String(ctx.testId));' +
+              'if(ctx.testType) u.searchParams.set("ab_preview_test_type",String(ctx.testType));' +
               'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
               'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
               'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
@@ -446,7 +448,7 @@ async function servePreviewBootstrap(req, res) {
               'return u;}' +
             'function cleanSimplePreviewAddressBar(){try{var ctx=readCtx();if(!(ctx&&(ctx.simple===true||ctx.simple==="1"))||!history||typeof history.replaceState!=="function")return;var clean=new URL(' +
               JSON.stringify(targetUrl) +
-              ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap"};}catch(_e){}}' +
+              ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_test_type","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap"};}catch(_e){}}' +
             'function toBootstrapHref(href){try{' +
               'var u=new URL(href,window.location.origin);' +
               'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
@@ -756,6 +758,7 @@ async function servePreviewBootstrapLoader(req, res) {
       var previewCtx = {
         preview: tu.searchParams.get('ab_preview') === '1',
         testId: tu.searchParams.get('ab_preview_test') || null,
+        testType: tu.searchParams.get('ab_preview_test_type') || null,
         variantId: tu.searchParams.get('ab_preview_variant') || null,
         variantName: tu.searchParams.get('ab_preview_variant_name') || null,
         tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
@@ -763,7 +766,7 @@ async function servePreviewBootstrapLoader(req, res) {
         sessionId: tu.searchParams.get('ab_preview_session') || null,
         persistedAtMs: Date.now(),
       };
-      if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+      if (previewCtx.preview || previewCtx.testId || previewCtx.testType || previewCtx.variantId || previewCtx.variantName) {
         try {
           window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
         } catch (_se) {}
@@ -846,6 +849,7 @@ async function servePreviewBootstrapLoader(req, res) {
       'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
         'if(ctx.preview===true||ctx.preview==="1") u.searchParams.set("ab_preview","1");' +
         'if(ctx.testId) u.searchParams.set("ab_preview_test",String(ctx.testId));' +
+        'if(ctx.testType) u.searchParams.set("ab_preview_test_type",String(ctx.testType));' +
         'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
         'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
         'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
@@ -854,7 +858,7 @@ async function servePreviewBootstrapLoader(req, res) {
         'return u;}' +
       'function cleanSimplePreviewAddressBar(){try{var ctx=readCtx();if(!(ctx&&(ctx.simple===true||ctx.simple==="1"))||!history||typeof history.replaceState!=="function")return;var clean=new URL(' +
         JSON.stringify(targetUrl) +
-        ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap-loader"};}catch(_e){}}' +
+        ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_test_type","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap-loader"};}catch(_e){}}' +
       'function toBootstrapHref(href){try{' +
         'var u=new URL(href,window.location.origin);' +
         'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
