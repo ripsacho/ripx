@@ -1484,6 +1484,44 @@
     return !!(state && state.__ripx_shipping_test);
   }
 
+  function shouldUseLightweightShippingPreviewPdpHandoff() {
+    if (!(PREVIEW_MODE && PREVIEW_SIMPLE_MODE && PREVIEW_TEST_ID)) return false;
+    if (!isPdpProductPath() || isCartSurface()) return false;
+    var hintedType = String(PREVIEW_TEST_TYPE || '')
+      .trim()
+      .toLowerCase();
+    if (hintedType === 'shipping') return true;
+    if (hintedType === 'price' || hintedType === 'offer' || hintedType === 'checkout') {
+      return false;
+    }
+    return resolvePreviewLooksLikeShipping(null);
+  }
+
+  function buildShippingAssignmentKey(test, variant) {
+    if (!test || !variant) return '';
+    var variantIdForCart = resolveShippingVariantIdForCart(variant);
+    if (!variantIdForCart) return '';
+    var proof = getAssignmentProofFromVariant(variant);
+    return [
+      String(test.id || ''),
+      String(variantIdForCart),
+      proof && proof.sig ? String(proof.sig) : '',
+      proof && proof.ts ? String(proof.ts) : '',
+    ].join('\u0001');
+  }
+
+  function finalizeShippingPreviewCartHandoff(test, variant, reason) {
+    if (!test || !variant || !testTypeIsShipping(test)) return false;
+    injectShippingTestCartAttributes(test, variant, {
+      reason: reason || 'finalize',
+      force: true,
+      lightweight: false,
+      skipRepairBurst: shouldUseLightweightShippingPreviewPdpHandoff() && !isCartSurface(),
+    });
+    _ripxShippingPreviewHandoffDeferred = false;
+    return true;
+  }
+
   /**
    * Seed cart attributes as early as possible in preview mode.
    * This avoids races where add-to-cart fires before the main init flow finishes.
@@ -1511,7 +1549,11 @@
                 assignment_sig: variant && variant.assignment_sig,
                 assignment_ts: variant && variant.assignment_ts,
                 assignment_user: variant && variant.assignment_user,
-              }
+              },
+          {
+            reason: reason || 'preview_seed',
+            lightweight: shouldUseLightweightShippingPreviewPdpHandoff(),
+          }
         );
         recordShippingDebugStep('preview_cart_seed_shipping', {
           reason: reason || 'preview_seed',
@@ -2060,6 +2102,8 @@
   }
   /** Latest line-attribute payload to apply on theme AJAX cart/add requests. */
   var _ripxCartAttributeState = null;
+  var _ripxShippingAssignmentKey = '';
+  var _ripxShippingPreviewHandoffDeferred = false;
   var _ripxCartFormTargetProductIds = null;
   var _ripxTargetUnitByProductId = {};
   var _ripxDiscountUnitByProductId = {};
@@ -4952,7 +4996,22 @@
         event.stopPropagation();
       }
       Promise.all([
-        syncRipxCartLevelAttributes('checkout-start', { force: true }),
+        (_ripxShippingPreviewHandoffDeferred && PREVIEW_TEST_ID
+          ? getVariant(PREVIEW_TEST_ID).then(function (previewVariant) {
+              var previewTest =
+                getActiveTestById(PREVIEW_TEST_ID) || makeSyntheticPreviewShippingTest();
+              if (previewTest && previewVariant && testTypeIsShipping(previewTest)) {
+                finalizeShippingPreviewCartHandoff(
+                  previewTest,
+                  previewVariant,
+                  'checkout-start'
+                );
+              }
+            })
+          : Promise.resolve()
+        ).then(function () {
+          return syncRipxCartLevelAttributes('checkout-start', { force: true });
+        }),
         maybeRepairRipxCartLineProperties('checkout-start'),
       ])
         .then(function (results) {
@@ -6261,8 +6320,10 @@
     targetProductIds,
     pricingProof,
     checkoutMethodProof,
-    offerProof
+    offerProof,
+    options
   ) {
+    var opts = options && typeof options === 'object' ? options : {};
     if (!testId || variantId == null || String(variantId).trim() === '') return;
     var valueShop =
       (CONFIG.shopDomain && String(CONFIG.shopDomain).trim()) ||
@@ -6403,8 +6464,10 @@
       _ripxCartFormTargetProductIds = targetProductIds;
     }
     installRipxCartAddInterceptors();
-    applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
-    installRipxCartFormObserver();
+    if (!opts.skipDomApply) {
+      applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
+      installRipxCartFormObserver();
+    }
     if (DEBUG)
       debugLog(
         'injectPriceTestCartAttributes:',
@@ -6812,7 +6875,17 @@
               injectPreviewCartAttributesWhenConfigMissing(PREVIEW_TEST_ID, variant);
             }
           } else if (test && testTypeIsShipping(test)) {
-            injectShippingTestCartAttributes(test, variant);
+            if (_ripxShippingPreviewHandoffDeferred) {
+              finalizeShippingPreviewCartHandoff(
+                test,
+                variant,
+                reason || 'cart_add_preview'
+              );
+            } else {
+              injectShippingTestCartAttributes(test, variant, {
+                reason: reason || 'cart_add_preview',
+              });
+            }
           } else {
             var previewVariantId =
               variant.variantId != null && String(variant.variantId).trim()
@@ -10429,17 +10502,31 @@
     }
     return '';
   }
-  function injectShippingTestCartAttributes(test, variant) {
+  function injectShippingTestCartAttributes(test, variant, opts) {
+    var options = opts && typeof opts === 'object' ? opts : {};
     if (!test || !variant || !testTypeIsShipping(test)) return;
     var tt = getNormalizedTargetType(test);
     var variantIdForCart = resolveShippingVariantIdForCart(variant);
     if (!variantIdForCart) return;
+    var assignmentKey = buildShippingAssignmentKey(test, variant);
+    if (!options.force && assignmentKey && assignmentKey === _ripxShippingAssignmentKey) {
+      return;
+    }
+    var lightweight =
+      options.lightweight === true ||
+      (!options.force &&
+        options.lightweight !== false &&
+        shouldUseLightweightShippingPreviewPdpHandoff());
     clearRipxPriceOnlyCartHints();
     injectPriceTestCartAttributes(
       test.id,
       variantIdForCart,
       getAssignmentProofFromVariant(variant),
-      getShippingTargetProductIdsForCartAttrs(test)
+      getShippingTargetProductIdsForCartAttrs(test),
+      null,
+      null,
+      null,
+      { skipDomApply: lightweight }
     );
     if (_ripxCartAttributeState && typeof _ripxCartAttributeState === 'object') {
       _ripxCartAttributeState.__ripx_shipping_test = true;
@@ -10448,15 +10535,32 @@
       delete _ripxCartAttributeState._ripx_discount_unit;
       delete _ripxCartAttributeState.__ripx_price_application_method;
     }
+    if (assignmentKey) {
+      _ripxShippingAssignmentKey = assignmentKey;
+    }
+    if (lightweight) {
+      _ripxShippingPreviewHandoffDeferred = true;
+      recordShippingDebugStep('shipping_assignment_deferred', {
+        testId: test.id || null,
+        variant: variantIdForCart,
+        targetType: tt,
+        reason: options.reason || 'lightweight_pdp',
+      });
+      return;
+    }
+    _ripxShippingPreviewHandoffDeferred = false;
     clearRipxPriceOnlyCartHints();
     recordShippingDebugStep('shipping_assignment_injected', {
       testId: test.id || null,
       variant: variantIdForCart,
       targetType: tt,
       targetProductIds: getShippingTargetProductIdsForCartAttrs(test),
+      reason: options.reason || 'shipping-assignment',
     });
-    syncRipxCartLevelAttributes('shipping-assignment');
-    scheduleRipxCartPropsRepairBurst('shipping-assignment');
+    if (options.skipCartSync) return;
+    syncRipxCartLevelAttributes(options.reason || 'shipping-assignment');
+    if (options.skipRepairBurst) return;
+    scheduleRipxCartPropsRepairBurst(options.reason || 'shipping-assignment');
   }
 
   var OFFER_CODE_APPLY_STATE_KEY = '__ripx_offer_code_apply_v1__';
@@ -11710,7 +11814,9 @@
         } catch (ePanelWatch) {}
       }
       if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
-        bootstrapPreviewCartAttributeSeed(null, 'runtime_init');
+        if (!(_ripxShippingPreviewHandoffDeferred && shouldUseLightweightShippingPreviewPdpHandoff())) {
+          bootstrapPreviewCartAttributeSeed(null, 'runtime_init');
+        }
       }
 
       if (
@@ -11812,7 +11918,15 @@
                   getVariant(PREVIEW_TEST_ID)
                     .then(function (variant) {
                       if (!variant) return;
-                      bootstrapPreviewCartAttributeSeed(variant, 'preview_storefront_test_merge');
+                      if (_ripxShippingPreviewHandoffDeferred) {
+                        finalizeShippingPreviewCartHandoff(
+                          extraTest,
+                          variant,
+                          'preview_storefront_test_merge'
+                        );
+                      } else {
+                        bootstrapPreviewCartAttributeSeed(variant, 'preview_storefront_test_merge');
+                      }
                     })
                     .catch(function () {});
                 }
@@ -11946,7 +12060,11 @@
                     shouldInjectShippingAttrs = matched;
                   }
                   if (shouldInjectShippingAttrs) {
-                    injectShippingTestCartAttributes(test, variant);
+                    if (_ripxShippingPreviewHandoffDeferred) {
+                      finalizeShippingPreviewCartHandoff(test, variant, 'assigned');
+                    } else {
+                      injectShippingTestCartAttributes(test, variant, { reason: 'assigned' });
+                    }
                   }
                 }
                 if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) {
@@ -12066,12 +12184,27 @@
                 var previewTestForCart = getActiveTestById(PREVIEW_TEST_ID);
                 var shippingPreviewContext = resolvePreviewCartShippingContext(variant);
                 if (shippingPreviewContext && shippingPreviewContext.test) {
-                  injectShippingTestCartAttributes(
-                    shippingPreviewContext.test,
-                    shippingPreviewContext.variant || variant
-                  );
+                  if (_ripxShippingPreviewHandoffDeferred) {
+                    finalizeShippingPreviewCartHandoff(
+                      shippingPreviewContext.test,
+                      shippingPreviewContext.variant || variant,
+                      'preview_focus'
+                    );
+                  } else {
+                    injectShippingTestCartAttributes(
+                      shippingPreviewContext.test,
+                      shippingPreviewContext.variant || variant,
+                      { reason: 'preview_focus' }
+                    );
+                  }
                 } else if (previewTestForCart && testTypeIsShipping(previewTestForCart)) {
-                  injectShippingTestCartAttributes(previewTestForCart, variant);
+                  if (_ripxShippingPreviewHandoffDeferred) {
+                    finalizeShippingPreviewCartHandoff(previewTestForCart, variant, 'preview_focus');
+                  } else {
+                    injectShippingTestCartAttributes(previewTestForCart, variant, {
+                      reason: 'preview_focus',
+                    });
+                  }
                 } else {
                   injectPriceTestCartAttributes(
                     PREVIEW_TEST_ID,
@@ -12115,7 +12248,16 @@
         initHeatmap();
 
         if (shouldRunAllProductsCartFallback()) {
-          scheduleRipxCartNativeStateRefreshBurst();
+          if (!(PREVIEW_MODE && PREVIEW_TEST_ID && !previewFocusLooksLikePrice())) {
+            scheduleRipxCartNativeStateRefreshBurst();
+          }
+        }
+
+        function shouldScheduleDynamicPriceReapply() {
+          if (PREVIEW_MODE && PREVIEW_TEST_ID && !previewFocusLooksLikePrice()) {
+            return false;
+          }
+          return true;
         }
 
         // Re-apply price tests for dynamic content. Paint functions are idempotent, so stable nodes
@@ -12197,6 +12339,7 @@
           return isProductListingSurface() || isCartSurface() || hasCartUiInDom() || !!cartUiRoot();
         }
         function schedulePriceReapply(delayMs, dynamicOnly) {
+          if (!shouldScheduleDynamicPriceReapply()) return;
           setTimeout(function () {
             if (antiFlickerState.active) return;
             if (dynamicOnly && !hasDynamicPriceSurface()) return;
@@ -12213,6 +12356,7 @@
           }
         );
         document.addEventListener('shopify:section:load', function () {
+          if (!shouldScheduleDynamicPriceReapply()) return;
           setTimeout(reapplyPriceTestsOnly, 300);
         });
         var lastCartReapplyAt = 0;
@@ -12916,6 +13060,13 @@
     window.__RIPX_TEST_HOOKS__.looksLikeCartAddNearMiss = looksLikeCartAddNearMiss;
     window.__RIPX_TEST_HOOKS__.previewMode = PREVIEW_MODE;
     window.__RIPX_TEST_HOOKS__.previewSimpleMode = PREVIEW_SIMPLE_MODE;
+    window.__RIPX_TEST_HOOKS__.shippingPreviewHandoffDeferred = function () {
+      return !!_ripxShippingPreviewHandoffDeferred;
+    };
+    window.__RIPX_TEST_HOOKS__.shouldUseLightweightShippingPreviewPdpHandoff =
+      shouldUseLightweightShippingPreviewPdpHandoff;
+    window.__RIPX_TEST_HOOKS__.finalizeShippingPreviewCartHandoff =
+      finalizeShippingPreviewCartHandoff;
     window.__RIPX_TEST_HOOKS__.previewTestContext = PREVIEW_TEST_CONTEXT;
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
     window.__RIPX_TEST_HOOKS__.previewSessionId = PREVIEW_SESSION_ID;

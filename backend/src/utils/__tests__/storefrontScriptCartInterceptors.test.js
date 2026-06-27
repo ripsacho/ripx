@@ -752,6 +752,46 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.getAntiFlickerDiagnostics().active).toBe(false);
   });
 
+  it('defers shipping preview cart sync on product pages until handoff is finalized', () => {
+    const previewShippingTestId = '9450d503-7391-4e65-ba0a-7e742622f029';
+    const { hooks, fetchCalls } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      pathname: '/products/the-videographer-snowboard',
+      search:
+        '?ab_preview=1&ab_preview_simple=1&ab_preview_test_type=shipping&ab_preview_test=' +
+        previewShippingTestId +
+        '&ab_preview_variant=Variant%20A&ab_preview_variant_name=Variant%20A',
+      runtimeConfig: {
+        apiUrl: 'https://app.example.com/api',
+        activeTests: [],
+        priceSurfaceRegistry: {
+          shopMappings: [
+            {
+              id: 'mapping-1',
+              surface: 'pdp',
+              role: 'regular',
+              selector: '.product__price .money',
+              enabled: true,
+              priority: 12,
+            },
+          ],
+        },
+      },
+      fetchImpl: input => {
+        if (String(input || '').includes('/track/preview')) {
+          return new Promise(() => {});
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      },
+    });
+
+    expect(hooks.shouldUseLightweightShippingPreviewPdpHandoff()).toBe(true);
+    expect(hooks.shippingPreviewHandoffDeferred()).toBe(true);
+    expect(
+      fetchCalls.some(call => /\/cart\/update(?:\.js)?(?:[?#]|$)/i.test(getFetchInputUrl(call)))
+    ).toBe(false);
+  });
+
   it('reads preview context from nested price-preview bootstrap url', () => {
     const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
       pathname: '/apps/ripx/price-preview-bootstrap-v1',
