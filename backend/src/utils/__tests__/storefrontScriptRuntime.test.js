@@ -355,6 +355,14 @@ describe('storefrontScriptRuntime', () => {
     expect(strictSnippet).toContain('body{opacity:0');
   });
 
+  it('skips early anti-flicker bootstrap when preview context is present', () => {
+    const snippet = buildEarlyStorefrontAntiFlickerBootstrap([
+      { id: 't1', type: 'price', antiFlickerMode: 'balanced' },
+    ]);
+    expect(snippet).toContain('ripxHasPreviewCtx');
+    expect(snippet).toContain('if(ripxHasPreviewCtx())return;');
+  });
+
   it('includes price surface mapping selectors in price anti-flicker CSS', () => {
     const snippet = buildEarlyStorefrontAntiFlickerBootstrap(
       [

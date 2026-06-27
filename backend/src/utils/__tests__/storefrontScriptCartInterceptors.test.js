@@ -726,6 +726,32 @@ describe('storefront script cart/add interceptors', () => {
     expect(windowObj.__RIPX_SIMPLE_PREVIEW_NAV__).toBe(true);
   });
 
+  it('isolates preview bootstrap from unrelated live active tests', () => {
+    const livePriceTestId = '99999999-9999-4999-8999-999999999999';
+    const previewShippingTestId = '11111111-1111-4111-8111-111111111111';
+    const { hooks } = bootStorefrontScriptHarness({
+      search:
+        '?ab_preview=1&ab_preview_simple=1&ab_preview_test_type=shipping&ab_preview_test=' +
+        previewShippingTestId +
+        '&ab_preview_variant=Variant%20A',
+      runtimeConfig: {
+        apiUrl: 'https://app.example.com/api',
+        activeTests: [
+          {
+            id: livePriceTestId,
+            type: 'price',
+            targetType: 'all-products',
+            antiFlickerMode: 'balanced',
+          },
+        ],
+      },
+    });
+
+    expect(hooks.previewMode).toBe(true);
+    expect(hooks.previewTestId).toBe(previewShippingTestId);
+    expect(hooks.getAntiFlickerDiagnostics().active).toBe(false);
+  });
+
   it('reads preview context from nested price-preview bootstrap url', () => {
     const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
       pathname: '/apps/ripx/price-preview-bootstrap-v1',

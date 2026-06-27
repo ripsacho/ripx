@@ -1090,20 +1090,16 @@
   const STRICT_PREVIEW_TEST_MODE = PREVIEW_MODE && !!PREVIEW_TEST_ID;
 
   function getRuntimeActiveTestsForBootstrap() {
-    var tests = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests.slice() : [];
     if (PREVIEW_MODE && PREVIEW_TEST_ID) {
-      var hasPreviewTest = tests.some(function (test) {
-        return String(test && test.id) === String(PREVIEW_TEST_ID);
-      });
-      if (!hasPreviewTest) {
-        var embeddedPreviewConfig =
-          CONFIG &&
-          CONFIG.previewVariant &&
-          CONFIG.previewVariant.config &&
-          typeof CONFIG.previewVariant.config === 'object'
-            ? CONFIG.previewVariant.config
-            : null;
-        tests.push({
+      var embedded = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests : [];
+      for (var i = 0; i < embedded.length; i += 1) {
+        var candidate = embedded[i];
+        if (candidate && String(candidate.id) === String(PREVIEW_TEST_ID)) {
+          return [candidate];
+        }
+      }
+      return [
+        {
           id: PREVIEW_TEST_ID,
           type:
             String(PREVIEW_TEST_TYPE || '')
@@ -1112,10 +1108,29 @@
               ? 'shipping'
               : 'price',
           targetType: 'all-products',
-        });
+        },
+      ];
+    }
+    return Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests.slice() : [];
+  }
+
+  function previewFocusLooksLikePrice() {
+    if (!(PREVIEW_MODE && PREVIEW_TEST_ID)) return false;
+    var hintedType = String(PREVIEW_TEST_TYPE || '')
+      .trim()
+      .toLowerCase();
+    if (hintedType === 'price') return true;
+    if (hintedType === 'shipping' || hintedType === 'offer' || hintedType === 'checkout') {
+      return false;
+    }
+    var embedded = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests : [];
+    for (var i = 0; i < embedded.length; i += 1) {
+      var test = embedded[i];
+      if (test && String(test.id) === String(PREVIEW_TEST_ID)) {
+        return testTypeIsPrice(test);
       }
     }
-    return tests;
+    return !resolvePreviewLooksLikeShipping(null);
   }
 
   function bootstrapAntiFlickerAndAssignment() {
@@ -1126,6 +1141,11 @@
       return;
     }
     if (consentRequired && !hasConsent() && !PREVIEW_MODE && !FORCE_LIVE_MODE) return;
+    if (PREVIEW_MODE && PREVIEW_TEST_ID && !hasAntiFlickerEligibleTests(tests)) {
+      updatePriceAntiFlickerBootstrapHint([]);
+      releaseAntiFlickerGuard('preview_non_price');
+      return;
+    }
     updatePriceAntiFlickerBootstrapHint(tests);
     if (hasAntiFlickerEligibleTests(tests)) {
       installAntiFlickerGuard(
@@ -6073,8 +6093,18 @@
       }
       function setProperty(propKey, value) {
         if (value === undefined || value === null || String(value).trim() === '') return;
-        removeHiddenInputByName('properties[' + getRipxPublicLinePropertyKey(propKey) + ']');
         var fullName = 'properties[' + propKey + ']';
+        var normalizedValue = String(value).trim();
+        var existingInputs = form.querySelectorAll('input[type="hidden"]');
+        for (var ei = 0; ei < existingInputs.length; ei += 1) {
+          if (existingInputs[ei] && existingInputs[ei].name === fullName) {
+            if (String(existingInputs[ei].value || '').trim() === normalizedValue) {
+              return;
+            }
+            break;
+          }
+        }
+        removeHiddenInputByName('properties[' + getRipxPublicLinePropertyKey(propKey) + ']');
         setHiddenInputByName(fullName, value);
       }
       setProperty(keyTest, valueTest);
@@ -6202,13 +6232,14 @@
     var root = document.documentElement || document.body;
     if (!root) return;
     _ripxCartFormObserverInstalled = true;
+    var observerDebounceMs = PREVIEW_SIMPLE_MODE ? 500 : 200;
     var observer = new MutationObserver(function () {
       if (!_ripxCartAttributeState) return;
       if (_ripxCartFormObserverTimer) clearTimeout(_ripxCartFormObserverTimer);
       _ripxCartFormObserverTimer = setTimeout(function () {
         _ripxCartFormObserverTimer = null;
         applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
-      }, 200);
+      }, observerDebounceMs);
     });
     try {
       observer.observe(root, { childList: true, subtree: true });
@@ -12213,8 +12244,9 @@
             } catch (e) {}
           }
         );
-        if (PREVIEW_MODE && PREVIEW_TEST_ID) {
-          // Preview-only stabilization: themes often redraw cart/prices after async updates.
+        if (PREVIEW_MODE && PREVIEW_TEST_ID && previewFocusLooksLikePrice()) {
+          // Price-preview-only stabilization. Shipping/simple customer previews do not need this
+          // watchdog; on production themes it hammered cart fetches + form rewrites until crash.
           if (_ripxPreviewStabilityTimer) {
             clearInterval(_ripxPreviewStabilityTimer);
             _ripxPreviewStabilityTimer = null;

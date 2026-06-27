@@ -313,7 +313,13 @@ function buildEarlyStorefrontAntiFlickerBootstrap(activeTests, priceSurfaceRegis
       ? buildPriceAntiFlickerCss(activeTests, priceSurfaceRegistry)
       : 'html[data-ripx-af="strict"] body{opacity:0 !important;}';
   return (
-    ';(function(){try{var h=document.documentElement;if(!h||h.getAttribute("data-ripx-af"))return;' +
+    ';(function(){try{function ripxHasPreviewCtx(){try{var q=String(window.location&&window.location.search||"");' +
+    'if(/(?:^|[?&])ab_preview(?:=|&|$)/.test(q)||/(?:^|[?&])ab_preview_test=/.test(q))return true;' +
+    'if(window.sessionStorage){var raw=window.sessionStorage.getItem("__ripx_preview_ctx_v1__");' +
+    'if(raw){var parsed=JSON.parse(raw);if(parsed&&parsed.preview)return true;}}' +
+    'var wn=String(window.name||"");if(wn.indexOf("__ripx_preview_ctx_v1__:")===0)return true;' +
+    '}catch(_ePreviewCtx){}return false;}' +
+    'if(ripxHasPreviewCtx())return;var h=document.documentElement;if(!h||h.getAttribute("data-ripx-af"))return;' +
     `h.setAttribute("data-ripx-af","${mode}");var id="ripx-anti-flicker-style";` +
     'if(!document.getElementById(id)){var s=document.createElement("style");s.id=id;' +
     `s.textContent=${JSON.stringify(css)};` +
