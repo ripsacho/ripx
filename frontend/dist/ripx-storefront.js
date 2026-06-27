@@ -958,9 +958,29 @@
       tenantDomain: obj.tenantDomain ? String(obj.tenantDomain) : null,
       simple: obj.simple === true || obj.simple === '1',
       sessionId: obj.sessionId ? String(obj.sessionId) : null,
+      launchTargetUrl: obj.launchTargetUrl ? String(obj.launchTargetUrl) : null,
       persistedAtMs:
         Number.isFinite(persistedAtMs) && persistedAtMs > 0 ? Math.round(persistedAtMs) : null,
     };
+  }
+  function maybeFollowPreviewLaunchTargetFromWindowName() {
+    if (!windowNamePreview || !windowNamePreview.launchTargetUrl) return false;
+    var pathLower = (window.location.pathname || '').toLowerCase();
+    if (pathLower.indexOf('/password') !== -1) return false;
+    try {
+      var target = new URL(windowNamePreview.launchTargetUrl, window.location.origin);
+      var current = new URL(window.location.href);
+      if (String(target.hostname || '').toLowerCase() !== String(current.hostname || '').toLowerCase()) {
+        return false;
+      }
+      if (target.pathname === current.pathname && target.search === current.search) {
+        return false;
+      }
+      window.location.replace(target.toString());
+      return true;
+    } catch (_eLaunchTarget) {
+      return false;
+    }
   }
   function readPersistedPreviewCtx() {
     try {
@@ -1088,6 +1108,10 @@
     !!(windowNamePreview && windowNamePreview.preview) ||
     !!(persistedPreview && persistedPreview.preview);
   const STRICT_PREVIEW_TEST_MODE = PREVIEW_MODE && !!PREVIEW_TEST_ID;
+
+  if (maybeFollowPreviewLaunchTargetFromWindowName()) {
+    return;
+  }
 
   function getRuntimeActiveTestsForBootstrap() {
     if (PREVIEW_MODE && PREVIEW_TEST_ID) {
@@ -1512,11 +1536,14 @@
 
   function finalizeShippingPreviewCartHandoff(test, variant, reason) {
     if (!test || !variant || !testTypeIsShipping(test)) return false;
+    var handoffReason = reason || 'finalize';
     injectShippingTestCartAttributes(test, variant, {
-      reason: reason || 'finalize',
+      reason: handoffReason,
       force: true,
       lightweight: false,
       skipRepairBurst: shouldUseLightweightShippingPreviewPdpHandoff() && !isCartSurface(),
+      // Checkout guard performs one forced cart-level sync after state is finalized.
+      skipCartSync: handoffReason === 'checkout-start',
     });
     _ripxShippingPreviewHandoffDeferred = false;
     return true;
@@ -4996,22 +5023,16 @@
         event.stopPropagation();
       }
       Promise.all([
-        (_ripxShippingPreviewHandoffDeferred && PREVIEW_TEST_ID
+        _ripxShippingPreviewHandoffDeferred && PREVIEW_TEST_ID
           ? getVariant(PREVIEW_TEST_ID).then(function (previewVariant) {
               var previewTest =
                 getActiveTestById(PREVIEW_TEST_ID) || makeSyntheticPreviewShippingTest();
               if (previewTest && previewVariant && testTypeIsShipping(previewTest)) {
-                finalizeShippingPreviewCartHandoff(
-                  previewTest,
-                  previewVariant,
-                  'checkout-start'
-                );
+                finalizeShippingPreviewCartHandoff(previewTest, previewVariant, 'checkout-start');
               }
+              return syncRipxCartLevelAttributes('checkout-start', { force: true });
             })
-          : Promise.resolve()
-        ).then(function () {
-          return syncRipxCartLevelAttributes('checkout-start', { force: true });
-        }),
+          : syncRipxCartLevelAttributes('checkout-start', { force: true }),
         maybeRepairRipxCartLineProperties('checkout-start'),
       ])
         .then(function (results) {
@@ -6876,11 +6897,7 @@
             }
           } else if (test && testTypeIsShipping(test)) {
             if (_ripxShippingPreviewHandoffDeferred) {
-              finalizeShippingPreviewCartHandoff(
-                test,
-                variant,
-                reason || 'cart_add_preview'
-              );
+              finalizeShippingPreviewCartHandoff(test, variant, reason || 'cart_add_preview');
             } else {
               injectShippingTestCartAttributes(test, variant, {
                 reason: reason || 'cart_add_preview',
@@ -11814,7 +11831,9 @@
         } catch (ePanelWatch) {}
       }
       if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
-        if (!(_ripxShippingPreviewHandoffDeferred && shouldUseLightweightShippingPreviewPdpHandoff())) {
+        if (
+          !(_ripxShippingPreviewHandoffDeferred && shouldUseLightweightShippingPreviewPdpHandoff())
+        ) {
           bootstrapPreviewCartAttributeSeed(null, 'runtime_init');
         }
       }
@@ -12199,7 +12218,11 @@
                   }
                 } else if (previewTestForCart && testTypeIsShipping(previewTestForCart)) {
                   if (_ripxShippingPreviewHandoffDeferred) {
-                    finalizeShippingPreviewCartHandoff(previewTestForCart, variant, 'preview_focus');
+                    finalizeShippingPreviewCartHandoff(
+                      previewTestForCart,
+                      variant,
+                      'preview_focus'
+                    );
                   } else {
                     injectShippingTestCartAttributes(previewTestForCart, variant, {
                       reason: 'preview_focus',

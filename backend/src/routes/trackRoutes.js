@@ -1341,6 +1341,7 @@ router.get(
     const previewSessionId =
       req.query.ab_preview_session || targetPreview.get('ab_preview_session') || null;
 
+    const targetUrl = parsed.toString();
     const previewCtx = {
       preview: previewFlag,
       testId: previewTestId ? String(previewTestId) : null,
@@ -1350,15 +1351,20 @@ router.get(
       tenantDomain: previewTenantDomain ? String(previewTenantDomain) : null,
       simple: previewSimple,
       sessionId: previewSessionId ? String(previewSessionId) : null,
+      launchTargetUrl: targetUrl,
       persistedAtMs: Date.now(),
     };
 
-    const targetUrl = parsed.toString();
-    const previewLaunchTarget = /\.myshopify\.com$/i.test(parsed.hostname || '')
+    const explicitStorefrontPassword =
+      typeof req.query.storefront_password === 'string' ? req.query.storefront_password.trim() : '';
+    const isMyshopifyTarget = /\.myshopify\.com$/i.test(parsed.hostname || '');
+    const usePasswordHandoff = !!(explicitStorefrontPassword && isMyshopifyTarget);
+    const previewLaunchTarget = isMyshopifyTarget
       ? previewSimple
         ? targetUrl
         : `https://${parsed.hostname}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(targetUrl)}`
       : targetUrl;
+    const shopPasswordAction = isMyshopifyTarget ? `${parsed.origin}/password` : '';
     const html = `<!doctype html>
 <html lang="en">
   <head>
@@ -1374,14 +1380,39 @@ router.get(
     </noscript>
     <script>
       (function () {
+        var ctx = ${JSON.stringify(previewCtx)};
         try {
-          var ctx = ${JSON.stringify(previewCtx)};
           window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(ctx);
           try {
             window.sessionStorage.setItem("__ripx_preview_ctx_v1__", JSON.stringify(ctx));
           } catch (_se) {}
-        } catch (e) {}
+        } catch (_e) {}
+        var usePasswordHandoff = ${usePasswordHandoff ? 'true' : 'false'};
+        var password = ${JSON.stringify(explicitStorefrontPassword)};
+        var shopPasswordAction = ${JSON.stringify(shopPasswordAction)};
         var target = ${JSON.stringify(previewLaunchTarget)};
+        if (usePasswordHandoff && shopPasswordAction && password) {
+          try {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = shopPasswordAction;
+            form.acceptCharset = 'UTF-8';
+            [
+              ['form_type', 'storefront_password'],
+              ['utf8', '\u2713'],
+              ['password', password],
+            ].forEach(function (pair) {
+              var input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = pair[0];
+              input.value = pair[1];
+              form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
+            return;
+          } catch (_pw) {}
+        }
         // Deterministic bootstrap: seed window.name first, then redirect.
         setTimeout(function () {
           try {

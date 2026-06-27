@@ -5456,11 +5456,17 @@ function TestWizard({
         }
       } else if (options.simplePreview) {
         if (options.usePreviewLaunch) {
+          const storefrontPassword = resolveStorefrontPasswordForPreview(
+            scopedShopDomain || domain,
+            visualEditorStorefrontPassword,
+            [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
+          );
           // Brief RipX launcher seeds preview context, then lands on the storefront URL.
           finalPreviewUrl =
             buildPreviewLaunchUrl({
               apiBaseUrl: getApiBaseUrl(),
               previewUrl: directPreviewUrl,
+              storefrontPassword,
             }) || directPreviewUrl;
         } else {
           // Copied/shared links stay on the store domain with ab_preview_* query params.

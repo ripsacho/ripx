@@ -304,6 +304,26 @@ describe('previewUrl', () => {
     expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
   });
 
+  it('builds preview-launch URL with storefront password when provided', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://splitter-plus.myshopify.com/products/test-product',
+      testId: '9450d503-7391-4e65-ba0a-7e742622f029',
+      variantName: 'Variant A',
+      testType: 'shipping',
+      simplePreview: true,
+    });
+
+    const result = buildPreviewLaunchUrl({
+      apiBaseUrl: '/api',
+      previewUrl,
+      storefrontPassword: 'sp',
+    });
+
+    const url = new URL(result, 'https://splitter.echologyx.com');
+    expect(url.searchParams.get('storefront_password')).toBe('sp');
+    expect(url.searchParams.get('url')).toBe(previewUrl);
+  });
+
   it('builds Shopify preview-bootstrap URL for myshopify preview', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',

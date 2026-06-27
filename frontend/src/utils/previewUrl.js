@@ -387,9 +387,10 @@ export function buildVisualPickerLaunchUrl({
  * @param {Object} options
  * @param {string} options.apiBaseUrl - API base URL (e.g. /api or https://host/api)
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
+ * @param {string} [options.storefrontPassword] - Optional Shopify storefront password (open preview only)
  * @returns {string|null}
  */
-export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
+export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl, storefrontPassword }) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
 
@@ -428,6 +429,13 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
         launchUrl.searchParams.set(key, value);
       }
     });
+    const password =
+      storefrontPassword !== null && storefrontPassword !== undefined
+        ? String(storefrontPassword).trim()
+        : '';
+    if (password) {
+      launchUrl.searchParams.set('storefront_password', password);
+    }
     return launchUrl.toString();
   } catch {
     return null;
