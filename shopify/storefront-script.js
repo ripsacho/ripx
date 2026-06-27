@@ -9171,11 +9171,22 @@
     );
   }
 
-  function rewriteAnchorHrefsForSimplePreview(root) {
+  function installSimplePreviewNavigationPersistence() {
     if (!(PREVIEW_MODE && PREVIEW_SIMPLE_MODE)) return;
-    var scope = root && root.querySelectorAll ? root : document;
-    try {
-      scope.querySelectorAll('a[href]').forEach(function (anchor) {
+    if (window.__RIPX_SIMPLE_PREVIEW_NAV__) return;
+    window.__RIPX_SIMPLE_PREVIEW_NAV__ = true;
+    // Keep preview params via click capture only. Bulk href rewrites + MutationObserver caused
+    // severe DOM churn on dynamic Shopify themes (tab freeze / "site crash").
+    document.addEventListener(
+      'click',
+      function (e) {
+        if (document.body && document.body.getAttribute('data-ripx-picker-active') === '1') {
+          return;
+        }
+        if (e.defaultPrevented) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!anchor) return;
         var rawHref = anchor.getAttribute('href');
         if (!rawHref || rawHref.charAt(0) === '#') return;
         var lowered = String(rawHref).trim().toLowerCase();
@@ -9198,30 +9209,14 @@
           var path = String(resolved.pathname || '').toLowerCase();
           if (path === '/checkout' || path.indexOf('/checkout/') === 0) return;
           var withCtx = withPreviewQueryParams(resolved.toString());
-          if (!withCtx) return;
-          anchor.setAttribute('href', withCtx);
-        } catch (_eRewriteSimple) {}
-      });
-    } catch (_eSimpleScope) {}
-  }
-
-  function installSimplePreviewNavigationPersistence() {
-    if (!(PREVIEW_MODE && PREVIEW_SIMPLE_MODE)) return;
-    if (window.__RIPX_SIMPLE_PREVIEW_NAV__) return;
-    window.__RIPX_SIMPLE_PREVIEW_NAV__ = true;
-    rewriteAnchorHrefsForSimplePreview(document);
-    try {
-      var rewriteTimer = null;
-      var observer = new MutationObserver(function () {
-        if (rewriteTimer) clearTimeout(rewriteTimer);
-        rewriteTimer = setTimeout(function () {
-          rewriteAnchorHrefsForSimplePreview(document);
-        }, 120);
-      });
-      if (document.body) {
-        observer.observe(document.body, { childList: true, subtree: true });
-      }
-    } catch (_eSimpleObserver) {}
+          if (!withCtx || withCtx === window.location.href) return;
+          e.preventDefault();
+          e.stopPropagation();
+          window.location.assign(withCtx);
+        } catch (_eSimpleNav) {}
+      },
+      true
+    );
   }
 
   function initVisualPicker() {

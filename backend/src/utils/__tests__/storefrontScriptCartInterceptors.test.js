@@ -709,6 +709,23 @@ describe('storefront script cart/add interceptors', () => {
     });
   });
 
+  it('does not bulk-rewrite anchor hrefs for simple preview on startup', () => {
+    const anchor = {
+      getAttribute: jest.fn(name => (name === 'href' ? '/collections/all' : null)),
+      setAttribute: jest.fn(),
+    };
+
+    const { windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      search:
+        '?ab_preview=1&ab_preview_simple=1&ab_preview_test=11111111-1111-4111-8111-111111111111&ab_preview_variant=Variant%20A',
+      documentQuerySelectorAll: selector => (selector === 'a[href]' ? [anchor] : []),
+    });
+
+    expect(anchor.setAttribute).not.toHaveBeenCalled();
+    expect(windowObj.__RIPX_SIMPLE_PREVIEW_NAV__).toBe(true);
+  });
+
   it('reads preview context from nested price-preview bootstrap url', () => {
     const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
       pathname: '/apps/ripx/price-preview-bootstrap-v1',
