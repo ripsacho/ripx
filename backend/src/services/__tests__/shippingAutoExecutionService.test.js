@@ -2,6 +2,7 @@ const shopifyService = require('../shopifyService');
 const {
   executeShippingTestPlan,
   dedupeDeliveryCustomizationsForVariant,
+  buildShippingDeliveryCustomizationConfig,
 } = require('../shippingAutoExecutionService');
 const { getTestsByShop } = require('../../models/test');
 const { buildShippingCurrentSetupReport } = require('../shippingCurrentSetupService');
@@ -33,6 +34,48 @@ describe('shippingAutoExecutionService', () => {
     process.env.SHOPIFY_SCOPES = originalScopes;
     process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL = originalCarrierCallbackUrl;
     process.env.APP_URL = originalAppUrl;
+  });
+
+  it('builds native hide targets with Shopify method definition ids from current setup rates', () => {
+    const config = buildShippingDeliveryCustomizationConfig(
+      { id: 'test-native-targets', name: 'Native target test' },
+      {
+        name: 'Variant A',
+        config: {
+          strategy: 'flat_rate',
+          shipping_display_mode: 'add_preview_method',
+          delivery_method_names: ['Standard'],
+          delivery_action: 'hide',
+          rates: [],
+        },
+      },
+      {
+        currentRates: [
+          {
+            id: 'gid://shopify/DeliveryRateDefinition/10',
+            name: 'Standard',
+            method_definition_id: 'gid://shopify/DeliveryMethodDefinition/1186140225609',
+            amount: 5,
+            currency: 'USD',
+          },
+        ],
+      }
+    );
+
+    expect(config.variant_rules[0].native_hide_targets).toEqual([
+      expect.objectContaining({
+        name: 'Standard',
+        method_definition_id: 'gid://shopify/DeliveryMethodDefinition/1186140225609',
+        rate_id: 'gid://shopify/DeliveryRateDefinition/10',
+      }),
+    ]);
+    expect(config.variant_rules[0].native_hide_scoped_codes).toEqual(
+      expect.arrayContaining([
+        'gid://shopify/DeliveryMethodDefinition/1186140225609',
+        '1186140225609',
+      ])
+    );
+    expect(config.variant_rules[0].native_hide_by_id_only).toBe(true);
   });
 
   it('runs dry-run for discount-function strategy without creating discount', async () => {

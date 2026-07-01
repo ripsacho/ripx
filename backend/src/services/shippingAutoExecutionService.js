@@ -377,8 +377,9 @@ function buildRateHideBindings(test = {}, variant = {}, cfg = {}, nativeHideTarg
   return bindings.slice(0, 20);
 }
 
-function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
+function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}, options = {}) {
   const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+  const currentRates = Array.isArray(options?.currentRates) ? options.currentRates : [];
   const methodNames = mergeHideTargetMethodNames(cfg);
   if (methodNames.length === 0) {
     throw new Error(
@@ -405,7 +406,7 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   const nativeHideTargets =
     Array.isArray(cfg.native_hide_targets) && cfg.native_hide_targets.length > 0
       ? cfg.native_hide_targets.slice(0, 50)
-      : buildNativeHideTargets(methodNames, scope);
+      : buildNativeHideTargets(methodNames, scope, currentRates);
   const nativeHideScopedCodes = Array.from(
     new Set(
       [

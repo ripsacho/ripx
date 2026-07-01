@@ -519,9 +519,15 @@ function normalizeShippingVariantConfig(config = {}) {
     normalized.replace_existing_rates = false;
   }
 
+  const metadataQuoteAmount = toOptionalNumber(
+    normalized.metadata?.quote_amount ??
+      normalized.metadata?.quoteAmount ??
+      normalized.metadata?.amount
+  );
   const hasConfiguredReplacementRate =
     normalized.rates.some(rate => rate?.amount !== null && Number(rate.amount) >= 0) ||
-    (normalized.amount !== null && normalized.amount !== undefined);
+    normalized.amount !== null ||
+    metadataQuoteAmount !== null;
   if (
     normalized.strategy === 'carrier_quote' &&
     normalized.shipping_display_mode === 'replace_existing_methods' &&
