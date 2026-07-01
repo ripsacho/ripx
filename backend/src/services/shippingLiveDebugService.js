@@ -269,9 +269,14 @@ async function buildShippingLiveDebugReport({
         expect: 'Recent POST during checkout with assignment_matches: true and rates_count > 0',
       },
       {
-        title: 'Checkout shipping step',
-        command: 'Open checkout shipping step and watch dev server logs',
-        expect: 'POST /api/track/shipping-carrier-rates then delivery customization function run',
+        title: 'Compare live delivery customization metafield',
+        command: `GET /api/tests/${test?.id || '{testId}'}/shipping/dc-config-compare`,
+        expect: 'comparison.in_sync=true and live_rule includes rate_hide_bindings after Apply.',
+      },
+      {
+        title: 'Simulate hide decisions for checkout options',
+        command: `POST /api/tests/${test?.id || '{testId}'}/shipping/simulate-hide`,
+        expect: 'option_decisions explain why each checkout option is hidden or protected.',
       },
     ],
     likely_issues: [

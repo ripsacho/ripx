@@ -207,6 +207,20 @@ describe('shippingTestConfigService', () => {
     expect(errors).toEqual([]);
   });
 
+  it('does not resurrect unselected hide targets from stale shipping scope names', () => {
+    const normalized = normalizeShippingVariantConfig({
+      strategy: 'flat_rate',
+      amount: 12,
+      delivery_method_names: ['Express'],
+      shipping_scope: {
+        selected_rate_names: ['Standard', 'Express'],
+      },
+      rates: [{ name: 'Economy', amount: 12 }],
+    });
+    expect(normalized.delivery_method_names).toEqual(['Express']);
+    expect(normalized.shipping_scope.selected_rate_names).toEqual(['Express']);
+  });
+
   it('downgrades replace flags to add mode when hide targets are missing', () => {
     const normalized = normalizeShippingVariantConfig({
       strategy: 'flat_rate',

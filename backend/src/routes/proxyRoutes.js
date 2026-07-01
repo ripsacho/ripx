@@ -30,6 +30,7 @@ const {
   getStorefrontScriptPath,
   readStorefrontScriptSource,
 } = require('../utils/storefrontScriptSource');
+const { fetchStorefrontPreviewHtml } = require('../utils/storefrontPasswordPreview');
 
 const router = express.Router();
 
@@ -227,7 +228,13 @@ async function serveScript(req, res) {
   }
 
   const [tests, goalMetricDefinitions, shopPriceSurfaceMappings] = await Promise.all([
-    getActiveTestsForStorefront(normalizedShop),
+    getActiveTestsForStorefront(normalizedShop).catch(err => {
+      logger.error('Active storefront tests unavailable for app proxy script', {
+        shop: normalizedShop,
+        error: err.message,
+      });
+      return [];
+    }),
     listGoalMetricDefinitions(normalizedShop).catch(() => []),
     getShopPriceSurfaceMappings(normalizedShop).catch(() => []),
   ]);
@@ -313,6 +320,44 @@ async function servePreviewBootstrap(req, res) {
     return;
   }
   const { normalizedShop, targetUrl } = validated;
+  let parsedTargetUrl;
+  try {
+    parsedTargetUrl = new URL(targetUrl);
+  } catch (_eTargetUrl) {
+    parsedTargetUrl = null;
+  }
+  if (parsedTargetUrl?.searchParams?.get('ab_preview_simple') === '1') {
+    res.set('Cache-Control', 'no-store');
+    res.redirect(302, parsedTargetUrl.toString());
+    return;
+  }
+  const explicitStorefrontPassword =
+    typeof req.query.storefront_password === 'string' ? req.query.storefront_password.trim() : '';
+  const storefrontPassword = explicitStorefrontPassword;
+  let prefetchedHtml = null;
+  let prefetchError = null;
+  if (storefrontPassword) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const prefetchResult = await fetchStorefrontPreviewHtml(
+        targetUrl,
+        storefrontPassword,
+        controller.signal
+      );
+      clearTimeout(timeoutId);
+      if (prefetchResult.ok) {
+        prefetchedHtml = prefetchResult.html;
+      } else {
+        prefetchError = prefetchResult.reason || 'fetch_failed';
+      }
+    } catch (error) {
+      prefetchError = error?.name === 'AbortError' ? 'timeout' : 'fetch_error';
+    }
+  }
+  const passwordHelpMessage = explicitStorefrontPassword
+    ? 'The storefront password saved for this preview was not accepted. Update it in the RipX test wizard under Storefront password, then open debug preview again.'
+    : 'This Shopify store is password protected. Open the product preview link directly and enter the storefront password once in Shopify. Customer view links should not use this bootstrap page.';
   const previewScriptBust = Date.now();
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
@@ -337,6 +382,13 @@ async function servePreviewBootstrap(req, res) {
     <script>
       (function () {
         var target = ${JSON.stringify(targetUrl)};
+        try {
+          var simpleTarget = new URL(target, window.location.origin);
+          if (simpleTarget.searchParams.get('ab_preview_simple') === '1') {
+            window.location.replace(simpleTarget.toString());
+            return;
+          }
+        } catch (_eSimpleTarget) {}
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
         var directScriptUrl = ${JSON.stringify(directScriptUrl)};
         var mounted = false;
@@ -394,6 +446,47 @@ async function servePreviewBootstrap(req, res) {
             wrap.appendChild(title);
             wrap.appendChild(text);
             wrap.appendChild(retry);
+            wrap.appendChild(open);
+            body.appendChild(wrap);
+          } catch (_e) {}
+        }
+        function isPasswordPageHtml(htmlText) {
+          try {
+            var lower = String(htmlText || '').toLowerCase();
+            return (
+              lower.indexOf('storefront_password') !== -1 ||
+              lower.indexOf('this store is password protected') !== -1 ||
+              lower.indexOf('enter store password') !== -1
+            );
+          } catch (_e) {
+            return false;
+          }
+        }
+        function showPasswordHelp() {
+          try {
+            var body = document.body || document.documentElement;
+            if (!body) return;
+            body.innerHTML = '';
+            var wrap = document.createElement('main');
+            wrap.style.cssText = 'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:12vh auto;padding:24px;border:1px solid #ddd;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.08);';
+            var title = document.createElement('h1');
+            title.textContent = 'Storefront password required';
+            title.style.cssText = 'font-size:22px;margin:0 0 10px;';
+            var text = document.createElement('p');
+            text.textContent = ${JSON.stringify(passwordHelpMessage)};
+            text.style.cssText = 'line-height:1.5;color:#555;margin:0 0 18px;';
+            var open = document.createElement('button');
+            open.textContent = 'Open storefront password page';
+            open.style.cssText = 'padding:10px 14px;border:0;border-radius:9px;background:#111827;color:white;cursor:pointer;';
+            open.onclick = function () {
+              try {
+                window.location.replace('/password');
+              } catch (_e) {
+                window.location.href = '/password';
+              }
+            };
+            wrap.appendChild(title);
+            wrap.appendChild(text);
             wrap.appendChild(open);
             body.appendChild(wrap);
           } catch (_e) {}
@@ -602,14 +695,35 @@ async function servePreviewBootstrap(req, res) {
           }
         }
         seedPreviewCtx();
-        fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
-          .then(function (r) {
-            if (!r || !r.ok) throw new Error('target_fetch_failed');
-            return r.text();
-          })
-          .then(mount)
-          .catch(goHard);
-        setTimeout(goHard, 15000);
+        var prefetchedHtml = ${JSON.stringify(prefetchedHtml)};
+        var prefetchError = ${JSON.stringify(prefetchError)};
+        if (prefetchedHtml) {
+          mount(prefetchedHtml);
+        } else if (prefetchError === 'password_required') {
+          showPasswordHelp();
+        } else {
+          fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
+            .then(function (r) {
+              if (!r || !r.ok) throw new Error('target_fetch_failed');
+              return r.text();
+            })
+            .then(function (htmlText) {
+              if (isPasswordPageHtml(htmlText)) {
+                try {
+                  var targetUrlObj = new URL(target, window.location.origin);
+                  if (targetUrlObj.searchParams.get('ab_preview_simple') === '1') {
+                    window.location.replace(targetUrlObj.toString());
+                    return;
+                  }
+                } catch (_eSimpleRedirect) {}
+                showPasswordHelp();
+                return;
+              }
+              mount(htmlText);
+            })
+            .catch(goHard);
+          setTimeout(goHard, 15000);
+        }
       })();
     </script>
   </body>

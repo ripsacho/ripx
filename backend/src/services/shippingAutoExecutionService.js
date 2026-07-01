@@ -11,12 +11,15 @@ const {
   isActionableShippingConfig,
   summarizeShippingConfigNormalization,
 } = require('./shippingTestConfigService');
-const {
-  normalizeCheckoutDisplayConfig,
-  formatCarrierRateForCheckout,
-} = require('./shippingCarrierRateFormatter');
+const { formatCarrierRateForCheckout } = require('./shippingCarrierRateFormatter');
 const { getTestsByShop } = require('../models/test');
 const logger = require('../utils/logger');
+const {
+  enrichVariantShippingHideTargets,
+  buildNativeHideTargets,
+  buildScopedCodesFromHideTargets,
+  mergeHideTargetMethodNames,
+} = require('./shippingHideTargetResolver');
 
 const DEFAULT_SHIPPING_DISCOUNT_TITLE_PREFIX = 'RipX Shipping Test';
 const DEFAULT_SHIPPING_CARRIER_TITLE_PREFIX = 'RipX Shipping';
@@ -195,13 +198,11 @@ function resolveShippingCarrierServiceCodeBase(test = {}, variant = {}) {
 
 function buildRipXCarrierProtectedCodes(test = {}, variant = {}) {
   const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
-  const explicitRipXCodes = getReplacementRequiredMethodCodes(variant).filter(code =>
-    String(code).toLowerCase().includes('ripx')
-  );
+  const explicitRateCodes = getReplacementRequiredMethodCodes(variant);
   const serviceCodeBase = resolveShippingCarrierServiceCodeBase(test, variant);
   const serviceName = buildShippingCarrierServiceName(test, variant);
   const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
-  const codes = [...explicitRipXCodes];
+  const codes = [...explicitRateCodes];
 
   if (rates.length > 0) {
     rates.forEach((rate, index) => {
@@ -308,19 +309,72 @@ function extractConfiguredMethodHandles(cfg = {}) {
     .slice(0, 20);
 }
 
-function mergeHideTargetMethodNames(cfg = {}) {
-  const scope =
-    cfg.shipping_scope && typeof cfg.shipping_scope === 'object' ? cfg.shipping_scope : {};
+function buildProtectedRateTitles(configuredRateNames = []) {
   return Array.from(
-    new Set([
-      ...toStringArray(
-        cfg.delivery_method_names || cfg.deliveryMethodNames || cfg.method_names || cfg.methodNames
+    new Set(configuredRateNames.map(name => String(name || '').trim()).filter(Boolean))
+  ).slice(0, 10);
+}
+
+function buildRateHideBindings(test = {}, variant = {}, cfg = {}, nativeHideTargets = []) {
+  const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
+  if (rates.length === 0) {
+    return [];
+  }
+  const targetByName = new Map();
+  (Array.isArray(nativeHideTargets) ? nativeHideTargets : []).forEach(target => {
+    const name = String(target?.name || '')
+      .trim()
+      .toLowerCase();
+    if (name) {
+      targetByName.set(name, target);
+    }
+  });
+  const serviceCodeBase = resolveShippingCarrierServiceCodeBase(test, variant);
+  const serviceName = buildShippingCarrierServiceName(test, variant);
+  const bindings = [];
+
+  rates.forEach((rate, index) => {
+    const formatted = formatCarrierRateForCheckout({
+      rateConfig: rate,
+      variantConfig: cfg,
+      index,
+      serviceName,
+      serviceCodeBase,
+      fallbackAmount: rate?.amount ?? cfg.amount,
+      fallbackCurrency: rate?.currency || cfg.currency || 'USD',
+    });
+    const ripxServiceCode = String(
+      formatted?.service_code || rate?.service_code || rate?.serviceCode || ''
+    ).trim();
+    const displayName = String(rate?.name || formatted?.service_name || '').trim();
+    const sourceName = String(
+      rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || displayName
+    ).trim();
+    const nativeTarget =
+      targetByName.get(sourceName.toLowerCase()) ||
+      targetByName.get(displayName.toLowerCase()) ||
+      null;
+    const nativeName = String(nativeTarget?.name || sourceName || displayName).trim();
+    const nativeMethodDefinitionId = String(
+      nativeTarget?.method_definition_id ||
+        rate?.source_method_definition_id ||
+        rate?.sourceMethodDefinitionId ||
+        ''
+    ).trim();
+    const normalizedNative = nativeName.toLowerCase();
+    const normalizedDisplay = displayName.toLowerCase();
+    bindings.push({
+      native_name: nativeName || displayName,
+      native_method_definition_id: nativeMethodDefinitionId || null,
+      ripx_service_code: ripxServiceCode || null,
+      display_name: displayName || nativeName,
+      reuses_native_title: Boolean(
+        normalizedNative && normalizedDisplay && normalizedNative === normalizedDisplay
       ),
-      ...toStringArray(scope.selected_rate_names || scope.selectedRateNames),
-    ])
-  )
-    .filter(Boolean)
-    .slice(0, 50);
+    });
+  });
+
+  return bindings.slice(0, 20);
 }
 
 function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
@@ -348,30 +402,64 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
     rateScopedIds.length > 0
       ? extractScopedDeliveryMethodCodes({ selected_method_definition_ids: rateScopedIds })
       : [];
-  const genericMethodCodes = Array.from(
+  const nativeHideTargets =
+    Array.isArray(cfg.native_hide_targets) && cfg.native_hide_targets.length > 0
+      ? cfg.native_hide_targets.slice(0, 50)
+      : buildNativeHideTargets(methodNames, scope);
+  const nativeHideScopedCodes = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(cfg.native_hide_scoped_codes) ? cfg.native_hide_scoped_codes : []),
+        ...buildScopedCodesFromHideTargets(nativeHideTargets),
+        ...scopedHideCodes,
+        ...rateScopedCodes,
+      ].filter(code => {
+        const raw = String(code || '').trim();
+        if (!raw) {
+          return false;
+        }
+        if (/^\d{8,}$/.test(raw)) {
+          return true;
+        }
+        return raw.toLowerCase().includes('deliverymethoddefinition');
+      })
+    )
+  ).slice(0, 50);
+  const useIdOnlyNativeHide =
+    nativeHideScopedCodes.length > 0 ||
+    nativeHideTargets.some(
+      target => String(target?.method_definition_id || target?.rate_id || '').trim().length > 0
+    );
+  const legacyGenericHideCodes = Array.from(
     new Set([
-      ...toStringArray(
-        cfg.delivery_method_codes || cfg.deliveryMethodCodes || cfg.method_codes || cfg.methodCodes
-      ),
       ...buildNativeDeliveryMethodCodes(methodNames),
       ...extractConfiguredMethodHandles(cfg),
     ])
-  );
-  const methodCodes = Array.from(
-    new Set([...genericMethodCodes, ...scopedHideCodes, ...rateScopedCodes])
   ).slice(0, 50);
-  const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
-  const replacementMode = shouldReplaceExistingRates(cfg);
-  const hideMethodCodesForRule = replacementMode
-    ? methodCodes
+  const methodCodes = useIdOnlyNativeHide
+    ? nativeHideScopedCodes
     : Array.from(
         new Set([
+          ...legacyGenericHideCodes,
           ...scopedHideCodes,
           ...rateScopedCodes,
-          ...buildNativeDeliveryMethodCodes(methodNames),
-          ...extractConfiguredMethodHandles(cfg),
+          ...toStringArray(
+            cfg.delivery_method_codes ||
+              cfg.deliveryMethodCodes ||
+              cfg.method_codes ||
+              cfg.methodCodes
+          ),
         ])
       ).slice(0, 50);
+  const action = normalizeLower(cfg.delivery_action || cfg.deliveryAction || cfg.action || 'hide');
+  const replacementMode = shouldReplaceExistingRates(cfg);
+  const hideMethodCodesForRule = useIdOnlyNativeHide
+    ? nativeHideScopedCodes
+    : replacementMode
+      ? methodCodes
+      : Array.from(
+          new Set([...scopedHideCodes, ...rateScopedCodes, ...legacyGenericHideCodes])
+        ).slice(0, 50);
   const renameTo = String(
     cfg.delivery_rename_to || cfg.deliveryRenameTo || cfg.rename_to || ''
   ).trim();
@@ -410,28 +498,12 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
   const configuredRateNames = Array.isArray(cfg.rates)
     ? cfg.rates.map(rate => String(rate?.name || '').trim()).filter(Boolean)
     : [];
-  const hideTargetNameKeys = new Set(
-    methodNames.map(name =>
-      String(name || '')
-        .trim()
-        .toLowerCase()
-    )
-  );
   const addModeProtectedNames = replacementMode
     ? replacementNames
-    : Array.from(
-        new Set(
-          configuredRateNames.filter(
-            name =>
-              !hideTargetNameKeys.has(
-                String(name || '')
-                  .trim()
-                  .toLowerCase()
-              )
-          )
-        )
-      ).slice(0, 10);
+    : configuredRateNames.slice(0, 10);
   const addModeProtectedCodes = replacementMode ? replacementCodes : ripXProtectedCodes;
+  const protectedRateTitles = buildProtectedRateTitles(configuredRateNames);
+  const rateHideBindings = buildRateHideBindings(test, variant, cfg, nativeHideTargets);
   return {
     phase: 'delivery_method',
     test_id: String(test?.id || '').trim() || null,
@@ -448,6 +520,10 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
         action: ['hide', 'rename', 'reorder'].includes(action) ? action : 'hide',
         method_names: methodNames,
         method_codes: hideMethodCodesForRule,
+        native_hide_targets: nativeHideTargets,
+        native_hide_scoped_codes: nativeHideScopedCodes,
+        native_hide_by_id_only: useIdOnlyNativeHide,
+        rate_hide_bindings: rateHideBindings,
         require_present_method_names: requirePresentMethodNames,
         require_present_method_codes: replacementMode ? replacementCodes : ripXProtectedCodes,
         require_present_method_prefixes:
@@ -455,6 +531,7 @@ function buildShippingDeliveryCustomizationConfig(test = {}, variant = {}) {
         skip_replacement_presence_gate: !replacementMode,
         protected_method_codes: addModeProtectedCodes,
         protected_method_names: addModeProtectedNames,
+        protected_rate_titles: protectedRateTitles,
         protected_method_name_prefixes: addModeHideTargets ? carrierProtectionPrefixes : [],
         hide_when_unassigned_method_names:
           replacementMode && replacementCodes.length === 0 ? [carrierServiceName] : [],
@@ -558,11 +635,6 @@ async function ensureShippingDeliveryCustomizationCleared({
     title: customizationTitle,
     dry_run: false,
   };
-}
-
-function toFiniteNumber(value) {
-  const n = Number.parseFloat(String(value || '').trim());
-  return Number.isFinite(n) ? n : null;
 }
 
 function resolveShippingCarrierCallbackBaseUrl() {
@@ -1697,9 +1769,21 @@ async function ensureShippingDeliveryCustomization({
     };
   }
 
+  let enrichedVariant = variant;
+  try {
+    enrichedVariant = await enrichVariantShippingHideTargets(shopDomain, accessToken, variant);
+  } catch (error) {
+    logger.warn('Could not enrich shipping hide targets from current setup', {
+      shopDomain,
+      testId: test?.id,
+      variantId: variant?.id || variant?.name,
+      error: error?.message || String(error),
+    });
+  }
+
   let functionConfig;
   try {
-    functionConfig = buildShippingDeliveryCustomizationConfig(test, variant);
+    functionConfig = buildShippingDeliveryCustomizationConfig(test, enrichedVariant);
   } catch (error) {
     return {
       ok: false,
@@ -3118,6 +3202,7 @@ module.exports = {
   buildShippingDiscountTitle,
   buildShippingCarrierServiceName,
   buildShippingDeliveryCustomizationTitle,
+  buildShippingDeliveryCustomizationConfig,
   dedupeDeliveryCustomizationsForVariant,
   buildShippingCarrierCallbackUrl,
   compactShippingCarrierCallbackUrl,

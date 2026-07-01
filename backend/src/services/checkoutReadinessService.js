@@ -26,7 +26,10 @@ const {
   normalizePriceSurfaceMappings,
 } = require('../utils/priceSurfaceRegistry');
 const { getShopPriceSurfaceMappings } = require('./priceSurfaceRegistryService');
-const { enrichCheckoutReadinessCheck } = require('../utils/checkoutReadinessHints');
+const {
+  enrichCheckoutReadinessCheck,
+  SETTINGS_INSTALLATION_TAB,
+} = require('../utils/checkoutReadinessHints');
 
 const CHECKOUT_UI_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-ui/src/ripxConfig.generated.js';
 const SUPPORTED_TEMPLATE_KEYS = new Set(['pricing', 'offer', 'checkout', 'shipping']);
@@ -583,11 +586,11 @@ async function buildPricingOrOfferReadiness({
                 .map(gap => gap.message)
                 .join(' ')
             : '';
-        surfaceMessage = `Set up theme price selectors in Settings → Installation (${surfaceReadiness.actionableGapCount} mapping${surfaceReadiness.actionableGapCount === 1 ? '' : 's'} still needed).${gapHint ? ` ${gapHint}` : ''}`;
+        surfaceMessage = `Set up theme price selectors in ${SETTINGS_INSTALLATION_TAB} (${surfaceReadiness.actionableGapCount} mapping${surfaceReadiness.actionableGapCount === 1 ? '' : 's'} still needed).${gapHint ? ` ${gapHint}` : ''}`;
       } else {
         surfaceMessage =
           surfaceReadiness.nextAction ||
-          'Map theme price selectors in Settings → Installation before relying on live price display.';
+          `Map theme price selectors in ${SETTINGS_INSTALLATION_TAB} before relying on live price display.`;
       }
     }
     checklist.push(

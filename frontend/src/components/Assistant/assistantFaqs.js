@@ -4,7 +4,7 @@ export const ASSISTANT_FAQS = [
     category: 'Setup',
     question: 'How do I connect a Shopify store?',
     answer:
-      'Open Domains, choose the Shopify store, complete the install flow, then verify the app embed/script from App settings > Installation. If the store is still not verified, ask RipX Agent to inspect script and domain readiness.',
+      'Open Domains, choose the Shopify store, complete the install flow, then verify the app embed/script from Store settings → Store setup. If the store is still not verified, ask RipX Agent to inspect script and domain readiness.',
     tags: ['shopify', 'install', 'domain'],
     routes: ['setup', 'settings', 'domains'],
   },

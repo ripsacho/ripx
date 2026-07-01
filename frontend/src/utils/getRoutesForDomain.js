@@ -40,7 +40,7 @@ export function getRoutesForDomain(domain) {
     settings: ROUTES.appSettings(domain),
     profile: ROUTES.appProfile(domain),
     notifications: ROUTES.appNotifications(domain),
-    docs: ROUTES.appDocs(domain),
+    docs: ROUTES.DOCS,
     support: ROUTES.appSupport(domain),
     testDetail: id => ROUTES.appTestDetail(domain, id),
     testEditor: id => ROUTES.appTestEditor(domain, id),

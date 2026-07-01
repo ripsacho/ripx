@@ -233,7 +233,7 @@ export default function OAuthSuccess() {
                     <>
                       <Text as="p" variant="bodyMd" tone="subdued">
                         {isDiscountLaunch
-                          ? 'Taking you to Installation settings…'
+                          ? 'Taking you to Store setup…'
                           : 'Taking you to the dashboard…'}
                       </Text>
                       <Box paddingBlockStart="300">
@@ -256,7 +256,7 @@ export default function OAuthSuccess() {
                             navigate(target, { replace: true });
                           }}
                         >
-                          {isDiscountLaunch ? 'Go to Installation settings' : 'Go to dashboard'}
+                          {isDiscountLaunch ? 'Go to Store setup' : 'Go to dashboard'}
                         </Button>
                       </Box>
                     </>

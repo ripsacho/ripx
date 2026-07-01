@@ -436,6 +436,11 @@ function normalizeShippingVariantConfig(config = {}) {
     delivery_method_codes: toStringArray(
       raw.delivery_method_codes || raw.deliveryMethodCodes || raw.method_codes || raw.methodCodes
     ),
+    native_hide_targets: Array.isArray(raw.native_hide_targets) ? raw.native_hide_targets : [],
+    native_hide_scoped_codes: toStringArray(
+      raw.native_hide_scoped_codes || raw.nativeHideScopedCodes
+    ),
+    native_hide_by_id_only: raw.native_hide_by_id_only ?? raw.nativeHideByIdOnly ?? null,
     delivery_action: toLowerString(
       raw.delivery_action || raw.deliveryAction || raw.action || 'hide'
     ),
@@ -456,31 +461,72 @@ function normalizeShippingVariantConfig(config = {}) {
     normalized.delivery_method_codes.length === 0 &&
     normalized.delivery_method_names.length > 0
   ) {
-    normalized.delivery_method_codes = buildNativeDeliveryMethodCodes(
-      normalized.delivery_method_names
-    );
+    const scopedCodesFromScope = [
+      ...(Array.isArray(normalized.shipping_scope?.selected_method_definition_ids)
+        ? normalized.shipping_scope.selected_method_definition_ids
+        : []),
+      ...(Array.isArray(normalized.shipping_scope?.selected_rate_ids)
+        ? normalized.shipping_scope.selected_rate_ids
+        : []),
+      ...normalized.native_hide_scoped_codes,
+    ]
+      .map(code => String(code || '').trim())
+      .filter(
+        code => /^\d{8,}$/.test(code) || code.toLowerCase().includes('deliverymethoddefinition')
+      );
+    if (scopedCodesFromScope.length > 0) {
+      normalized.delivery_method_codes = Array.from(new Set(scopedCodesFromScope)).slice(0, 50);
+      normalized.native_hide_by_id_only = true;
+    } else {
+      normalized.delivery_method_codes = buildNativeDeliveryMethodCodes(
+        normalized.delivery_method_names
+      );
+    }
   }
 
   if (Array.isArray(normalized.shipping_scope?.selected_rate_names)) {
     const scopedNames = normalized.shipping_scope.selected_rate_names
       .map(name => String(name || '').trim())
       .filter(Boolean);
-    if (scopedNames.length > 0) {
-      normalized.delivery_method_names = Array.from(
-        new Set([...normalized.delivery_method_names, ...scopedNames])
-      ).slice(0, 50);
+    if (scopedNames.length > 0 && normalized.delivery_method_names.length === 0) {
+      normalized.delivery_method_names = scopedNames.slice(0, 50);
       normalized.delivery_method_codes = Array.from(
         new Set([
           ...normalized.delivery_method_codes,
           ...buildNativeDeliveryMethodCodes(normalized.delivery_method_names),
         ])
       ).slice(0, 50);
+    } else if (scopedNames.length > 0 && normalized.delivery_method_names.length > 0) {
+      const allowed = new Set(
+        normalized.delivery_method_names.map(name =>
+          String(name || '')
+            .trim()
+            .toLowerCase()
+        )
+      );
+      normalized.shipping_scope = {
+        ...normalized.shipping_scope,
+        selected_rate_names: scopedNames.filter(name => allowed.has(name.toLowerCase())),
+      };
     }
   }
 
   if (
     normalized.shipping_display_mode === 'replace_existing_methods' &&
     normalized.delivery_method_names.length === 0
+  ) {
+    normalized.shipping_display_mode = 'add_preview_method';
+    normalized.replace_existing_rates = false;
+  }
+
+  const hasConfiguredReplacementRate =
+    normalized.rates.some(rate => rate?.amount !== null && Number(rate.amount) >= 0) ||
+    (normalized.amount !== null && normalized.amount !== undefined);
+  if (
+    normalized.strategy === 'carrier_quote' &&
+    normalized.shipping_display_mode === 'replace_existing_methods' &&
+    normalized.delivery_method_names.length > 0 &&
+    !hasConfiguredReplacementRate
   ) {
     normalized.shipping_display_mode = 'add_preview_method';
     normalized.replace_existing_rates = false;

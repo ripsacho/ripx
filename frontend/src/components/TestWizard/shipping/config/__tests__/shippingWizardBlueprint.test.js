@@ -66,6 +66,8 @@ describe('shippingWizardBlueprint', () => {
       strategy: 'carrier_quote',
       execution_hint: 'delivery_customization',
       delivery_action: 'hide',
+      shipping_display_mode: 'add_preview_method',
+      replace_existing_rates: false,
       rates: [],
       metadata: {
         shipping_wizard_path: 'unified',

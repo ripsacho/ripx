@@ -34,6 +34,8 @@ export default function buildShippingVariantStudioBindings({
   shippingBlockerMessage,
   shippingOperationResult,
   onRunShippingDiagnostics,
+  onRunDcConfigCompare,
+  onSimulateHide,
   setShippingVariantTabIndex,
   setShippingGuidedStep,
   setShippingCurrentSetupRefreshKey,
@@ -105,6 +107,8 @@ export default function buildShippingVariantStudioBindings({
           shippingBlockerMessage,
           shippingOperationResult,
           onRunShippingDiagnostics,
+          onRunDcConfigCompare,
+          onSimulateHide,
         },
       },
       preview: {

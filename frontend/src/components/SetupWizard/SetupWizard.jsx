@@ -372,7 +372,7 @@ function SetupWizard() {
                         <Text variant="bodyMd" tone="subdued">
                           Need the full snippet? Go to{' '}
                           <a href={settingsPath} className={styles.setupLink}>
-                            App settings → Installation
+                            Store settings → Store setup
                           </a>{' '}
                           for the complete HTML.
                         </Text>
@@ -480,7 +480,7 @@ function SetupWizard() {
                       </BlockStack>
                       <Divider />
                       <Button url={settingsPath} size="slim">
-                        App settings → Installation
+                        Store settings → Store setup
                       </Button>
                     </BlockStack>
                   </Card>

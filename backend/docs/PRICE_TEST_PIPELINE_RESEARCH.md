@@ -77,7 +77,7 @@ flowchart LR
 | A    | `node scripts/verify-price-pipeline.js` (repo root, `.env` loaded)        | No `[✗]` lines; batch URL HTTPS                       |
 | A′   | Same with `RIPX_VERIFY_SHOP=store.myshopify.com` (DB up)                  | `tenant_registered: true`; note `running_price_tests` |
 | B    | App running: `GET /api/track/price-checkout-diagnostics?shop=…`           | Same JSON as A + shop block                           |
-| C    | RipX UI: **Settings → Installation → Checkout price test health**         | Same checks without CORS issues                       |
+| C    | RipX UI: **Store settings → Advanced** (checkout diagnostics)             | Same checks without CORS issues                       |
 | D    | Browser on storefront: `script.js` 200, `AB_TEST_RUNTIME_CONFIG`          | `apiUrl`, `shopDomain`, expected `activeTests`        |
 | E    | PDP + running **product** price test                                      | Display price matches variant logic                   |
 | F    | Cart: line **properties** `_ripx_*`                                       | All three present                                     |

@@ -2,7 +2,7 @@
  * Actionable hints appended to checkout readiness messages.
  */
 
-const SETTINGS_INSTALLATION_TAB = 'Settings → Installation';
+const SETTINGS_INSTALLATION_TAB = 'Store settings → Store setup';
 
 function withHint(message, hint) {
   const base = String(message || '').trim();

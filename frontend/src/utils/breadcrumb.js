@@ -4,6 +4,7 @@
  */
 
 import { ROUTES } from '../constants';
+import { getSettingsTabLabelById } from '../components/Settings/config/settingsTabs';
 
 /**
  * Extract app domain from pathname (e.g. /app/my-store.com/tests -> "my-store.com").
@@ -93,8 +94,15 @@ export function getBreadcrumb(pathname, search = '') {
     return { current: 'Analytics' };
   if (appPrefix && path === `${appPrefix}/goals-metrics`)
     return { parent: 'Dashboard', current: 'Goals & Metrics', parentPath: appPrefix };
-  if (appPrefix && path === `${appPrefix}/settings`)
-    return { parent: 'Dashboard', current: 'App settings', parentPath: appPrefix };
+  if (appPrefix && path === `${appPrefix}/settings`) {
+    const tab = new URLSearchParams(search || '').get('tab');
+    const tabLabel = getSettingsTabLabelById(tab);
+    const settingsPath = `${appPrefix}/settings`;
+    if (tabLabel) {
+      return { parent: 'Store settings', current: tabLabel, parentPath: settingsPath };
+    }
+    return { parent: 'Dashboard', current: 'Store settings', parentPath: appPrefix };
+  }
   if (path === ROUTES.SETTINGS)
     return { parent: 'Profile', current: 'Account', parentPath: ROUTES.PROFILE };
   if (appPrefix && path === `${appPrefix}/setup`) return { current: 'Setup Wizard' };

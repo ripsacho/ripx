@@ -65,6 +65,7 @@ import {
   getCelebrationStylePreference,
 } from '../../utils/preferences';
 import styles from './TestDetail.module.css';
+import { getDocsLinkForSection } from '../../utils/docsLinks';
 
 const UNSAVED_TEST_DETAIL_MESSAGE =
   'You have unsaved test changes. Leave this page and lose those changes?';
@@ -2106,7 +2107,11 @@ function TestDetail() {
                                     description="Open checkout setup documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        guardedNavigate(`${routes.docs}#checkout-studio`)
+                                        guardedNavigate(
+                                          getDocsLinkForSection('checkout-studio', {
+                                            domain: getShopDomain(),
+                                          })
+                                        )
                                       )
                                     }
                                   />
@@ -2118,7 +2123,11 @@ function TestDetail() {
                                     description="Open price testing documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        guardedNavigate(`${routes.docs}#price-testing`)
+                                        guardedNavigate(
+                                          getDocsLinkForSection('price-testing', {
+                                            domain: getShopDomain(),
+                                          })
+                                        )
                                       )
                                     }
                                   />
@@ -2130,7 +2139,11 @@ function TestDetail() {
                                     description="Open offer testing documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        guardedNavigate(`${routes.docs}#offer-testing`)
+                                        guardedNavigate(
+                                          getDocsLinkForSection('offer-testing', {
+                                            domain: getShopDomain(),
+                                          })
+                                        )
                                       )
                                     }
                                   />
@@ -2142,7 +2155,11 @@ function TestDetail() {
                                     description="Open shipping testing documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        guardedNavigate(`${routes.docs}#shipping-tests`)
+                                        guardedNavigate(
+                                          getDocsLinkForSection('shipping-tests', {
+                                            domain: getShopDomain(),
+                                          })
+                                        )
                                       )
                                     }
                                   />
@@ -2154,7 +2171,11 @@ function TestDetail() {
                                     description="Open theme and template testing documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        guardedNavigate(`${routes.docs}#theme-template-tests`)
+                                        guardedNavigate(
+                                          getDocsLinkForSection('theme-template-tests', {
+                                            domain: getShopDomain(),
+                                          })
+                                        )
                                       )
                                     }
                                   />
@@ -2166,7 +2187,11 @@ function TestDetail() {
                                     description="Open onsite edit and split URL documentation."
                                     onAction={() =>
                                       runHeaderAction(() =>
-                                        guardedNavigate(`${routes.docs}#onsite-split-url`)
+                                        guardedNavigate(
+                                          getDocsLinkForSection('onsite-split-url', {
+                                            domain: getShopDomain(),
+                                          })
+                                        )
                                       )
                                     }
                                   />

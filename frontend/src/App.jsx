@@ -83,6 +83,20 @@ function NavigateToConnect() {
   return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
 }
 
+function GlobalDocsRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{
+        pathname: ROUTES.DOCS,
+        search: location.search,
+        hash: location.hash,
+      }}
+      replace
+    />
+  );
+}
+
 function LegacyAppRouteRedirect({ target }) {
   const location = useLocation();
   const { id } = useParams();
@@ -886,7 +900,7 @@ function AppContent() {
       { shop: effectiveDiscountLaunchDomain }
     );
     if (replaceIfDifferent(target)) {
-      return <RouteLoading message="Opening Installation settings..." fullScreen />;
+      return <RouteLoading message="Opening Store setup…" fullScreen />;
     }
   }
 
@@ -1222,14 +1236,7 @@ function AppContent() {
                 path="/app/:domain/notifications"
                 element={<Navigate to={ROUTES.NOTIFICATIONS} replace />}
               />
-              <Route
-                path="/app/:domain/docs"
-                element={
-                  <Suspense fallback={<RouteLoading />}>
-                    <Documentation />
-                  </Suspense>
-                }
-              />
+              <Route path="/app/:domain/docs" element={<GlobalDocsRedirect />} />
               <Route
                 path="/app/:domain/support"
                 element={<Navigate to={ROUTES.SUPPORT} replace />}

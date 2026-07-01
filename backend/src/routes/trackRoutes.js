@@ -1157,7 +1157,13 @@ router.get(
       }
 
       const [tests, goalMetricDefinitions, shopPriceSurfaceMappings] = await Promise.all([
-        getActiveTestsForStorefront(domain),
+        getActiveTestsForStorefront(domain).catch(err => {
+          logger.error('Active storefront tests unavailable for direct script', {
+            domain,
+            error: err.message,
+          });
+          return [];
+        }),
         listGoalMetricDefinitions(domain).catch(() => []),
         getShopPriceSurfaceMappings(domain).catch(() => []),
       ]);

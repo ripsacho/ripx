@@ -1483,17 +1483,9 @@ function UserPanel() {
                               ) : (
                                 <span className={styles.domainRowExpandSpacer} aria-hidden="true" />
                               )}
-                              {isShopify && setupSummary.total > 0 ? (
-                                <SetupProgressRing
-                                  percent={setupPercent}
-                                  size={36}
-                                  label={`Setup ${setupPercent}% complete for ${domain}`}
-                                />
-                              ) : (
-                                <span className={styles.domainRowIcon} aria-hidden="true">
-                                  <Icon source={GlobeIcon} tone="subdued" />
-                                </span>
-                              )}
+                              <span className={styles.domainRowIcon} aria-hidden="true">
+                                <Icon source={GlobeIcon} tone="subdued" />
+                              </span>
                               <div className={styles.domainRowMeta}>
                                 <div className={styles.domainRowHeader}>
                                   <div className={styles.domainRowHeaderMain}>
@@ -1546,33 +1538,74 @@ function UserPanel() {
                               </div>
                             </div>
 
-                            {isShopify && setupSummary.total > 0 ? (
-                              <div
-                                className={styles.domainSetupProgress}
-                                aria-label={`Setup ${setupPercent}% complete for ${domain}`}
-                              >
-                                <div className={styles.domainSetupProgressTrack}>
-                                  <span style={{ width: `${setupPercent}%` }} />
-                                </div>
-                                {setupSummary.pendingCount > 0 && setupSummary.nextStep ? (
-                                  <p className={styles.domainSetupHint}>
-                                    Next: {setupSummary.nextStep.label}
+                            <div
+                              className={styles.domainSetupProgress}
+                              aria-label={
+                                isShopify && setupSummary.total > 0
+                                  ? `Setup ${setupPercent}% complete for ${domain}`
+                                  : `Install RipX script for ${domain}`
+                              }
+                            >
+                              {isShopify && setupSummary.total > 0 ? (
+                                <>
+                                  <div className={styles.domainSetupProgressSummary}>
+                                    <SetupProgressRing
+                                      percent={setupPercent}
+                                      size={32}
+                                      label={`Setup ${setupPercent}% complete for ${domain}`}
+                                    />
+                                    <div className={styles.domainSetupProgressText}>
+                                      <span className={styles.domainSetupProgressPercent}>
+                                        {setupPercent}% complete
+                                      </span>
+                                      <span className={styles.domainSetupProgressSteps}>
+                                        {setupSummary.complete}/{setupSummary.total} steps
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className={styles.domainSetupProgressTrack}>
+                                    <span style={{ width: `${setupPercent}%` }} />
+                                  </div>
+                                  {setupSummary.pendingCount > 0 && setupSummary.nextStep ? (
+                                    <p className={styles.domainSetupHint}>
+                                      Next: {setupSummary.nextStep.label}
+                                    </p>
+                                  ) : null}
+                                  {!isExpanded &&
+                                  pendingSteps.length > 0 &&
+                                  pendingSteps.length <= 4 ? (
+                                    <ul
+                                      className={styles.domainSetupChecklistCompact}
+                                      aria-label={`Pending setup for ${domain}`}
+                                    >
+                                      {pendingSteps.slice(0, 2).map(step => (
+                                        <li key={step.id}>{step.label}</li>
+                                      ))}
+                                    </ul>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <div className={styles.domainSetupInstallPrompt}>
+                                  <span className={styles.domainSetupInstallLabel}>
+                                    {isShopify ? 'Setup complete' : 'Direct script'}
+                                  </span>
+                                  <p className={styles.domainSetupInstallText}>
+                                    {isShopify
+                                      ? 'No manual setup is currently required.'
+                                      : 'Copy the head snippet to connect this site.'}
                                   </p>
-                                ) : null}
-                                {!isExpanded &&
-                                pendingSteps.length > 0 &&
-                                pendingSteps.length <= 4 ? (
-                                  <ul
-                                    className={styles.domainSetupChecklistCompact}
-                                    aria-label={`Pending setup for ${domain}`}
+                                  <Link
+                                    to={getNavigateToWithEmbed(ROUTES.appSettings(domain), {
+                                      install_snippet: '1',
+                                    })}
+                                    className={styles.domainSetupInstallLink}
                                   >
-                                    {pendingSteps.slice(0, 2).map(step => (
-                                      <li key={step.id}>{step.label}</li>
-                                    ))}
-                                  </ul>
-                                ) : null}
-                              </div>
-                            ) : null}
+                                    Install script
+                                    <Icon source={ChevronRightIcon} tone="subdued" />
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
 
                             {isExpanded && isShopify && setupSteps.length > 0 ? (
                               <div className={styles.domainRowDetails}>

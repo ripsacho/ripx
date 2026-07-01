@@ -57,7 +57,7 @@ RipX should **own (5)** and **instrument (1–2)** better than generic docs alon
 ### Phase A — Reliability & trust (0–6 weeks)
 
 - [x] **Diagnostics endpoint** for batch URL, HTTPS, secret mode, batch limits, optional running `price` test count.
-- [x] **Settings UI** — App **Settings → Installation**: “Checkout price test health” card (Shopify) runs the same diagnostics; standalone shows an info banner about Shopify-only checkout alignment.
+- [x] **Settings UI** — **Store settings → Advanced**: checkout diagnostics runs the same checks; standalone shows an info banner about Shopify-only checkout alignment.
 - [ ] **Structured metrics**: counters for `price-resolve-batch` 4xx/5xx/latency (Prometheus or logs).
 - [ ] **E2E smoke** (Playwright): script load + cart with properties (dev store).
 

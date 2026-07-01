@@ -13,7 +13,7 @@ import {
   Text,
   TextField,
 } from '@shopify/polaris';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   deleteGoalMetricDefinition,
   getGoalMetricDefinitions,
@@ -27,6 +27,7 @@ import {
   needsAttention,
   normalizeEventName as normalizeEventNameHelper,
 } from './goalMetricsUtils';
+import { getDocsLinkForSection } from '../../utils/docsLinks';
 import styles from './GoalsMetrics.module.css';
 
 const EMPTY_DRAFT = {
@@ -1034,6 +1035,12 @@ window.dataLayer.push({
             Create GTM-style events once, reuse them in tests, and monitor whether they fire.
           </p>
           <div className={styles.heroActionRow}>
+            <Link
+              to={getDocsLinkForSection('goals-metrics', { domain })}
+              className={styles.heroDocLink}
+            >
+              Read the goals library guide
+            </Link>
             <span
               className={styles.heroHelpPill}
               title="Runtime automation ships selected trigger definitions with the storefront script. Manual events can still fire with dataLayer-style pushes."

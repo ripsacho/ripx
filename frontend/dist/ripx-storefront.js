@@ -403,38 +403,53 @@
       ),
     };
   }
-  function releaseAntiFlickerGuard(reason) {
-    if (!antiFlickerState.active) return;
-    var releaseReason = reason || 'manual';
-    var installedAt = antiFlickerState.installedAt || 0;
-    var pendingAtRelease = antiFlickerState.pending || 0;
-    antiFlickerState.active = false;
-    antiFlickerState.pending = 0;
-    antiFlickerState.lastReleaseReason = releaseReason;
-    antiFlickerState.lastReleasedAt = Date.now();
-    if (antiFlickerState.timeoutId) {
-      clearTimeout(antiFlickerState.timeoutId);
-      antiFlickerState.timeoutId = null;
-    }
-    if (document.documentElement) document.documentElement.removeAttribute('data-ripx-af');
+  function releaseInlinePriceAntiFlickerGuard(releasedBy) {
     try {
+      if (
+        document.documentElement &&
+        document.documentElement.getAttribute('data-ripx-af') === 'price'
+      ) {
+        document.documentElement.removeAttribute('data-ripx-af');
+      }
+      if (window.__RIPX_INLINE_PRICE_AF__ && window.__RIPX_INLINE_PRICE_AF__.active) {
+        window.__RIPX_INLINE_PRICE_AF__.active = false;
+        window.__RIPX_INLINE_PRICE_AF__.releasedBy = releasedBy || 'runtime';
+        window.__RIPX_INLINE_PRICE_AF__.releasedAt = Date.now();
+      }
       if (window.__RIPX_INLINE_PREVIEW_AF__ && window.__RIPX_INLINE_PREVIEW_AF__.active) {
         window.__RIPX_INLINE_PREVIEW_AF__.active = false;
-        window.__RIPX_INLINE_PREVIEW_AF__.releasedBy = 'runtime_' + releaseReason;
+        window.__RIPX_INLINE_PREVIEW_AF__.releasedBy = releasedBy || 'runtime';
         window.__RIPX_INLINE_PREVIEW_AF__.releasedAt = Date.now();
       }
-    } catch (_eInlinePreviewRelease) {}
-    persistRipxLiveDiagnostics('anti_flicker_release', {
-      reason: releaseReason,
-      pendingAtRelease: pendingAtRelease,
-      timeoutMs: antiFlickerState.timeoutMs || 0,
-      durationMs: installedAt ? Date.now() - installedAt : null,
-    });
-    markRipxTiming('anti_flicker_released', {
-      reason: releaseReason,
-      pendingAtRelease: pendingAtRelease,
-      durationMs: installedAt ? Date.now() - installedAt : null,
-    });
+    } catch (_eInlinePriceRelease) {}
+  }
+  function releaseAntiFlickerGuard(reason) {
+    var releaseReason = reason || 'manual';
+    if (antiFlickerState.active) {
+      var installedAt = antiFlickerState.installedAt || 0;
+      var pendingAtRelease = antiFlickerState.pending || 0;
+      antiFlickerState.active = false;
+      antiFlickerState.pending = 0;
+      antiFlickerState.lastReleaseReason = releaseReason;
+      antiFlickerState.lastReleasedAt = Date.now();
+      if (antiFlickerState.timeoutId) {
+        clearTimeout(antiFlickerState.timeoutId);
+        antiFlickerState.timeoutId = null;
+      }
+      if (document.documentElement) document.documentElement.removeAttribute('data-ripx-af');
+      persistRipxLiveDiagnostics('anti_flicker_release', {
+        reason: releaseReason,
+        pendingAtRelease: pendingAtRelease,
+        timeoutMs: antiFlickerState.timeoutMs || 0,
+        durationMs: installedAt ? Date.now() - installedAt : null,
+      });
+      markRipxTiming('anti_flicker_released', {
+        reason: releaseReason,
+        pendingAtRelease: pendingAtRelease,
+        durationMs: installedAt ? Date.now() - installedAt : null,
+      });
+    }
+    releaseInlinePriceAntiFlickerGuard('runtime_' + releaseReason);
   }
   function markAntiFlickerPending() {
     if (!antiFlickerState.active) return;
@@ -844,6 +859,46 @@
   const PREVIEW_STORAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
   const PREVIEW_VARIANT_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
   const LIVE_USER_STORAGE_KEY = '__ripx_live_user_id_v1__';
+  function extractPreviewParamsFromSearch(search) {
+    var params = new URLSearchParams(search || '');
+    var testId = params.get('ab_preview_test') || null;
+    var variantId = params.get('ab_preview_variant') || null;
+    var variantName = params.get('ab_preview_variant_name') || null;
+    if (!(params.get('ab_preview') === '1' || testId || variantId || variantName)) return null;
+    return {
+      preview: params.get('ab_preview') === '1' || !!testId,
+      testId: testId,
+      testType: params.get('ab_preview_test_type') || null,
+      variantId: variantId,
+      variantName: variantName,
+      tenantDomain: params.get('ab_preview_domain') || null,
+      simple: params.get('ab_preview_simple') === '1',
+      sessionId: params.get('ab_preview_session') || null,
+    };
+  }
+  function seedPreviewCtxFromPasswordReturnUrl() {
+    try {
+      var pathLower = String(window.location.pathname || '').toLowerCase();
+      if (pathLower.indexOf('/password') === -1) return null;
+      var returnRaw = URL_PARAMS.get('return_url') || '';
+      if (!returnRaw) {
+        var returnInput = document.querySelector('input[name="return_url"]');
+        returnRaw = returnInput && returnInput.value ? String(returnInput.value) : '';
+      }
+      if (!returnRaw) return null;
+      var returnUrl = new URL(returnRaw, window.location.origin);
+      var extracted = extractPreviewParamsFromSearch(returnUrl.search);
+      if (!extracted || !window.sessionStorage) return null;
+      window.sessionStorage.setItem(
+        PREVIEW_STORAGE_KEY,
+        JSON.stringify(Object.assign({}, extracted, { persistedAtMs: Date.now() }))
+      );
+      return extracted;
+    } catch (_ePasswordSeed) {
+      return null;
+    }
+  }
+  seedPreviewCtxFromPasswordReturnUrl();
   function getPreviewParam(name) {
     var direct = URL_PARAMS.get(name);
     if (direct !== null && direct !== undefined && direct !== '') return direct;
@@ -970,7 +1025,9 @@
     try {
       var target = new URL(windowNamePreview.launchTargetUrl, window.location.origin);
       var current = new URL(window.location.href);
-      if (String(target.hostname || '').toLowerCase() !== String(current.hostname || '').toLowerCase()) {
+      if (
+        String(target.hostname || '').toLowerCase() !== String(current.hostname || '').toLowerCase()
+      ) {
         return false;
       }
       if (target.pathname === current.pathname && target.search === current.search) {
@@ -9292,52 +9349,14 @@
     );
   }
 
-  function installSimplePreviewNavigationPersistence() {
+  function installSimplePreviewSessionPersistence() {
     if (!(PREVIEW_MODE && PREVIEW_SIMPLE_MODE)) return;
-    if (window.__RIPX_SIMPLE_PREVIEW_NAV__) return;
-    window.__RIPX_SIMPLE_PREVIEW_NAV__ = true;
-    // Keep preview params via click capture only. Bulk href rewrites + MutationObserver caused
-    // severe DOM churn on dynamic Shopify themes (tab freeze / "site crash").
-    document.addEventListener(
-      'click',
-      function (e) {
-        if (document.body && document.body.getAttribute('data-ripx-picker-active') === '1') {
-          return;
-        }
-        if (e.defaultPrevented) return;
-        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-        if (!anchor) return;
-        var rawHref = anchor.getAttribute('href');
-        if (!rawHref || rawHref.charAt(0) === '#') return;
-        var lowered = String(rawHref).trim().toLowerCase();
-        if (
-          lowered.indexOf('javascript:') === 0 ||
-          lowered.indexOf('mailto:') === 0 ||
-          lowered.indexOf('tel:') === 0
-        ) {
-          return;
-        }
-        try {
-          var resolved = new URL(rawHref, document.baseURI || window.location.href);
-          if (
-            String(resolved.protocol || '') !== 'http:' &&
-            String(resolved.protocol || '') !== 'https:'
-          ) {
-            return;
-          }
-          // Keep checkout URLs clean; preview context is only for storefront surfaces.
-          var path = String(resolved.pathname || '').toLowerCase();
-          if (path === '/checkout' || path.indexOf('/checkout/') === 0) return;
-          var withCtx = withPreviewQueryParams(resolved.toString());
-          if (!withCtx || withCtx === window.location.href) return;
-          e.preventDefault();
-          e.stopPropagation();
-          window.location.assign(withCtx);
-        } catch (_eSimpleNav) {}
-      },
-      true
-    );
+    if (window.__RIPX_SIMPLE_PREVIEW_SESSION__) return;
+    window.__RIPX_SIMPLE_PREVIEW_SESSION__ = true;
+    // Simple customer-view previews persist test+variant in sessionStorage (see writePersistedPreviewCtx).
+    // Do not intercept link clicks: themes rely on default navigation / in-page JS (cart drawer, quick
+    // view, etc.). Re-adding ab_preview_* on every click then stripping via replaceState caused visible
+    // URL flicker and broke cart drawers that use <a href="/cart"> handlers.
   }
 
   function initVisualPicker() {
@@ -11811,7 +11830,7 @@
       installPreviewDocumentProxyNavigation();
     }
     if (PREVIEW_SIMPLE_MODE) {
-      installSimplePreviewNavigationPersistence();
+      installSimplePreviewSessionPersistence();
     }
     if (VISUAL_PICKER_ACTIVE) {
       initVisualPicker();

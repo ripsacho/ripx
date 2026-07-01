@@ -143,7 +143,8 @@ export function formatPreflightIssueSummary(check) {
     }
     return {
       title,
-      summary: 'Complete storefront setup in Settings → Installation (App Proxy and theme embed).',
+      summary:
+        'Complete storefront setup in Store settings → Store setup (App Proxy and theme embed).',
     };
   }
 
@@ -153,18 +154,18 @@ export function formatPreflightIssueSummary(check) {
     if (mappingMatch) {
       return {
         title,
-        summary: `Map ${mappingMatch[1]} price selector${mappingMatch[1] === '1' ? '' : 's'} under Settings → Installation.`,
+        summary: `Map ${mappingMatch[1]} price selector${mappingMatch[1] === '1' ? '' : 's'} under Store settings → Store setup.`,
       };
     }
     if (gapMatch) {
       return {
         title,
-        summary: `Map missing selectors in Settings → Installation (${gapMatch[1].trim()}).`,
+        summary: `Map missing selectors in Store settings → Store setup (${gapMatch[1].trim()}).`,
       };
     }
     return {
       title,
-      summary: 'Map theme price selectors in Settings → Installation.',
+      summary: 'Map theme price selectors in Store settings → Store setup.',
     };
   }
 

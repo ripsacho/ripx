@@ -304,6 +304,9 @@ function buildShippingPreviewDebugChecklist({
         ? `/api/track/shipping-carrier-rates/debug?test_id=${testId}`
         : '/api/track/shipping-carrier-rates/debug',
       shipping_diagnostics: testId ? `/api/tests/${testId}/shipping/diagnostics` : null,
+      shipping_live_debug: testId ? `/api/tests/${testId}/shipping/live-debug` : null,
+      dc_config_compare: testId ? `/api/tests/${testId}/shipping/dc-config-compare` : null,
+      simulate_hide: testId ? `/api/tests/${testId}/shipping/simulate-hide` : null,
     },
   };
 }

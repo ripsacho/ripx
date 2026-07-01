@@ -47,17 +47,20 @@ export function normalizeShippingOfferMode(value) {
 
 export function getShippingOfferMode(cfg = {}) {
   const metadata = cfg.metadata && typeof cfg.metadata === 'object' ? cfg.metadata : {};
+  const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
+  if (rates.length <= 1) {
+    return 'single';
+  }
   const fromMetadata = normalizeShippingOfferMode(
     metadata.shipping_offer_mode || metadata.shippingOfferMode
   );
-  const rates = Array.isArray(cfg.rates) ? cfg.rates : [];
   if (metadata.shipping_offer_mode || metadata.shippingOfferMode) {
     if (fromMetadata === 'single' && rates.length > 1) {
       return 'multiple';
     }
     return fromMetadata;
   }
-  return rates.length > 1 ? 'multiple' : 'single';
+  return 'multiple';
 }
 
 export function buildPromoteShippingOfferToMultiplePatch(cfg = {}, baseline = {}) {
@@ -156,7 +159,7 @@ export function isOfferWizardConfig(cfg = {}) {
   const wizardPath = String(metadata.shipping_wizard_path || metadata.shippingWizardPath || '')
     .trim()
     .toLowerCase();
-  if (wizardPath === 'advanced') return false;
+  if (wizardPath === 'advanced' || wizardPath === 'unified') return false;
   if (wizardPath === 'offer') return true;
   return Boolean(
     metadata.shipping_offer_mode ||

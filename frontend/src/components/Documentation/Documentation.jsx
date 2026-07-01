@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Page,
   BlockStack,
@@ -39,15 +39,44 @@ import {
   SearchIcon,
   ArrowUpIcon,
   ClipboardIcon,
-  HomeIcon,
   ListBulletedIcon,
   PersonIcon,
   NotificationIcon,
+  MenuHorizontalIcon,
+  XIcon,
 } from '@shopify/polaris-icons';
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Documentation.module.css';
 import { ROUTES } from '../../constants';
+import {
+  DOC_MODES,
+  DOC_HUB_TAB_ID,
+  FEATURE_GUIDE_PATHS,
+  buildDocsUrl,
+  buildSectionTabId,
+  createDefaultDocTabs,
+  filterSectionsByDocMode,
+  findDocModeForSection,
+  getDocModeMeta,
+  getDocsFooterResources,
+  getAudienceJourneys,
+  getDocTabLabel,
+  getFeatureGuideDecisionCards,
+  getFeatureGuideStats,
+  getResearchLibraryForMode,
+  getRelatedSectionIds,
+  getSectionKindMeta,
+  isHubTabId,
+  normalizeDocMode,
+  parseSectionTabId,
+  persistDocMode,
+  persistDocTabs,
+  readPersistedDocMode,
+  readPersistedDocTabs,
+  sectionMatchesDocMode,
+} from './documentationCatalog';
 import { RIPX_STOREFRONT_SCRIPT_VERSION } from '../../constants/app';
+import { THEME_CHANGE_EVENT, getResolvedTheme, updateTheme } from '../../utils/theme';
 import {
   CodeBlock,
   StepList,
@@ -57,6 +86,27 @@ import {
   DocCard,
   DocGrid,
 } from './DocComponents';
+
+const MAX_OPEN_DOC_TABS = 10;
+const GUIDE_HUB_TAB = { id: DOC_HUB_TAB_ID, kind: 'hub', closable: true };
+
+function appendCappedDocTab(tabs, tab) {
+  const current = Array.isArray(tabs) ? tabs : [];
+  if (!tab?.id || current.some(existing => existing.id === tab.id)) return current;
+  const next = [...current, tab];
+  if (next.length <= MAX_OPEN_DOC_TABS) return next;
+  const removableIndex = next.findIndex(
+    existing => existing.id !== DOC_HUB_TAB_ID && existing.id !== tab.id
+  );
+  if (removableIndex < 0) return next.slice(-MAX_OPEN_DOC_TABS);
+  return next.filter((_, index) => index !== removableIndex);
+}
+
+function ensureGuideHubTab(tabs) {
+  const current = Array.isArray(tabs) ? tabs : [];
+  if (current.some(tab => tab.id === DOC_HUB_TAB_ID)) return current;
+  return [GUIDE_HUB_TAB, ...current].slice(0, MAX_OPEN_DOC_TABS);
+}
 
 const SECTIONS = [
   {
@@ -200,6 +250,13 @@ const SECTIONS = [
     keywords: 'device country segment presets rules',
   },
   {
+    id: 'goals-metrics',
+    title: 'Goals & Metrics',
+    icon: TargetIcon,
+    group: 'core',
+    keywords: 'goals metrics primary secondary guardrail custom event trigger library definitions',
+  },
+  {
     id: 'analytics',
     title: 'Analytics',
     icon: ChartLineIcon,
@@ -215,7 +272,7 @@ const SECTIONS = [
   },
   {
     id: 'settings',
-    title: 'App settings',
+    title: 'Store settings',
     icon: SettingsIcon,
     group: 'integrations',
     keywords: 'sample size confidence webhook theme',
@@ -307,10 +364,47 @@ const SECTION_GROUPS = [
   { key: 'advanced', label: 'Advanced' },
 ];
 
-function SectionNav({ section, scrollToSection }) {
-  const idx = SECTIONS.findIndex(s => s.id === section.id);
-  const prev = idx > 0 ? SECTIONS[idx - 1] : null;
-  const next = idx >= 0 && idx < SECTIONS.length - 1 ? SECTIONS[idx + 1] : null;
+function SectionKindBadge({ sectionId }) {
+  const kind = getSectionKindMeta(sectionId);
+  return (
+    <span className={`${styles.sectionKindBadge} ${styles[`sectionKindBadge_${kind.id}`] || ''}`}>
+      {kind.label}
+    </span>
+  );
+}
+
+function RelatedSections({ sectionId, scrollToSection, visibleSections }) {
+  const relatedIds = getRelatedSectionIds(sectionId);
+  const related = relatedIds
+    .map(id => visibleSections.find(section => section.id === id))
+    .filter(Boolean);
+  if (related.length === 0) return null;
+  return (
+    <div className={styles.relatedSections}>
+      <Text variant="headingSm" as="h4">
+        Related sections
+      </Text>
+      <div className={styles.relatedSectionsList}>
+        {related.map(item => (
+          <button
+            key={item.id}
+            type="button"
+            className={styles.relatedSectionLink}
+            onClick={() => scrollToSection(item.id)}
+          >
+            <Icon source={item.icon} />
+            <span>{item.title}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionNav({ section, scrollToSection, visibleSections = SECTIONS }) {
+  const idx = visibleSections.findIndex(s => s.id === section.id);
+  const prev = idx > 0 ? visibleSections[idx - 1] : null;
+  const next = idx >= 0 && idx < visibleSections.length - 1 ? visibleSections[idx + 1] : null;
   if (!prev && !next) return null;
   return (
     <nav className={styles.sectionNav} aria-label="Section navigation">
@@ -352,10 +446,10 @@ function SectionNav({ section, scrollToSection }) {
   );
 }
 
-function CopySectionLink({ sectionId }) {
+function CopySectionLink({ sectionId, docMode = 'all' }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
-    const url = `${window.location.origin}${window.location.pathname}#${sectionId}`;
+    const url = `${window.location.origin}${buildDocsUrl({ mode: docMode, sectionId })}`;
     try {
       await navigator.clipboard?.writeText(url);
       setCopied(true);
@@ -363,7 +457,7 @@ function CopySectionLink({ sectionId }) {
     } catch {
       setCopied(false);
     }
-  }, [sectionId]);
+  }, [docMode, sectionId]);
   return (
     <Tooltip content="Copy link to this section" preferredPosition="above">
       <span className={styles.copySectionLinkWrap}>
@@ -426,8 +520,8 @@ function DocSectionContent({ sectionId }) {
         <BlockStack gap="400">
           <Text as="p" variant="bodyMd">
             RipX works with both Shopify and non-Shopify sites. Get your snippet from{' '}
-            <strong>App settings → Installation</strong> (in the app: open a store, then Settings in
-            the sidebar).
+            <strong>Store settings → Store setup</strong> (in the app: open a store, then Store
+            settings in the sidebar).
           </Text>
           <Text variant="headingMd" as="h4">
             Shopify
@@ -436,8 +530,8 @@ function DocSectionContent({ sectionId }) {
             Use App Proxy + App Embed (recommended) or direct script. Configure App Proxy in Partner
             Dashboard: subpath <code>apps/ripx</code>. Enable <strong>RipX App Embed</strong> in the
             theme editor (it injects in <code>&lt;head&gt;</code> with <code>defer</code> and{' '}
-            <code>fetchpriority=&quot;high&quot;</code> to reduce flicker). Settings → Installation
-            shows the exact snippet for your store (including <code>?v=</code> cache bust).
+            <code>fetchpriority=&quot;high&quot;</code> to reduce flicker). Store settings → Store
+            setup shows the exact snippet for your store (including <code>?v=</code> cache bust).
           </p>
           <CodeBlock
             code={`<!-- App Proxy (recommended) — <head>, defer; v matches RipX runtime embed -->
@@ -454,7 +548,7 @@ function DocSectionContent({ sectionId }) {
             steps={[
               'Register at /connect (Register new site tab) with your domain',
               'Copy API key and connect',
-              'Add snippet from App settings → Installation',
+              'Add snippet from Store settings → Store setup',
             ]}
           />
           <CodeBlock
@@ -462,7 +556,7 @@ function DocSectionContent({ sectionId }) {
             language="html"
           />
           <DocCallout type="info" title="Platform detection">
-            App settings → Installation shows the correct snippet for your platform (Shopify or
+            Store settings → Store setup shows the correct snippet for your platform (Shopify or
             Standalone) with copy buttons.
           </DocCallout>
         </BlockStack>
@@ -565,8 +659,8 @@ npm run dev`}
             Install the script
           </Text>
           <p>
-            After connecting, go to Setup Wizard or App settings → Installation. Copy the script URL
-            and add it to your site&apos;s <code>&lt;head&gt;</code> or before{' '}
+            After connecting, go to Setup Wizard or Store settings → Store setup. Copy the script
+            URL and add it to your site&apos;s <code>&lt;head&gt;</code> or before{' '}
             <code>&lt;/body&gt;</code>.
           </p>
           <Text variant="headingMd" as="h4">
@@ -1332,7 +1426,7 @@ npm run shopify:dev`}
           </Text>
           <StepList
             steps={[
-              'Open Settings -> Installation for the store.',
+              'Open Store settings → Store setup for the store.',
               'Refresh Shopify function inventory and checkout diagnostics.',
               'Use Ensure/Verify actions for Cart Transform and discount function configuration.',
               'Create or edit a test in the wizard and configure the checkout surface mode.',
@@ -1631,6 +1725,55 @@ npm run shopify:dev`}
         </BlockStack>
       );
 
+    case 'goals-metrics':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            The <strong>Goals & Metrics</strong> library (sidebar → Goals & Metrics) stores reusable
+            metric definitions you attach in the Test Wizard. Define once, reuse across price,
+            offer, shipping, and content tests.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Metric roles
+          </Text>
+          <DocTable
+            headers={['Role', 'Use when']}
+            rows={[
+              ['Primary', 'Main success metric for significance and winner selection'],
+              ['Secondary', 'Supporting conversions or micro-conversions to monitor'],
+              ['Guardrail', 'Metrics that must not regress (e.g. margin, refund rate)'],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Trigger types
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Manual custom event</strong> — fire via storefront script or GTM
+            </li>
+            <li>
+              <strong>URL match</strong> — count visits to thank-you or confirmation pages
+            </li>
+            <li>
+              <strong>CSS click / form</strong> — track button clicks or form starts/submits
+            </li>
+            <li>
+              <strong>Element visibility</strong> — scroll-depth or module impressions
+            </li>
+            <li>
+              <strong>Custom JavaScript</strong> — advanced DOM or data-layer checks
+            </li>
+          </ul>
+          <DocCallout type="tip" title="Wizard workflow">
+            <p>
+              In the Test Wizard, pick goals from your library or create inline definitions. Primary
+              goals drive auto-stop and significance; guardrails appear in results with regression
+              warnings.
+            </p>
+          </DocCallout>
+        </BlockStack>
+      );
+
     case 'analytics':
       return (
         <BlockStack gap="400">
@@ -1707,11 +1850,18 @@ npm run shopify:dev`}
       return (
         <BlockStack gap="400">
           <Text as="p" variant="bodyMd">
-            These tabs are in <strong>App settings</strong> (open a store, then Settings in the
-            sidebar). Account, API, and appearance preferences are now inside Profile.
+            These tabs are in <strong>Store settings</strong> (open a store, then Store settings in
+            the sidebar). Account, API, and appearance preferences are now inside Profile.
           </Text>
           <Text variant="headingMd" as="h4">
-            General Tab
+            Store setup
+          </Text>
+          <p>
+            Theme embed, App Proxy, offer checkout install, and setup verification. Use{' '}
+            <strong>Check setup</strong> after theme or scope changes.
+          </p>
+          <Text variant="headingMd" as="h4">
+            Testing defaults
           </Text>
           <DocTable
             headers={['Setting', 'Range', 'Description']}
@@ -1723,20 +1873,23 @@ npm run shopify:dev`}
             ]}
           />
           <Text variant="headingMd" as="h4">
-            Integrations Tab
+            Integrations
           </Text>
           <p>
             GA4 and BigQuery status, config hints, export buttons. Use{' '}
             <strong>Refresh status</strong> to reload.
           </p>
           <Text variant="headingMd" as="h4">
-            Appearance Tab
+            Targeting presets
           </Text>
-          <p>Theme selector: Light, Dark, or Auto (by time of day). Changes apply immediately.</p>
+          <p>Save and reuse targeting configs. Create in Test Wizard, manage in Store settings.</p>
           <Text variant="headingMd" as="h4">
-            Targeting Presets
+            Advanced
           </Text>
-          <p>Save and reuse targeting configs. Create in Test Wizard, manage in App settings.</p>
+          <p>
+            Checkout diagnostics, preview probes, discount verification, and JSON export for
+            support. Appearance preferences live in Profile, not Store settings.
+          </p>
         </BlockStack>
       );
 
@@ -1764,7 +1917,7 @@ npm run shopify:dev`}
           </Text>
           <p>
             Create presets in the Test Wizard targeting step. Manage them in{' '}
-            <strong>App settings → Targeting Presets</strong>.
+            <strong>Store settings → Targeting presets</strong>.
           </p>
         </BlockStack>
       );
@@ -1801,7 +1954,7 @@ npm run shopify:dev`}
             Export
           </Text>
           <p>
-            Trigger from <strong>App settings → Integrations</strong>. Incremental (new events) or
+            Trigger from <strong>Store settings → Integrations</strong>. Incremental (new events) or
             full (events + tests). Last export time shown in the UI.
           </p>
           <Text variant="headingMd" as="h4">
@@ -1862,8 +2015,8 @@ npm run shopify:dev`}
             Setup
           </Text>
           <p>
-            Add your webhook URL in <strong>App settings → General</strong>. The payload includes
-            test ID, status, winner, and metrics.
+            Add your webhook URL in <strong>Store settings → Testing defaults</strong>. The payload
+            includes test ID, status, winner, and metrics.
           </p>
         </BlockStack>
       );
@@ -1901,7 +2054,7 @@ npm run shopify:dev`}
             BigQuery Export
           </Text>
           <p>
-            Incremental (new events) or full (events + tests). Trigger from App settings →
+            Incremental (new events) or full (events + tests). Trigger from Store settings →
             Integrations or API.
           </p>
         </BlockStack>
@@ -2094,7 +2247,7 @@ npm run shopify:dev`}
               [
                 'Auto-stop',
                 'Stops a test when significance or configured stop conditions are met.',
-                'App settings defaults, test result status, and outbound webhooks.',
+                'Store settings defaults, test result status, and outbound webhooks.',
               ],
               [
                 'Significance alerts',
@@ -2293,51 +2446,395 @@ npm run shopify:dev`}
 
 const READING_TIME_MIN = 30;
 
-const QUICK_JUMP_SECTIONS = SECTIONS.slice(0, 9);
+const SunIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M10 2.5v2M10 15.5v2M3.5 10h2M14.5 10h2M5.4 5.4l1.4 1.4M13.2 13.2l1.4 1.4M5.4 14.6l1.4-1.4M13.2 6.8l1.4-1.4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <path
+      d="M15.2 11.8a5.8 5.8 0 0 1-7-7 6.2 6.2 0 1 0 7 7Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+function DocsGuideHubPanel({
+  docMode,
+  docModeMeta,
+  filteredSections,
+  featureGuideStats,
+  audienceJourneys,
+  featureGuideDecisionCards,
+  researchResources,
+  quickJumpSections,
+  activeSection,
+  quickJumpListRef,
+  handleQuickJumpMouseDown,
+  handleQuickJumpClick,
+  scrollToFeaturePath,
+  scrollToSection,
+  onFocusSearch,
+}) {
+  return (
+    <div className={styles.docsGuideHubPanel} aria-label="Documentation guide hub">
+      <div className={styles.docsGuideHubCompactHero}>
+        <h2>RipX Documentation</h2>
+        <p>
+          {docModeMeta.description} Public knowledge base at global <code>/docs</code> —{' '}
+          {filteredSections.length} sections in {docModeMeta.label.toLowerCase()}.
+        </p>
+      </div>
+
+      <section className={styles.docsCommandCenter} aria-label="Documentation command center">
+        <div className={styles.docsCommandCard}>
+          <span className={styles.docsCommandEyebrow}>Browse mode</span>
+          <strong>{docModeMeta.label}</strong>
+          <span>{filteredSections.length} curated sections in this view</span>
+        </div>
+        <div className={styles.docsCommandCard}>
+          <span className={styles.docsCommandEyebrow}>Feature paths</span>
+          <strong>{featureGuideStats.pathCount}</strong>
+          <span>{featureGuideStats.totalStepCount} ordered guide steps</span>
+        </div>
+        <div className={styles.docsCommandCard}>
+          <span className={styles.docsCommandEyebrow}>Coverage</span>
+          <strong>{featureGuideStats.uniqueSectionCount}</strong>
+          <span>sections connected across playbooks</span>
+        </div>
+        <button
+          type="button"
+          className={`${styles.docsCommandCard} ${styles.docsCommandCardAction}`}
+          onClick={onFocusSearch}
+        >
+          <span className={styles.docsCommandEyebrow}>Fast search</span>
+          <strong>Command palette</strong>
+          <span>Jump with Cmd/Ctrl + K</span>
+        </button>
+      </section>
+
+      <section className={styles.docsJourneyPanel} aria-labelledby="docs-journeys-heading">
+        <div className={styles.docsJourneyHeader}>
+          <div>
+            <span className={styles.docsDecisionEyebrow}>Role-aware journeys</span>
+            <h2 id="docs-journeys-heading" className={styles.docsDecisionTitle}>
+              Start from the workflow that matches your job
+            </h2>
+          </div>
+          <span className={styles.docsDecisionHint}>Role → path → sections</span>
+        </div>
+        <div className={styles.docsJourneyGrid}>
+          {audienceJourneys.map(journey => (
+            <button
+              key={journey.id}
+              type="button"
+              className={styles.docsJourneyCard}
+              onClick={() => scrollToFeaturePath(journey)}
+            >
+              <span className={styles.docsJourneyAudience}>{journey.audience}</span>
+              <strong>{journey.title}</strong>
+              <span>{journey.description}</span>
+              <span className={styles.docsJourneyMeta}>
+                {journey.sectionIds.length} sections · {getDocModeMeta(journey.mode).shortLabel}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {docMode === 'feature-guides' ? (
+        <section className={styles.docsDecisionMatrix} aria-labelledby="docs-decision-heading">
+          <div className={styles.docsDecisionHeader}>
+            <div>
+              <span className={styles.docsDecisionEyebrow}>Experiment router</span>
+              <h2 id="docs-decision-heading" className={styles.docsDecisionTitle}>
+                Choose the guide by the job you are trying to solve
+              </h2>
+            </div>
+            <span className={styles.docsDecisionHint}>Signal → guide → launch checklist</span>
+          </div>
+          <div className={styles.docsDecisionGrid}>
+            {featureGuideDecisionCards.map(card => (
+              <button
+                key={card.id}
+                type="button"
+                className={styles.docsDecisionCard}
+                onClick={() => scrollToSection(card.sectionId)}
+              >
+                <span className={styles.docsDecisionSignal}>{card.signal}</span>
+                <strong>{card.title}</strong>
+                <span>{card.description}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {researchResources.length > 0 ? (
+        <section className={styles.docsResearchPanel} aria-labelledby="docs-research-heading">
+          <div className={styles.docsJourneyHeader}>
+            <div>
+              <span className={styles.docsDecisionEyebrow}>Research-backed library</span>
+              <h2 id="docs-research-heading" className={styles.docsDecisionTitle}>
+                Deeper runbooks behind this docs mode
+              </h2>
+            </div>
+            <span className={styles.docsDecisionHint}>Repo source → in-page guide</span>
+          </div>
+          <div className={styles.docsResearchGrid}>
+            {researchResources.map(resource => (
+              <button
+                key={resource.id}
+                type="button"
+                className={styles.docsResearchCard}
+                onClick={() => scrollToSection(resource.sectionId)}
+              >
+                <span className={styles.docsResearchTags}>
+                  {resource.tags.map(tag => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </span>
+                <strong>{resource.title}</strong>
+                <span>{resource.summary}</span>
+                <code>{resource.source}</code>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className={styles.docsQuickJumpWrap}>
+        <div className={styles.docsQuickJumpHeader}>
+          <span className={styles.docsQuickJumpLabel}>
+            <span className={styles.docsQuickJumpLabelIcon} aria-hidden>
+              <Icon source={ListBulletedIcon} tone="base" />
+            </span>
+            Quick jump
+          </span>
+          <span className={styles.docsQuickJumpHint}>Drag to scroll</span>
+        </div>
+        <div className={styles.docsQuickJumpListOuter}>
+          <ul
+            ref={quickJumpListRef}
+            className={styles.docsQuickJumpList}
+            aria-label="Quick navigation (scroll or drag horizontally)"
+            onMouseDown={handleQuickJumpMouseDown}
+          >
+            {quickJumpSections.map(s => (
+              <li key={s.id} className={styles.docsQuickJumpItem}>
+                <button
+                  type="button"
+                  className={`${styles.docsQuickJumpBtn} ${activeSection === s.id ? styles.docsQuickJumpBtnActive : ''}`}
+                  onClick={e => handleQuickJumpClick(e, s.id)}
+                  aria-current={activeSection === s.id ? 'true' : undefined}
+                >
+                  <span className={styles.docsQuickJumpBtnIcon}>
+                    <Icon source={s.icon} tone="base" />
+                  </span>
+                  <span className={styles.docsQuickJumpBtnText}>{s.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {docMode === 'feature-guides' ? (
+        <section className={styles.docsFeaturePaths} aria-labelledby="docs-feature-paths-heading">
+          <div className={styles.docsFeaturePathsHeader}>
+            <h2 id="docs-feature-paths-heading" className={styles.docsFeaturePathsTitle}>
+              Guided feature paths
+            </h2>
+            <span className={styles.docsFeaturePathsHint}>
+              Start a path, then follow linked sections in order
+            </span>
+          </div>
+          <div className={styles.docsFeaturePathsGrid}>
+            {FEATURE_GUIDE_PATHS.map(path => (
+              <button
+                key={path.id}
+                type="button"
+                className={styles.docsFeaturePathCard}
+                onClick={() => scrollToFeaturePath(path)}
+              >
+                <span className={styles.docsFeaturePathTopline}>
+                  <span>{path.difficulty || 'Guide'}</span>
+                  <span>{path.sectionIds?.length || 0} steps</span>
+                </span>
+                <span className={styles.docsFeaturePathTitle}>{path.title}</span>
+                <span className={styles.docsFeaturePathSummary}>{path.summary}</span>
+                {path.outcome ? (
+                  <span className={styles.docsFeaturePathOutcome}>{path.outcome}</span>
+                ) : null}
+                <span className={styles.docsFeaturePathMeta}>{path.duration}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
 
 function Documentation() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const docMode = normalizeDocMode(searchParams.get('mode'));
+  const docModeMeta = getDocModeMeta(docMode);
   const [activeSection, setActiveSection] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [tocDrawerOpen, setTocDrawerOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 961px)').matches : true
+  );
+  const [isMobileToc, setIsMobileToc] = useState(() =>
+    typeof window !== 'undefined' ? !window.matchMedia('(min-width: 961px)').matches : false
+  );
   const [scrollProgress, setScrollProgress] = useState(0);
   const [hoveredSection, setHoveredSection] = useState(null);
   const [drawerPosition, setDrawerPosition] = useState(null);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [browserSearchFocused, setBrowserSearchFocused] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [commandSelected, setCommandSelected] = useState(0);
+  const [openDocTabs, setOpenDocTabs] = useState(() =>
+    createDefaultDocTabs(
+      typeof window !== 'undefined'
+        ? (window.location.hash || '').replace(/^#/, '') || 'overview'
+        : 'overview'
+    )
+  );
+  const [activeDocTabId, setActiveDocTabId] = useState(DOC_HUB_TAB_ID);
+  const [resolvedTheme, setResolvedTheme] = useState(() =>
+    typeof window === 'undefined' ? 'light' : getResolvedTheme()
+  );
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const activeNavRef = useRef(null);
   const activeCollapsedRef = useRef(null);
-  const commandInputRef = useRef(null);
+  const browserSearchInputRef = useRef(null);
+  const browserSearchWrapRef = useRef(null);
   const commandResultsRef = useRef(null);
+  const guideHubRef = useRef(null);
   const quickJumpListRef = useRef(null);
   const quickJumpScrollRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
   const quickJumpDidDragRef = useRef(false);
+  const pendingSectionScrollRef = useRef(null);
+  const tabsInitializedRef = useRef(false);
+
+  const sectionsById = useMemo(() => {
+    const map = {};
+    SECTIONS.forEach(section => {
+      map[section.id] = section;
+    });
+    return map;
+  }, []);
 
   const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return SECTIONS;
+    const modeScoped = filterSectionsByDocMode(SECTIONS, docMode);
+    if (!searchQuery.trim()) return modeScoped;
     const q = searchQuery.toLowerCase().trim();
     const terms = q.split(/\s+/).filter(Boolean);
-    return SECTIONS.filter(s => {
+    return modeScoped.filter(s => {
       const title = s.title.toLowerCase();
       const id = s.id.toLowerCase();
       const keywords = (s.keywords || '').toLowerCase();
       const searchable = `${title} ${id} ${keywords}`;
       return terms.every(t => searchable.includes(t));
     });
-  }, [searchQuery]);
+  }, [docMode, searchQuery]);
+
+  const quickJumpSections = useMemo(() => filteredSections.slice(0, 9), [filteredSections]);
+
+  const setDocMode = useCallback(
+    nextMode => {
+      const normalized = normalizeDocMode(nextMode);
+      persistDocMode(normalized);
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          if (normalized === 'all') params.delete('mode');
+          else params.set('mode', normalized);
+          return params;
+        },
+        { replace: true }
+      );
+      const nextSections = filterSectionsByDocMode(SECTIONS, normalized);
+      const nextSectionId = nextSections[0]?.id || 'overview';
+      const nextTab = { id: buildSectionTabId(nextSectionId), kind: 'section', closable: true };
+      setSearchQuery('');
+      setActiveSection(nextSectionId);
+      setActiveDocTabId(nextTab.id);
+      setOpenDocTabs(prev => appendCappedDocTab(ensureGuideHubTab(prev), nextTab));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setSearchParams]
+  );
+
+  const isDarkTheme = resolvedTheme === 'dark';
+  const nextTheme = isDarkTheme ? 'light' : 'dark';
+  const themeToggleLabel = isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode';
+
+  const handleThemeToggle = useCallback(() => {
+    const nextThemeState = updateTheme(nextTheme);
+    setResolvedTheme(nextThemeState?.resolvedTheme || getResolvedTheme());
+  }, [nextTheme]);
+
+  const activeSectionMeta = sectionsById[activeSection] || sectionsById.overview;
+  const activeTabLabel = useMemo(() => {
+    if (isHubTabId(activeDocTabId)) return 'Guide hub';
+    const sectionId = parseSectionTabId(activeDocTabId);
+    return sectionId ? sectionsById[sectionId]?.title || sectionId : activeSectionMeta?.title;
+  }, [activeDocTabId, activeSectionMeta?.title, sectionsById]);
+
+  const ensureDocTab = useCallback(tab => {
+    if (!tab?.id) return;
+    setOpenDocTabs(prev => {
+      const baseTabs = tab.id === DOC_HUB_TAB_ID ? prev : ensureGuideHubTab(prev);
+      return appendCappedDocTab(baseTabs, tab);
+    });
+  }, []);
+
+  const resolveModeForSection = useCallback(
+    sectionId => {
+      if (sectionMatchesDocMode(sectionId, docMode)) return docMode;
+      return findDocModeForSection(sectionId);
+    },
+    [docMode]
+  );
+
+  const footerResources = useMemo(() => getDocsFooterResources(docMode), [docMode]);
+  const featureGuideStats = useMemo(() => getFeatureGuideStats(), []);
+  const featureGuideDecisionCards = useMemo(() => getFeatureGuideDecisionCards(), []);
+  const audienceJourneys = useMemo(() => getAudienceJourneys(docMode), [docMode]);
+  const researchResources = useMemo(() => getResearchLibraryForMode(docMode), [docMode]);
 
   const commandPaletteResults = useMemo(() => {
     const q = commandQuery.toLowerCase().trim();
-    if (!q) return SECTIONS;
+    const baseSections = q ? SECTIONS : filterSectionsByDocMode(SECTIONS, docMode).slice(0, 8);
     const terms = q.split(/\s+/).filter(Boolean);
-    return SECTIONS.filter(s => {
+    const matches = baseSections.filter(s => {
+      if (terms.length === 0) return true;
       const searchable = `${s.title} ${s.id} ${s.keywords || ''}`.toLowerCase();
       return terms.every(t => searchable.includes(t));
     });
-  }, [commandQuery]);
+    return matches
+      .sort((a, b) => {
+        const aInMode = sectionMatchesDocMode(a.id, docMode) ? 0 : 1;
+        const bInMode = sectionMatchesDocMode(b.id, docMode) ? 0 : 1;
+        return aInMode - bInMode || a.title.localeCompare(b.title);
+      })
+      .slice(0, 12);
+  }, [commandQuery, docMode]);
 
   const groupedSections = useMemo(() => {
     const groups = {};
@@ -2352,18 +2849,180 @@ function Documentation() {
     }));
   }, [filteredSections]);
 
-  const scrollToSection = useCallback(id => {
-    setActiveSection(id);
-    const el = document.getElementById(id);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState(null, '', `#${id}`);
-    }
-  }, []);
+  const scrollToSection = useCallback(
+    (id, { openTab = true, activateTab = true, mode } = {}) => {
+      const targetMode = normalizeDocMode(mode || docMode);
+      setActiveSection(id);
+      if (openTab) {
+        const tabId = buildSectionTabId(id);
+        ensureDocTab({ id: tabId, kind: 'section', closable: true });
+        if (activateTab) setActiveDocTabId(tabId);
+      }
+      if (isMobileToc) setTocDrawerOpen(false);
+      const scrollAndReplace = () => {
+        const el = document.getElementById(id);
+        if (!el) {
+          pendingSectionScrollRef.current = { id, mode: targetMode };
+          return;
+        }
+        pendingSectionScrollRef.current = null;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          const url = buildDocsUrl({ mode: targetMode, sectionId: id });
+          window.history.replaceState(null, '', url);
+        }
+      };
+      if (targetMode !== docMode) {
+        persistDocMode(targetMode);
+        setSearchParams(
+          prev => {
+            const params = new URLSearchParams(prev);
+            if (targetMode === 'all') params.delete('mode');
+            else params.set('mode', targetMode);
+            return params;
+          },
+          { replace: true }
+        );
+        setTimeout(scrollAndReplace, 120);
+        return;
+      }
+      scrollAndReplace();
+    },
+    [docMode, ensureDocTab, isMobileToc, setSearchParams]
+  );
+
+  const openSectionFromSearch = useCallback(
+    section => {
+      if (!section) return;
+      setSearchQuery('');
+      scrollToSection(section.id, {
+        openTab: true,
+        activateTab: true,
+        mode: resolveModeForSection(section.id),
+      });
+      setCommandQuery('');
+      setCommandSelected(0);
+      setBrowserSearchFocused(false);
+      browserSearchInputRef.current?.blur();
+    },
+    [resolveModeForSection, scrollToSection]
+  );
+
+  const activateDocTab = useCallback(
+    tabId => {
+      setActiveDocTabId(tabId);
+      if (isHubTabId(tabId)) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(
+            null,
+            '',
+            buildDocsUrl({ mode: docMode, sectionId: 'overview' })
+          );
+        }
+        return;
+      }
+      const sectionId = parseSectionTabId(tabId);
+      if (!sectionId) return;
+
+      const targetMode = resolveModeForSection(sectionId);
+      setSearchQuery('');
+      setActiveSection(sectionId);
+      const scrollAndReplace = () => {
+        const el = document.getElementById(sectionId);
+        if (!el) {
+          pendingSectionScrollRef.current = { id: sectionId, mode: targetMode };
+          return;
+        }
+        pendingSectionScrollRef.current = null;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(null, '', buildDocsUrl({ mode: targetMode, sectionId }));
+        }
+      };
+
+      if (targetMode !== docMode) {
+        persistDocMode(targetMode);
+        setSearchParams(
+          prev => {
+            const params = new URLSearchParams(prev);
+            if (targetMode === 'all') params.delete('mode');
+            else params.set('mode', targetMode);
+            return params;
+          },
+          { replace: true }
+        );
+        setTimeout(scrollAndReplace, 120);
+        return;
+      }
+
+      scrollAndReplace();
+    },
+    [docMode, resolveModeForSection, setSearchParams]
+  );
+
+  const closeDocTab = useCallback(
+    tabId => {
+      setOpenDocTabs(prev => {
+        const idx = prev.findIndex(tab => tab.id === tabId);
+        if (idx < 0) return prev;
+        const next = prev.filter(tab => tab.id !== tabId);
+        if (next.length === 0) {
+          const fallbackTabs = createDefaultDocTabs(activeSection);
+          setTimeout(() => activateDocTab(fallbackTabs[0].id), 0);
+          return fallbackTabs;
+        }
+        if (activeDocTabId === tabId) {
+          const fallback = next[Math.max(0, idx - 1)] || next[0];
+          setTimeout(() => activateDocTab(fallback.id), 0);
+        }
+        return next;
+      });
+    },
+    [activeDocTabId, activeSection, activateDocTab]
+  );
+
+  const goToDocsIndex = useCallback(() => {
+    ensureDocTab({ id: DOC_HUB_TAB_ID, kind: 'hub', closable: true });
+    setActiveDocTabId(DOC_HUB_TAB_ID);
+    setActiveSection('overview');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigate(buildDocsUrl({ mode: docMode, sectionId: 'overview' }), { replace: true });
+  }, [docMode, ensureDocTab, navigate]);
+
+  const scrollToFeaturePath = useCallback(
+    path => {
+      const targetMode = normalizeDocMode(path.mode || 'feature-guides');
+      const firstSectionId =
+        path?.sectionIds?.find(sectionId => sectionMatchesDocMode(sectionId, targetMode)) ||
+        path?.sectionIds?.[0];
+      if (!firstSectionId) return;
+      const resolvedTargetMode = sectionMatchesDocMode(firstSectionId, targetMode)
+        ? targetMode
+        : findDocModeForSection(firstSectionId);
+      if (docMode !== resolvedTargetMode) {
+        setSearchParams(
+          prev => {
+            const params = new URLSearchParams(prev);
+            if (resolvedTargetMode === 'all') params.delete('mode');
+            else params.set('mode', resolvedTargetMode);
+            return params;
+          },
+          { replace: true }
+        );
+      }
+      setTimeout(
+        () => scrollToSection(firstSectionId, { mode: resolvedTargetMode }),
+        docMode === resolvedTargetMode ? 0 : 80
+      );
+    },
+    [docMode, scrollToSection, setSearchParams]
+  );
 
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setActiveSection('overview');
+    setActiveDocTabId(DOC_HUB_TAB_ID);
   }, []);
 
   const handleQuickJumpMouseDown = useCallback(e => {
@@ -2428,34 +3087,157 @@ function Documentation() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Initial hash on mount
+  // Restore persisted tabs once on mount
+  useEffect(() => {
+    if (tabsInitializedRef.current) return;
+    tabsInitializedRef.current = true;
+    const persisted = readPersistedDocTabs({ sections: SECTIONS });
+    if (persisted) {
+      setOpenDocTabs(ensureGuideHubTab(persisted).slice(0, MAX_OPEN_DOC_TABS));
+      const hash =
+        typeof window !== 'undefined' ? (window.location.hash || '').replace(/^#/, '') : '';
+      if (hash && SECTIONS.some(section => section.id === hash)) {
+        setActiveDocTabId(buildSectionTabId(hash));
+      } else {
+        const explicitMode = searchParams.get('mode');
+        const currentMode = normalizeDocMode(explicitMode);
+        const firstSectionTab =
+          persisted.find(tab => {
+            const sectionId = parseSectionTabId(tab.id);
+            return explicitMode && sectionId && sectionMatchesDocMode(sectionId, currentMode);
+          }) || persisted.find(tab => tab.kind === 'section');
+        const firstSectionId = parseSectionTabId(firstSectionTab?.id);
+        if (firstSectionId) {
+          const modeForTab = findDocModeForSection(firstSectionId);
+          const tabMatchesCurrentMode = sectionMatchesDocMode(firstSectionId, currentMode);
+          setActiveSection(explicitMode && !tabMatchesCurrentMode ? 'overview' : firstSectionId);
+          setActiveDocTabId(
+            explicitMode && !tabMatchesCurrentMode ? DOC_HUB_TAB_ID : firstSectionTab.id
+          );
+          if (!explicitMode && modeForTab !== 'all') {
+            persistDocMode(modeForTab);
+            setSearchParams(
+              prev => {
+                const params = new URLSearchParams(prev);
+                params.set('mode', modeForTab);
+                return params;
+              },
+              { replace: true }
+            );
+          }
+        } else {
+          setActiveDocTabId(DOC_HUB_TAB_ID);
+        }
+      }
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    persistDocTabs(openDocTabs);
+  }, [openDocTabs]);
+
+  useEffect(() => {
+    const syncTheme = () => setResolvedTheme(getResolvedTheme());
+    syncTheme();
+    window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
+    window.addEventListener('storage', syncTheme);
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
+      window.removeEventListener('storage', syncTheme);
+    };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 961px)');
+    const onChange = () => {
+      const desktop = media.matches;
+      setIsMobileToc(!desktop);
+      setTocDrawerOpen(desktop);
+    };
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!browserSearchFocused) return undefined;
+    const onPointerDown = event => {
+      if (browserSearchWrapRef.current?.contains(event.target)) return;
+      setBrowserSearchFocused(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [browserSearchFocused]);
+
+  // Restore last browse mode when landing on /docs without ?mode=
+  useEffect(() => {
+    if (searchParams.get('mode')) return;
+    const hash =
+      typeof window !== 'undefined' ? (window.location.hash || '').replace(/^#/, '') : '';
+    if (hash) return;
+    const persisted = readPersistedDocMode();
+    if (!persisted || persisted === 'all') return;
+    setSearchParams(
+      prev => {
+        const params = new URLSearchParams(prev);
+        params.set('mode', persisted);
+        return params;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
+
+  // Initial hash on mount (+ auto-switch mode when deep-linking)
   useEffect(() => {
     const hash =
       typeof window !== 'undefined' ? (window.location.hash || '').replace(/^#/, '') : '';
-    if (hash && SECTIONS.some(s => s.id === hash)) {
-      setActiveSection(hash);
-      setTimeout(() => {
-        const el = document.getElementById(hash);
-        el?.scrollIntoView({ behavior: 'auto', block: 'start' });
-      }, 100);
-    }
-  }, []);
+    if (!hash || !SECTIONS.some(s => s.id === hash)) return;
 
-  // Cmd+K / Ctrl+K command palette
+    const modeForHash = findDocModeForSection(hash);
+    if (modeForHash !== 'all') {
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          if (normalizeDocMode(params.get('mode')) === modeForHash) return prev;
+          params.set('mode', modeForHash);
+          return params;
+        },
+        { replace: true }
+      );
+    }
+    setActiveSection(hash);
+    setActiveDocTabId(buildSectionTabId(hash));
+    setOpenDocTabs(prev => {
+      const tabId = buildSectionTabId(hash);
+      return appendCappedDocTab(ensureGuideHubTab(prev), {
+        id: tabId,
+        kind: 'section',
+        closable: true,
+      });
+    });
+    setTimeout(() => {
+      document.getElementById(hash)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }, 120);
+  }, [setSearchParams]);
+
+  // Cmd+K / Ctrl+K focuses browser search; Escape closes overlays
   useEffect(() => {
     const handleKey = e => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setCommandPaletteOpen(o => !o);
-        setCommandQuery('');
+        setBrowserSearchFocused(true);
         setCommandSelected(0);
-        setTimeout(() => commandInputRef.current?.focus(), 50);
+        setTimeout(() => browserSearchInputRef.current?.focus(), 50);
       }
-      if (e.key === 'Escape') setCommandPaletteOpen(false);
+      if (e.key === 'Escape') {
+        setBrowserSearchFocused(false);
+        browserSearchInputRef.current?.blur();
+        if (isMobileToc) setTocDrawerOpen(false);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [isMobileToc]);
 
   // Clamp commandSelected when results change
   useEffect(() => {
@@ -2466,11 +3248,34 @@ function Documentation() {
 
   // Scroll selected item into view in command palette
   useEffect(() => {
-    if (!commandPaletteOpen || !commandResultsRef.current || commandPaletteResults.length === 0)
+    if (!browserSearchFocused || !commandResultsRef.current || commandPaletteResults.length === 0)
       return;
     const options = commandResultsRef.current.querySelectorAll('[role="option"]');
     options[commandSelected]?.scrollIntoView({ block: 'nearest' });
-  }, [commandSelected, commandPaletteOpen, commandPaletteResults.length]);
+  }, [commandSelected, browserSearchFocused, commandPaletteResults.length]);
+
+  // Complete section jumps that were requested before a mode/filter render finished.
+  useEffect(() => {
+    const pending = pendingSectionScrollRef.current;
+    if (!pending) return;
+    if (pending.mode !== docMode) return;
+    if (!filteredSections.some(section => section.id === pending.id)) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.getElementById(pending.id);
+      if (!el) return;
+      pendingSectionScrollRef.current = null;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(
+          null,
+          '',
+          buildDocsUrl({ mode: pending.mode, sectionId: pending.id })
+        );
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [docMode, filteredSections]);
 
   // Document title when on docs page
   useEffect(() => {
@@ -2531,20 +3336,211 @@ function Documentation() {
         if (intersecting.length > 0) {
           const topmost = intersecting.reduce((a, b) => (a.boundTop < b.boundTop ? a : b));
           setActiveSection(topmost.id);
+          const hubRect = guideHubRef.current?.getBoundingClientRect();
+          const hubStillInFocus =
+            isHubTabId(activeDocTabId) &&
+            hubRect &&
+            hubRect.bottom > 140 &&
+            hubRect.top < window.innerHeight * 0.75;
+          if (hubStillInFocus) return;
           if (typeof window !== 'undefined' && window.history?.replaceState) {
-            window.history.replaceState(null, '', `#${topmost.id}`);
+            window.history.replaceState(
+              null,
+              '',
+              buildDocsUrl({ mode: docMode, sectionId: topmost.id })
+            );
           }
         }
       },
       { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
     );
-    const ids = SECTIONS.map(s => s.id);
+    const ids = filteredSections.map(s => s.id);
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
-  }, []);
+  }, [activeDocTabId, docMode, filteredSections]);
+
+  const handleBrowserSearchKeyDown = useCallback(
+    e => {
+      if (e.key === 'Enter') {
+        const item = commandPaletteResults[commandSelected];
+        if (item) openSectionFromSearch(item);
+        e.preventDefault();
+      } else if (e.key === 'ArrowDown' && commandPaletteResults.length > 0) {
+        setCommandSelected(i => Math.min(i + 1, commandPaletteResults.length - 1));
+        e.preventDefault();
+      } else if (e.key === 'ArrowUp') {
+        setCommandSelected(i => Math.max(i - 1, 0));
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        setBrowserSearchFocused(false);
+        browserSearchInputRef.current?.blur();
+        e.preventDefault();
+      }
+    },
+    [commandPaletteResults, commandSelected, openSectionFromSearch]
+  );
+
+  const handleTocMenuClick = useCallback(() => {
+    if (isMobileToc) {
+      setTocDrawerOpen(open => {
+        if (!open) setSidebarCollapsed(false);
+        return !open;
+      });
+    } else {
+      setSidebarCollapsed(collapsed => !collapsed);
+    }
+  }, [isMobileToc]);
+
+  const showBrowserSearchDropdown = browserSearchFocused;
+  const browserSearchHasQuery = commandQuery.trim().length > 0;
+
+  const browserBodyClassName = [
+    styles.docsBrowserBody,
+    !isMobileToc && sidebarCollapsed ? styles.docsBrowserBodyCollapsed : '',
+    isMobileToc && !tocDrawerOpen ? styles.docsBrowserBodyTocHidden : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const tocDrawerClassName = [
+    styles.docsTocDrawer,
+    styles.docsSidebar,
+    isMobileToc ? styles.docsTocDrawerMobile : styles.docsTocDrawerDesktop,
+    isMobileToc && tocDrawerOpen ? styles.docsTocDrawerMobileOpen : '',
+    sidebarCollapsed ? styles.sidebarCollapsed : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const renderTocSidebar = () => (
+    <aside className={tocDrawerClassName} aria-label="Table of contents">
+      <div className={styles.sidebarHeader}>
+        {!sidebarCollapsed && (
+          <div className={styles.sidebarTitleBlock}>
+            <div className={styles.sidebarTitleIcon}>
+              <Icon source={BookIcon} />
+            </div>
+            <h3 className={styles.sidebarTitle}>Contents</h3>
+          </div>
+        )}
+        <Tooltip
+          content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          preferredPosition="right"
+        >
+          <button
+            type="button"
+            className={styles.sidebarToggle}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <Icon source={sidebarCollapsed ? ChevronDownIcon : ChevronUpIcon} />
+          </button>
+        </Tooltip>
+      </div>
+      {!sidebarCollapsed ? (
+        <>
+          <div className={styles.searchWrap}>
+            <div className={styles.searchInputWrapper}>
+              <span className={styles.searchIcon} aria-hidden>
+                <Icon source={SearchIcon} />
+              </span>
+              <TextField
+                label="Search documentation"
+                labelHidden
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search by title or keywords..."
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div className={styles.sidebarBody}>
+            <nav className={styles.sidebarNav}>
+              {filteredSections.length === 0 ? (
+                <div className={styles.sidebarSearchEmpty} role="status" aria-live="polite">
+                  <Text as="p" tone="subdued">
+                    No sections match &quot;{searchQuery}&quot;
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Try different keywords
+                  </Text>
+                </div>
+              ) : (
+                groupedSections.map(group => (
+                  <div key={group.key} className={styles.navGroup}>
+                    <div className={styles.navGroupLabel}>{group.label}</div>
+                    {group.items.map(s => (
+                      <button
+                        key={s.id}
+                        ref={activeSection === s.id ? activeNavRef : null}
+                        type="button"
+                        className={`${styles.navItem} ${activeSection === s.id ? styles.navItemActive : ''}`}
+                        onClick={() => scrollToSection(s.id)}
+                        aria-current={activeSection === s.id ? 'location' : undefined}
+                        onFocus={() => setHoveredSection(null)}
+                      >
+                        <span className={styles.navItemIcon}>
+                          <Icon source={s.icon} />
+                        </span>
+                        <span className={styles.navItemText}>{s.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))
+              )}
+            </nav>
+            <div className={styles.sidebarFooter}>
+              <Tooltip content="Scroll back to top" preferredPosition="right">
+                <button
+                  type="button"
+                  className={styles.sidebarBackToTop}
+                  onClick={scrollToTop}
+                  aria-label="Back to top"
+                >
+                  <span className={styles.sidebarBackToTopIcon}>
+                    <Icon source={ArrowUpIcon} />
+                  </span>
+                  Back to top
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        </>
+      ) : (
+        <nav className={styles.sidebarNavCollapsed}>
+          {filteredSections.map(s => (
+            <div
+              key={s.id}
+              ref={activeSection === s.id ? activeCollapsedRef : null}
+              className={styles.navItemCollapsedWrap}
+              onMouseEnter={e => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setDrawerPosition({ top: rect.top + rect.height / 2, left: rect.right + 10 });
+                setHoveredSection(s);
+              }}
+              onMouseLeave={() => {
+                setHoveredSection(null);
+                setDrawerPosition(null);
+              }}
+            >
+              <button
+                type="button"
+                className={`${styles.navItemCollapsed} ${activeSection === s.id ? styles.navItemCollapsedActive : ''}`}
+                onClick={() => scrollToSection(s.id)}
+                title={s.title}
+                aria-label={s.title}
+              >
+                <Icon source={s.icon} />
+              </button>
+            </div>
+          ))}
+        </nav>
+      )}
+    </aside>
+  );
 
   return (
     <div
@@ -2559,97 +3555,6 @@ function Documentation() {
         aria-valuemin={0}
         aria-valuemax={100}
       />
-      {commandPaletteOpen && (
-        <div
-          className={styles.commandPaletteOverlay}
-          role="dialog"
-          aria-label="Quick search"
-          onClick={() => setCommandPaletteOpen(false)}
-          onKeyDown={e => {
-            if (e.key === 'Escape') setCommandPaletteOpen(false);
-          }}
-        >
-          <div
-            className={styles.commandPalette}
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => {
-              if (e.key === 'Escape') setCommandPaletteOpen(false);
-            }}
-          >
-            <div className={styles.commandPaletteHeader}>
-              <Icon source={SearchIcon} />
-              <input
-                ref={commandInputRef}
-                type="text"
-                className={styles.commandPaletteInput}
-                placeholder="Search sections..."
-                value={commandQuery}
-                aria-label="Search documentation sections"
-                aria-autocomplete="list"
-                aria-controls="command-palette-results"
-                aria-expanded={commandPaletteResults.length > 0}
-                onChange={e => {
-                  setCommandQuery(e.target.value);
-                  setCommandSelected(0);
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    const item = commandPaletteResults[commandSelected];
-                    if (item) {
-                      scrollToSection(item.id);
-                      setCommandPaletteOpen(false);
-                    }
-                    e.preventDefault();
-                  } else if (e.key === 'ArrowDown' && commandPaletteResults.length > 0) {
-                    setCommandSelected(i => Math.min(i + 1, commandPaletteResults.length - 1));
-                    e.preventDefault();
-                  } else if (e.key === 'ArrowUp') {
-                    setCommandSelected(i => Math.max(i - 1, 0));
-                    e.preventDefault();
-                  }
-                }}
-                autoFocus
-              />
-              <span className={styles.commandPaletteKbd}>↵</span>
-            </div>
-            <div
-              ref={commandResultsRef}
-              id="command-palette-results"
-              className={styles.commandPaletteResults}
-              role="listbox"
-              aria-label="Documentation sections"
-            >
-              {commandPaletteResults.length === 0 ? (
-                <div className={styles.commandPaletteEmpty} role="status" aria-live="polite">
-                  <Text as="p" tone="subdued">
-                    No sections match &quot;{commandQuery}&quot;
-                  </Text>
-                </div>
-              ) : (
-                commandPaletteResults.map((s, i) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    role="option"
-                    aria-selected={i === commandSelected}
-                    className={`${styles.commandPaletteItem} ${i === commandSelected ? styles.commandPaletteItemActive : ''}`}
-                    onClick={() => {
-                      scrollToSection(s.id);
-                      setCommandPaletteOpen(false);
-                    }}
-                  >
-                    <Icon source={s.icon} />
-                    <span>{s.title}</span>
-                    <span className={styles.commandPaletteItemGroup}>
-                      {SECTION_GROUPS.find(g => g.key === s.group)?.label}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
       {showBackToTop && (
         <Tooltip content="Scroll to top" preferredPosition="above">
           <button
@@ -2663,87 +3568,284 @@ function Documentation() {
         </Tooltip>
       )}
       <Page title="" subtitle="">
-        <header className={styles.docsTopBar} aria-label="Documentation header">
-          <span className={styles.docsTopBarTitle}>
-            <span className={styles.docsTopBarTitleIcon}>
-              <Icon source={BookIcon} tone="base" />
-            </span>
-            Documentation
-          </span>
-          <Tooltip content="Back to dashboard" preferredPosition="below">
-            <button
-              type="button"
-              onClick={() => navigate(ROUTES.USER_PANEL)}
-              className={styles.docsTopBarMainApp}
-              aria-label="Go to dashboard"
-            >
-              <span className={styles.docsTopBarMainAppIcon}>
-                <Icon source={HomeIcon} tone="base" />
-              </span>
-              <span className={styles.docsTopBarMainAppLabel}>Dashboard</span>
-            </button>
-          </Tooltip>
-        </header>
-        <div className={styles.docsHero}>
-          <div className={styles.docsHeroRow}>
-            <div className={styles.docsHeroMain}>
-              <h1 className={styles.docsHeroTitle}>RipX Documentation</h1>
-              <p className={styles.docsHeroSubtitle}>
-                Enterprise-grade A/B testing for Shopify and standalone sites. Setup, run, and
-                analyze experiments with statistical rigor.
-              </p>
+        <div className={styles.docsBrowserShell}>
+          <header className={styles.docsBrowserBar} aria-label="Documentation browser chrome">
+            <div className={styles.docsBrowserBarLeft}>
+              <Tooltip content="Table of contents" preferredPosition="below">
+                <button
+                  type="button"
+                  className={styles.docsBrowserIconBtn}
+                  onClick={handleTocMenuClick}
+                  aria-label="Toggle table of contents"
+                  aria-expanded={isMobileToc ? tocDrawerOpen : !sidebarCollapsed}
+                >
+                  <Icon source={MenuHorizontalIcon} />
+                </button>
+              </Tooltip>
+              <button
+                type="button"
+                className={styles.docsBrowserLogo}
+                onClick={goToDocsIndex}
+                aria-label="RipX docs index"
+              >
+                <span className={styles.docsBrowserLogoIcon}>
+                  <Icon source={BookIcon} />
+                </span>
+                <span className={styles.docsBrowserLogoLabel}>RipX Docs</span>
+              </button>
             </div>
-            <div className={styles.docsHeroMeta}>
-              <span className={styles.docsHeroBadges}>
-                <span className={styles.docsHeroBadge}>v1.0.0</span>
-                <span className={styles.docsHeroBadge}>8 Test Types</span>
-                <span className={styles.docsHeroBadge}>Multi-Variant</span>
-                <span className={styles.docsHeroBadge}>GA4 & BigQuery</span>
-                <span className={styles.docsHeroBadge}>{READING_TIME_MIN} min read</span>
-              </span>
-              <span className={styles.docsHeroHint}>
-                <kbd className={styles.kbd}>⌘K</kbd> / <kbd className={styles.kbd}>Ctrl+K</kbd> to
-                search
-              </span>
+            <div className={styles.docsBrowserBarCenter}>
+              <nav className={styles.docsBreadcrumbs} aria-label="Breadcrumb">
+                <span className={styles.docsBreadcrumbItem}>Documentation</span>
+                <span className={styles.docsBreadcrumbSep} aria-hidden="true">
+                  /
+                </span>
+                <span className={styles.docsBreadcrumbItem}>{docModeMeta.shortLabel}</span>
+                <span className={styles.docsBreadcrumbSep} aria-hidden="true">
+                  /
+                </span>
+                <span className={`${styles.docsBreadcrumbItem} ${styles.docsBreadcrumbItemActive}`}>
+                  {activeTabLabel}
+                </span>
+              </nav>
+              <div className={styles.docsBrowserSearchWrap} ref={browserSearchWrapRef}>
+                <div
+                  className={`${styles.docsBrowserSearch} ${
+                    showBrowserSearchDropdown ? styles.docsBrowserSearchActive : ''
+                  }`}
+                  onMouseDown={event => {
+                    if (event.target === browserSearchInputRef.current) return;
+                    setBrowserSearchFocused(true);
+                    browserSearchInputRef.current?.focus();
+                  }}
+                >
+                  <span className={styles.docsBrowserSearchIcon} aria-hidden="true">
+                    <Icon source={SearchIcon} />
+                  </span>
+                  <input
+                    ref={browserSearchInputRef}
+                    type="search"
+                    className={styles.docsBrowserSearchInput}
+                    placeholder="Search sections..."
+                    value={commandQuery}
+                    aria-label="Search documentation sections"
+                    aria-autocomplete="list"
+                    aria-controls="docs-browser-search-results"
+                    aria-expanded={showBrowserSearchDropdown}
+                    aria-activedescendant={
+                      commandPaletteResults[commandSelected]
+                        ? `docs-browser-search-option-${commandPaletteResults[commandSelected].id}`
+                        : undefined
+                    }
+                    onFocus={() => setBrowserSearchFocused(true)}
+                    onChange={e => {
+                      setCommandQuery(e.target.value);
+                      setCommandSelected(0);
+                      setBrowserSearchFocused(true);
+                    }}
+                    onKeyDown={handleBrowserSearchKeyDown}
+                  />
+                  {commandQuery ? (
+                    <button
+                      type="button"
+                      className={styles.docsBrowserSearchClear}
+                      onClick={() => {
+                        setCommandQuery('');
+                        setCommandSelected(0);
+                        setBrowserSearchFocused(true);
+                        browserSearchInputRef.current?.focus();
+                      }}
+                      aria-label="Clear documentation search"
+                    >
+                      <Icon source={XIcon} />
+                    </button>
+                  ) : null}
+                  <span className={styles.docsBrowserSearchKbd}>⌘K</span>
+                </div>
+                {showBrowserSearchDropdown ? (
+                  <div
+                    ref={commandResultsRef}
+                    id="docs-browser-search-results"
+                    className={styles.docsBrowserSearchDropdown}
+                    role="listbox"
+                    aria-label="Documentation sections"
+                  >
+                    <div className={styles.docsBrowserSearchHeader} role="presentation">
+                      <span>
+                        {browserSearchHasQuery
+                          ? `Search results for "${commandQuery.trim()}"`
+                          : `${docModeMeta.shortLabel} starting points`}
+                      </span>
+                      <span>{browserSearchHasQuery ? 'All modes' : 'Current mode'}</span>
+                    </div>
+                    {commandPaletteResults.length === 0 ? (
+                      <div
+                        className={styles.docsBrowserSearchEmpty}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        No sections match &quot;{commandQuery}&quot;. Try a test type, setup step,
+                        or API topic.
+                      </div>
+                    ) : (
+                      commandPaletteResults.map((s, i) => (
+                        <button
+                          key={s.id}
+                          id={`docs-browser-search-option-${s.id}`}
+                          type="button"
+                          role="option"
+                          aria-selected={i === commandSelected}
+                          className={`${styles.docsBrowserSearchItem} ${i === commandSelected ? styles.docsBrowserSearchItemActive : ''}`}
+                          onMouseEnter={() => setCommandSelected(i)}
+                          onClick={() => openSectionFromSearch(s)}
+                        >
+                          <Icon source={s.icon} />
+                          <span className={styles.docsBrowserSearchItemText}>
+                            <span className={styles.commandPaletteItemTitle}>{s.title}</span>
+                            <span className={styles.docsBrowserSearchItemMeta}>
+                              {s.keywords || s.id}
+                            </span>
+                          </span>
+                          <span
+                            className={`${styles.commandPaletteItemGroup} ${
+                              sectionMatchesDocMode(s.id, docMode)
+                                ? styles.docsBrowserSearchItemGroupCurrent
+                                : ''
+                            }`}
+                          >
+                            {sectionMatchesDocMode(s.id, docMode)
+                              ? 'Current'
+                              : getDocModeMeta(findDocModeForSection(s.id)).shortLabel}
+                          </span>
+                          <span className={styles.docsBrowserSearchOpenHint}>Open</span>
+                        </button>
+                      ))
+                    )}
+                    <div className={styles.docsBrowserSearchFooter} role="presentation">
+                      <span>Enter to open</span>
+                      <span>↑ ↓ to move</span>
+                      <span>Esc to close</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
+            <div className={styles.docsBrowserBarRight}>
+              <Tooltip content={themeToggleLabel} preferredPosition="below">
+                <button
+                  type="button"
+                  className={`${styles.docsBrowserIconBtn} ${styles.docsThemeToggle}`}
+                  onClick={handleThemeToggle}
+                  aria-label={themeToggleLabel}
+                >
+                  {isDarkTheme ? <SunIcon /> : <MoonIcon />}
+                </button>
+              </Tooltip>
+            </div>
+          </header>
+          <div className={styles.docsTabStrip} role="tablist" aria-label="Documentation tabs">
+            <div className={styles.docsTabGroup} role="presentation">
+              {DOC_MODES.map(mode => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={docMode === mode.id}
+                  className={`${styles.docsTab} ${docMode === mode.id ? styles.docsTabActive : ''}`}
+                  onClick={() => setDocMode(mode.id)}
+                >
+                  <span className={styles.docsTabLabel}>{mode.shortLabel}</span>
+                </button>
+              ))}
+            </div>
+            {openDocTabs.map(tab => {
+              const sectionId = parseSectionTabId(tab.id);
+              const tabModeMeta = sectionId
+                ? getDocModeMeta(findDocModeForSection(sectionId))
+                : null;
+              const tabIsCrossMode = sectionId ? !sectionMatchesDocMode(sectionId, docMode) : false;
+              const tabLabel = getDocTabLabel(tab, sectionsById);
+
+              return (
+                <span
+                  key={tab.id}
+                  role="presentation"
+                  className={`${styles.docsTabComposite} ${
+                    activeDocTabId === tab.id ? styles.docsTabCompositeActive : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeDocTabId === tab.id}
+                    className={`${styles.docsTab} ${
+                      activeDocTabId === tab.id ? styles.docsTabActive : ''
+                    }`}
+                    onClick={() => activateDocTab(tab.id)}
+                    title={tabIsCrossMode ? `${tabLabel} (${tabModeMeta?.label})` : tabLabel}
+                  >
+                    <span className={styles.docsTabLabel}>{tabLabel}</span>
+                    {tabIsCrossMode && tabModeMeta ? (
+                      <span className={styles.docsTabModeBadge}>{tabModeMeta.shortLabel}</span>
+                    ) : null}
+                  </button>
+                  {tab.closable !== false ? (
+                    <button
+                      type="button"
+                      className={styles.docsTabClose}
+                      aria-label={`Close ${tabLabel} tab`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        closeDocTab(tab.id);
+                      }}
+                    >
+                      <Icon source={XIcon} />
+                    </button>
+                  ) : null}
+                </span>
+              );
+            })}
           </div>
         </div>
 
-        <div className={styles.docsQuickJumpWrap}>
-          <div className={styles.docsQuickJumpHeader}>
-            <span className={styles.docsQuickJumpLabel}>
-              <span className={styles.docsQuickJumpLabelIcon} aria-hidden>
-                <Icon source={ListBulletedIcon} tone="base" />
-              </span>
-              Quick jump
+        <div className={styles.docsStatusBar} aria-label="Documentation browser status">
+          <div className={styles.docsStatusPrimary}>
+            <span className={styles.docsStatusPill}>{docModeMeta.label}</span>
+            <span className={styles.docsStatusText}>
+              Active: <strong>{activeSectionMeta?.title || 'Overview'}</strong>
             </span>
-            <span className={styles.docsQuickJumpHint}>Drag to scroll</span>
           </div>
-          <div className={styles.docsQuickJumpListOuter}>
-            <ul
-              ref={quickJumpListRef}
-              className={styles.docsQuickJumpList}
-              aria-label="Quick navigation (scroll or drag horizontally)"
-              onMouseDown={handleQuickJumpMouseDown}
+          <div className={styles.docsStatusMeta}>
+            <span>{filteredSections.length} sections</span>
+            <span>
+              {openDocTabs.length}/{MAX_OPEN_DOC_TABS} open tabs
+            </span>
+            <span>Tabs are preserved across modes</span>
+            <button
+              type="button"
+              className={styles.docsStatusAction}
+              onClick={() => {
+                setBrowserSearchFocused(true);
+                setCommandSelected(0);
+                setTimeout(() => browserSearchInputRef.current?.focus(), 0);
+              }}
             >
-              {QUICK_JUMP_SECTIONS.map(s => (
-                <li key={s.id} className={styles.docsQuickJumpItem}>
-                  <button
-                    type="button"
-                    className={`${styles.docsQuickJumpBtn} ${activeSection === s.id ? styles.docsQuickJumpBtnActive : ''}`}
-                    onClick={e => handleQuickJumpClick(e, s.id)}
-                    aria-current={activeSection === s.id ? 'true' : undefined}
-                  >
-                    <span className={styles.docsQuickJumpBtnIcon}>
-                      <Icon source={s.icon} tone="base" />
-                    </span>
-                    <span className={styles.docsQuickJumpBtnText}>{s.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+              Search docs
+            </button>
+            <button type="button" className={styles.docsStatusAction} onClick={goToDocsIndex}>
+              Open Guide hub
+            </button>
           </div>
         </div>
+
+        {isMobileToc && tocDrawerOpen ? (
+          <button
+            type="button"
+            className={styles.docsTocOverlay}
+            aria-label="Close table of contents"
+            onClick={() => setTocDrawerOpen(false)}
+          />
+        ) : null}
 
         {hoveredSection && drawerPosition && sidebarCollapsed && (
           <div
@@ -2762,138 +3864,36 @@ function Documentation() {
             </span>
           </div>
         )}
-        <div
-          className={`${styles.docsLayout} ${sidebarCollapsed ? styles.docsLayoutCollapsed : ''}`}
-        >
-          <aside
-            className={`${styles.docsSidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : ''}`}
-          >
-            <div className={styles.sidebarHeader}>
-              {!sidebarCollapsed && (
-                <div className={styles.sidebarTitleBlock}>
-                  <div className={styles.sidebarTitleIcon}>
-                    <Icon source={BookIcon} />
-                  </div>
-                  <h3 className={styles.sidebarTitle}>Contents</h3>
-                </div>
-              )}
-              <Tooltip
-                content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                preferredPosition="right"
-              >
-                <button
-                  type="button"
-                  className={styles.sidebarToggle}
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                  <Icon source={sidebarCollapsed ? ChevronDownIcon : ChevronUpIcon} />
-                </button>
-              </Tooltip>
-            </div>
-            {!sidebarCollapsed ? (
-              <>
-                <div className={styles.searchWrap}>
-                  <div className={styles.searchInputWrapper}>
-                    <span className={styles.searchIcon} aria-hidden>
-                      <Icon source={SearchIcon} />
-                    </span>
-                    <TextField
-                      label="Search documentation"
-                      labelHidden
-                      value={searchQuery}
-                      onChange={setSearchQuery}
-                      placeholder="Search by title or keywords..."
-                      autoComplete="off"
-                    />
-                  </div>
-                </div>
-                <div className={styles.sidebarBody}>
-                  <nav className={styles.sidebarNav}>
-                    {filteredSections.length === 0 ? (
-                      <div className={styles.sidebarSearchEmpty} role="status" aria-live="polite">
-                        <Text as="p" tone="subdued">
-                          No sections match &quot;{searchQuery}&quot;
-                        </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Try different keywords
-                        </Text>
-                      </div>
-                    ) : (
-                      groupedSections.map(group => (
-                        <div key={group.key} className={styles.navGroup}>
-                          <div className={styles.navGroupLabel}>{group.label}</div>
-                          {group.items.map(s => (
-                            <button
-                              key={s.id}
-                              ref={activeSection === s.id ? activeNavRef : null}
-                              type="button"
-                              className={`${styles.navItem} ${activeSection === s.id ? styles.navItemActive : ''}`}
-                              onClick={() => scrollToSection(s.id)}
-                              aria-current={activeSection === s.id ? 'location' : undefined}
-                              onFocus={() => setHoveredSection(null)}
-                            >
-                              <span className={styles.navItemIcon}>
-                                <Icon source={s.icon} />
-                              </span>
-                              <span className={styles.navItemText}>{s.title}</span>
-                            </button>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </nav>
-                  <div className={styles.sidebarFooter}>
-                    <Tooltip content="Scroll back to top" preferredPosition="right">
-                      <button
-                        type="button"
-                        className={styles.sidebarBackToTop}
-                        onClick={scrollToTop}
-                        aria-label="Back to top"
-                      >
-                        <span className={styles.sidebarBackToTopIcon}>
-                          <Icon source={ArrowUpIcon} />
-                        </span>
-                        Back to top
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <nav className={styles.sidebarNavCollapsed}>
-                {filteredSections.map(s => (
-                  <div
-                    key={s.id}
-                    ref={activeSection === s.id ? activeCollapsedRef : null}
-                    className={styles.navItemCollapsedWrap}
-                    onMouseEnter={e => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setDrawerPosition({ top: rect.top + rect.height / 2, left: rect.right + 10 });
-                      setHoveredSection(s);
-                    }}
-                    onMouseLeave={() => {
-                      setHoveredSection(null);
-                      setDrawerPosition(null);
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`${styles.navItemCollapsed} ${activeSection === s.id ? styles.navItemCollapsedActive : ''}`}
-                      onClick={() => scrollToSection(s.id)}
-                      title={s.title}
-                      aria-label={s.title}
-                    >
-                      <Icon source={s.icon} />
-                    </button>
-                  </div>
-                ))}
-              </nav>
-            )}
-          </aside>
+
+        <div className={browserBodyClassName}>
+          {(!isMobileToc || tocDrawerOpen) && renderTocSidebar()}
 
           <main className={styles.docsMain}>
-            {SECTIONS.map(section => (
+            {isHubTabId(activeDocTabId) ? (
+              <div ref={guideHubRef}>
+                <DocsGuideHubPanel
+                  docMode={docMode}
+                  docModeMeta={docModeMeta}
+                  filteredSections={filteredSections}
+                  featureGuideStats={featureGuideStats}
+                  audienceJourneys={audienceJourneys}
+                  featureGuideDecisionCards={featureGuideDecisionCards}
+                  researchResources={researchResources}
+                  quickJumpSections={quickJumpSections}
+                  activeSection={activeSection}
+                  quickJumpListRef={quickJumpListRef}
+                  handleQuickJumpMouseDown={handleQuickJumpMouseDown}
+                  handleQuickJumpClick={handleQuickJumpClick}
+                  scrollToFeaturePath={scrollToFeaturePath}
+                  scrollToSection={scrollToSection}
+                  onFocusSearch={() => {
+                    setBrowserSearchFocused(true);
+                    browserSearchInputRef.current?.focus();
+                  }}
+                />
+              </div>
+            ) : null}
+            {filteredSections.map(section => (
               <section
                 key={section.id}
                 id={section.id}
@@ -2909,15 +3909,22 @@ function Documentation() {
                         </div>
                         <div className={styles.sectionTitleContent}>
                           <h2 id={`doc-heading-${section.id}`}>{section.title}</h2>
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            Reference
-                          </Text>
+                          <SectionKindBadge sectionId={section.id} />
                         </div>
-                        <CopySectionLink sectionId={section.id} />
+                        <CopySectionLink sectionId={section.id} docMode={docMode} />
                       </div>
                       <Divider />
                       <DocSectionContent sectionId={section.id} />
-                      <SectionNav section={section} scrollToSection={scrollToSection} />
+                      <RelatedSections
+                        sectionId={section.id}
+                        scrollToSection={scrollToSection}
+                        visibleSections={filteredSections}
+                      />
+                      <SectionNav
+                        section={section}
+                        scrollToSection={scrollToSection}
+                        visibleSections={filteredSections}
+                      />
                     </BlockStack>
                   </Box>
                 </div>
@@ -2930,49 +3937,49 @@ function Documentation() {
           <Text variant="headingMd" as="h3" id="docs-resources-heading">
             Additional Resources
           </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Curated for {docModeMeta.label.toLowerCase()}
+          </Text>
           <div className={styles.docsResourcesLinks}>
-            <a
-              href="/api-docs"
-              className={styles.docsResourcesLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open API Docs (Swagger) in new tab"
-            >
-              <CodeIcon /> API Docs (Swagger)
-            </a>
-            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <TargetIcon /> Dashboard (tests, quick start)
-            </Link>
-            <Link to={ROUTES.CONNECT} className={styles.docsResourcesLink}>
-              <ConnectIcon /> Connect / API Key
-            </Link>
-            <Link to={ROUTES.PROFILE_APPEARANCE} className={styles.docsResourcesLink}>
-              <SettingsIcon /> Profile appearance
-            </Link>
-            <a href="#settings" className={styles.docsResourcesLink}>
-              <SettingsIcon /> App settings
-            </a>
-            <a href="#setup-wizard" className={styles.docsResourcesLink}>
-              <CompassIcon /> Setup Wizard
-            </a>
-            <a href="#launch-preflight" className={styles.docsResourcesLink}>
-              <CompassIcon /> Launch Preflight
-            </a>
-            <a href="#offer-testing" className={styles.docsResourcesLink}>
-              <LinkIcon /> Offer Testing
-            </a>
-            <a href="#shipping-tests" className={styles.docsResourcesLink}>
-              <StoreIcon /> Shipping Tests
-            </a>
-            <a href="#theme-template-tests" className={styles.docsResourcesLink}>
-              <StoreIcon /> Theme Tests
-            </a>
-            <Link to={ROUTES.PROFILE} className={styles.docsResourcesLink}>
-              <PersonIcon /> Profile
-            </Link>
-            <Link to={ROUTES.NOTIFICATIONS} className={styles.docsResourcesLink}>
-              <NotificationIcon /> Notifications
-            </Link>
+            {footerResources.map(resource => {
+              if (resource.type === 'external') {
+                return (
+                  <a
+                    key={resource.href}
+                    href={resource.href}
+                    className={styles.docsResourcesLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <CodeIcon /> {resource.label}
+                  </a>
+                );
+              }
+              if (resource.type === 'route') {
+                const routePath =
+                  resource.path === 'support'
+                    ? ROUTES.SUPPORT
+                    : resource.path === 'connect'
+                      ? ROUTES.CONNECT
+                      : ROUTES.USER_PANEL;
+                return (
+                  <Link key={resource.path} to={routePath} className={styles.docsResourcesLink}>
+                    {resource.path === 'support' ? <NotificationIcon /> : <ConnectIcon />}{' '}
+                    {resource.label}
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  key={resource.sectionId}
+                  type="button"
+                  className={styles.docsResourcesLink}
+                  onClick={() => scrollToSection(resource.sectionId)}
+                >
+                  <CompassIcon /> {resource.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </Page>

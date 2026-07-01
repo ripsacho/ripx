@@ -101,6 +101,7 @@ import {
   configUsesCompareAtBase,
 } from '../../utils/priceSimulation';
 import { ROUTES } from '../../constants';
+import { getDocsLinkForSection } from '../../utils/docsLinks';
 import {
   buildGoalMetricTooltip,
   getGoalMetricLabel,
@@ -255,6 +256,7 @@ import {
   buildShippingOfferAttributesPatch,
   buildOfferAttributeRevertPatch,
   buildDeliveryHideTargetingCodes,
+  extractScopedDeliveryMethodCodes,
   resolveControlShippingBaseline,
   formatShippingOfferBaselineValue,
   SHIPPING_OFFER_ATTRIBUTE_OPTIONS,
@@ -536,24 +538,40 @@ function TestWizard({
             ? await apiGet(`/tests/${testId}/shipping/diagnostics`)
             : action === 'liveDebug'
               ? await apiGet(`/tests/${testId}/shipping/live-debug`, {}, { timeout: 120000 })
-              : action === 'cleanupStale'
-                ? await apiPost(`/tests/${testId}/shipping/cleanup-stale-callbacks`, {
-                    dry_run: false,
-                  })
-                : await apiPost(`/tests/${testId}/shipping/execute`, {
-                    dry_run: action === 'dryRun',
-                    apply: action === 'apply',
-                    variantIndex: shippingVariantTabIndex,
-                  });
+              : action === 'dcCompare'
+                ? await apiGet(
+                    `/tests/${testId}/shipping/dc-config-compare`,
+                    { variantIndex: shippingVariantTabIndex },
+                    { timeout: 120000 }
+                  )
+                : action === 'simulateHide'
+                  ? await apiPost(
+                      `/tests/${testId}/shipping/simulate-hide`,
+                      { variantIndex: shippingVariantTabIndex },
+                      { timeout: 120000 }
+                    )
+                  : action === 'cleanupStale'
+                    ? await apiPost(`/tests/${testId}/shipping/cleanup-stale-callbacks`, {
+                        dry_run: false,
+                      })
+                    : await apiPost(`/tests/${testId}/shipping/execute`, {
+                        dry_run: action === 'dryRun',
+                        apply: action === 'apply',
+                        variantIndex: shippingVariantTabIndex,
+                      });
         const payload = unwrapData(response) || response;
         const summary =
           action === 'liveDebug'
             ? payload?.live_debug || {}
-            : payload?.diagnostics?.readiness ||
-              payload?.execution_result?.summary ||
-              payload?.summary ||
-              payload?.result ||
-              {};
+            : action === 'dcCompare'
+              ? payload?.comparison || {}
+              : action === 'simulateHide'
+                ? payload || {}
+                : payload?.diagnostics?.readiness ||
+                  payload?.execution_result?.summary ||
+                  payload?.summary ||
+                  payload?.result ||
+                  {};
         const mode =
           payload?.execution_result?.mode ||
           payload?.execution_result?.execution_mode ||
@@ -606,17 +624,50 @@ function TestWizard({
             detailItems.push(`${live.stale_callback_count} stale carrier(s)`);
           }
         }
+        if (action === 'dcCompare') {
+          detailItems.push(payload?.comparison?.in_sync ? 'in sync' : 'out of sync');
+          if (Array.isArray(payload?.comparison?.mismatches)) {
+            detailItems.push(`${payload.comparison.mismatches.length} mismatch(es)`);
+          }
+          if (Array.isArray(payload?.recommendations) && payload.recommendations[0]) {
+            detailItems.push(payload.recommendations[0]);
+          }
+        }
+        if (action === 'simulateHide') {
+          detailItems.push(`${payload?.operations?.length || 0} hide operation(s)`);
+          detailItems.push(`${payload?.option_decisions?.length || 0} option decision(s)`);
+          if (payload?.no_changes_reason) {
+            detailItems.push(`blocked: ${payload.no_changes_reason}`);
+          } else if (payload?.gate?.no_changes_reason) {
+            detailItems.push(`blocked: ${payload.gate.no_changes_reason}`);
+          }
+          if (payload?.input_summary?.auto_built_options) {
+            detailItems.push('auto-built checkout sample');
+          }
+          const hiddenCount = Array.isArray(payload?.option_decisions)
+            ? payload.option_decisions.filter(item => item.hidden).length
+            : 0;
+          if (hiddenCount > 0) {
+            detailItems.push(`${hiddenCount} hidden`);
+          }
+        }
         setShippingOperationResult({
           title:
             action === 'diagnostics'
               ? 'Diagnostics complete'
               : action === 'liveDebug'
                 ? 'Live debug complete'
-                : action === 'cleanupStale'
-                  ? 'Stale callback cleanup complete'
-                  : action === 'dryRun'
-                    ? 'Active variant dry run complete'
-                    : 'Active variant shipping apply complete',
+                : action === 'dcCompare'
+                  ? payload?.comparison?.in_sync
+                    ? 'Delivery customization in sync'
+                    : 'Delivery customization drift detected'
+                  : action === 'simulateHide'
+                    ? 'Hide simulation complete'
+                    : action === 'cleanupStale'
+                      ? 'Stale callback cleanup complete'
+                      : action === 'dryRun'
+                        ? 'Active variant dry run complete'
+                        : 'Active variant shipping apply complete',
           message:
             typeof summary === 'string'
               ? summary
@@ -627,19 +678,35 @@ function TestWizard({
                   : payload?.live_debug?.callback_probe?.ok
                     ? `Carrier probe returned ${payload.live_debug.callback_probe.rates_count || 0} rate(s).`
                     : 'Review live Shopify carriers, callback probe, and storefront checks below.'
-                : action === 'cleanupStale'
-                  ? payload?.message ||
-                    `Removed ${payload?.cleaned_count || 0} stale callback reference(s).`
-                  : payload?.diagnostics?.debug_checklist?.primary_blocker?.title
-                    ? `Blocked: ${payload.diagnostics.debug_checklist.primary_blocker.title}`
-                    : payload?.message ||
-                      `Execution mode: ${mode}. Review the diagnostics report before launch.`,
+                : action === 'dcCompare'
+                  ? payload?.comparison?.in_sync
+                    ? 'Live Shopify delivery customization metafield matches expected apply output.'
+                    : Array.isArray(payload?.comparison?.mismatches) &&
+                        payload.comparison.mismatches[0]?.message
+                      ? payload.comparison.mismatches[0].message
+                      : 'Re-apply shipping after deploying backend and the delivery customization extension.'
+                  : action === 'simulateHide'
+                    ? Array.isArray(payload?.option_decisions) &&
+                      payload.option_decisions.length > 0
+                      ? payload.option_decisions
+                          .map(item => `${item.title || item.handle}: ${item.reason}`)
+                          .slice(0, 3)
+                          .join(' · ')
+                      : 'No hide decisions returned for the simulated checkout options.'
+                    : action === 'cleanupStale'
+                      ? payload?.message ||
+                        `Removed ${payload?.cleaned_count || 0} stale callback reference(s).`
+                      : payload?.diagnostics?.debug_checklist?.primary_blocker?.title
+                        ? `Blocked: ${payload.diagnostics.debug_checklist.primary_blocker.title}`
+                        : payload?.message ||
+                          `Execution mode: ${mode}. Review the diagnostics report before launch.`,
           details: detailItems,
           debugChecklist:
             action === 'liveDebug'
               ? payload?.live_debug?.debug_checklist || null
               : payload?.diagnostics?.debug_checklist || null,
           liveDebugReport: action === 'liveDebug' ? payload?.live_debug || null : null,
+          debugReport: action === 'dcCompare' || action === 'simulateHide' ? payload : null,
         });
         if (typeof onRefreshTest === 'function') {
           onRefreshTest();
@@ -5455,13 +5522,15 @@ function TestWizard({
           }
         }
       } else if (options.simplePreview) {
-        if (options.usePreviewLaunch) {
+        // Customer-view and copied links open the storefront product URL directly.
+        // Shopify's storefront password cookie persists after the first unlock, and RipX
+        // stores preview assignment in sessionStorage (theme app embed + storefront script).
+        if (options.usePreviewLaunch && !isShippingPreview) {
           const storefrontPassword = resolveStorefrontPasswordForPreview(
             scopedShopDomain || domain,
             visualEditorStorefrontPassword,
             [routeDomain, initialData?.shop_domain, getShopDomain()].filter(Boolean)
           );
-          // Brief RipX launcher seeds preview context, then lands on the storefront URL.
           finalPreviewUrl =
             buildPreviewLaunchUrl({
               apiBaseUrl: getApiBaseUrl(),
@@ -5469,7 +5538,6 @@ function TestWizard({
               storefrontPassword,
             }) || directPreviewUrl;
         } else {
-          // Copied/shared links stay on the store domain with ab_preview_* query params.
           finalPreviewUrl = directPreviewUrl;
         }
       } else {
@@ -5595,7 +5663,6 @@ function TestWizard({
     const url = buildPreviewUrl(variant, index, {
       pricePreviewProduct: pricePreviewProductOverride,
       simplePreview: true,
-      usePreviewLaunch: true,
       resetPreviewSession: true,
       previewSessionId: `customer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });
@@ -11483,7 +11550,7 @@ function TestWizard({
                   </Text>
                   <Text as="p" variant="bodyMd">
                     <a
-                      href={`${ROUTES.DOCS}#price-testing`}
+                      href={getDocsLinkForSection('price-testing', { domain: routeDomain })}
                       className={styles.priceDocLink}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -13348,7 +13415,9 @@ function TestWizard({
     const profileScopeSearchQuery = String(shippingProfileScopeSearch || '')
       .trim()
       .toLowerCase();
-    const shippingRateModelDocHref = `${ROUTES.DOCS}#shipping-tests`;
+    const shippingRateModelDocHref = getDocsLinkForSection('shipping-tests', {
+      domain: routeDomain,
+    });
     const visibleProfileScopeOptions = profileScopeOptions
       .filter(option => {
         if (!profileScopeSearchQuery) {
@@ -13400,12 +13469,18 @@ function TestWizard({
     ]
       .map(id => String(id || '').trim())
       .filter(Boolean);
-    const activeDeliveryMethodCodes = uniqueShippingValues([
-      ...normalizeCheckoutListInput(
-        activeShippingConfig.delivery_method_codes || activeShippingConfig.deliveryMethodCodes
-      ),
-      ...buildDeliveryHideTargetingCodes(activeDeliveryMethodNames, activeShippingScope),
-    ]);
+    const activeNativeHideScopedCodes = extractScopedDeliveryMethodCodes(activeShippingScope);
+    const useActiveIdOnlyNativeHide = activeNativeHideScopedCodes.length > 0;
+    const activeDeliveryMethodCodes = uniqueShippingValues(
+      useActiveIdOnlyNativeHide
+        ? activeNativeHideScopedCodes
+        : [
+            ...normalizeCheckoutListInput(
+              activeShippingConfig.delivery_method_codes || activeShippingConfig.deliveryMethodCodes
+            ),
+            ...buildDeliveryHideTargetingCodes(activeDeliveryMethodNames, activeShippingScope),
+          ]
+    );
     const getReplacementSourceName = rate =>
       String(
         rate?.source_method_name || rate?.sourceMethodName || rate?.source_rate_name || ''
@@ -13474,12 +13549,35 @@ function TestWizard({
         .filter(Boolean);
     const buildHideTargetsPatch = (methodNames = [], scope = activeShippingScope) => {
       const normalizedNames = normalizeCheckoutListInput(methodNames);
+      const nativeHideScopedCodes = extractScopedDeliveryMethodCodes(scope);
+      const useIdOnlyNativeHide = nativeHideScopedCodes.length > 0;
+      const nativeHideTargets = normalizedNames.map(name => {
+        const sourceRate = findShippingCurrentRateByName(name);
+        const methodDefinitionId = String(sourceRate?.method_definition_id || '').trim();
+        const rateId = String(sourceRate?.id || '').trim();
+        return {
+          name,
+          method_definition_id: methodDefinitionId || null,
+          rate_id: rateId || null,
+          baseline_cost:
+            sourceRate?.amount === null || sourceRate?.amount === undefined
+              ? null
+              : Number.parseFloat(String(sourceRate.amount)),
+          baseline_currency: sourceRate?.currency || null,
+          slug_codes: [name, name.toLowerCase()].filter(Boolean),
+        };
+      });
       return {
         ...buildMethodTargetingPatch(selectedShippingCategory, normalizedNames),
         delivery_method_codes:
           normalizedNames.length > 0 || extractScopedTargetsFromScope(scope).length > 0
-            ? buildDeliveryHideTargetingCodes(normalizedNames, scope)
+            ? useIdOnlyNativeHide
+              ? nativeHideScopedCodes
+              : buildDeliveryHideTargetingCodes(normalizedNames, scope)
             : [],
+        native_hide_targets: nativeHideTargets,
+        native_hide_scoped_codes: nativeHideScopedCodes,
+        native_hide_by_id_only: useIdOnlyNativeHide,
       };
     };
     const findShippingCurrentRateByName = methodName => {
@@ -13500,6 +13598,12 @@ function TestWizard({
       if (isActiveControlLike) return;
       if (!shouldManageReplacementRatesForCategory(selectedShippingCategory)) return;
       if (activeDeliveryMethodNames.length === 0) return;
+      if (
+        activeConfiguredRates.length > 0 &&
+        activeConfiguredRates.length < activeDeliveryMethodNames.length
+      ) {
+        return;
+      }
       const linkedRates = activeDeliveryMethodNames
         .map((methodName, index) => {
           const sourceRate = findShippingCurrentRateByName(methodName);
@@ -13619,32 +13723,53 @@ function TestWizard({
       }
       updateShippingVariantConfig(activeShippingVariantIndex, {
         ...buildHideTargetsPatch(nextNames, {
-          ...activeShippingScope,
-          selected_method_definition_ids: exists
-            ? removeValues(selectedDefinitionIds, idsToRemove)
-            : addValue(selectedDefinitionIds, methodDefinitionId),
-          selected_rate_ids: exists
-            ? removeValues(selectedRateIds, idsToRemove)
-            : addValue(selectedRateIds, rateId),
-          selected_rate_names: exists
-            ? selectedRateNames.filter(name => name.toLowerCase() !== normalizedName.toLowerCase())
-            : addValue(selectedRateNames, normalizedName),
+          ...(nextNames.length === 0
+            ? {
+                ...activeShippingScope,
+                selected_rate_ids: [],
+                selected_rate_names: [],
+                selected_method_definition_ids: [],
+              }
+            : {
+                ...activeShippingScope,
+                selected_method_definition_ids: exists
+                  ? removeValues(selectedDefinitionIds, idsToRemove)
+                  : addValue(selectedDefinitionIds, methodDefinitionId),
+                selected_rate_ids: exists
+                  ? removeValues(selectedRateIds, idsToRemove)
+                  : addValue(selectedRateIds, rateId),
+                selected_rate_names: exists
+                  ? selectedRateNames.filter(
+                      name => name.toLowerCase() !== normalizedName.toLowerCase()
+                    )
+                  : addValue(selectedRateNames, normalizedName),
+              }),
         }),
         ...(shouldReplaceFlow
           ? { rates: renumberShippingRateOrdering(nextRates), ...nextAmountPatch }
           : {}),
-        shipping_scope: {
-          ...activeShippingScope,
-          selected_method_definition_ids: exists
-            ? removeValues(selectedDefinitionIds, idsToRemove)
-            : addValue(selectedDefinitionIds, methodDefinitionId),
-          selected_rate_ids: exists
-            ? removeValues(selectedRateIds, idsToRemove)
-            : addValue(selectedRateIds, rateId),
-          selected_rate_names: exists
-            ? selectedRateNames.filter(name => name.toLowerCase() !== normalizedName.toLowerCase())
-            : addValue(selectedRateNames, normalizedName),
-        },
+        shipping_scope:
+          nextNames.length === 0
+            ? {
+                ...activeShippingScope,
+                selected_rate_ids: [],
+                selected_rate_names: [],
+                selected_method_definition_ids: [],
+              }
+            : {
+                ...activeShippingScope,
+                selected_method_definition_ids: exists
+                  ? removeValues(selectedDefinitionIds, idsToRemove)
+                  : addValue(selectedDefinitionIds, methodDefinitionId),
+                selected_rate_ids: exists
+                  ? removeValues(selectedRateIds, idsToRemove)
+                  : addValue(selectedRateIds, rateId),
+                selected_rate_names: exists
+                  ? selectedRateNames.filter(
+                      name => name.toLowerCase() !== normalizedName.toLowerCase()
+                    )
+                  : addValue(selectedRateNames, normalizedName),
+              },
       });
     };
     const selectAllActiveDeliveryMethods = () => {
@@ -13964,8 +14089,15 @@ function TestWizard({
     const removeShippingRateAt = rateIndex => {
       setShippingLastAutoFixSnapshot(null);
       const nextRates = activeConfiguredRates.filter((_, index) => index !== rateIndex);
+      const nextMetadata = {
+        ...(activeShippingConfig.metadata && typeof activeShippingConfig.metadata === 'object'
+          ? activeShippingConfig.metadata
+          : {}),
+        ...(nextRates.length <= 1 ? { shipping_offer_mode: 'single' } : {}),
+      };
       updateShippingVariantConfig(activeShippingVariantIndex, {
         rates: renumberShippingRateOrdering(nextRates),
+        metadata: nextMetadata,
       });
     };
     const focusShippingRateNameInput = rateIndex => {
@@ -16206,6 +16338,8 @@ function TestWizard({
       shippingOperationLoading,
       shippingOperationResult,
       onRunShippingDiagnostics: () => runShippingOperation('diagnostics'),
+      onRunDcConfigCompare: () => runShippingOperation('dcCompare'),
+      onSimulateHide: () => runShippingOperation('simulateHide'),
       testSaved: Boolean(initialData?.id),
       setShippingVariantTabIndex,
       setShippingGuidedStep,
@@ -16308,7 +16442,11 @@ function TestWizard({
             RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
             <strong>Discount Function</strong> that reads cart attributes, or create discount codes
             per variant and share them.{' '}
-            <a href={`${ROUTES.DOCS}#offer-testing`} target="_blank" rel="noopener noreferrer">
+            <a
+              href={getDocsLinkForSection('offer-testing', { domain: routeDomain })}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Offer testing guide →
             </a>
           </Text>
@@ -16741,7 +16879,7 @@ function TestWizard({
       checkoutVariants.length > 0
         ? Math.min(checkoutStudioVariantIndex, checkoutVariants.length - 1)
         : 0;
-    const checkoutDocsPath = `${ROUTES.DOCS}#checkout-studio`;
+    const checkoutDocsPath = getDocsLinkForSection('checkout-studio', { domain: routeDomain });
     const phaseActionOptions = [
       { label: 'Hide methods', value: 'hide' },
       { label: 'Rename methods', value: 'rename' },
@@ -21679,7 +21817,7 @@ function TestWizard({
                                   ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
                                   : 'https://your-site.com/';
                               })()}
-                              helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
+                              helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (Store settings → Store setup) to enable click-to-select."
                               autoComplete="url"
                             />
                             {(isShopifyStoreDomain(
@@ -21824,7 +21962,7 @@ function TestWizard({
                                     >
                                       The preview loads your store page with the RipX script
                                       injected so you can click to select elements. Add the script
-                                      in App settings → Installation for your live store.
+                                      in Store settings → Store setup for your live store.
                                     </Text>
                                   </div>
                                 );
@@ -21890,7 +22028,7 @@ function TestWizard({
                                         {!testId && 'Save the test to see variant styling. '}
                                         The preview loads your store page with the RipX script so
                                         you can click to select elements. For live tests, add the
-                                        script via App settings → Installation.
+                                        script via Store settings → Store setup.
                                       </Text>
                                     </div>
                                     {variants.length > 1 && (
@@ -23320,7 +23458,7 @@ function TestWizard({
                 <Text as="p" variant="bodySm">
                   Use the{' '}
                   <a
-                    href={`${ROUTES.DOCS}#price-testing`}
+                    href={getDocsLinkForSection('price-testing', { domain: routeDomain })}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

@@ -94,6 +94,28 @@
   border-radius: 999px;
 }
 
+.heroDocLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.28rem 0.72rem;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--futuristic-violet, #7c3aed);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.heroDocLink:hover {
+  border-color: rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.12);
+  transform: translateY(-1px);
+}
+
 .heroHelpPill {
   display: inline-flex;
   align-items: center;

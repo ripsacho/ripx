@@ -31,6 +31,12 @@ query RunInput {
         handle
         code
         title
+        description
+        deliveryMethodType
+        cost {
+          amount
+          currencyCode
+        }
       }
     }
   }

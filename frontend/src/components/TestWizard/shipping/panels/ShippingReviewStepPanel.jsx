@@ -24,6 +24,8 @@ export default function ShippingReviewStepPanel({
   shippingBlockerMessage,
   shippingOperationResult,
   onRunShippingDiagnostics,
+  onRunDcConfigCompare,
+  onSimulateHide,
 }) {
   const timelineSteps = Array.isArray(shippingOperationResult?.pipelineTimeline)
     ? shippingOperationResult.pipelineTimeline
@@ -424,7 +426,10 @@ export default function ShippingReviewStepPanel({
               ) : null}
             </>
           ) : null}
-          {debugReport || typeof onRunShippingDiagnostics === 'function' ? (
+          {debugReport ||
+          typeof onRunShippingDiagnostics === 'function' ||
+          typeof onRunDcConfigCompare === 'function' ||
+          typeof onSimulateHide === 'function' ? (
             <div className={stepStyles.shippingDebugReportLinkRow}>
               {debugReport ? (
                 <Button variant="plain" onClick={() => setDebugModalOpen(true)}>
@@ -434,6 +439,16 @@ export default function ShippingReviewStepPanel({
               {typeof onRunShippingDiagnostics === 'function' ? (
                 <Button variant="plain" onClick={onRunShippingDiagnostics}>
                   Run diagnostics
+                </Button>
+              ) : null}
+              {typeof onRunDcConfigCompare === 'function' ? (
+                <Button variant="plain" onClick={onRunDcConfigCompare}>
+                  Compare DC metafield
+                </Button>
+              ) : null}
+              {typeof onSimulateHide === 'function' ? (
+                <Button variant="plain" onClick={onSimulateHide}>
+                  Simulate hide
                 </Button>
               ) : null}
             </div>

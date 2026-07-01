@@ -64,15 +64,54 @@
         return false;
       }
     }
+    function readPreviewTestType() {
+      try {
+        var params = new URLSearchParams(window.location.search || '');
+        var fromUrl = String(params.get('ab_preview_test_type') || '')
+          .trim()
+          .toLowerCase();
+        if (fromUrl) return fromUrl;
+        if (window.sessionStorage) {
+          var raw = window.sessionStorage.getItem('__ripx_preview_ctx_v1__');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && parsed.testType) {
+              return String(parsed.testType).trim().toLowerCase();
+            }
+          }
+        }
+        var wn = String(window.name || '');
+        var prefix = '__ripx_preview_ctx_v1__:';
+        if (wn.indexOf(prefix) === 0) {
+          var ctx = JSON.parse(wn.slice(prefix.length));
+          if (ctx && ctx.testType) {
+            return String(ctx.testType).trim().toLowerCase();
+          }
+        }
+      } catch (_eType) {}
+      return '';
+    }
+    function previewNeedsInlinePriceGuard() {
+      var testType = readPreviewTestType();
+      if (testType === 'shipping' || testType === 'offer' || testType === 'checkout') {
+        return false;
+      }
+      if (testType === 'price') return true;
+      try {
+        var params = new URLSearchParams(window.location.search || '');
+        return (
+          params.get('ab_preview') === '1' ||
+          !!params.get('ab_preview_test') ||
+          !!params.get('ab_preview_variant')
+        );
+      } catch (_eLegacy) {
+        return false;
+      }
+    }
     function installPreviewGuardIfNeeded() {
       try {
         if (!document.documentElement || !window.location) return false;
-        var params = new URLSearchParams(window.location.search || '');
-        var isPreview =
-          params.get('ab_preview') === '1' ||
-          !!params.get('ab_preview_test') ||
-          !!params.get('ab_preview_variant');
-        if (!isPreview) return false;
+        if (!previewNeedsInlinePriceGuard()) return false;
         return applyPriceGuard(defaultPriceSelectors, 'inline_preview_timeout', 1700);
       } catch (_ePreviewAf) {
         return false;
@@ -89,6 +128,7 @@
     }
     try {
       installPreviewGuardIfNeeded();
+      if (!previewNeedsInlinePriceGuard()) return;
       if (!window.sessionStorage || !document.documentElement) return;
       var raw = window.sessionStorage.getItem(storageKey);
       if (!raw) return;
@@ -206,9 +246,59 @@
       }
     }
 
+    function writePreviewCtx(ctx) {
+      try {
+        if (!window.sessionStorage || !ctx) return;
+        window.sessionStorage.setItem(
+          '__ripx_preview_ctx_v1__',
+          JSON.stringify(Object.assign({}, ctx, { persistedAtMs: Date.now() }))
+        );
+      } catch (_eWrite) {}
+    }
+
+    function extractPreviewParamsFromSearch(search) {
+      var params = new URLSearchParams(search || '');
+      var testId = params.get('ab_preview_test') || null;
+      var variantId = params.get('ab_preview_variant') || null;
+      var variantName = params.get('ab_preview_variant_name') || null;
+      if (!(params.get('ab_preview') === '1' || testId || variantId || variantName)) return null;
+      return {
+        preview: params.get('ab_preview') === '1' || !!testId,
+        testId: testId,
+        testType: params.get('ab_preview_test_type') || null,
+        variantId: variantId,
+        variantName: variantName,
+        tenantDomain: params.get('ab_preview_domain') || null,
+        simple: params.get('ab_preview_simple') === '1',
+        sessionId: params.get('ab_preview_session') || null,
+      };
+    }
+
+    function seedPreviewCtxFromPasswordReturnUrl() {
+      try {
+        var path = String(window.location.pathname || '').toLowerCase();
+        if (path.indexOf('/password') === -1) return null;
+        var returnRaw = new URLSearchParams(window.location.search || '').get('return_url') || '';
+        if (!returnRaw) {
+          var returnInput = document.querySelector('input[name="return_url"]');
+          returnRaw = returnInput && returnInput.value ? String(returnInput.value) : '';
+        }
+        if (!returnRaw) return null;
+        var returnUrl = new URL(returnRaw, window.location.origin);
+        var extracted = extractPreviewParamsFromSearch(returnUrl.search);
+        if (!extracted) return null;
+        writePreviewCtx(extracted);
+        return extracted;
+      } catch (_ePasswordSeed) {
+        return null;
+      }
+    }
+
     function seedPreviewCtxFromUrl() {
       try {
-        if (!window.sessionStorage || !window.location || !window.location.search) return null;
+        if (!window.sessionStorage || !window.location) return null;
+        seedPreviewCtxFromPasswordReturnUrl();
+        if (!window.location.search) return readPreviewCtx();
         var params = new URLSearchParams(window.location.search || '');
         var simplePreview = params.get('ab_preview_simple') === '1';
         var previewFlag = params.get('ab_preview') === '1';
@@ -216,7 +306,8 @@
         var variantId = params.get('ab_preview_variant') || null;
         var variantName = params.get('ab_preview_variant_name') || null;
         var tenantDomain = params.get('ab_preview_domain') || null;
-        if (!(previewFlag || testId || variantId || variantName)) return null;
+        var testType = params.get('ab_preview_test_type') || null;
+        if (!(previewFlag || testId || variantId || variantName)) return readPreviewCtx();
         if (params.get('ab_preview_reset') === '1') {
           try {
             window.sessionStorage.removeItem('__ripx_preview_ctx_v1__');
@@ -230,8 +321,9 @@
           } catch (_eReset) {}
         }
         var ctx = {
-          preview: previewFlag,
+          preview: previewFlag || !!testId,
           testId: testId,
+          testType: testType,
           variantId: variantId,
           variantName: variantName,
           tenantDomain: tenantDomain,
@@ -239,7 +331,7 @@
           sessionId: params.get('ab_preview_session') || null,
           persistedAtMs: Date.now(),
         };
-        window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(ctx));
+        writePreviewCtx(ctx);
         return ctx;
       } catch (_e) {
         return null;
@@ -253,6 +345,7 @@
         if (!ctx) return parsed.toString();
         if (ctx.preview === true || ctx.preview === '1') parsed.searchParams.set('ab_preview', '1');
         if (ctx.testId) parsed.searchParams.set('ab_preview_test', String(ctx.testId));
+        if (ctx.testType) parsed.searchParams.set('ab_preview_test_type', String(ctx.testType));
         if (ctx.variantId) parsed.searchParams.set('ab_preview_variant', String(ctx.variantId));
         if (ctx.variantName) parsed.searchParams.set('ab_preview_variant_name', String(ctx.variantName));
         if (ctx.tenantDomain) parsed.searchParams.set('ab_preview_domain', String(ctx.tenantDomain));
@@ -264,11 +357,24 @@
       }
     }
 
+    function isSimplePreviewMode() {
+      try {
+        var params = new URLSearchParams(window.location.search || '');
+        if (params.get('ab_preview_simple') === '1') return true;
+        var ctx = readPreviewCtx();
+        return !!(ctx && (ctx.simple === true || ctx.simple === '1'));
+      } catch (_eSimple) {
+        return false;
+      }
+    }
+
     function redirectToPreviewBootstrapIfNeeded() {
       try {
         if (hasRipx()) return false;
+        if (isSimplePreviewMode()) return false;
         var ctx = readPreviewCtx();
         if (!ctx || !(ctx.preview || ctx.testId || ctx.variantId || ctx.variantName)) return false;
+        if (ctx.simple === true || ctx.simple === '1') return false;
         var currentParams = new URLSearchParams(window.location.search || '');
         if (currentParams.get('ab_preview_simple') === '1') return false;
         var path = String(window.location.pathname || '').toLowerCase();
@@ -432,7 +538,7 @@
       if (fallbackSrc) appendScript(withPreviewBust(fallbackSrc), true, runtimePresentWithoutConfig);
       if (attemptCount >= maxAttempts) {
         stopEnsure();
-        if (redirectToPreviewBootstrapIfNeeded()) return;
+        if (!isSimplePreviewMode() && redirectToPreviewBootstrapIfNeeded()) return;
         reportInitFailure('runtime_missing_after_retries');
         try {
           window.__RIPX_APP_EMBED_LOADER_STATUS__ = {

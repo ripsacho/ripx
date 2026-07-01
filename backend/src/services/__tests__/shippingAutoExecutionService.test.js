@@ -4,9 +4,14 @@ const {
   dedupeDeliveryCustomizationsForVariant,
 } = require('../shippingAutoExecutionService');
 const { getTestsByShop } = require('../../models/test');
+const { buildShippingCurrentSetupReport } = require('../shippingCurrentSetupService');
 
 jest.mock('../../models/test', () => ({
   getTestsByShop: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../shippingCurrentSetupService', () => ({
+  buildShippingCurrentSetupReport: jest.fn(),
 }));
 
 describe('shippingAutoExecutionService', () => {
@@ -17,6 +22,7 @@ describe('shippingAutoExecutionService', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     getTestsByShop.mockResolvedValue([]);
+    buildShippingCurrentSetupReport.mockResolvedValue({ rates: [] });
     process.env.SHOPIFY_SCOPES = 'read_discounts,write_discounts';
     process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL =
       'https://ripx.example.com/api/track/shipping-carrier-rates';
@@ -702,9 +708,6 @@ describe('shippingAutoExecutionService', () => {
         },
       })
       .mockResolvedValueOnce({
-        data: { deliveryProfiles: { edges: [] } },
-      })
-      .mockResolvedValueOnce({
         data: {
           deliveryProfileUpdate: {
             profile: null,
@@ -1091,7 +1094,7 @@ describe('shippingAutoExecutionService', () => {
     expect(actions[1].details?.config?.variant_rules[0]).toMatchObject({
       action: 'hide',
       method_names: ['Standard Delivery', 'Express'],
-      method_codes: expect.arrayContaining(['standard_delivery', 'Standard Delivery']),
+      native_hide_by_id_only: expect.any(Boolean),
       require_present_method_names: expect.arrayContaining(['Fast Standard']),
       require_present_method_codes: ['ripx_replace_standard_delivery'],
       protected_method_codes: ['ripx_replace_standard_delivery'],
@@ -1402,7 +1405,14 @@ describe('shippingAutoExecutionService', () => {
       method_names: ['Standard Shipping'],
       skip_replacement_presence_gate: true,
       protected_method_names: ['Express'],
+      protected_rate_titles: ['Express'],
       protected_method_codes: expect.arrayContaining([expect.stringMatching(/^ripx_flat_/i)]),
+      rate_hide_bindings: expect.arrayContaining([
+        expect.objectContaining({
+          display_name: 'Express',
+          reuses_native_title: expect.any(Boolean),
+        }),
+      ]),
       protected_method_name_prefixes: expect.arrayContaining(['RipX Shipping']),
     });
   });
@@ -1509,6 +1519,8 @@ describe('shippingAutoExecutionService', () => {
       expect.arrayContaining(['standard', 'Standard', 'express', 'Express'])
     );
     expect(rule.require_present_method_names).toEqual([]);
+    expect(rule.protected_method_names).toEqual(expect.arrayContaining(['Standard', 'Express']));
+    expect(rule.protected_rate_titles).toEqual(expect.arrayContaining(['Standard', 'Express']));
     expect(rule.protected_method_codes).toEqual(
       expect.arrayContaining(['ripx_replace_standard', expect.stringMatching(/^ripx_flat_1_/i)])
     );
@@ -2119,5 +2131,93 @@ describe('shippingAutoExecutionService', () => {
     expect(applied.kept_id).toBe('dc-keep');
     expect(applied.deleted_ids).toEqual(['dc-old']);
     expect(applied.dry_run).toBe(false);
+  });
+
+  it('applies hide-only delivery customization without replacement carrier gates', async () => {
+    const graphSpy = jest.spyOn(shopifyService, 'requestAdminGraphql');
+    graphSpy
+      .mockResolvedValueOnce({
+        data: {
+          shop: {
+            id: 'shop-1',
+            myshopifyDomain: 'plus.myshopify.com',
+            plan: { displayName: 'Shopify Plus', shopifyPlus: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          shopifyFunctions: {
+            nodes: [
+              {
+                id: 'fn-delivery-1',
+                title: 'RipX Delivery Customization',
+                apiType: 'DELIVERY_CUSTOMIZATION',
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { deliveryCustomizations: { edges: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          deliveryCustomizationCreate: {
+            deliveryCustomization: {
+              id: 'gid://shopify/DeliveryCustomization/99',
+              title: 'RipX Shipping Delivery test-hide-only Variant A',
+              enabled: true,
+            },
+            userErrors: [],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          metafieldsSet: {
+            metafields: [{ id: 'gid://shopify/Metafield/99' }],
+            userErrors: [],
+          },
+        },
+      });
+
+    const result = await executeShippingTestPlan({
+      test: {
+        id: 'test-hide-only',
+        name: 'Hide only shipping test',
+        type: 'shipping',
+        variants: [
+          { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+          {
+            name: 'Variant A',
+            allocation: 50,
+            config: {
+              strategy: 'carrier_quote',
+              execution_hint: 'delivery_customization',
+              shipping_display_mode: 'add_preview_method',
+              delivery_method_names: ['Standard', 'Express'],
+              delivery_action: 'hide',
+              rates: [],
+            },
+          },
+        ],
+      },
+      shopDomain: 'plus.myshopify.com',
+      accessToken: 'token',
+      apply: true,
+      variantIndex: 1,
+    });
+
+    const dcAction = result.execution_result.actions.find(
+      action => action.execution_adapter === 'delivery_customization'
+    );
+    expect(dcAction).toBeTruthy();
+    expect(dcAction.status).toBe('created');
+    expect(dcAction.details?.config?.variant_rules[0]).toMatchObject({
+      action: 'hide',
+      method_names: ['Standard', 'Express'],
+      skip_replacement_presence_gate: true,
+      require_present_method_names: [],
+      protected_method_codes: [],
+    });
   });
 });

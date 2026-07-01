@@ -11,6 +11,7 @@ import {
   getOfferWizardReadinessIssues,
   buildOfferAttributeRevertPatch,
   formatShippingDeliveryPromiseLabel,
+  isOfferWizardConfig,
   sanitizeLegacyShippingPreviewConfig,
   stripLegacyPreviewLabelFromName,
 } from '../shippingConfig';
@@ -180,7 +181,7 @@ describe('shippingConfig utilities', () => {
         metadata: { shipping_offer_mode: 'multiple' },
         rates: [{ name: 'A' }],
       })
-    ).toBe('multiple');
+    ).toBe('single');
     expect(
       getShippingOfferMode({
         metadata: { shipping_offer_mode: 'single' },
@@ -247,6 +248,31 @@ describe('shippingConfig utilities', () => {
     });
   });
 
+  it('treats unified wizard configs as non-offer readiness checks', () => {
+    expect(
+      isOfferWizardConfig({
+        metadata: { shipping_wizard_path: 'unified', shipping_offer_mode: 'multiple' },
+      })
+    ).toBe(false);
+    expect(
+      getShippingReadiness(
+        {
+          name: 'Variant A',
+          config: {
+            strategy: 'flat_rate',
+            metadata: {
+              shipping_wizard_path: 'unified',
+              shipping_offer_mode: 'multiple',
+            },
+            delivery_method_names: ['Standard'],
+            rates: [{ name: 'Standard', amount: 4.99 }],
+          },
+        },
+        1
+      )
+    ).toMatchObject({ status: 'ready' });
+  });
+
   it('validates offer wizard readiness and reverts unchecked attribute values to baseline', () => {
     const baseline = {
       name: 'Standard',
@@ -264,9 +290,7 @@ describe('shippingConfig utilities', () => {
       amount: 9.99,
       rates: [{ name: 'RipX Express', amount: 9.99 }],
     };
-    expect(getOfferWizardReadinessIssues(cfg, { normalizeRates: () => cfg.rates })).toEqual([
-      'Multiple shipping mode needs at least two rate rows.',
-    ]);
+    expect(getOfferWizardReadinessIssues(cfg, { normalizeRates: () => cfg.rates })).toEqual([]);
 
     const revertPatch = buildOfferAttributeRevertPatch(cfg, 'rate', baseline);
     expect(revertPatch.amount).toBe(4.99);

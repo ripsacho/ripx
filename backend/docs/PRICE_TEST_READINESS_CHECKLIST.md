@@ -61,7 +61,7 @@ Use this to confirm **storefront display**, **RipX API**, and (if eligible) **ch
 
 | #   | Check                                                                                       | Where                                                                                                                                       |
 | --- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.1 | **Settings → Installation → Checkout price test health → Run check**                        | Authenticated UI; same JSON as public route                                                                                                 |
+| 5.1 | **Store settings → Advanced → Run checkout diagnostics**                                    | Authenticated UI; same JSON as public route                                                                                                 |
 | 5.2 | **`GET /api/track/price-checkout-diagnostics?shop=YOUR_STORE.myshopify.com`**               | HTTPS, batch URL, secret mode, **running price test count**, **extension vs `.env` drift** (if `ripxConfig.js` is on the server filesystem) |
 | 5.3 | If secret set: **`POST /api/track/price-resolve-batch`** with correct **`secret`** / header | 200 + `lines` shape                                                                                                                         |
 

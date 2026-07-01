@@ -450,14 +450,39 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl, storefrontPasswo
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
  * @returns {string|null}
  */
-export function buildShopifyPreviewBootstrapUrl({ previewUrl }) {
+export function buildShopifyPreviewBootstrapUrl({ previewUrl, storefrontPassword } = {}) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
   try {
     const directUrl = new URL(directPreviewUrl);
     const host = String(directUrl.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return null;
-    return `https://${host}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(directPreviewUrl)}`;
+    const bootstrap = new URL(`https://${host}/apps/ripx/preview-bootstrap-v2`);
+    bootstrap.searchParams.set('url', directPreviewUrl);
+    const password =
+      storefrontPassword !== null && storefrontPassword !== undefined
+        ? String(storefrontPassword).trim()
+        : '';
+    if (password) {
+      bootstrap.searchParams.set('storefront_password', password);
+    }
+    [
+      PREVIEW_PARAMS.PREVIEW,
+      PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
+      PREVIEW_PARAMS.VARIANT_ID,
+      PREVIEW_PARAMS.VARIANT_NAME,
+      PREVIEW_PARAMS.TENANT_DOMAIN,
+      PREVIEW_PARAMS.SIMPLE,
+      PREVIEW_PARAMS.RESET_SESSION,
+      PREVIEW_PARAMS.SESSION_ID,
+    ].forEach(key => {
+      const value = directUrl.searchParams.get(key);
+      if (value !== undefined && value !== null && value !== '') {
+        bootstrap.searchParams.set(key, value);
+      }
+    });
+    return bootstrap.toString();
   } catch {
     return null;
   }
@@ -662,6 +687,9 @@ export function ensureShopifyPreviewBootstrapUrl(previewUrl) {
   if (!directPreviewUrl) return '';
   try {
     const parsed = new URL(directPreviewUrl);
+    if (parsed.searchParams.get(PREVIEW_PARAMS.SIMPLE) === PREVIEW_VALUE) {
+      return parsed.toString();
+    }
     const host = String(parsed.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return directPreviewUrl;
     const p = String(parsed.pathname || '').toLowerCase();

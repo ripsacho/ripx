@@ -723,6 +723,31 @@ describe('API integration', () => {
       });
       expect(Array.isArray(runtime.goalMetricDefinitions)).toBe(true);
     });
+
+    it('still serves script config when active test loading fails', async () => {
+      database.query.mockImplementation(sql => {
+        const normalizedSql = String(sql || '').toLowerCase();
+        if (normalizedSql.includes('from tenants')) {
+          return { rows: [{ domain: 'test.myshopify.com', status: 'active' }] };
+        }
+        if (normalizedSql.includes('from tests')) {
+          return Promise.reject(new Error('tests table temporarily unavailable'));
+        }
+        return { rows: [] };
+      });
+
+      const res = await request(app).get('/api/track/script.js?shop=test.myshopify.com');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/application\/javascript/);
+      expect(res.text).toContain('window.AB_TEST_RUNTIME_CONFIG=');
+
+      const runtimeJson = res.text.split('window.AB_TEST_RUNTIME_CONFIG=')[1].split(';\n')[0];
+      const runtime = JSON.parse(runtimeJson);
+
+      expect(runtime.shopDomain).toBe('test.myshopify.com');
+      expect(runtime.activeTests).toEqual([]);
+    });
   });
 
   describe('Protected routes (require auth)', () => {

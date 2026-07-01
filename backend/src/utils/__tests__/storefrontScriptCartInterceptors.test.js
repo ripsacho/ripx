@@ -709,7 +709,7 @@ describe('storefront script cart/add interceptors', () => {
     });
   });
 
-  it('does not bulk-rewrite anchor hrefs for simple preview on startup', () => {
+  it('does not bulk-rewrite anchor hrefs or hijack clicks for simple preview', () => {
     const anchor = {
       getAttribute: jest.fn(name => (name === 'href' ? '/collections/all' : null)),
       setAttribute: jest.fn(),
@@ -723,7 +723,8 @@ describe('storefront script cart/add interceptors', () => {
     });
 
     expect(anchor.setAttribute).not.toHaveBeenCalled();
-    expect(windowObj.__RIPX_SIMPLE_PREVIEW_NAV__).toBe(true);
+    expect(windowObj.__RIPX_SIMPLE_PREVIEW_SESSION__).toBe(true);
+    expect(windowObj.__RIPX_SIMPLE_PREVIEW_NAV__).toBeUndefined();
   });
 
   it('isolates preview bootstrap from unrelated live active tests', () => {
@@ -1208,7 +1209,7 @@ describe('storefront script cart/add interceptors', () => {
     });
   });
 
-  it('stamps native form-submit cart adds just before submit', async () => {
+  it('stamps native form-submit cart adds just before submit', () => {
     const form = createCartAddFormStub();
     const { hooks, windowObj } = bootStorefrontScriptHarness({
       readyState: 'complete',

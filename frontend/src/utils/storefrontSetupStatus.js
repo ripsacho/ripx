@@ -33,7 +33,7 @@ export function storefrontRuntimeReviewMessage(setupStatus) {
     );
   }
   if (proxy.scriptDetected !== true && proxy.ok !== true) {
-    return 'App Proxy script is not reachable at /apps/ripx/script.js. Check Settings → Installation and your Shopify app proxy configuration.';
+    return 'App Proxy script is not reachable at /apps/ripx/script.js. Check Store settings → Store setup and your Shopify app proxy configuration.';
   }
   if (embed.detected !== true) {
     return 'Theme app embed was not detected. Enable RipX in Online Store → Themes → Customize → App embeds, then save the theme.';

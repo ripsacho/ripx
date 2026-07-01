@@ -339,6 +339,27 @@ describe('previewUrl', () => {
     expect(url.searchParams.get('url')).toBe(previewUrl);
   });
 
+  it('adds storefront password and preview params to Shopify preview-bootstrap URL', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'Variant A',
+      variantName: 'Variant A',
+      tenantDomain: 'makripon.myshopify.com',
+      testType: 'shipping',
+      simplePreview: true,
+    });
+    const result = buildShopifyPreviewBootstrapUrl({
+      previewUrl,
+      storefrontPassword: 'sp',
+    });
+    const url = new URL(result);
+    expect(url.searchParams.get('storefront_password')).toBe('sp');
+    expect(url.searchParams.get(PREVIEW_PARAMS.TEST_TYPE)).toBe('shipping');
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+    expect(url.searchParams.get('url')).toBe(previewUrl);
+  });
+
   it('builds isolated Shopify price debug preview bootstrap URL', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
@@ -405,6 +426,18 @@ describe('previewUrl', () => {
     expect(url.origin).toBe('https://makripon.myshopify.com');
     expect(url.pathname).toBe('/apps/ripx/preview-bootstrap-v2');
     expect(url.searchParams.get('url')).toBe(direct);
+  });
+
+  it('does not wrap simple customer preview URLs in bootstrap', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'Variant A',
+      variantName: 'Variant A',
+      testType: 'shipping',
+      simplePreview: true,
+    });
+    expect(ensureShopifyPreviewBootstrapUrl(previewUrl)).toBe(previewUrl);
   });
 
   it('does not re-wrap existing bootstrap URL', () => {

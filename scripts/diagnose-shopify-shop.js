@@ -61,7 +61,7 @@ function recommendation(report) {
   }
   if (report.apiOk && report.cartTransformFunction && !report.ripxCartTransformInstalled) {
     steps.push(
-      'Cart transform function is deployed but not bound to the store. In RipX: Settings → Installation → Direct price override → Install (POST /api/settings/cart-transform/ensure).'
+      'Cart transform function is deployed but not bound to the store. In RipX: Store settings → Store setup → Direct price override → Install (POST /api/settings/cart-transform/ensure).'
     );
   }
   if (report.apiOk && report.cartTransformBlockedByOtherApp) {
@@ -283,7 +283,7 @@ async function main() {
   }
   if (report.apiOk && report.storefrontRuntimeReady === false) {
     report.recommendations.push(
-      'Storefront/App Proxy not ready for price test preflight. In RipX open Settings → Installation; verify https://' +
+      'Storefront/App Proxy not ready for price test preflight. In RipX open Store settings → Store setup; verify https://' +
         shop +
         '/apps/ripx/script.js loads.'
     );

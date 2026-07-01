@@ -60,6 +60,10 @@ const {
 const { buildShippingPreviewDebugChecklist } = require('../services/shippingPreviewDebugService');
 const { buildShippingLiveDebugReport } = require('../services/shippingLiveDebugService');
 const {
+  buildDeliveryCustomizationConfigCompareReport,
+  simulateDeliveryCustomizationHide,
+} = require('../services/shippingDcDebugService');
+const {
   executeShippingTestPlan,
   cleanupManagedShippingResources,
   compareShippingCarrierCallbackUrls,
@@ -2785,6 +2789,112 @@ router.get(
       execution_plan: executionPlan,
       live_debug: report,
     });
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/dc-config-compare
+ * Compare expected delivery customization metafield vs live Shopify resource.
+ */
+router.get(
+  '/:id/shipping/dc-config-compare',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Delivery customization compare is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const rawVariantIndex = req.query?.variantIndex ?? req.query?.variant_index;
+    let variantIndex = null;
+    if (rawVariantIndex !== undefined && rawVariantIndex !== null && rawVariantIndex !== '') {
+      const parsed = Number.parseInt(String(rawVariantIndex), 10);
+      if (Number.isInteger(parsed) && parsed >= 0) {
+        variantIndex = parsed;
+      }
+    }
+
+    const report = await buildDeliveryCustomizationConfigCompareReport({
+      test,
+      shopDomain,
+      accessToken,
+      variantIndex,
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, report);
+  })
+);
+
+/**
+ * POST /api/tests/:id/shipping/simulate-hide
+ * Simulate delivery customization hide operations for sample checkout options.
+ */
+router.post(
+  '/:id/shipping/simulate-hide',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Delivery customization simulation is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const rawVariantIndex = req.body?.variantIndex ?? req.body?.variant_index;
+    let variantIndex = null;
+    if (rawVariantIndex !== undefined && rawVariantIndex !== null && rawVariantIndex !== '') {
+      const parsed = Number.parseInt(String(rawVariantIndex), 10);
+      if (Number.isInteger(parsed) && parsed >= 0) {
+        variantIndex = parsed;
+      }
+    }
+
+    const deliveryOptions = Array.isArray(req.body?.delivery_options)
+      ? req.body.delivery_options
+      : Array.isArray(req.body?.deliveryOptions)
+        ? req.body.deliveryOptions
+        : [];
+
+    const report = await simulateDeliveryCustomizationHide({
+      test,
+      shopDomain,
+      accessToken,
+      variantIndex,
+      deliveryOptions,
+      configOverride: req.body?.config_override || req.body?.configOverride || null,
+      testId: req.body?.test_id || req.body?.testId || null,
+      variantId: req.body?.variant_id || req.body?.variantId || null,
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, report);
   })
 );
 

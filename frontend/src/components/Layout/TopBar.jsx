@@ -45,6 +45,7 @@ import {
 import { THEME_CHANGE_EVENT, getResolvedTheme, updateTheme } from '../../utils/theme';
 import StoreSwitcher from '../StoreSwitcher/StoreSwitcher';
 import styles from './TopBar.module.css';
+import { buildDocsUrl, parseAppNavigationTarget } from '../../utils/docsLinks';
 
 const OpenInNewTabIcon = () => (
   <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -147,12 +148,27 @@ function TopBar({
   /* Profile, Docs, Notifications: always root. Settings only exists inside a selected app. */
   const profilePath = ROUTES.PROFILE;
   const notificationsPath = ROUTES.NOTIFICATIONS;
-  const docsPath = ROUTES.DOCS;
   const supportPath = ROUTES.SUPPORT;
   const appDomain = getAppDomainFromPath(location.pathname);
+  const docsPath = useMemo(() => buildDocsUrl({ mode: 'feature-guides' }), []);
   const identityLabel = userEmail || null;
   const identityTitle = 'Signed in as';
   const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : null;
+
+  const navigateToAppPath = useCallback(
+    rawPath => {
+      if (!rawPath) return;
+      const { pathname, query, hash } = parseAppNavigationTarget(rawPath);
+      const pathParams = query ? Object.fromEntries(new URLSearchParams(query)) : null;
+      const target =
+        pathname === ROUTES.DOCS
+          ? { pathname, search: query ? `?${query}` : undefined }
+          : getNavigateToWithEmbed(pathname, pathParams);
+      if (hash) target.hash = hash;
+      navigate(target);
+    },
+    [navigate]
+  );
 
   const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
   const {
@@ -333,14 +349,14 @@ function TopBar({
         target: item.path || item.url || null,
       });
       if (item.path) {
-        navigateWithEmbed(item.path);
+        navigateToAppPath(item.path);
         return;
       }
       if (item.url) {
         window.open(item.url, '_blank', 'noopener,noreferrer');
       }
     },
-    [contextHelp?.context_key, navigateWithEmbed, trackUiEvent]
+    [contextHelp?.context_key, navigateToAppPath, trackUiEvent]
   );
 
   const handleLogout = useCallback(() => {
@@ -532,7 +548,7 @@ function TopBar({
                   onClick={() => {
                     setHelpPopoverActive(false);
                     trackUiEvent('topbar_help_navigate', { target: docsPath });
-                    window.open(docsPath, '_blank', 'noopener,noreferrer');
+                    navigateToAppPath(docsPath);
                   }}
                 >
                   Documentation
@@ -825,7 +841,7 @@ function TopBar({
                     role="menuitem"
                     onClick={() => handleUserMenuNavigate(settingsPath)}
                   >
-                    App settings
+                    Store settings
                   </button>
                 )}
                 <button

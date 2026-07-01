@@ -533,7 +533,7 @@ const priceCheckoutDiagnosticsLimiter = rateLimit({
   message: {
     success: false,
     error:
-      'Too many checkout diagnostics requests. Try again later or use Settings → Installation from the app.',
+      'Too many checkout diagnostics requests. Try again later or use Store settings → Store setup from the app.',
   },
   standardHeaders: true,
   legacyHeaders: false,

@@ -390,7 +390,7 @@ export function buildShippingCategoryConfigPatch(
       strategy: 'carrier_quote',
       execution_hint: 'delivery_customization',
       delivery_action: normalized === 'rename_method' ? 'rename' : 'hide',
-      shipping_display_mode: 'replace_existing_methods',
+      shipping_display_mode: 'add_preview_method',
       replace_existing_rates: false,
       rates: [],
       metadata: {

@@ -58,7 +58,7 @@ This section is specific to **RipX**. It lists what already exists in the codeba
 | **Auth**           | ✅ Email + Shopify   | `req.email`, `req.shopDomain`, `authType`; `userModel.getByEmail()`. Support routes can use same `authenticate` + optional `requireEmailSession` or shop auth.                                                                |
 | **Email sending**  | ✅ Nodemailer (SMTP) | `backend/src/services/emailService.js` – `sendMail({ to, subject, text, html })`, retries, branded layout. **No SendGrid required** for Phase 1; use existing SMTP (e.g. AWS SES) for support ticket and confirmation emails. |
 | **Frontend**       | ✅ React + Vite      | `frontend/` with Polaris, React Router, lazy routes (`lazyRoutes.js`), `useAppRoutes`, `getRoutesForDomain`. Same pattern as `Documentation` can be used for a Support page.                                                  |
-| **Routes pattern** | ✅ Centralised       | `frontend/src/constants/routes.js` (e.g. `ROUTES.DOCS`, `ROUTES.appDocs(domain)`). Add `ROUTES.SUPPORT` and `ROUTES.appSupport(domain)` and wire in `getRoutesForDomain.js`.                                                  |
+| **Routes pattern** | ✅ Centralised       | `frontend/src/constants/routes.js` (e.g. global `ROUTES.DOCS`, store routes under `/app/:domain`). Add `ROUTES.SUPPORT` and `ROUTES.appSupport(domain)` and wire in `getRoutesForDomain.js`.                                  |
 | **Users table**    | ✅ UUID `id`         | `users.id` is UUID; `support_tickets.user_id` should be `UUID REFERENCES users(id)` (optional FK if ticket is from logged-in user).                                                                                           |
 
 ### 2.2 What You Need to Add

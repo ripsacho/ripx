@@ -108,7 +108,7 @@ function buildShopifyFunctionsInventory(shopifyFunctions, shopDomain) {
       'This codebase defines checkout-oriented Shopify Functions for discounting, cart transforms, payment customization, and delivery customization. Payment/delivery customization remain optional product surfaces until those phases are deployed on the target shop.',
     ],
     operationalNotes: [
-      'You do not need a running price test to deploy these extensions or to create the automatic discount from App settings.',
+      'You do not need a running price test to deploy these extensions or to create the automatic discount from Store settings → Store setup.',
       'Deploy extensions (e.g. shopify app deploy), then use Create/attach RipX discount when the discount function is visible to Admin API.',
       'Shopify allows at most one cart transform function per store; if another app owns that slot, RipX cart transform cannot be installed until that is resolved.',
     ],

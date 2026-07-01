@@ -19,6 +19,6 @@ describe('checkoutReadinessHints', () => {
       message: 'Direct Price Override is not ready.',
     });
     expect(enriched.action_path).toMatch(/Direct price override/i);
-    expect(enriched.message).toMatch(/Settings → Installation/i);
+    expect(enriched.message).toMatch(/Store settings → Store setup/i);
   });
 });
