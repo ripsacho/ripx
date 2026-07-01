@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  color: #0f172a;
+  color: var(--text-primary);
   cursor: pointer;
   position: relative;
   isolation: isolate;
@@ -34,7 +34,7 @@
     linear-gradient(135deg, #06b6d4, #8b5cf6, #22c55e) border-box;
   border: 1px solid transparent;
   box-shadow:
-    0 18px 44px rgba(15, 23, 42, 0.18),
+    0 18px 44px rgba(30, 41, 59, 0.18),
     0 8px 22px rgba(6, 182, 212, 0.22);
   transition:
     transform 0.18s ease,
@@ -45,7 +45,7 @@
 .launcher:hover {
   transform: translateY(-2px);
   box-shadow:
-    0 22px 54px rgba(15, 23, 42, 0.22),
+    0 22px 54px rgba(30, 41, 59, 0.22),
     0 10px 26px rgba(6, 182, 212, 0.28);
 }
 
@@ -57,7 +57,7 @@
 [data-theme='dark'] .launcher {
   color: #f8fafc;
   background:
-    linear-gradient(rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.98)) padding-box,
+    linear-gradient(rgba(30, 41, 59, 0.98), rgba(30, 41, 59, 0.98)) padding-box,
     linear-gradient(135deg, #06b6d4, #8b5cf6, #22c55e) border-box;
 }
 
@@ -123,7 +123,7 @@
     radial-gradient(circle at 20% 0%, rgba(6, 182, 212, 0.08), transparent 36%),
     rgba(255, 255, 255, 0.97);
   box-shadow:
-    0 28px 80px rgba(15, 23, 42, 0.24),
+    0 28px 80px rgba(30, 41, 59, 0.24),
     0 0 0 1px rgba(255, 255, 255, 0.72) inset;
   backdrop-filter: blur(22px) saturate(1.05);
 }
@@ -141,7 +141,7 @@
 [data-theme='dark'] .panel {
   background:
     radial-gradient(circle at 20% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
-    rgba(15, 23, 42, 0.97);
+    var(--surface-slate-solid);
   border-color: rgba(6, 182, 212, 0.28);
 }
 
@@ -150,16 +150,16 @@
 }
 
 [data-theme='dark'] .emptyStateGrid span {
-  background: rgba(15, 23, 42, 0.64);
+  background: rgba(30, 41, 59, 0.64);
 }
 
 [data-theme='dark'] .composer {
-  background: rgba(15, 23, 42, 0.82);
+  background: var(--surface-slate-soft);
 }
 
 [data-theme='dark'] .composerShell {
   background:
-    linear-gradient(rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.94)) padding-box,
+    linear-gradient(rgba(30, 41, 59, 0.94), rgba(30, 41, 59, 0.94)) padding-box,
     linear-gradient(135deg, rgba(6, 182, 212, 0.26), rgba(139, 92, 246, 0.18)) border-box;
 }
 
@@ -187,11 +187,11 @@
 [data-theme='dark'] .faqModeAnswer,
 [data-theme='dark'] .faqModeQuestion,
 [data-theme='dark'] .faqModeQuestionActive {
-  background: rgba(15, 23, 42, 0.68);
+  background: var(--surface-glass);
 }
 
 [data-theme='dark'] .supportThreadMessages {
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(30, 41, 59, 0.55);
 }
 
 [data-theme='dark'] .supportThreadMessageUser,
@@ -201,7 +201,7 @@
 
 [data-theme='dark'] .modeHomeIntro,
 [data-theme='dark'] .modeHomeCard {
-  background: rgba(15, 23, 42, 0.68);
+  background: var(--surface-glass);
 }
 
 .panelHeader {
@@ -360,7 +360,7 @@
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.78);
   cursor: pointer;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 22px rgba(30, 41, 59, 0.04);
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,
@@ -456,7 +456,7 @@
   border-radius: 18px;
   padding: 0.85rem;
   background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 10px 28px rgba(30, 41, 59, 0.04);
 }
 
 .modePanelHeader {
@@ -540,7 +540,7 @@
     linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.12)) border-box;
   font: inherit;
   font-size: 0.82rem;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 20px rgba(30, 41, 59, 0.04);
 }
 
 .faqSearch:focus {
@@ -565,7 +565,7 @@
     radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.16), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.68));
   box-shadow:
-    0 14px 34px rgba(15, 23, 42, 0.06),
+    0 14px 34px rgba(30, 41, 59, 0.06),
     0 0 0 1px rgba(255, 255, 255, 0.7) inset;
 }
 
@@ -729,7 +729,7 @@
   border-radius: 15px;
   padding: 0.2rem 0.68rem;
   background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.04);
 }
 
 .faqSearchShell:focus-within {
@@ -843,7 +843,7 @@
   background:
     linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)) padding-box,
     linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.12)) border-box;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 28px rgba(30, 41, 59, 0.05);
 }
 
 .customerComposer:focus-within {
@@ -1059,7 +1059,7 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.08), transparent 36%),
     rgba(255, 255, 255, 0.74);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.04);
 }
 
 .faqInsightHeader {
@@ -1383,7 +1383,7 @@
   border-radius: 999px;
   padding: 0.18rem 0.45rem;
   color: var(--text-secondary);
-  background: rgba(15, 23, 42, 0.05);
+  background: rgba(30, 41, 59, 0.05);
   font-size: 0.64rem;
   font-weight: 750;
 }
@@ -1481,7 +1481,7 @@
   border: 1px solid rgba(6, 182, 212, 0.18);
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.04));
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 12px 28px rgba(30, 41, 59, 0.04);
 }
 
 .emptyStateIcon {
@@ -1587,7 +1587,7 @@
   border: 1px solid var(--border-secondary);
   background: rgba(255, 255, 255, 0.82);
   color: var(--text-primary);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 22px rgba(30, 41, 59, 0.04);
 }
 
 .messageText {
@@ -1624,6 +1624,12 @@
   color: var(--text-primary);
 }
 
+[data-theme='dark'] .toolPill {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
+}
+
 .actionList {
   display: grid;
   gap: 0.55rem;
@@ -1640,6 +1646,12 @@
   padding: 0.65rem;
   background: rgba(6, 182, 212, 0.06);
   box-shadow: 0 8px 22px rgba(6, 182, 212, 0.06);
+}
+
+[data-theme='dark'] .actionCard {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.22);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
 .actionCard p {
@@ -1713,7 +1725,7 @@
     linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)) padding-box,
     linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.12)) border-box;
   box-shadow:
-    0 10px 28px rgba(15, 23, 42, 0.06),
+    0 10px 28px rgba(30, 41, 59, 0.06),
     0 0 0 1px rgba(255, 255, 255, 0.78) inset;
 }
 

@@ -32,6 +32,13 @@ const {
   AUDIENCE_TRAFFIC_SOURCE_VALUES,
   AUDIENCE_OPERATING_SYSTEM_VALUES,
 } = require('../utils/segments');
+const {
+  matchesTrafficSourceRules,
+  matchesLegacyTrafficSource,
+  normalizeTrafficSourceRules: normalizeTrafficSourceRulesForValidation,
+} = require('../utils/trafficSourceRules');
+
+const MAX_TEST_VARIANTS = 10;
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
@@ -338,10 +345,13 @@ class ABTestEngine {
         }
       }
 
-      // Sticky assignment wins over later targeting/ramp changes. This keeps live users stable
-      // after a test is edited, matching production A/B testing tools.
+      // Reuse sticky assignments only while the visitor still matches current targeting.
+      // If a test is tightened to mobile-only, a previously assigned desktop visitor must stop seeing it.
       const existingAssignment = await getTestAssignment(testId, userId, shopDomain);
       if (existingAssignment) {
+        if (!this.isUserEligible(test, context)) {
+          return null;
+        }
         return this._buildAssignmentResponseFromExisting(test, existingAssignment);
       }
 
@@ -525,7 +535,13 @@ class ABTestEngine {
     });
 
     assignmentsMap.forEach((assignment, testId) => {
-      if (assignment && groupByTestId.get(String(testId))) {
+      const test = testsMap.get(testId);
+      const testContext = { ...context, ...(contextOverrides[testId] || {}) };
+      if (
+        assignment &&
+        groupByTestId.get(String(testId)) &&
+        this.isUserEligible(test, testContext)
+      ) {
         blockedGroups.add(groupByTestId.get(String(testId)));
       }
     });
@@ -633,6 +649,9 @@ class ABTestEngine {
       const testContext = { ...context, ...(contextOverrides[testId] || {}) };
       const existingAssignment = assignmentsMap.get(testId);
       if (existingAssignment) {
+        if (!this.isUserEligible(test, testContext)) {
+          continue;
+        }
         const existingResponse = this._buildAssignmentResponseFromExisting(
           test,
           existingAssignment
@@ -1016,27 +1035,19 @@ class ABTestEngine {
       }
     }
 
-    // Advanced targeting: traffic source
-    const trafficSource = (segments.traffic_source || 'all').toLowerCase();
-    if (trafficSource !== 'all' && context.traffic_source) {
-      const ctxSource = String(context.traffic_source).toLowerCase();
-      const trafficSourceGroups = {
-        organic: ['organic', 'direct', 'organic_search', 'organic_social', 'google'],
-        paid: ['paid', 'paid_search', 'paid_social', 'paid_shopping'],
-        social: [
-          'social',
-          'organic_social',
-          'paid_social',
-          'facebook',
-          'instagram',
-          'tiktok',
-          'twitter',
-          'youtube',
-        ],
-      };
-      const allowedSources = trafficSourceGroups[trafficSource] || [trafficSource];
-      if (!allowedSources.includes(ctxSource)) {
+    // Advanced targeting: traffic source (include/exclude rules or legacy single value)
+    const trafficSourceRules = segments.traffic_source_rules;
+    if (Array.isArray(trafficSourceRules) && trafficSourceRules.length > 0) {
+      const ruleMatch = matchesTrafficSourceRules(trafficSourceRules, context.traffic_source);
+      if (ruleMatch === false) {
         return false;
+      }
+    } else {
+      const trafficSource = (segments.traffic_source || 'all').toLowerCase();
+      if (trafficSource !== 'all' && context.traffic_source) {
+        if (!matchesLegacyTrafficSource(trafficSource, context.traffic_source)) {
+          return false;
+        }
       }
     }
 
@@ -1211,12 +1222,20 @@ class ABTestEngine {
     }
 
     // Check variants
-    if (!testConfig.variants || testConfig.variants.length < 2) {
-      errors.push('At least 2 variants are required');
+    const minVariants = testType === 'shipping' ? 1 : 2;
+    if (!testConfig.variants || testConfig.variants.length < minVariants) {
+      errors.push(
+        minVariants === 1 ? 'At least 1 variant is required' : 'At least 2 variants are required'
+      );
+    } else if (testConfig.variants.length > MAX_TEST_VARIANTS) {
+      errors.push(`A test can include at most ${MAX_TEST_VARIANTS} variants`);
     }
 
     // Check allocation percentages
     if (testConfig.variants) {
+      if (testType === 'shipping' && testConfig.variants.length === 1) {
+        testConfig.variants = [{ ...testConfig.variants[0], allocation: 100 }];
+      }
       const totalAllocation = testConfig.variants.reduce(
         (sum, v) => sum + (Number(v.allocation) || 0),
         0
@@ -1572,6 +1591,19 @@ class ABTestEngine {
       ) {
         errors.push(
           'Segment traffic_source must be a supported audience value (Standard/Advanced), e.g. all, direct, organic_search, paid_social, instagram, or legacy organic, paid, social, email, referral'
+        );
+      }
+
+      const trafficSourceRules = normalizeTrafficSourceRulesForValidation(
+        testConfig.segments.traffic_source_rules
+      );
+      if (
+        Array.isArray(testConfig.segments.traffic_source_rules) &&
+        testConfig.segments.traffic_source_rules.length > 0 &&
+        trafficSourceRules.length === 0
+      ) {
+        errors.push(
+          'Segment traffic_source_rules must contain valid include/exclude source values such as direct, paid_search, or instagram'
         );
       }
 

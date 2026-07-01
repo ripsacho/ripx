@@ -103,10 +103,13 @@ describe('ABTestEngine sticky live assignments', () => {
     jest.doMock('../services/experimentationPolicyService', () => ({
       getGlobalHoldoutPercent: jest.fn().mockResolvedValue(0),
     }));
+    jest.doMock('../services/featureFlagService', () => ({
+      evaluateFlags: jest.fn().mockResolvedValue({ enabled: true, reason: 'test' }),
+    }));
     return require('../services/abTestEngine');
   }
 
-  it('returns an existing assignment before changed targeting can exclude the user', async () => {
+  it('does not return an existing assignment when current targeting excludes the user', async () => {
     const test = {
       id: '11111111-1111-4111-8111-111111111111',
       status: 'running',
@@ -126,15 +129,10 @@ describe('ABTestEngine sticky live assignments', () => {
       device: 'desktop',
     });
 
-    expect(variant).toMatchObject({
-      variantId: 'v-a',
-      variantName: 'Variant A',
-      isNewAssignment: false,
-      config: { html: '<b>A</b>' },
-    });
+    expect(variant).toBeNull();
   });
 
-  it('batch assignment returns existing assignments before changed targeting can exclude the user', async () => {
+  it('batch assignment does not return existing assignments when current targeting excludes the user', async () => {
     const test = {
       id: '22222222-2222-4222-8222-222222222222',
       status: 'running',
@@ -159,12 +157,7 @@ describe('ABTestEngine sticky live assignments', () => {
       device: 'desktop',
     });
 
-    expect(variants[test.id]).toMatchObject({
-      variantId: 'v-b',
-      variantName: 'Variant B',
-      isNewAssignment: false,
-      config: { css: '.x{}' },
-    });
+    expect(variants[test.id]).toBeUndefined();
   });
 });
 
@@ -204,6 +197,30 @@ describe('ABTestEngine.isUserEligible', () => {
     const test = { segments: { traffic_source: 'social' } };
     expect(ABTestEngine.isUserEligible(test, { traffic_source: 'instagram' })).toBe(true);
     expect(ABTestEngine.isUserEligible(test, { traffic_source: 'paid_search' })).toBe(false);
+  });
+
+  it('supports include and exclude traffic_source_rules', () => {
+    const test = {
+      segments: {
+        traffic_source_rules: [
+          { type: 'include', value: 'organic' },
+          { type: 'exclude', value: 'direct' },
+        ],
+      },
+    };
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'organic_search' })).toBe(true);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'direct' })).toBe(false);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'paid_search' })).toBe(false);
+  });
+
+  it('allows all non-excluded sources when only exclude traffic_source_rules are set', () => {
+    const test = {
+      segments: {
+        traffic_source_rules: [{ type: 'exclude', value: 'direct' }],
+      },
+    };
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'email' })).toBe(true);
+    expect(ABTestEngine.isUserEligible(test, { traffic_source: 'direct' })).toBe(false);
   });
 
   it('ignores legacy url_pattern for price tests in all-products scope', () => {
@@ -382,6 +399,20 @@ describe('ABTestEngine.validateTest audience segments', () => {
     });
     expect(result.isValid).toBe(false);
     expect(result.errors.some(e => e.includes('operating_system'))).toBe(true);
+  });
+
+  it('rejects tests with more than ten variants', () => {
+    const result = ABTestEngine.validateTest({
+      ...baseSplit,
+      variants: Array.from({ length: 11 }, (_, index) => ({
+        name: index === 0 ? 'Control' : `Variant ${index}`,
+        allocation: index < 10 ? 10 : 0,
+        config: index === 0 ? { url: '' } : { url: `/pages/${index}` },
+      })),
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain('A test can include at most 10 variants');
   });
 });
 

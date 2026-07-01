@@ -16,9 +16,24 @@ import {
 import { collectPriceSurfaceMappingIssues } from '../../utils/priceSurfaceRegistry';
 import { normalizeGoalSecondaryMetric } from '../../utils/goalMetricConfig';
 import {
+  getShippingStrategy,
+  hasActionableShippingConfig,
+  normalizeShippingDeliveryPromise as getShippingDeliveryPromise,
+  normalizeShippingRates,
+  SHIPPING_STRATEGIES,
+  shouldReplaceExistingShippingMethods,
+  toShippingNumber,
+  getShippingMethodHandles,
+  getShippingDeliveryTargets,
+  getShippingScopeTargets,
+  isOfferWizardConfig,
+  getOfferWizardReadinessIssues,
+} from '../../utils/shippingConfig';
+import {
   resolveCustomRuleGroupsFromSegments,
   validateCustomRuleGroups,
 } from './customAudienceRules';
+import { MAX_TEST_VARIANTS } from './testWizardConfig';
 
 /**
  * Test Wizard validation (pure functions)
@@ -248,70 +263,6 @@ export function getWizardStepErrors(stepId, options) {
     return /^[A-Za-z0-9_-]+$/.test(value);
   }
 
-  function getShippingStrategy(cfg) {
-    const strategy = String(cfg?.strategy || cfg?.shipping_strategy || '')
-      .trim()
-      .toLowerCase();
-    if (strategy) return strategy;
-    const discountType = String(cfg?.discount_type || cfg?.discountType || '')
-      .trim()
-      .toLowerCase();
-    if (discountType === 'free_shipping') return 'free_shipping';
-    if (
-      cfg?.threshold_amount !== undefined ||
-      cfg?.free_shipping_threshold !== undefined ||
-      cfg?.freeShippingThreshold !== undefined
-    ) {
-      return 'threshold_free_shipping';
-    }
-    if (discountType === 'percent') return 'discount_percentage';
-    if (discountType === 'fixed') return 'discount_fixed';
-    if (cfg?.profile_id || cfg?.profileId) return 'carrier_quote';
-    if (
-      cfg?.amount !== undefined ||
-      cfg?.rate !== undefined ||
-      cfg?.shipping_rate !== undefined ||
-      cfg?.discount_value !== undefined
-    ) {
-      return 'flat_rate';
-    }
-    return 'control';
-  }
-
-  function toShippingNumber(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  function hasActionableShippingConfig(cfg = {}) {
-    const strategy = getShippingStrategy(cfg);
-    const amount = toShippingNumber(
-      cfg.amount ?? cfg.rate ?? cfg.shipping_rate ?? cfg.discount_value
-    );
-    const threshold = toShippingNumber(
-      cfg.threshold_amount ?? cfg.free_shipping_threshold ?? cfg.freeShippingThreshold
-    );
-    const percentOff = toShippingNumber(
-      cfg.percent_off ??
-        cfg.discount_percent ??
-        (String(cfg.discount_type || '').toLowerCase() === 'percent' ? cfg.discount_value : null)
-    );
-    const profileId = String(cfg.profile_id || cfg.profileId || '').trim();
-    const methodHandles = Array.isArray(cfg.method_handles)
-      ? cfg.method_handles
-      : Array.isArray(cfg.methodHandles)
-        ? cfg.methodHandles
-        : [];
-    if (strategy === 'flat_rate') return amount !== null && amount >= 0;
-    if (strategy === 'threshold_free_shipping') return threshold !== null && threshold > 0;
-    if (strategy === 'discount_percentage') return percentOff !== null && percentOff > 0;
-    if (strategy === 'discount_fixed') return amount !== null && amount > 0;
-    if (strategy === 'free_shipping') return true;
-    if (strategy === 'carrier_quote') return Boolean(profileId || methodHandles.length > 0);
-    return false;
-  }
-
   function validateShippingConfig(cfg = {}, label, isControl) {
     const strategy = getShippingStrategy(cfg);
     const amount = toShippingNumber(
@@ -326,27 +277,94 @@ export function getWizardStepErrors(stepId, options) {
         (String(cfg.discount_type || '').toLowerCase() === 'percent' ? cfg.discount_value : null)
     );
     const profileId = String(cfg.profile_id || cfg.profileId || '').trim();
-    const methodHandles = Array.isArray(cfg.method_handles)
-      ? cfg.method_handles
-      : Array.isArray(cfg.methodHandles)
-        ? cfg.methodHandles
-        : [];
-    const validStrategies = [
-      'control',
-      'flat_rate',
-      'threshold_free_shipping',
-      'discount_percentage',
-      'discount_fixed',
-      'free_shipping',
-      'carrier_quote',
-    ];
-    if (!validStrategies.includes(strategy)) {
+    const methodHandles = getShippingMethodHandles(cfg);
+    const deliveryTargets = getShippingDeliveryTargets(cfg);
+    const scopeTargets = getShippingScopeTargets(cfg);
+    const rates = normalizeShippingRates(cfg);
+    const hasActionableRate = rates.some(rate => rate.amount !== null && rate.amount >= 0);
+    const replacesExistingRates = shouldReplaceExistingShippingMethods(cfg);
+    if (!SHIPPING_STRATEGIES.includes(strategy)) {
       errors.push(`${label}: shipping strategy is invalid.`);
       return;
     }
-    if (strategy === 'flat_rate' && (amount === null || amount < 0)) {
-      errors.push(`${label}: flat rate requires an amount >= 0.`);
+    if (
+      strategy === 'flat_rate' &&
+      (amount === null || amount < 0) &&
+      !hasActionableRate &&
+      !isOfferWizardConfig(cfg)
+    ) {
+      errors.push(`${label}: flat rate requires an amount >= 0 or at least one configured rate.`);
     }
+    if (
+      strategy === 'flat_rate' &&
+      rates.some(rate => rate.amount !== null && rate.amount < 0) &&
+      !isControl
+    ) {
+      errors.push(`${label}: configured rate amounts must be 0 or greater.`);
+    }
+    if (
+      strategy === 'flat_rate' &&
+      rates.some(
+        rate =>
+          (rate.priority !== null && rate.priority < 1) ||
+          (rate.sort_order !== null && rate.sort_order < 1)
+      ) &&
+      !isControl
+    ) {
+      errors.push(`${label}: rate priority and sort order must be positive integers.`);
+    }
+    if (isOfferWizardConfig(cfg) && !isControl) {
+      getOfferWizardReadinessIssues(cfg, {
+        normalizeRates: config => normalizeShippingRates(config),
+      }).forEach(issue => {
+        errors.push(`${label}: ${issue}`);
+      });
+    }
+    if (
+      strategy === 'flat_rate' &&
+      replacesExistingRates &&
+      String(cfg.delivery_action || cfg.deliveryAction || 'hide').toLowerCase() !== 'hide' &&
+      !isControl
+    ) {
+      errors.push(`${label}: replacement flat rate can only hide existing delivery methods.`);
+    }
+    if (
+      String(cfg.delivery_action || cfg.deliveryAction || '').toLowerCase() === 'rename' &&
+      !String(cfg.delivery_rename_to || cfg.deliveryRenameTo || cfg.rename_to || '').trim() &&
+      !isControl
+    ) {
+      errors.push(`${label}: delivery rename action requires a new method name.`);
+    }
+    const checkoutDisplay =
+      cfg.checkout_display && typeof cfg.checkout_display === 'object'
+        ? cfg.checkout_display
+        : cfg.checkoutDisplay && typeof cfg.checkoutDisplay === 'object'
+          ? cfg.checkoutDisplay
+          : {};
+    if (String(checkoutDisplay.default_description || '').trim().length > 200) {
+      errors.push(
+        `${label}: checkout display default description must be 200 characters or fewer.`
+      );
+    }
+    rates.forEach((rate, rateIndex) => {
+      if (rate.description.length > 200) {
+        errors.push(
+          `${label}: rate ${rateIndex + 1} checkout subline must be 200 characters or fewer.`
+        );
+      }
+      const promise = getShippingDeliveryPromise(rate.delivery_promise || rate);
+      if (promise.mode && promise.mode !== 'none' && rate.amount === null) {
+        errors.push(`${label}: rate ${rateIndex + 1} delivery promise requires a rate amount.`);
+      }
+      if (
+        promise.mode === 'custom' &&
+        promise.min_delivery_date &&
+        promise.max_delivery_date &&
+        promise.min_delivery_date > promise.max_delivery_date
+      ) {
+        errors.push(`${label}: rate ${rateIndex + 1} delivery promise date range is invalid.`);
+      }
+    });
     if (strategy === 'threshold_free_shipping' && (threshold === null || threshold <= 0)) {
       errors.push(`${label}: threshold free shipping requires a threshold > 0.`);
     }
@@ -359,8 +377,32 @@ export function getWizardStepErrors(stepId, options) {
     if (strategy === 'discount_fixed' && (amount === null || amount <= 0)) {
       errors.push(`${label}: shipping fixed discount requires an amount > 0.`);
     }
-    if (strategy === 'carrier_quote' && !profileId && methodHandles.length === 0 && !isControl) {
-      errors.push(`${label}: carrier quote requires a profile ID or method handle.`);
+    const unifiedWizard = String(cfg.metadata?.shipping_wizard_path || '').trim() === 'unified';
+    const unifiedIncentiveStrategies = [
+      'free_shipping',
+      'threshold_free_shipping',
+      'discount_percentage',
+      'discount_fixed',
+    ];
+    if (
+      unifiedWizard &&
+      unifiedIncentiveStrategies.includes(strategy) &&
+      deliveryTargets.length === 0 &&
+      !isControl
+    ) {
+      errors.push(`${label}: pick at least one Shopify method to target.`);
+    }
+    if (
+      strategy === 'carrier_quote' &&
+      !profileId &&
+      methodHandles.length === 0 &&
+      deliveryTargets.length === 0 &&
+      scopeTargets.length === 0 &&
+      !isControl
+    ) {
+      errors.push(
+        `${label}: carrier quote requires a profile ID, method handle, or delivery method target.`
+      );
     }
   }
 
@@ -707,6 +749,9 @@ export function getWizardStepErrors(stepId, options) {
 
   // Traffic step: only validate allocation. Variant price config is required on Code and Review.
   if (stepId === stepIds.traffic) {
+    if (Array.isArray(formData.variants) && formData.variants.length > MAX_TEST_VARIANTS) {
+      errors.push(`A test can include at most ${MAX_TEST_VARIANTS} variants.`);
+    }
     const totalAllocation = (formData.variants || []).reduce(
       (sum, v) => sum + (v.allocation || 0),
       0
@@ -977,6 +1022,9 @@ export function getWizardStepErrors(stepId, options) {
   if (reviewStepId !== undefined && reviewStepId !== null && stepId === reviewStepId) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
     if (!nameToCheck) errors.push('Test name is required.');
+    if (Array.isArray(formData.variants) && formData.variants.length > MAX_TEST_VARIANTS) {
+      errors.push(`A test can include at most ${MAX_TEST_VARIANTS} variants.`);
+    }
     if (!formData.goal?.metric && !initialData?.goal?.metric) {
       errors.push('Select a success metric in the Goal & Metrics step.');
     }

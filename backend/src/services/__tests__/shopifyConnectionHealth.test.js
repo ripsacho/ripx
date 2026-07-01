@@ -15,6 +15,18 @@ describe('evaluateShopifyConnectionHealth', () => {
     process.env.SHOPIFY_SCOPES = 'read_products,write_products';
   });
 
+  it('quick mode treats empty stored scope as connected until scopes sync', async () => {
+    const result = await evaluateShopifyConnectionHealth({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'shpca_test',
+      sessionScope: '',
+      quick: true,
+    });
+    expect(result.connection.code).toBe('SESSION_OK_UNVERIFIED_SCOPES');
+    expect(result.connection.state).toBe('connected');
+    expect(result.tokenHealth.missingScopes).toEqual([]);
+  });
+
   it('quick mode treats stale scopes as openable with reauthorize', async () => {
     const result = await evaluateShopifyConnectionHealth({
       shopDomain: 'demo.myshopify.com',
@@ -66,6 +78,18 @@ describe('evaluateShopifyConnectionHealth', () => {
     expect(result.connection.state).toBe('connected');
     expect(result.tokenHealth.valid).toBe(true);
     expect(result.tokenHealth.shopName).toBe('Demo Shop');
+  });
+
+  it('treats write-only OAuth scope strings as fully granted when read is implied', async () => {
+    const result = await evaluateShopifyConnectionHealth({
+      shopDomain: 'demo.myshopify.com',
+      accessToken: 'shpca_test',
+      sessionScope: 'write_products',
+      quick: true,
+    });
+    expect(result.connection.code).toBe('SESSION_OK');
+    expect(result.connection.state).toBe('connected');
+    expect(result.tokenHealth.missingScopes).toEqual([]);
   });
 
   it('returns scopes_stale when token works but required scopes are missing', async () => {

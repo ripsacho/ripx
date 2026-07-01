@@ -91,11 +91,16 @@ function isShopifyConnectionStatusRequest(req) {
   return req.method === 'GET' && String(req.path || '').endsWith('/connection-status');
 }
 
+function isShopifyReauthorizeRedirectRequest(req) {
+  return req.method === 'GET' && String(req.path || '').endsWith('/reauthorize-redirect');
+}
+
 async function authenticateShopify(req, res, next) {
   try {
     // Get requested shop domain from query or headers.
     const requestedShop = getRequestedStore(req);
     const connectionStatusProbe = isShopifyConnectionStatusRequest(req);
+    const oauthRedirectEntry = isShopifyReauthorizeRedirectRequest(req);
 
     // If caller has an email session, resolve and enforce store access before loading Shopify token.
     const hasEmailSession = await tryEmailSessionToken(req);
@@ -106,30 +111,37 @@ async function authenticateShopify(req, res, next) {
         req.allowUnlinkedShopifyProbe = true;
       }
       if (!req.shopDomain) {
-        const requestedTenant = requestedShop ? await getTenantByDomain(requestedShop) : null;
-        logger.warn('Authentication failed: Email user has no access to requested Shopify store', {
-          requestedShop: requestedShop || null,
-          path: req.path,
-          actor: req.email || null,
-        });
-        if (requestedShop && !requestedTenant) {
+        if (oauthRedirectEntry && requestedShop) {
+          req.shopDomain = requestedShop.trim().toLowerCase();
+        } else {
+          const requestedTenant = requestedShop ? await getTenantByDomain(requestedShop) : null;
+          logger.warn(
+            'Authentication failed: Email user has no access to requested Shopify store',
+            {
+              requestedShop: requestedShop || null,
+              path: req.path,
+              actor: req.email || null,
+            }
+          );
+          if (requestedShop && !requestedTenant) {
+            return sendShopifyConnectionError(res, {
+              status: 401,
+              error: 'Shop not authenticated',
+              code: 'SHOP_NOT_AUTHENTICATED',
+              shop: requestedShop || null,
+              state: 'needs_install',
+              action: 'install',
+            });
+          }
           return sendShopifyConnectionError(res, {
-            status: 401,
-            error: 'Shop not authenticated',
-            code: 'SHOP_NOT_AUTHENTICATED',
+            status: 403,
+            error: 'Store access denied for this user',
+            code: 'STORE_ACCESS_DENIED',
             shop: requestedShop || null,
-            state: 'needs_install',
-            action: 'install',
+            state: 'needs_link',
+            action: 'link',
           });
         }
-        return sendShopifyConnectionError(res, {
-          status: 403,
-          error: 'Store access denied for this user',
-          code: 'STORE_ACCESS_DENIED',
-          shop: requestedShop || null,
-          state: 'needs_link',
-          action: 'link',
-        });
       }
       if (requestedShop && req.shopDomain !== requestedShop) {
         logger.warn('Authentication failed: Requested Shopify store mismatch for email user', {
@@ -214,6 +226,11 @@ async function authenticateShopify(req, res, next) {
       // Dev-only fallback when shop has not completed OAuth
       req.shopifyAccessToken = process.env.SHOPIFY_ACCESS_TOKEN;
       logger.debug('Using SHOPIFY_ACCESS_TOKEN dev fallback', { shop: normalizedShop });
+    } else if (oauthRedirectEntry) {
+      logger.debug('Shopify OAuth redirect entry without shop access token', {
+        shop: normalizedShop,
+        path: req.path,
+      });
     } else {
       logger.warn('Authentication failed: No access token found for shop', {
         shop: normalizedShop,
@@ -232,7 +249,12 @@ async function authenticateShopify(req, res, next) {
     // Require tenant to be linked to an email user for app UI (shop-authenticated) routes.
     // Webhooks (/api/webhooks) do not use this middleware, so they are not affected.
     const tenant = await getTenantByDomain(normalizedShop);
-    if (tenant && tenant.account_id === null && !req.allowUnlinkedShopifyProbe) {
+    if (
+      tenant &&
+      tenant.account_id === null &&
+      !req.allowUnlinkedShopifyProbe &&
+      !oauthRedirectEntry
+    ) {
       logger.warn('Authentication rejected: store not linked to a user', {
         shop: normalizedShop,
         path: req.path,

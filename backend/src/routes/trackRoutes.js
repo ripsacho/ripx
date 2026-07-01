@@ -17,6 +17,7 @@ const {
   tenantExists,
   getTenantByDomain,
   normalizeDomain,
+  isShopifyDomain,
   setDomainVerifiedAt,
 } = require('../models/tenant');
 const { insertHeatmapEventsBatch, normalizeHeatmapStoredPageUrl } = require('../models/heatmap');
@@ -88,10 +89,47 @@ const {
   signPriceAssignment,
   getPriceAssignmentSigningBlocker,
 } = require('../utils/priceAssignmentSignature');
-const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
+const { findVariantForPreviewQuery, previewLabelEquals } = require('../utils/previewVariantMatch');
 const { normalizeShippingVariantConfig } = require('../services/shippingTestConfigService');
+const {
+  formatCarrierRateForCheckout,
+  normalizeCheckoutDisplayConfig,
+} = require('../services/shippingCarrierRateFormatter');
+const {
+  recordShippingCarrierCallbackTrace,
+  getShippingCarrierCallbackTrace,
+} = require('../services/shippingCarrierCallbackTraceService');
 const { evaluateFlag } = require('../services/featureFlagService');
 const logger = require('../utils/logger');
+
+function setPublicTrackCorsHeaders(req, res) {
+  const origin = String(req.get('origin') || '').trim();
+  const allowedOrigin =
+    /^https:\/\/[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(origin) ||
+    /^https:\/\/admin\.shopify\.com$/i.test(origin) ||
+    /^https:\/\/[a-z0-9-]+\.ngrok-free\.dev$/i.test(origin) ||
+    /^https?:\/\/localhost(?::\d+)?$/i.test(origin) ||
+    /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin)
+      ? origin
+      : '*';
+  res.set('Access-Control-Allow-Origin', allowedOrigin);
+  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.set(
+    'Access-Control-Allow-Headers',
+    'Content-Type,Accept,X-Requested-With,X-RipX-Debug,X-RipX-Client'
+  );
+  res.set('Access-Control-Max-Age', '600');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+}
+
+router.use((req, res, next) => {
+  setPublicTrackCorsHeaders(req, res);
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  return next();
+});
+
 const PRICE_RESOLVE_LINE_ID_MAX = Math.max(
   32,
   Number.parseInt(process.env.RIPX_PRICE_RESOLVE_LINE_ID_MAX || '256', 10) || 256
@@ -224,6 +262,140 @@ function isHeatmapVariantAllowedForTest(test, variantId) {
   });
 }
 
+function appendCarrierRequestAttributes(attributes, candidate) {
+  if (!candidate) {
+    return;
+  }
+  if (Array.isArray(candidate)) {
+    candidate.forEach(entry => {
+      if (!entry) {
+        return;
+      }
+      const key = String(entry.name || entry.key || '').trim();
+      const value = String(entry.value || '').trim();
+      if (key && value) {
+        attributes.push({ key, value });
+      }
+    });
+    return;
+  }
+  if (typeof candidate === 'object') {
+    Object.entries(candidate).forEach(([key, value]) => {
+      const normalizedKey = String(key || '').trim();
+      const normalizedValue = String(value || '').trim();
+      if (normalizedKey && normalizedValue) {
+        attributes.push({ key: normalizedKey, value: normalizedValue });
+      }
+    });
+  }
+}
+
+function collectCarrierRequestAttributes(req) {
+  const attributes = [];
+  appendCarrierRequestAttributes(attributes, req.body?.attributes);
+  appendCarrierRequestAttributes(attributes, req.body?.rate?.attributes);
+  appendCarrierRequestAttributes(attributes, req.body?.rate?.cart?.attributes);
+  appendCarrierRequestAttributes(attributes, req.body?.cart?.attributes);
+  const containers = [
+    req.body?.rate?.items,
+    req.body?.items,
+    req.body?.rate?.line_items,
+    req.body?.line_items,
+  ];
+  for (const container of containers) {
+    if (!Array.isArray(container)) {
+      continue;
+    }
+    for (const item of container) {
+      const candidates = [
+        item?.properties,
+        item?.attributes,
+        item?.line_item?.properties,
+        item?.product_properties,
+        item?.property,
+      ];
+      for (const candidate of candidates) {
+        appendCarrierRequestAttributes(attributes, candidate);
+      }
+    }
+  }
+  return attributes;
+}
+
+function carrierVariantTokensMatch(actual, expected) {
+  const left = String(actual ?? '').trim();
+  const right = String(expected ?? '').trim();
+  if (!left || !right) {
+    return false;
+  }
+  if (left === right || previewLabelEquals(left, right)) {
+    return true;
+  }
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber;
+}
+
+function carrierRequestMatchesAssignment(
+  req,
+  { testId, variantId, variantIndex, variantName } = {}
+) {
+  const attributes = collectCarrierRequestAttributes(req);
+  if (attributes.length === 0) {
+    return false;
+  }
+  const getValues = (...keys) => {
+    const allowedKeys = new Set(keys.map(key => String(key || '').trim()).filter(Boolean));
+    return attributes
+      .filter(entry => allowedKeys.has(String(entry.key || '').trim()))
+      .map(entry => String(entry.value || '').trim())
+      .filter(Boolean);
+  };
+  const testValues = getValues('_ripx_price_test', 'ripx_price_test');
+  const variantValues = getValues('_ripx_variant', 'ripx_variant');
+  if (testId && !testValues.includes(String(testId))) {
+    return false;
+  }
+  const allowedVariants = [variantId, variantIndex, variantName]
+    .filter(value => value !== undefined && value !== null && String(value).trim())
+    .map(value => String(value).trim());
+  return allowedVariants.length === 0
+    ? variantValues.length > 0
+    : variantValues.some(value =>
+        allowedVariants.some(expected => carrierVariantTokensMatch(value, expected))
+      );
+}
+
+function summarizeCarrierAssignmentDiagnostics(
+  req,
+  { testId, variantId, variantIndex, variantName } = {}
+) {
+  const attributes = collectCarrierRequestAttributes(req);
+  const getValues = (...keys) => {
+    const allowedKeys = new Set(keys.map(key => String(key || '').trim()).filter(Boolean));
+    return attributes
+      .filter(entry => allowedKeys.has(String(entry.key || '').trim()))
+      .map(entry => String(entry.value || '').trim())
+      .filter(Boolean);
+  };
+  const expectedVariants = [variantId, variantIndex, variantName]
+    .filter(value => value !== undefined && value !== null && String(value).trim())
+    .map(value => String(value).trim());
+  return {
+    attributes_count: attributes.length,
+    ripx_test_values: Array.from(new Set(getValues('_ripx_price_test', 'ripx_price_test'))).slice(
+      0,
+      5
+    ),
+    ripx_variant_values: Array.from(new Set(getValues('_ripx_variant', 'ripx_variant'))).slice(
+      0,
+      5
+    ),
+    expected_test_id: testId ? String(testId) : null,
+    expected_variant_values: Array.from(new Set(expectedVariants)).slice(0, 5),
+  };
+}
+
 function normalizeCspOrigin(rawValue, fallback = null) {
   const value = rawValue || fallback;
   if (!value) {
@@ -337,6 +509,15 @@ async function resolveTenantDomain(shop, site) {
   return exists ? normalized : null;
 }
 
+function setPublicStorefrontScriptHeaders(res, versionLabel, cacheControl) {
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Script-Version', versionLabel);
+  res.set('Cache-Control', cacheControl);
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+}
+
 /**
  * Derive pathname from current_url for URL targeting.
  * Homepage and path-based url_patterns (e.g. ^/$|^/index) expect a path, not a full URL.
@@ -370,6 +551,14 @@ function parsePreviewSessionFlag(value) {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+function normalizeCallbackVariantToken(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function findShippingVariantByCallbackQuery(test, queryInput = {}) {
   const variants = Array.isArray(test?.variants) ? test.variants : [];
   const rawIndex = queryInput?.variant_index ?? queryInput?.variantIndex;
@@ -379,19 +568,46 @@ function findShippingVariantByCallbackQuery(test, queryInput = {}) {
       return { variant: variants[parsedIndex], index: parsedIndex };
     }
   }
-  const rawVariantId = String(queryInput?.variant_id || queryInput?.variantId || '').trim();
+  const rawVariantId = normalizeCallbackVariantToken(
+    queryInput?.variant_id || queryInput?.variantId || ''
+  );
   if (!rawVariantId) {
     return { variant: null, index: -1 };
   }
   const index = variants.findIndex(variant => {
-    const id = String(variant?.id || '').trim();
-    const name = String(variant?.name || '').trim();
+    const id = normalizeCallbackVariantToken(variant?.id);
+    const name = normalizeCallbackVariantToken(variant?.name);
     return (id && id === rawVariantId) || (name && name === rawVariantId);
   });
   return {
     variant: index >= 0 ? variants[index] : null,
     index,
   };
+}
+
+function normalizeShippingCallbackStrategy(rawStrategy, resolvedConfig = null) {
+  const fromConfig = String(resolvedConfig?.strategy || '')
+    .trim()
+    .toLowerCase();
+  if (fromConfig === 'flat_rate' || fromConfig === 'carrier_quote') {
+    return fromConfig;
+  }
+  const raw = String(rawStrategy || '')
+    .trim()
+    .toLowerCase();
+  if (!raw) {
+    return 'flat_rate';
+  }
+  if (raw === 'flat_rate' || raw === 'carrier_quote') {
+    return raw;
+  }
+  if ('flat_rate'.startsWith(raw) || raw.startsWith('flat_rat')) {
+    return 'flat_rate';
+  }
+  if ('carrier_quote'.startsWith(raw) || raw.startsWith('carrier_quot')) {
+    return 'carrier_quote';
+  }
+  return raw;
 }
 
 function warnPriceAssignmentSigningOnce(reason, details = {}) {
@@ -897,6 +1113,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const shop = req.query.shop;
     const site = req.query.site;
+    const cacheControl = getStorefrontScriptCacheControl();
+    const versionLabel = req.query.v ? String(req.query.v) : SCRIPT_VERSION;
+    setPublicStorefrontScriptHeaders(res, versionLabel, cacheControl);
 
     const isPreviewTest =
       (shop && String(shop).toLowerCase() === 'preview-test') ||
@@ -909,17 +1128,25 @@ router.get(
       const appUrl = process.env.APP_URL || req.protocol + '://' + req.get('host');
       runtimeConfig = {
         apiUrl: appUrl.replace(/\/+$/, '') + '/api',
+        scriptHealthUrl: appUrl.replace(/\/+$/, '') + '/api/track/storefront-script-health',
         shopDomain: 'preview-test',
         version: SCRIPT_VERSION,
+        runtimeSource: 'preview_document_fallback',
         consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
         activeTests: [],
       };
     } else {
       domain = await resolveTenantDomain(shop, site);
       if (!domain) {
-        return res
-          .status(400)
-          .send('Invalid shop or site. Use ?shop=xxx.myshopify.com or ?site=example.com');
+        const normalizedShop = normalizeDomain(shop);
+        if (!normalizedShop || !isShopifyDomain(normalizedShop)) {
+          return res
+            .status(400)
+            .send('Invalid shop or site. Use ?shop=xxx.myshopify.com or ?site=example.com');
+        }
+        // Let valid Shopify storefronts initialize even before the tenant/session row exists.
+        // Preview mode can then expose diagnostics instead of failing at script load time.
+        domain = normalizedShop;
       }
 
       const tenant = await getTenantByDomain(domain);
@@ -930,25 +1157,61 @@ router.get(
       }
 
       const [tests, goalMetricDefinitions, shopPriceSurfaceMappings] = await Promise.all([
-        getActiveTestsForStorefront(domain),
+        getActiveTestsForStorefront(domain).catch(err => {
+          logger.error('Active storefront tests unavailable for direct script', {
+            domain,
+            error: err.message,
+          });
+          return [];
+        }),
         listGoalMetricDefinitions(domain).catch(() => []),
         getShopPriceSurfaceMappings(domain).catch(() => []),
       ]);
-      runtimeConfig = buildStorefrontRuntimeConfig(domain, tests, req, goalMetricDefinitions, {
-        shopMappings: shopPriceSurfaceMappings,
+      runtimeConfig = buildStorefrontRuntimeConfig(
+        domain,
+        tests,
+        req,
+        goalMetricDefinitions,
+        {
+          shopMappings: shopPriceSurfaceMappings,
+        },
+        { runtimeSource: 'direct_track' }
+      );
+      logger.info('Storefront script test set (direct_track)', {
+        domain,
+        totalTests: Array.isArray(tests) ? tests.length : 0,
+        servedTests: (Array.isArray(tests) ? tests : []).slice(0, 25).map(test => ({
+          id: test?.id || null,
+          type: test?.type || null,
+          status: test?.status || null,
+          personalizationMode: test?.personalization_mode || null,
+        })),
       });
+      const nonRunningShippingTests = (Array.isArray(tests) ? tests : []).filter(test => {
+        const type = String(test?.type || '')
+          .trim()
+          .toLowerCase();
+        const status = String(test?.status || '')
+          .trim()
+          .toLowerCase();
+        return type === 'shipping' && status !== 'running';
+      });
+      if (nonRunningShippingTests.length > 0) {
+        logger.warn('Non-running shipping tests served to storefront (direct_track)', {
+          domain,
+          count: nonRunningShippingTests.length,
+          tests: nonRunningShippingTests.slice(0, 25).map(test => ({
+            id: test?.id || null,
+            type: test?.type || null,
+            status: test?.status || null,
+            personalizationMode: test?.personalization_mode || null,
+          })),
+        });
+      }
     }
 
     const scriptPath = getStorefrontScriptPath();
     const scriptContents = readStorefrontScriptSource(scriptPath);
-
-    const cacheControl = getStorefrontScriptCacheControl();
-    const versionLabel = req.query.v ? String(req.query.v) : SCRIPT_VERSION;
-
-    res.set('Content-Type', 'application/javascript; charset=utf-8');
-    res.set('X-Content-Type-Options', 'nosniff');
-    res.set('X-Script-Version', versionLabel);
-    res.set('Cache-Control', cacheControl);
     res.send(
       `window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n` +
         buildEarlyStorefrontAntiFlickerBootstrap(
@@ -1075,22 +1338,39 @@ router.get(
       req.query.ab_preview_variant || targetPreview.get('ab_preview_variant') || null;
     const previewVariantName =
       req.query.ab_preview_variant_name || targetPreview.get('ab_preview_variant_name') || null;
+    const previewTestType =
+      req.query.ab_preview_test_type || targetPreview.get('ab_preview_test_type') || null;
     const previewTenantDomain =
       req.query.ab_preview_domain || targetPreview.get('ab_preview_domain') || null;
+    const previewSimple =
+      req.query.ab_preview_simple === '1' || targetPreview.get('ab_preview_simple') === '1';
+    const previewSessionId =
+      req.query.ab_preview_session || targetPreview.get('ab_preview_session') || null;
 
+    const targetUrl = parsed.toString();
     const previewCtx = {
       preview: previewFlag,
       testId: previewTestId ? String(previewTestId) : null,
+      testType: previewTestType ? String(previewTestType) : null,
       variantId: previewVariantId ? String(previewVariantId) : null,
       variantName: previewVariantName ? String(previewVariantName) : null,
       tenantDomain: previewTenantDomain ? String(previewTenantDomain) : null,
+      simple: previewSimple,
+      sessionId: previewSessionId ? String(previewSessionId) : null,
+      launchTargetUrl: targetUrl,
       persistedAtMs: Date.now(),
     };
 
-    const targetUrl = parsed.toString();
-    const previewLaunchTarget = /\.myshopify\.com$/i.test(parsed.hostname || '')
-      ? `https://${parsed.hostname}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(targetUrl)}`
+    const explicitStorefrontPassword =
+      typeof req.query.storefront_password === 'string' ? req.query.storefront_password.trim() : '';
+    const isMyshopifyTarget = /\.myshopify\.com$/i.test(parsed.hostname || '');
+    const usePasswordHandoff = !!(explicitStorefrontPassword && isMyshopifyTarget);
+    const previewLaunchTarget = isMyshopifyTarget
+      ? previewSimple
+        ? targetUrl
+        : `https://${parsed.hostname}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(targetUrl)}`
       : targetUrl;
+    const shopPasswordAction = isMyshopifyTarget ? `${parsed.origin}/password` : '';
     const html = `<!doctype html>
 <html lang="en">
   <head>
@@ -1106,10 +1386,39 @@ router.get(
     </noscript>
     <script>
       (function () {
+        var ctx = ${JSON.stringify(previewCtx)};
         try {
-          window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(${JSON.stringify(previewCtx)});
-        } catch (e) {}
+          window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(ctx);
+          try {
+            window.sessionStorage.setItem("__ripx_preview_ctx_v1__", JSON.stringify(ctx));
+          } catch (_se) {}
+        } catch (_e) {}
+        var usePasswordHandoff = ${usePasswordHandoff ? 'true' : 'false'};
+        var password = ${JSON.stringify(explicitStorefrontPassword)};
+        var shopPasswordAction = ${JSON.stringify(shopPasswordAction)};
         var target = ${JSON.stringify(previewLaunchTarget)};
+        if (usePasswordHandoff && shopPasswordAction && password) {
+          try {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = shopPasswordAction;
+            form.acceptCharset = 'UTF-8';
+            [
+              ['form_type', 'storefront_password'],
+              ['utf8', '\u2713'],
+              ['password', password],
+            ].forEach(function (pair) {
+              var input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = pair[0];
+              input.value = pair[1];
+              form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
+            return;
+          } catch (_pw) {}
+        }
         // Deterministic bootstrap: seed window.name first, then redirect.
         setTimeout(function () {
           try {
@@ -2902,7 +3211,7 @@ router.post(
 router.post(
   '/shipping-carrier-rates',
   asyncHandler(async (req, res) => {
-    const strategy = String(req.query?.strategy || 'flat_rate')
+    const rawStrategy = String(req.query?.strategy || 'flat_rate')
       .trim()
       .toLowerCase();
     const amountRaw = String(req.query?.amount || '').trim();
@@ -2919,36 +3228,184 @@ router.post(
         .trim()
         .replace(/[^a-zA-Z0-9_-]/g, '')
         .slice(0, 48) || 'shipping';
+    const toRateSortValue = value => {
+      const n = Number.parseInt(String(value ?? '').trim(), 10);
+      return Number.isFinite(n) ? n : null;
+    };
+    const parseRatesFromQuery = raw => {
+      if (!raw || typeof raw !== 'string') {
+        return [];
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          return [];
+        }
+        return parsed
+          .map(rate => {
+            const item = rate && typeof rate === 'object' ? rate : {};
+            const amount = Number.parseFloat(String(item.amount ?? '').trim());
+            return {
+              name: String(item.name || item.service_name || '').trim(),
+              description: String(item.description || '').trim(),
+              delivery_promise: item.delivery_promise || item.deliveryPromise || null,
+              min_delivery_date: String(
+                item.min_delivery_date || item.minDeliveryDate || ''
+              ).trim(),
+              max_delivery_date: String(
+                item.max_delivery_date || item.maxDeliveryDate || ''
+              ).trim(),
+              amount: Number.isFinite(amount) && amount >= 0 ? amount : null,
+              currency: String(item.currency || currency || 'USD')
+                .trim()
+                .toUpperCase(),
+              service_code: String(item.service_code || item.serviceCode || '').trim(),
+              priority: toRateSortValue(item.priority),
+              sort_order: toRateSortValue(item.sort_order ?? item.sortOrder),
+            };
+          })
+          .filter(rate => rate.amount !== null);
+      } catch {
+        return [];
+      }
+    };
+    const parseCheckoutDisplayFromQuery = raw => {
+      if (!raw || typeof raw !== 'string') {
+        return normalizeCheckoutDisplayConfig({});
+      }
+      try {
+        return normalizeCheckoutDisplayConfig(JSON.parse(raw));
+      } catch {
+        return normalizeCheckoutDisplayConfig({});
+      }
+    };
+    const sortConfiguredRates = list =>
+      (Array.isArray(list) ? list : []).slice().sort((a, b) => {
+        const aPriority = toRateSortValue(a?.priority) ?? Number.MAX_SAFE_INTEGER;
+        const bPriority = toRateSortValue(b?.priority) ?? Number.MAX_SAFE_INTEGER;
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+        const aSort = toRateSortValue(a?.sort_order ?? a?.sortOrder) ?? Number.MAX_SAFE_INTEGER;
+        const bSort = toRateSortValue(b?.sort_order ?? b?.sortOrder) ?? Number.MAX_SAFE_INTEGER;
+        if (aSort !== bSort) {
+          return aSort - bSort;
+        }
+        return String(a?.name || a?.service_name || '').localeCompare(
+          String(b?.name || b?.service_name || '')
+        );
+      });
+    const assignmentRequired =
+      String(req.query?.require_assignment || req.query?.requireAssignment || '')
+        .trim()
+        .toLowerCase() === '1' ||
+      String(req.query?.require_assignment || req.query?.requireAssignment || '')
+        .trim()
+        .toLowerCase() === 'true';
 
+    const shopDomain = normalizeDomain(req.query?.shop_domain || req.query?.shop || '') || null;
+    const testId = String(req.query?.test_id || '').trim();
+    let resolvedShippingVariant = null;
+    let resolvedShippingConfig = null;
+    if (shopDomain && validators.isValidUUID(testId)) {
+      const test = await getTestById(testId, shopDomain);
+      const resolved = findShippingVariantByCallbackQuery(test, req.query);
+      if (resolved.variant) {
+        resolvedShippingVariant = resolved;
+        resolvedShippingConfig = normalizeShippingVariantConfig(resolved.variant.config || {});
+      }
+    }
+    const strategy = normalizeShippingCallbackStrategy(rawStrategy, resolvedShippingConfig);
     const rates = [];
-    if (strategy === 'flat_rate' && Number.isFinite(amount) && amount >= 0) {
-      rates.push({
-        service_name: serviceName,
-        service_code: `ripx_flat_${serviceCodeBase}`,
-        total_price: String(Math.max(0, Math.round(amount * 100))),
-        currency,
+    const expectedAssignment = {
+      testId: req.query?.test_id,
+      variantId:
+        resolvedShippingVariant?.variant?.id ||
+        resolvedShippingVariant?.variant?.variant_id ||
+        req.query?.variant_id,
+      variantIndex: req.query?.variant_index,
+      variantName:
+        resolvedShippingVariant?.variant?.name ||
+        resolvedShippingVariant?.variant?.variantName ||
+        req.query?.variant_name,
+    };
+    const assignmentMatches =
+      !assignmentRequired || carrierRequestMatchesAssignment(req, expectedAssignment);
+    const assignmentDiagnostics = summarizeCarrierAssignmentDiagnostics(req, expectedAssignment);
+    if (strategy === 'flat_rate' && assignmentMatches) {
+      let configuredRates = [];
+      let resolvedAmount = amount;
+      let variantConfig = {
+        checkout_display: parseCheckoutDisplayFromQuery(
+          String(req.query?.checkout_display_json || '').trim()
+        ),
+        metadata: {
+          shipping_config_revision: String(req.query?.cfg_rev || '').trim(),
+        },
+      };
+      if (resolvedShippingVariant?.variant && resolvedShippingConfig) {
+        variantConfig = resolvedShippingConfig;
+        if (resolvedShippingConfig.amount !== null && resolvedShippingConfig.amount !== undefined) {
+          resolvedAmount = resolvedShippingConfig.amount;
+        }
+        configuredRates = Array.isArray(resolvedShippingConfig.rates)
+          ? resolvedShippingConfig.rates
+          : [];
+      }
+      if (configuredRates.length === 0) {
+        configuredRates = parseRatesFromQuery(String(req.query?.rates_json || '').trim());
+      }
+      const candidateRates =
+        configuredRates.length > 0
+          ? sortConfiguredRates(configuredRates)
+          : [{ amount: resolvedAmount, currency }];
+      candidateRates.forEach((rateConfig, index) => {
+        const normalizedRateConfig =
+          rateConfig && typeof rateConfig === 'object' ? { ...rateConfig } : { amount, currency };
+        const rate = formatCarrierRateForCheckout({
+          rateConfig: normalizedRateConfig,
+          variantConfig,
+          index,
+          serviceName,
+          serviceCodeBase,
+          fallbackAmount: resolvedAmount,
+          fallbackCurrency: currency,
+        });
+        if (rate) {
+          rates.push(rate);
+        }
+      });
+    }
+    if (strategy === 'flat_rate' && assignmentRequired && !assignmentMatches) {
+      logger.info('shipping_carrier_flat_rate_assignment_missing', {
+        testId: req.query?.test_id || null,
+        variantIndex: req.query?.variant_index || null,
+        variantId: req.query?.variant_id || null,
+        assignmentDiagnostics,
       });
     }
 
-    if (strategy === 'carrier_quote') {
-      const shopDomain = normalizeDomain(req.query?.shop_domain || req.query?.shop || '') || null;
-      const testId = String(req.query?.test_id || '').trim();
+    if (strategy === 'carrier_quote' && assignmentRequired && !assignmentMatches) {
+      logger.info('shipping_carrier_quote_assignment_missing', {
+        testId: req.query?.test_id || null,
+        variantIndex: req.query?.variant_index || null,
+        variantId: req.query?.variant_id || null,
+        assignmentDiagnostics,
+      });
+    }
+
+    if (strategy === 'carrier_quote' && assignmentMatches) {
       let providerConfig = {
         provider: String(req.query?.quote_provider || '').trim(),
         amount,
         service_name: serviceName,
         country_rates: String(req.query?.country_rates || '').trim(),
       };
-      if (shopDomain && validators.isValidUUID(testId)) {
-        const test = await getTestById(testId, shopDomain);
-        const resolved = findShippingVariantByCallbackQuery(test, req.query);
-        if (resolved.variant) {
-          const normalizedConfig = normalizeShippingVariantConfig(resolved.variant.config || {});
-          providerConfig = resolveVariantProviderConfig({
-            ...resolved.variant,
-            config: normalizedConfig,
-          });
-        }
+      if (resolvedShippingVariant?.variant && resolvedShippingConfig) {
+        providerConfig = resolveVariantProviderConfig({
+          ...resolvedShippingVariant.variant,
+          config: resolvedShippingConfig,
+        });
       }
       const destinationCountry =
         String(
@@ -2979,8 +3436,52 @@ router.post(
       });
     }
 
+    const traceEntry = recordShippingCarrierCallbackTrace({
+      test_id: req.query?.test_id || null,
+      variant_id: req.query?.variant_id || null,
+      variant_index: req.query?.variant_index || null,
+      config_revision: String(req.query?.cfg_rev || '').trim() || null,
+      strategy,
+      amount,
+      currency,
+      rates_count: rates.length,
+      rates: rates.slice(0, 10).map(rate => ({
+        service_name: rate.service_name || null,
+        description: rate.description || '',
+        service_code: rate.service_code || null,
+        currency: rate.currency || null,
+        total_price: rate.total_price || null,
+        min_delivery_date: rate.min_delivery_date || null,
+        max_delivery_date: rate.max_delivery_date || null,
+      })),
+      assignment_required: assignmentRequired,
+      assignment_matches: assignmentMatches,
+      assignment_diagnostics: assignmentDiagnostics,
+      request_shape: {
+        has_rate: Boolean(req.body?.rate),
+        rate_items_count: Array.isArray(req.body?.rate?.items) ? req.body.rate.items.length : null,
+        items_count: Array.isArray(req.body?.items) ? req.body.items.length : null,
+        line_items_count: Array.isArray(req.body?.line_items) ? req.body.line_items.length : null,
+        has_destination: Boolean(req.body?.rate?.destination || req.body?.destination),
+      },
+    });
+    logger.info('shipping_carrier_callback_received', traceEntry);
     res.set('Cache-Control', 'no-store');
     return res.json({ rates });
+  })
+);
+
+router.get(
+  '/shipping-carrier-rates/debug',
+  asyncHandler((req, res) => {
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      traces: getShippingCarrierCallbackTrace({
+        testId: req.query?.test_id,
+        limit: req.query?.limit,
+      }),
+    });
   })
 );
 
@@ -3050,6 +3551,12 @@ router.__testUtils = {
   isHeatmapVariantAllowedForTest,
   normalizeHeatmapCaptureEvent,
   parseFiniteHeatmapNumber,
+  collectCarrierRequestAttributes,
+  carrierRequestMatchesAssignment,
+  summarizeCarrierAssignmentDiagnostics,
+  normalizeShippingCallbackStrategy,
+  recordShippingCarrierCallbackTrace,
+  getShippingCarrierCallbackTrace,
 };
 
 module.exports = router;

@@ -20,6 +20,7 @@ const auditLogService = require('../services/auditLogService');
 const { isUserStatusBlocked, isUserStatusAllowedForSession } = require('../constants');
 const { authIpLimiter, authEmailLimiter } = require('../middleware/authRouteLimiters');
 const logger = require('../utils/logger');
+const { buildOAuthRedirectAlignment } = require('../utils/shopifyAppEnvironment');
 
 const router = express.Router();
 const { query, withTransaction } = require('../utils/database');
@@ -503,18 +504,15 @@ router.get('/oauth-redirect-uri', (req, res) => {
       : null;
   const base = strictBase || getOAuthRedirectBase(req);
   const redirectUri = `${base}/api/auth/callback`;
-  const isDynamicTunnel =
-    /\.trycloudflare\.com$/i.test(base) ||
-    /\.ngrok-free\.app$/i.test(base) ||
-    /\.ngrok\.(io|app)$/i.test(base);
+  const alignment = buildOAuthRedirectAlignment({ base });
   res.json({
     redirectUri,
     base,
     source: strictBase ? 'RIPX_OAUTH_REDIRECT_BASE' : 'request_or_app_url',
-    isDynamicTunnel,
-    mismatchWarning: isDynamicTunnel
-      ? 'Tunnel host changes on restart. shopify.app.toml redirect_urls (e.g. production) are pushed by CLI but do not include this tunnel — add redirectUri below to Partner Dashboard Allowed redirection URL(s) and matching Application URL host, or use RIPX_OAUTH_REDIRECT_BASE + Dashboard with a stable domain.'
-      : null,
+    isDynamicTunnel: alignment.isDynamicTunnel,
+    showOAuthAlignmentWarning: alignment.showOAuthAlignmentWarning,
+    tunnelDevHint: alignment.tunnelDevHint,
+    mismatchWarning: alignment.mismatchWarning,
     partnerDashboard: {
       applicationUrl: base,
       allowedRedirectionUrl: redirectUri,
@@ -891,10 +889,11 @@ router.get(
 
     const tokenData = await tokenResponse.json();
 
+    const { normalizeGrantedShopifyScopeString } = require('../utils/shopifyScopes');
     await upsertShopSession({
       shopDomain: normalizedShop,
       accessToken: tokenData.access_token,
-      scope: tokenData.scope,
+      scope: normalizeGrantedShopifyScopeString(tokenData.scope) || tokenData.scope || null,
     });
     const { clearConnectionHealthCache } = require('../services/shopifyConnectionHealth');
     clearConnectionHealthCache(normalizedShop);

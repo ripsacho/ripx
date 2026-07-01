@@ -431,18 +431,52 @@ function mapObservedRows(rows = []) {
   );
 }
 
-async function getObservedCountsFromRollups(shopDomain, eventNames = []) {
+function normalizeTenantId(value) {
+  const normalized = String(value || '').trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    normalized
+  )
+    ? normalized
+    : null;
+}
+
+function buildTenantScopedFilter(alias, { shopDomain, tenantId, eventNames = [] } = {}) {
   const scopedEventNames = normalizeObservedEventNames(eventNames);
-  const params = scopedEventNames.length ? [shopDomain, scopedEventNames] : [shopDomain];
-  const aliasedEventNameFilter = scopedEventNames.length
-    ? 'AND rollups.event_name = ANY($2::text[])'
+  const normalizedTenantId = normalizeTenantId(tenantId);
+  const params = normalizedTenantId ? [normalizedTenantId] : [shopDomain];
+  const tenantColumn = `${alias}.tenant_id`;
+  const shopColumn = `${alias}.shop_domain`;
+  const eventColumn = `${alias}.event_name`;
+  const sentinelTenant = "'00000000-0000-0000-0000-000000000000'::uuid";
+  const scopeFilter = normalizedTenantId
+    ? `${tenantColumn} = $1::uuid`
+    : `(
+      ${tenantColumn} = (SELECT id FROM tenants WHERE domain = $1 LIMIT 1)
+      OR (${tenantColumn} = ${sentinelTenant} AND ${shopColumn} = $1)
+    )`;
+  const eventNameFilter = scopedEventNames.length
+    ? `AND ${eventColumn} = ANY($${params.length + 1}::text[])`
     : '';
-  const tenantScopeFilter = `
-    (
-      rollups.shop_domain = $1
-      OR rollups.tenant_id = (SELECT id FROM tenants WHERE domain = $1 LIMIT 1)
-    )
-  `;
+
+  if (scopedEventNames.length) {
+    params.push(scopedEventNames);
+  }
+
+  return {
+    params,
+    scopedEventNames,
+    scopeFilter,
+    eventNameFilter,
+  };
+}
+
+async function getObservedCountsFromRollups(shopDomain, eventNames = [], options = {}) {
+  const scopedEventNames = normalizeObservedEventNames(eventNames);
+  const rollupScope = buildTenantScopedFilter('rollups', {
+    shopDomain,
+    tenantId: options.tenantId,
+    eventNames: scopedEventNames,
+  });
   const sql = `
     WITH event_totals AS (
       SELECT
@@ -450,8 +484,8 @@ async function getObservedCountsFromRollups(shopDomain, eventNames = []) {
         SUM(rollups.event_count)::bigint AS count,
         MAX(rollups.last_seen_at) AS last_seen_at
       FROM goal_metric_event_rollups rollups
-      WHERE ${tenantScopeFilter}
-        ${aliasedEventNameFilter}
+      WHERE ${rollupScope.scopeFilter}
+        ${rollupScope.eventNameFilter}
       GROUP BY rollups.event_name
     ),
     event_tests AS (
@@ -463,8 +497,8 @@ async function getObservedCountsFromRollups(shopDomain, eventNames = []) {
         MAX(rollups.last_seen_at) AS last_seen_at
       FROM goal_metric_event_rollups rollups
       LEFT JOIN tests t ON t.id = rollups.test_id
-      WHERE ${tenantScopeFilter}
-        ${aliasedEventNameFilter}
+      WHERE ${rollupScope.scopeFilter}
+        ${rollupScope.eventNameFilter}
       GROUP BY rollups.event_name, rollups.test_id, t.name
     )
     SELECT
@@ -487,30 +521,25 @@ async function getObservedCountsFromRollups(shopDomain, eventNames = []) {
     LEFT JOIN event_tests ON event_tests.event_name = et.event_name
     GROUP BY et.event_name, et.count, et.last_seen_at
   `;
-  const result = await query(sql, params);
+  const result = await query(sql, rollupScope.params);
   return mapObservedRows(result.rows);
 }
 
-async function getObservedCountsFromRawEvents(shopDomain, eventNames = []) {
+async function getObservedCountsFromRawEvents(shopDomain, eventNames = [], options = {}) {
   const scopedEventNames = normalizeObservedEventNames(eventNames);
-  const params = scopedEventNames.length ? [shopDomain, scopedEventNames] : [shopDomain];
-  const aliasedEventNameFilter = scopedEventNames.length
-    ? 'AND e.event_name = ANY($2::text[])'
-    : '';
-  const tenantScopeFilter = `
-    (
-      e.shop_domain = $1
-      OR e.tenant_id = (SELECT id FROM tenants WHERE domain = $1 LIMIT 1)
-    )
-  `;
+  const rawScope = buildTenantScopedFilter('e', {
+    shopDomain,
+    tenantId: options.tenantId,
+    eventNames: scopedEventNames,
+  });
   const sql = `
     WITH event_totals AS (
       SELECT e.event_name, COUNT(*)::int AS count, MAX(e.created_at) AS last_seen_at
       FROM events e
-      WHERE ${tenantScopeFilter}
+      WHERE ${rawScope.scopeFilter}
         AND e.event_name IS NOT NULL
         AND e.event_name <> ''
-        ${aliasedEventNameFilter}
+        ${rawScope.eventNameFilter}
       GROUP BY e.event_name
     ),
     event_tests AS (
@@ -522,10 +551,10 @@ async function getObservedCountsFromRawEvents(shopDomain, eventNames = []) {
         MAX(e.created_at) AS last_seen_at
       FROM events e
       LEFT JOIN tests t ON t.id = e.test_id
-      WHERE ${tenantScopeFilter}
+      WHERE ${rawScope.scopeFilter}
         AND e.event_name IS NOT NULL
         AND e.event_name <> ''
-        ${aliasedEventNameFilter}
+        ${rawScope.eventNameFilter}
       GROUP BY e.event_name, e.test_id, t.name
     )
     SELECT
@@ -548,18 +577,18 @@ async function getObservedCountsFromRawEvents(shopDomain, eventNames = []) {
     LEFT JOIN event_tests ON event_tests.event_name = et.event_name
     GROUP BY et.event_name, et.count, et.last_seen_at
   `;
-  const result = await query(sql, params);
+  const result = await query(sql, rawScope.params);
   return mapObservedRows(result.rows);
 }
 
-async function getObservedCounts(shopDomain, eventNames = []) {
+async function getObservedCounts(shopDomain, eventNames = [], options = {}) {
   try {
-    return await getObservedCountsFromRollups(shopDomain, eventNames);
+    return await getObservedCountsFromRollups(shopDomain, eventNames, options);
   } catch (err) {
     const rollupMissing =
       err?.code === '42P01' || String(err?.message || '').includes('goal_metric_event_rollups');
     if (rollupMissing) {
-      return getObservedCountsFromRawEvents(shopDomain, eventNames);
+      return getObservedCountsFromRawEvents(shopDomain, eventNames, options);
     }
     throw err;
   }
@@ -578,7 +607,7 @@ async function refreshGoalMetricEventRollups(shopDomain = null) {
   };
 }
 
-async function listGoalMetricDefinitions(shopDomain) {
+async function listGoalMetricDefinitions(shopDomain, options = {}) {
   const result = await query(
     `
       SELECT
@@ -609,7 +638,9 @@ async function listGoalMetricDefinitions(shopDomain) {
     ...BUILT_IN_DEFINITIONS.map(item => item.event_name),
     ...customByEvent,
   ];
-  const observed = await getObservedCounts(shopDomain, observedEventNames);
+  const observed = await getObservedCounts(shopDomain, observedEventNames, {
+    tenantId: options.tenantId,
+  });
   const customDefinitions = result.rows.map(row => ({
     ...mapRow(row),
     ...(observed.get(row.event_name) || {

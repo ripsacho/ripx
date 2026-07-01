@@ -7,3 +7,4 @@
 export * from './api';
 export * from './profileApi';
 export * from './shopifyConnectionStatus';
+export * from './storefrontReadiness';

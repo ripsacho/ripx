@@ -17,7 +17,11 @@
   --goal-accent-soft: rgba(59, 130, 246, 0.18);
   --audience-accent: var(--futuristic-cyan);
   --audience-accent-soft: rgba(6, 182, 212, 0.18);
-  --surface-elevated: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+  --surface-elevated: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.95) 100%
+  );
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
@@ -55,9 +59,18 @@
   --block-padding: 24px 28px;
   --block-radius: var(--radius-lg);
   --block-border: 1px solid rgba(6, 182, 212, 0.2);
-  --block-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(6, 182, 212, 0.04) 100%);
+  --block-bg: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.95) 50%,
+    rgba(6, 182, 212, 0.04) 100%
+  );
   --block-accent: 4px;
-  --block-accent-gradient: linear-gradient(180deg, var(--futuristic-cyan), var(--futuristic-violet));
+  --block-accent-gradient: linear-gradient(
+    180deg,
+    var(--futuristic-cyan),
+    var(--futuristic-violet)
+  );
   --block-gap: 28px;
   /* Unified typography */
   --title-size: 0.875rem;
@@ -80,12 +93,18 @@
   overflow: hidden;
   background: var(--surface-elevated);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: var(--shadow-md), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
-  transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
+  box-shadow:
+    var(--shadow-md),
+    0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  transition:
+    box-shadow var(--transition-smooth),
+    border-color var(--transition-smooth);
 }
 
 .configWrapper:hover {
-  box-shadow: var(--shadow-lg), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  box-shadow:
+    var(--shadow-lg),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
   border-color: rgba(6, 182, 212, 0.15);
 }
 
@@ -96,7 +115,14 @@
 .configAccent {
   height: 4px;
   margin-bottom: 0;
-  background: linear-gradient(90deg, var(--futuristic-cyan) 0%, var(--futuristic-teal) 25%, var(--goal-accent) 50%, var(--futuristic-violet) 75%, var(--futuristic-cyan) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-teal) 25%,
+    var(--goal-accent) 50%,
+    var(--futuristic-violet) 75%,
+    var(--futuristic-cyan) 100%
+  );
   border-radius: 0;
   position: relative;
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
@@ -652,7 +678,7 @@
   border-color: rgba(6, 182, 212, 0.34);
   background: rgba(236, 254, 255, 0.92);
   color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.06);
 }
 
 .cogsInlinePanel {
@@ -1113,6 +1139,20 @@
   transform: translateY(-1px);
 }
 
+[data-theme='dark'] .statisticalPresetButton {
+  background: var(--surface-glass);
+  border-color: rgba(59, 130, 246, 0.22);
+  color: rgba(203, 213, 225, 0.9);
+}
+
+[data-theme='dark'] .statisticalPresetButton:hover,
+[data-theme='dark'] .statisticalPresetButtonActive {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #bfdbfe;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+}
+
 .statisticalPresetButton strong,
 .decisionRuleGuidanceGrid strong {
   color: var(--text-primary);
@@ -1428,7 +1468,9 @@
   overflow: hidden;
   background: var(--surface-elevated);
   border: 1px solid rgba(6, 182, 212, 0.12);
-  box-shadow: var(--shadow-md), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  box-shadow:
+    var(--shadow-md),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
   backdrop-filter: blur(16px);
   width: 100%;
   min-width: 0;
@@ -1438,9 +1480,16 @@
   display: flex;
   gap: 10px;
   padding: 14px 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(6, 182, 212, 0.04) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.95) 50%,
+    rgba(6, 182, 212, 0.04) 100%
+  );
   border-bottom: 1px solid rgba(6, 182, 212, 0.12);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 2px 8px rgba(0, 0, 0, 0.03);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 2px 8px rgba(0, 0, 0, 0.03);
   position: relative;
 }
 
@@ -1568,12 +1617,22 @@
 }
 
 .targetingTabContentGoal {
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.12) 0%, rgba(59, 130, 246, 0.04) 40%, transparent 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.12) 0%,
+    rgba(59, 130, 246, 0.04) 40%,
+    transparent 100%
+  );
   border-left: 5px solid var(--goal-accent);
 }
 
 .targetingTabContentAudience {
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.12) 0%, rgba(6, 182, 212, 0.04) 40%, transparent 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.12) 0%,
+    rgba(6, 182, 212, 0.04) 40%,
+    transparent 100%
+  );
   border-left: 5px solid var(--futuristic-cyan);
 }
 
@@ -1600,8 +1659,15 @@
 }
 
 @keyframes indicatorPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.85; transform: scale(1.1); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.1);
+  }
 }
 
 .targetingTabContentGoal .tabPanelActiveIndicator::before {
@@ -1721,7 +1787,7 @@
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 24px rgba(30, 41, 59, 0.04);
   scrollbar-width: thin;
 }
 
@@ -1979,7 +2045,7 @@
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   position: relative;
-  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.035);
+  box-shadow: 0 1px 8px rgba(30, 41, 59, 0.035);
   transition: border-color var(--transition-smooth);
   width: 100%;
   min-width: 0;
@@ -1988,7 +2054,7 @@
 
 .goalSectionGroup:hover {
   border-color: rgba(59, 130, 246, 0.2);
-  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.035);
+  box-shadow: 0 1px 8px rgba(30, 41, 59, 0.035);
 }
 
 .goalSectionGroup::before {
@@ -2081,7 +2147,9 @@
   margin-bottom: 16px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 2px 14px rgba(59, 130, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 2px 14px rgba(59, 130, 246, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .goalBestPractice::before {
@@ -2147,7 +2215,7 @@
   border: 1px solid rgba(59, 130, 246, 0.16);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.035);
+  box-shadow: 0 1px 8px rgba(30, 41, 59, 0.035);
 }
 
 .goalBuilderHero {
@@ -2602,7 +2670,7 @@
   background:
     linear-gradient(135deg, rgba(239, 246, 255, 0.76), rgba(255, 255, 255, 0.94)),
     rgba(248, 250, 252, 0.78);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 22px rgba(30, 41, 59, 0.04);
 }
 
 .goalEventCommand .formSectionTitle,
@@ -2919,7 +2987,9 @@
 :global(body.ripx-price-surface-picker-modal-open .Polaris-Modal__Body),
 :global(body.ripx-price-surface-picker-modal-open div[class*='Modal__Body']),
 :global(.Polaris-Modal-Dialog__Modal:has([data-price-surface-picker-modal]) .Polaris-Modal__Body),
-:global(div[class*='Modal-Dialog__Modal']:has([data-price-surface-picker-modal]) .Polaris-Modal__Body) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-price-surface-picker-modal]) .Polaris-Modal__Body
+) {
   flex: 1 1 auto !important;
   overflow: hidden !important;
   padding-top: 8px !important;
@@ -3294,7 +3364,7 @@
 
 .goalEventModalRow:hover {
   border-color: rgba(59, 130, 246, 0.32);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 8px 18px rgba(30, 41, 59, 0.05);
   transform: none;
 }
 
@@ -3425,7 +3495,7 @@
   background:
     linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.98)),
     rgba(255, 255, 255, 0.96);
-  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 -10px 24px rgba(30, 41, 59, 0.06);
 }
 
 .goalEventCreateActionsText {
@@ -3866,7 +3936,9 @@
   border-radius: 14px;
   border: 1px solid rgba(59, 130, 246, 0.2);
   box-shadow: 0 2px 12px rgba(59, 130, 246, 0.06);
-  transition: border-color var(--transition-quick), box-shadow var(--transition-quick);
+  transition:
+    border-color var(--transition-quick),
+    box-shadow var(--transition-quick);
 }
 
 .goalBlock:hover {
@@ -3936,7 +4008,9 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   position: relative;
   overflow: visible;
-  transition: box-shadow var(--transition-standard), border-color var(--transition-standard);
+  transition:
+    box-shadow var(--transition-standard),
+    border-color var(--transition-standard);
 }
 
 .configColumnCard:hover {
@@ -4023,11 +4097,18 @@
 
 .configColumnIconTarget {
   background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 50%, #3b82f6 100%);
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 4px 16px rgba(59, 130, 246, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .configColumnIconTargeting {
-  background: linear-gradient(145deg, var(--futuristic-cyan) 0%, var(--futuristic-teal) 50%, var(--futuristic-violet) 100%);
+  background: linear-gradient(
+    145deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-teal) 50%,
+    var(--futuristic-violet) 100%
+  );
   box-shadow:
     0 4px 20px rgba(6, 182, 212, 0.4),
     0 0 30px -5px var(--futuristic-glow),
@@ -4039,7 +4120,12 @@
   overflow: visible;
   border-radius: 20px;
   border: 1px solid rgba(6, 182, 212, 0.15);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(248, 250, 252, 0.9) 50%, rgba(241, 245, 249, 0.95) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(248, 250, 252, 0.9) 50%,
+    rgba(241, 245, 249, 0.95) 100%
+  );
   padding: 20px 22px;
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.06),
@@ -4057,7 +4143,12 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, var(--futuristic-cyan) 0%, var(--futuristic-teal) 35%, var(--futuristic-violet) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-teal) 35%,
+    var(--futuristic-violet) 100%
+  );
   border-radius: 20px 20px 0 0;
   opacity: 1;
   box-shadow: 0 0 20px var(--futuristic-glow);
@@ -4103,7 +4194,12 @@
 .targetingCardAccent {
   height: 4px;
   margin-bottom: 0;
-  background: linear-gradient(90deg, var(--futuristic-cyan) 0%, var(--futuristic-teal) 50%, var(--futuristic-violet) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-teal) 50%,
+    var(--futuristic-violet) 100%
+  );
   border-radius: 0;
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
 }
@@ -4168,7 +4264,9 @@
     background: linear-gradient(180deg, #fff 0%, #f8fafc 50%, #f1f5f9 100%);
     border-radius: 18px;
     border: 1px solid rgba(6, 182, 212, 0.14);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+    box-shadow:
+      0 4px 24px rgba(0, 0, 0, 0.06),
+      0 0 0 1px rgba(255, 255, 255, 0.5) inset;
     overflow: hidden;
   }
 
@@ -4254,13 +4352,85 @@
 }
 
 @media (max-width: 1023px) {
-
   .targetingSidebar {
     padding: 0;
     background: transparent;
     border: none;
     box-shadow: none;
   }
+}
+
+[data-theme='dark'] .targetingSidebar {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@media (max-width: 1023px) {
+  [data-theme='dark'] .targetingSidebar {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+}
+
+[data-theme='dark'] .sampleEvidenceTabs,
+[data-theme='dark'] .sampleSizeCalculator,
+[data-theme='dark'] .holdoutCard,
+[data-theme='dark'] .holdoutCardBody,
+[data-theme='dark'] .priceSummaryCard,
+[data-theme='dark'] .priceSurfaceMappingGridRow,
+[data-theme='dark'] .priceSurfaceEmptyState {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.06) inset,
+    0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .sampleEvidenceTab {
+  color: rgba(203, 213, 225, 0.82);
+}
+
+[data-theme='dark'] .sampleEvidenceTab:hover {
+  background: rgba(6, 182, 212, 0.14);
+  color: rgba(241, 245, 249, 0.96);
+}
+
+[data-theme='dark'] .sampleEvidenceTabActive {
+  background: rgba(6, 182, 212, 0.18);
+  color: #67e8f9;
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.22) inset,
+    0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .sampleSizeCalculator :global(.Polaris-TextField__Input),
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-TextField__Input),
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-Select__Input) {
+  background-color: rgba(30, 41, 59, 0.78);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .holdoutSummaryPill,
+[data-theme='dark'] .priceVariantToolsToggleBtn,
+[data-theme='dark'] .priceMatrixProductThumb,
+[data-theme='dark'] .priceMatrixProductThumbPlaceholder {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .priceVariantToolsToggleBtn:hover,
+[data-theme='dark'] .priceVariantToolsToggleBtnOpen {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
 }
 
 .targetingContent > .targetingBestPractice {
@@ -4279,7 +4449,12 @@
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary);
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.06) 50%, rgba(6, 182, 212, 0.08) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.1) 0%,
+    rgba(139, 92, 246, 0.06) 50%,
+    rgba(6, 182, 212, 0.08) 100%
+  );
   border-radius: var(--radius-lg);
   border: 1px solid rgba(6, 182, 212, 0.2);
   line-height: 1.55;
@@ -4364,7 +4539,9 @@
 
 .targetingQuickApply:active {
   transform: translateY(0);
-  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 2px 10px rgba(6, 182, 212, 0.35),
+    inset 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 
 .targetingSummaryKbd {
@@ -4393,8 +4570,15 @@
 }
 
 @keyframes statusPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.85; transform: scale(1.1); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.1);
+  }
 }
 
 .targetingSummaryChipActive .targetingSummaryStatus {
@@ -4491,9 +4675,15 @@
 }
 
 /* Per-section accent: Where=blue, Who=cyan, Holdout=violet */
-.targetingFlow .targetingSummaryGroup:nth-child(1) .targetingSummaryLabel { color: #0ea5e9; }
-.targetingFlow .targetingSummaryGroup:nth-child(3) .targetingSummaryLabel { color: #06b6d4; }
-.targetingFlow .targetingSummaryGroup:nth-child(5) .targetingSummaryLabel { color: #8b5cf6; }
+.targetingFlow .targetingSummaryGroup:nth-child(1) .targetingSummaryLabel {
+  color: #0ea5e9;
+}
+.targetingFlow .targetingSummaryGroup:nth-child(3) .targetingSummaryLabel {
+  color: #06b6d4;
+}
+.targetingFlow .targetingSummaryGroup:nth-child(5) .targetingSummaryLabel {
+  color: #8b5cf6;
+}
 
 .targetingSummaryDivider {
   display: none;
@@ -4516,7 +4706,9 @@
   font-family: inherit;
   text-align: left;
   width: 100%;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   overflow: hidden;
 }
 
@@ -4545,13 +4737,17 @@
 
 .targetingSummaryChip:hover {
   border-color: rgba(6, 182, 212, 0.35);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.12), 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.04);
   transform: translateY(-2px);
 }
 
 .targetingSummaryChip:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), inset 0 2px 4px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    inset 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 /* Subtle "Configure" hint on hover when chip is not active */
@@ -4572,7 +4768,9 @@
   --section-accent: #06b6d4;
   border-color: var(--section-accent);
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.05) 100%);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .targetingSummaryChipActive::before {
@@ -4582,7 +4780,9 @@
 .targetingFlow .targetingSummaryGroup:nth-child(1) .targetingSummaryChipActive {
   border-color: #0ea5e9;
   background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(14, 165, 233, 0.05) 100%);
-  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 6px 20px rgba(14, 165, 233, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .targetingFlow .targetingSummaryGroup:nth-child(1) .targetingSummaryChipActive::before {
@@ -4592,7 +4792,9 @@
 .targetingFlow .targetingSummaryGroup:nth-child(3) .targetingSummaryChipActive {
   border-color: #06b6d4;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(6, 182, 212, 0.05) 100%);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .targetingFlow .targetingSummaryGroup:nth-child(3) .targetingSummaryChipActive::before {
@@ -4602,7 +4804,9 @@
 .targetingFlow .targetingSummaryGroup:nth-child(5) .targetingSummaryChipActive {
   border-color: #8b5cf6;
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.05) 100%);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 6px 20px rgba(139, 92, 246, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .targetingFlow .targetingSummaryGroup:nth-child(5) .targetingSummaryChipActive::before {
@@ -4655,7 +4859,11 @@
 
 .targetingSummaryChipHighlight {
   border-color: rgba(139, 92, 246, 0.5) !important;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.1) 0%,
+    rgba(139, 92, 246, 0.05) 100%
+  ) !important;
 }
 
 .targetingSummaryChipHighlight svg {
@@ -4665,7 +4873,11 @@
 .targetingSummaryChipHighlight.targetingSummaryChipActive,
 .targetingSummaryChipHighlight:hover {
   border-color: var(--futuristic-violet) !important;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.08) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.15) 0%,
+    rgba(139, 92, 246, 0.08) 100%
+  ) !important;
   color: var(--futuristic-violet) !important;
 }
 
@@ -4740,6 +4952,25 @@
   border-color: rgba(6, 182, 212, 0.3);
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.15);
+}
+
+[data-theme='dark'] .targetingTabs {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(6, 182, 212, 0.16);
+}
+
+[data-theme='dark'] .targetingTab {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.14);
+  color: rgba(203, 213, 225, 0.9);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+[data-theme='dark'] .targetingTab:hover {
+  background: rgba(6, 182, 212, 0.13);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
 .targetingTab:hover svg {
@@ -4843,7 +5074,9 @@
   border: 1px solid rgba(6, 182, 212, 0.14);
   min-height: 100px;
   animation: panelFade var(--transition-spring-deliberate);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   position: relative;
   overflow: hidden;
 }
@@ -4965,7 +5198,9 @@
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(139, 92, 246, 0.08) 100%);
   border: 1px solid rgba(139, 92, 246, 0.4);
   border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 2px 10px rgba(139, 92, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .holdoutBadge svg {
@@ -5000,11 +5235,18 @@
   flex-direction: column;
   gap: 8px;
   padding: 8px 12px 10px;
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.97) 40%, rgba(6, 182, 212, 0.03) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.99) 0%,
+    rgba(248, 250, 252, 0.97) 40%,
+    rgba(6, 182, 212, 0.03) 100%
+  );
   border-radius: var(--radius-md);
   border: 1px solid rgba(6, 182, 212, 0.12);
   margin-bottom: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.03),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
   position: relative;
   overflow: hidden;
 }
@@ -5016,7 +5258,13 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--futuristic-cyan) 0%, var(--futuristic-teal) 25%, var(--futuristic-violet) 75%, var(--futuristic-cyan) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-teal) 25%,
+    var(--futuristic-violet) 75%,
+    var(--futuristic-cyan) 100%
+  );
   opacity: 0.85;
   box-shadow: 0 1px 4px rgba(6, 182, 212, 0.2);
 }
@@ -5118,7 +5366,10 @@
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--transition-quick), box-shadow var(--transition-quick), background var(--transition-quick);
+  transition:
+    border-color var(--transition-quick),
+    box-shadow var(--transition-quick),
+    background var(--transition-quick);
   font-family: inherit;
 }
 
@@ -5265,7 +5516,7 @@
   background:
     radial-gradient(circle at top left, rgba(6, 182, 212, 0.1), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 28px rgba(30, 41, 59, 0.06);
 }
 
 .priceSurfaceRow {
@@ -5324,7 +5575,9 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--transition-quick), box-shadow var(--transition-quick);
+  transition:
+    background var(--transition-quick),
+    box-shadow var(--transition-quick);
 }
 
 .priceSurfaceHeaderToggle:hover {
@@ -5414,13 +5667,13 @@
   gap: 4px;
   min-height: 92px;
   padding: 9px 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.04);
   transition:
     transform var(--transition-quick),
     border-color var(--transition-quick),
@@ -5440,8 +5693,7 @@
 
 .priceSurfaceGuideCardConfigured {
   border-color: rgba(20, 184, 166, 0.32);
-  background:
-    linear-gradient(180deg, rgba(240, 253, 250, 0.95), rgba(255, 255, 255, 0.96));
+  background: linear-gradient(180deg, rgba(240, 253, 250, 0.95), rgba(255, 255, 255, 0.96));
 }
 
 .priceSurfaceGuideTop {
@@ -5488,7 +5740,7 @@
   gap: 4px;
   padding: 2px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.05);
+  background: rgba(30, 41, 59, 0.05);
 }
 
 .priceSurfaceTab {
@@ -5505,7 +5757,23 @@
 .priceSurfaceTabActive {
   color: var(--text-primary);
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.08);
+}
+
+[data-theme='dark'] .priceSurfaceTabRow {
+  background: rgba(30, 41, 59, 0.56);
+}
+
+[data-theme='dark'] .priceSurfaceTab {
+  color: rgba(203, 213, 225, 0.86);
+}
+
+[data-theme='dark'] .priceSurfaceTabActive {
+  color: rgba(241, 245, 249, 0.96);
+  background: rgba(6, 182, 212, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.18) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
 }
 
 .priceSurfaceMappingTable {
@@ -5532,10 +5800,10 @@
 
 .priceSurfaceMappingGridRow {
   padding: 7px 8px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.04);
 }
 
 .priceSurfaceRowNumber {
@@ -5732,8 +6000,8 @@
 }
 
 .targetingAccordionItem:has(
-    .targetingAccordionTriggerActive:not(.placementTabHoldout):not(.placementTabAdvanced)
-  ) {
+  .targetingAccordionTriggerActive:not(.placementTabHoldout):not(.placementTabAdvanced)
+) {
   border-color: rgba(6, 182, 212, 0.32);
   box-shadow:
     0 6px 22px rgba(6, 182, 212, 0.12),
@@ -5741,8 +6009,8 @@
 }
 
 .targetingAccordionItem:has(
-    .targetingAccordionTrigger.placementTabHoldout.targetingAccordionTriggerActive
-  ) {
+  .targetingAccordionTrigger.placementTabHoldout.targetingAccordionTriggerActive
+) {
   border-color: rgba(139, 92, 246, 0.34);
   box-shadow:
     0 6px 22px rgba(139, 92, 246, 0.14),
@@ -5750,8 +6018,8 @@
 }
 
 .targetingAccordionItem:has(
-    .targetingAccordionTrigger.placementTabAdvanced.targetingAccordionTriggerActive
-  ) {
+  .targetingAccordionTrigger.placementTabAdvanced.targetingAccordionTriggerActive
+) {
   border-color: rgba(37, 99, 235, 0.32);
   box-shadow:
     0 6px 22px rgba(37, 99, 235, 0.12),
@@ -5849,7 +6117,9 @@
   cursor: pointer;
   font-family: inherit;
   box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
-  transition: transform var(--transition-quick), box-shadow var(--transition-quick);
+  transition:
+    transform var(--transition-quick),
+    box-shadow var(--transition-quick);
 }
 
 .targetingJumpIssuesBtn:hover {
@@ -6163,14 +6433,18 @@
   border-color: var(--futuristic-cyan);
   color: var(--futuristic-cyan);
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(6, 182, 212, 0.05) 100%);
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 20px rgba(6, 182, 212, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementTabHoldout.placementTabActive {
   border-color: var(--futuristic-violet);
   color: var(--futuristic-violet);
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.05) 100%);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 20px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementTabHighlight {
@@ -6219,7 +6493,9 @@
   border-color: var(--goal-accent);
   color: var(--goal-accent);
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0.05) 100%);
-  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 20px rgba(37, 99, 235, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementTabAdvanced.placementTabActive .placementTabStep,
@@ -6265,8 +6541,13 @@
 }
 
 @keyframes placementDotPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .placementBarSummary {
@@ -6304,12 +6585,16 @@
   cursor: pointer;
   transition: all var(--transition-smooth);
   font-family: inherit;
-  box-shadow: 0 4px 18px rgba(6, 182, 212, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 4px 18px rgba(6, 182, 212, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .placementQuickApply:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(6, 182, 212, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 8px 28px rgba(6, 182, 212, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .placementQuickApply:focus-visible {
@@ -6353,10 +6638,17 @@
   margin-bottom: 4px;
   min-height: 0;
   line-height: 1;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 50%, rgba(6, 182, 212, 0.03) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.96) 50%,
+    rgba(6, 182, 212, 0.03) 100%
+  );
   border: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
   position: relative;
   overflow: hidden;
 }
@@ -6429,7 +6721,9 @@
   cursor: pointer;
   transition: all var(--transition-quick);
   font-family: inherit;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   position: relative;
   overflow: hidden;
 }
@@ -6451,7 +6745,9 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
   border-color: rgba(6, 182, 212, 0.35);
   color: var(--futuristic-cyan);
-  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 10px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transform: translateY(-1px);
 }
 
@@ -6464,7 +6760,9 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.14) 0%, rgba(139, 92, 246, 0.08) 100%);
   border-color: var(--futuristic-cyan);
   color: var(--futuristic-cyan);
-  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 2px 12px rgba(6, 182, 212, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementQuickPresetsStripChips .quickPresetChip:focus-visible {
@@ -6477,9 +6775,16 @@
   padding: 10px 12px 12px;
   border-radius: var(--radius-sm);
   gap: 6px;
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(6, 182, 212, 0.02) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.95) 50%,
+    rgba(6, 182, 212, 0.02) 100%
+  );
   border: 1px solid rgba(6, 182, 212, 0.14);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 1px 6px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   position: relative;
   overflow: hidden;
   transition: all var(--transition-smooth);
@@ -6543,7 +6848,9 @@
 
 .placementPanel .panelSection:hover {
   border-color: rgba(6, 182, 212, 0.25);
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 20px rgba(6, 182, 212, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .placementPanel .panelSectionTitle {
@@ -6935,7 +7242,9 @@
   font-size: clamp(0.8125rem, 1.1vw, 0.875rem);
   font-weight: 700;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   transition: all var(--transition-emphasis);
 }
 
@@ -6950,7 +7259,9 @@
 
 .placementPanel .panelSection .quickSelectChip:hover {
   transform: translateY(-3px) scale(1.02);
-  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 8px 24px rgba(6, 182, 212, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .placementPanel .panelSection .quickSelectChip:hover svg {
@@ -6959,7 +7270,9 @@
 }
 
 .placementPanel .panelSection .quickSelectChipActive {
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 20px rgba(6, 182, 212, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementPanel .panelSection .quickSelectChipActive svg {
@@ -6979,17 +7292,23 @@
   font-size: clamp(0.8125rem, 1.1vw, 0.875rem);
   font-weight: 700;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   transition: all var(--transition-emphasis);
 }
 
 .placementPanel .quickPresetChip:hover {
   transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 8px 24px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .placementPanel .quickPresetChipActive {
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 20px rgba(6, 182, 212, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementPanel .quickPresetChip:focus-visible {
@@ -7121,14 +7440,24 @@
   padding: var(--placement-section-pad);
   border-radius: var(--radius-sm);
   margin-bottom: var(--placement-chip-gap);
-  background: linear-gradient(165deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.92) 50%, rgba(6, 182, 212, 0.03) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(248, 250, 252, 0.98) 0%,
+    rgba(241, 245, 249, 0.92) 50%,
+    rgba(6, 182, 212, 0.03) 100%
+  );
   border: 1px dashed rgba(6, 182, 212, 0.28);
   transition: all var(--transition-standard);
 }
 
 .placementPanel .advancedEmptyState:hover {
   border-color: rgba(6, 182, 212, 0.4);
-  background: linear-gradient(165deg, rgba(248, 250, 252, 0.99) 0%, rgba(241, 245, 249, 0.95) 50%, rgba(6, 182, 212, 0.05) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(248, 250, 252, 0.99) 0%,
+    rgba(241, 245, 249, 0.95) 50%,
+    rgba(6, 182, 212, 0.05) 100%
+  );
   box-shadow: 0 2px 12px rgba(6, 182, 212, 0.06);
 }
 
@@ -7209,7 +7538,12 @@
 .customUrlEmptyState {
   padding: 24px 20px;
   margin-bottom: 16px;
-  background: linear-gradient(165deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.95) 50%, rgba(6, 182, 212, 0.03) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(248, 250, 252, 0.98) 0%,
+    rgba(241, 245, 249, 0.95) 50%,
+    rgba(6, 182, 212, 0.03) 100%
+  );
   border: 1px dashed rgba(6, 182, 212, 0.3);
   border-radius: 12px;
 }
@@ -7298,7 +7632,9 @@
 
 .placementPanel .panelSectionFull.panelSection:hover {
   border-color: rgba(139, 92, 246, 0.22);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 20px rgba(139, 92, 246, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 /* Respect reduced motion preference */
@@ -7365,9 +7701,16 @@
 .placementContent .holdoutBlock {
   padding: var(--placement-section-pad);
   border-radius: var(--radius-md);
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.96) 50%, rgba(139, 92, 246, 0.04) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.99) 0%,
+    rgba(248, 250, 252, 0.96) 50%,
+    rgba(139, 92, 246, 0.04) 100%
+  );
   border: 1px solid rgba(139, 92, 246, 0.18);
-  box-shadow: 0 2px 16px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 16px rgba(139, 92, 246, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transition: all var(--transition-standard);
 }
 
@@ -7378,15 +7721,24 @@
 
 .placementContent .holdoutBlock:focus-within {
   border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 20px rgba(139, 92, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .placementContent .holdoutAdvancedCol {
   padding: var(--placement-section-pad);
-  background: linear-gradient(165deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.95) 50%, rgba(6, 182, 212, 0.02) 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(248, 250, 252, 0.98) 0%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(6, 182, 212, 0.02) 100%
+  );
   border: 1px solid rgba(6, 182, 212, 0.14);
   border-radius: var(--radius-md);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* Holdout preset buttons - unified chip group */
@@ -7404,21 +7756,27 @@
   border-radius: 12px;
   border: 1px solid rgba(139, 92, 246, 0.2);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.9) 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   transition: all var(--transition-standard);
 }
 
 .placementContent .holdoutPresetBtn:hover {
   transform: translateY(-2px);
   border-color: rgba(139, 92, 246, 0.4);
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 4px 16px rgba(139, 92, 246, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .placementContent .holdoutPresetBtnActive {
   border-color: var(--futuristic-violet);
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(139, 92, 246, 0.08) 100%);
   color: var(--futuristic-violet);
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 16px rgba(139, 92, 246, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .placementContent .holdoutPresetBtn:focus-visible {
@@ -7725,7 +8083,7 @@
 }
 
 [data-theme='dark'] .customUrlEmptyState {
-  background: linear-gradient(165deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+  background: linear-gradient(165deg, rgba(30, 41, 59, 0.6) 0%, rgba(30, 41, 59, 0.8) 100%);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
@@ -7808,7 +8166,9 @@
 .scopeCardActive {
   border-color: var(--futuristic-cyan);
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(139, 92, 246, 0.06) 100%);
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 4px 20px rgba(6, 182, 212, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .scopeCardActive::before {
@@ -7878,18 +8238,14 @@
   text-transform: uppercase;
   padding: 5px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(30, 41, 59, 0.12);
   background: rgba(248, 250, 252, 0.96);
   color: var(--p-color-text-subdued, #6d7175);
 }
 .scopeCardCountPillHasSelection {
   border-color: rgba(6, 182, 212, 0.42);
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.16) 0%,
-    rgba(255, 255, 255, 0.98) 100%
-  );
-  color: color-mix(in srgb, #0f172a 78%, #06b6d4 22%);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.16) 0%, rgba(255, 255, 255, 0.98) 100%);
+  color: color-mix(in srgb, var(--bg-secondary) 78%, #06b6d4 22%);
 }
 .scopeCardActive.scopeCardSelectedProducts .scopeCardCountPillHasSelection {
   box-shadow: 0 2px 10px rgba(6, 182, 212, 0.2);
@@ -7967,7 +8323,9 @@
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-left: 4px solid rgba(6, 182, 212, 0.28);
   background: linear-gradient(180deg, rgba(250, 251, 252, 0.99) 0%, rgba(248, 250, 252, 0.97) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 2px 8px rgba(0, 0, 0, 0.04);
   position: relative;
   z-index: 0;
 }
@@ -8002,7 +8360,11 @@
   border: 1px solid rgba(0, 0, 0, 0.065);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-base), transform var(--transition-quick);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-quick);
   position: relative;
   overflow: hidden;
   cursor: pointer;
@@ -8011,7 +8373,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .productScopeOptionsRow .scopeCard.scopeCardOption {
-    transition: border-color var(--transition-micro), box-shadow var(--transition-micro), background var(--transition-micro);
+    transition:
+      border-color var(--transition-micro),
+      box-shadow var(--transition-micro),
+      background var(--transition-micro);
   }
   .productScopeOptionsRow .scopeCard.scopeCardOption:hover {
     transform: none;
@@ -8032,7 +8397,9 @@
 .productScopeOptionsRow .scopeCard.scopeCardOption:hover {
   border-color: rgba(6, 182, 212, 0.4);
   background: rgba(255, 255, 255, 1);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.1), 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.1),
+    0 1px 3px rgba(0, 0, 0, 0.04);
   transform: translateY(-2px);
 }
 
@@ -8044,7 +8411,10 @@
   border-color: rgba(6, 182, 212, 0.55);
   border-width: 1.5px;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 0 0 1px rgba(6, 182, 212, 0.15);
+  box-shadow:
+    0 4px 16px rgba(6, 182, 212, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 0 0 1px rgba(6, 182, 212, 0.15);
 }
 
 .productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive::before {
@@ -8087,7 +8457,9 @@
   justify-content: center;
   background: rgba(6, 182, 212, 0.08);
   color: var(--p-color-text-subdued, #6d7175);
-  transition: background var(--transition-quick), color var(--transition-quick);
+  transition:
+    background var(--transition-quick),
+    color var(--transition-quick);
 }
 
 .productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardIcon svg {
@@ -8142,7 +8514,9 @@
   border: 1px solid rgba(6, 182, 212, 0.2);
   border-left: 5px solid rgba(6, 182, 212, 0.55);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.99) 0%, rgba(241, 245, 249, 0.95) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96), 0 2px 12px rgba(6, 182, 212, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 2px 12px rgba(6, 182, 212, 0.07);
   position: relative;
 }
 
@@ -8190,11 +8564,11 @@
 }
 
 .productScopePickerCard {
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  border: 1px solid rgba(30, 41, 59, 0.1);
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
   padding: 12px;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 4px rgba(30, 41, 59, 0.06);
 }
 
 .productScopePickerCardPrimary {
@@ -8349,7 +8723,9 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
-  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .storeResourceList:focus-within,
@@ -8432,7 +8808,9 @@
   margin: 2px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    box-shadow var(--transition-fast);
   border: 1px solid transparent;
   text-align: left;
   width: calc(100% - 16px);
@@ -8469,7 +8847,9 @@
   justify-content: center;
   background: rgba(0, 0, 0, 0.05);
   color: var(--text-secondary);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .storeResourceItemIcon svg {
@@ -8749,7 +9129,9 @@
   border: 1px solid rgba(139, 92, 246, 0.18);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 1px 8px rgba(139, 92, 246, 0.05), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  box-shadow:
+    0 1px 8px rgba(139, 92, 246, 0.05),
+    0 1px 0 rgba(255, 255, 255, 0.8) inset;
   transition: all var(--transition-emphasis);
 }
 
@@ -8788,7 +9170,9 @@
   border-radius: var(--radius-md);
   border: 1px solid rgba(139, 92, 246, 0.15);
   transition: all var(--transition-standard);
-  box-shadow: 0 1px 4px rgba(139, 92, 246, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 1px 4px rgba(139, 92, 246, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .holdoutCardBody:focus-within {
@@ -8891,7 +9275,9 @@
   cursor: pointer;
   transition: all var(--transition-medium);
   font-family: inherit;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   overflow: hidden;
 }
 
@@ -8922,7 +9308,9 @@
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.14));
   padding: 3px 8px;
   border-radius: 6px;
-  box-shadow: 0 2px 6px rgba(139, 92, 246, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 2px 6px rgba(139, 92, 246, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
   border: 1px solid rgba(139, 92, 246, 0.2);
 }
 
@@ -8931,7 +9319,9 @@
   border-color: rgba(139, 92, 246, 0.4);
   color: #8b5cf6;
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 6px 18px rgba(139, 92, 246, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .holdoutPresetBtn:active {
@@ -8942,7 +9332,9 @@
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(139, 92, 246, 0.12));
   border-color: #8b5cf6;
   color: #8b5cf6;
-  box-shadow: 0 4px 18px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 4px 18px rgba(139, 92, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .holdoutPresetBtnActive::before {
@@ -8959,12 +9351,16 @@
   border-radius: var(--radius-sm);
   border: 1px solid rgba(139, 92, 246, 0.18);
   transition: all var(--transition-emphasis);
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 8px rgba(139, 92, 246, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .holdoutSliderRow:focus-within {
   border-color: rgba(139, 92, 246, 0.45);
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15), 0 4px 16px rgba(139, 92, 246, 0.1);
+  box-shadow:
+    0 0 0 2px rgba(139, 92, 246, 0.15),
+    0 4px 16px rgba(139, 92, 246, 0.1);
 }
 
 .holdoutSliderRow .holdoutValueInput {
@@ -9169,7 +9565,9 @@
   transition: all var(--transition-medium);
   font-family: inherit;
   text-align: center;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   overflow: hidden;
 }
 
@@ -9207,7 +9605,9 @@
   border-color: rgba(6, 182, 212, 0.35);
   color: var(--futuristic-cyan);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .quickSelectChip:hover svg {
@@ -9219,7 +9619,9 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.14) 0%, rgba(6, 182, 212, 0.07) 100%);
   border-color: var(--futuristic-cyan);
   color: var(--futuristic-cyan);
-  box-shadow: 0 4px 18px rgba(6, 182, 212, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 4px 18px rgba(6, 182, 212, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .quickSelectChipActive::before {
@@ -9327,7 +9729,9 @@
   cursor: pointer;
   transition: all var(--transition-medium);
   font-family: inherit;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   overflow: hidden;
 }
 
@@ -9353,7 +9757,9 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.06) 100%);
   border-color: rgba(6, 182, 212, 0.4);
   color: var(--futuristic-cyan);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   transform: translateY(-2px);
 }
 
@@ -9361,7 +9767,9 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.18) 0%, rgba(139, 92, 246, 0.1) 100%);
   border-color: var(--futuristic-cyan);
   color: var(--futuristic-cyan);
-  box-shadow: 0 4px 18px rgba(6, 182, 212, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 4px 18px rgba(6, 182, 212, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
   transform: translateY(-1px);
 }
 
@@ -9378,7 +9786,9 @@
   position: relative;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(139, 92, 246, 0.06);
-  transition: border-color var(--transition-standard), box-shadow var(--transition-standard);
+  transition:
+    border-color var(--transition-standard),
+    box-shadow var(--transition-standard);
 }
 
 .customUrlBlock .Polaris-TextField {
@@ -9476,7 +9886,9 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(139, 92, 246, 0.03) 100%);
   border-radius: var(--radius-md);
   border: 1px solid rgba(6, 182, 212, 0.18);
-  transition: border-color var(--transition-standard), box-shadow var(--transition-standard);
+  transition:
+    border-color var(--transition-standard),
+    box-shadow var(--transition-standard);
 }
 
 .countriesBlock:focus-within {
@@ -9540,13 +9952,13 @@
   flex-shrink: 0;
 }
 
-.advancedToggleButton[data-open="true"] {
+.advancedToggleButton[data-open='true'] {
   border-color: rgba(6, 182, 212, 0.45);
   color: var(--futuristic-cyan);
   background: rgba(6, 182, 212, 0.1);
 }
 
-.advancedToggleButton[data-open="true"] svg {
+.advancedToggleButton[data-open='true'] svg {
   transform: rotate(180deg);
 }
 
@@ -9773,7 +10185,9 @@
 
 .advancedSection:focus-within {
   border-color: rgba(6, 182, 212, 0.4);
-  box-shadow: 0 4px 24px rgba(6, 182, 212, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 24px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .advancedSection::before {
@@ -9878,7 +10292,9 @@
   align-items: center;
   justify-content: center;
   color: var(--text-tertiary);
-  transition: transform var(--transition-standard), color var(--transition-quick);
+  transition:
+    transform var(--transition-standard),
+    color var(--transition-quick);
 }
 
 .advancedSectionChevron svg {
@@ -10384,7 +10800,9 @@
   border-color: var(--goal-accent);
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
   color: var(--goal-accent);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2), 0 4px 16px rgba(59, 130, 246, 0.15);
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.2),
+    0 4px 16px rgba(59, 130, 246, 0.15);
 }
 
 .secondaryEventList {
@@ -10455,6 +10873,287 @@
   }
 }
 
+[data-theme='dark'] {
+  --chip-bg: var(--surface-glass);
+  --chip-border: rgba(6, 182, 212, 0.22);
+  --glass-bg: var(--surface-scrim);
+  --glass-border: rgba(6, 182, 212, 0.18);
+  --block-bg: linear-gradient(165deg, rgba(30, 41, 59, 0.86) 0%, rgba(6, 182, 212, 0.08) 100%);
+}
+
+[data-theme='dark'] .setupCompleteBadge,
+[data-theme='dark'] .metricSecondaryChip,
+[data-theme='dark'] .decisionRulesToolbarChips li,
+[data-theme='dark'] .targetingSummaryRailIssueBadge {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .metricPresetChip,
+[data-theme='dark'] .conversionWindowChip,
+[data-theme='dark'] .analysisMethodChip {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .metricPresetChip:hover,
+[data-theme='dark'] .metricPresetChipActive,
+[data-theme='dark'] .metricSecondaryChipActive,
+[data-theme='dark'] .conversionWindowChip:hover,
+[data-theme='dark'] .conversionWindowChipActive,
+[data-theme='dark'] .analysisMethodChip:hover,
+[data-theme='dark'] .analysisMethodChipActive {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .metricPresetLabel,
+[data-theme='dark'] .metricPresetChipActive .metricPresetLabel,
+[data-theme='dark'] .analysisMethodChip strong {
+  color: rgba(241, 245, 249, 0.96);
+}
+
+[data-theme='dark'] .conversionWindowChip svg,
+[data-theme='dark'] .conversionWindowChipActive svg {
+  background: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .setupCompleteBadge {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .targetingSummaryRailIssueBadge {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .goalWorkspaceHeader :global(.Polaris-Badge),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .configWrapper,
+[data-theme='dark'] .configColumnCard,
+[data-theme='dark'] .targetingCard,
+[data-theme='dark'] .goalWorkspaceSidebar,
+[data-theme='dark'] .goalWorkspaceCard,
+[data-theme='dark'] .goalDecisionRailCard,
+[data-theme='dark'] .goalDecisionRailSummary,
+[data-theme='dark'] .goalEventCreateCard,
+[data-theme='dark'] .goalSelectedCard,
+[data-theme='dark'] .goalEventTableWrap,
+[data-theme='dark'] .advancedGoalFields {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .targetingCard:hover {
+  border-color: rgba(6, 182, 212, 0.36);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(6, 182, 212, 0.1);
+}
+
+[data-theme='dark'] .goalWorkspaceNavItem,
+[data-theme='dark'] .goalMiniList span,
+[data-theme='dark'] .goalLibraryCard,
+[data-theme='dark'] .goalDecisionSteps a,
+[data-theme='dark'] .targetingControl,
+[data-theme='dark'] .targetingSummaryChip,
+[data-theme='dark'] .quickSelectChip,
+[data-theme='dark'] .quickPresetChip,
+[data-theme='dark'] .secondaryEventChip {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .goalWorkspaceNavItem:hover,
+[data-theme='dark'] .goalWorkspaceNavItemActive,
+[data-theme='dark'] .goalLibraryCard:hover,
+[data-theme='dark'] .goalLibraryCardSelected,
+[data-theme='dark'] .targetingControl:hover,
+[data-theme='dark'] .quickSelectChip:hover,
+[data-theme='dark'] .quickSelectChipActive,
+[data-theme='dark'] .quickPresetChipActive,
+[data-theme='dark'] .secondaryEventChip:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .goalLibraryCard code,
+[data-theme='dark'] .goalEventTable code {
+  background: rgba(6, 182, 212, 0.14);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .goalLibraryCard span,
+[data-theme='dark'] .goalWorkspaceNavItem small,
+[data-theme='dark'] .goalWorkspaceHint {
+  color: rgba(203, 213, 225, 0.78);
+}
+
+[data-theme='dark'] .goalDecisionRail,
+[data-theme='dark'] .goalSectionGroup,
+[data-theme='dark'] .goalBestPractice,
+[data-theme='dark'] .goalInstruction,
+[data-theme='dark'] .goalBuilderHero,
+[data-theme='dark'] .goalListPanel,
+[data-theme='dark'] .goalEventCommand,
+[data-theme='dark'] .goalSelectedEditor,
+[data-theme='dark'] .goalSelectedEmpty,
+[data-theme='dark'] .goalCatalogToolbar,
+[data-theme='dark'] .goalCatalogToolbarFilters,
+[data-theme='dark'] .goalSelectionSummary > div,
+[data-theme='dark'] .goalSelectionActions,
+[data-theme='dark'] .goalPresetRow,
+[data-theme='dark'] .goalEmptyCatalog,
+[data-theme='dark'] .advancedGoalBuilder,
+[data-theme='dark'] .goalEventTable,
+[data-theme='dark'] .goalListItem,
+[data-theme='dark'] .goalEventModalHero,
+[data-theme='dark'] .goalEventModeSwitch,
+[data-theme='dark'] .goalEventModalSummary,
+[data-theme='dark'] .goalEventModalSummaryItem,
+[data-theme='dark'] .goalEventModalPane,
+[data-theme='dark'] .goalEventModalRow,
+[data-theme='dark'] .goalEventCreatePanel,
+[data-theme='dark'] .goalEventCreateReadiness > div,
+[data-theme='dark'] .goalEventCreateSnapshot {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.1), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(96, 165, 250, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .goalDecisionSteps a:hover,
+[data-theme='dark'] .goalDecisionStepActive,
+[data-theme='dark'] .goalDecisionStepReady,
+[data-theme='dark'] .goalPresetRow:hover,
+[data-theme='dark'] .goalPresetRowSelected,
+[data-theme='dark'] .goalCatalogToolbarFilters button:hover,
+[data-theme='dark'] .goalCatalogFilterActive,
+[data-theme='dark'] .goalSelectionSecondaryAction :global(.Polaris-Button:hover),
+[data-theme='dark'] .goalEventModeSwitch button:hover,
+[data-theme='dark'] .goalEventModeSwitch .goalEventModeActive,
+[data-theme='dark'] .goalEventModalRow:hover,
+[data-theme='dark'] .goalEventModalRowSelected {
+  background: rgba(59, 130, 246, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+  color: #93c5fd !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(96, 165, 250, 0.12) !important;
+}
+
+[data-theme='dark'] .goalWorkspaceHeader h4,
+[data-theme='dark'] .goalDecisionRailCard h4,
+[data-theme='dark'] .goalDecisionSteps strong,
+[data-theme='dark'] .goalDecisionRailSummary strong,
+[data-theme='dark'] .goalSelectedHeader strong,
+[data-theme='dark'] .goalSelectedTitle strong,
+[data-theme='dark'] .goalPresetRow strong,
+[data-theme='dark'] .goalEventCommand strong,
+[data-theme='dark'] .goalSelectionSummary strong,
+[data-theme='dark'] .goalEventModalPaneHeader strong,
+[data-theme='dark'] .goalEventModalRow strong,
+[data-theme='dark'] .goalEventModalSummaryValue,
+[data-theme='dark'] .goalEventCreateSnapshot strong {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .goalWorkspaceHeader p,
+[data-theme='dark'] .goalDecisionSteps small,
+[data-theme='dark'] .goalDecisionRailSummary span,
+[data-theme='dark'] .goalDecisionRailSummary small,
+[data-theme='dark'] .goalSelectedHeader span,
+[data-theme='dark'] .goalSelectedEmpty span,
+[data-theme='dark'] .goalEventCommand span,
+[data-theme='dark'] .goalEventCommand small,
+[data-theme='dark'] .goalSelectionSummary span,
+[data-theme='dark'] .goalSelectionSummary small,
+[data-theme='dark'] .goalPresetRow small,
+[data-theme='dark'] .goalEmptyCatalog span,
+[data-theme='dark'] .goalEventModalRow small,
+[data-theme='dark'] .goalEventModalRowMeta,
+[data-theme='dark'] .goalEventModalSummaryLabel,
+[data-theme='dark'] .goalEventModalSummaryHint,
+[data-theme='dark'] .goalEventCreateReadiness > div {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .goalHeaderInfoIcon,
+[data-theme='dark'] .goalRailInfoIcon,
+[data-theme='dark'] .goalWorkspaceHeaderNumber,
+[data-theme='dark'] .goalDecisionSteps a > span,
+[data-theme='dark'] .goalListIcon,
+[data-theme='dark'] .goalWorkspaceNavIcon {
+  background: rgba(59, 130, 246, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+  color: #93c5fd !important;
+}
+
+[data-theme='dark'] .goalListRemove {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(248, 113, 113, 0.34) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme='dark'] .goalListRemove:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(248, 113, 113, 0.46) !important;
+}
+
+[data-theme='dark'] .goalPresetRow code,
+[data-theme='dark'] .goalSelectedTitle code,
+[data-theme='dark'] .inlineCode {
+  background: rgba(59, 130, 246, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+  color: #93c5fd !important;
+}
+
+[data-theme='dark'] .goalEventCreateReadiness .goalEventReadyItemComplete {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] .goalEventCreateReadiness .goalEventReadyItemWarning {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(251, 191, 36, 0.32) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] .goalDecisionRail::-webkit-scrollbar-track,
+[data-theme='dark'] .goalEventModalList::-webkit-scrollbar-track,
+[data-theme='dark'] .goalEventCreatePanel::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.58);
+}
+
+[data-theme='dark'] .goalDecisionRail::-webkit-scrollbar-thumb,
+[data-theme='dark'] .goalEventModalList::-webkit-scrollbar-thumb,
+[data-theme='dark'] .goalEventCreatePanel::-webkit-scrollbar-thumb {
+  background: rgba(96, 165, 250, 0.34);
+}
+
 /* Price test variant configuration - advanced UI */
 .priceStepRoot {
   display: flex;
@@ -10478,7 +11177,7 @@
   border-radius: 16px;
   border: 1px solid rgba(6, 182, 212, 0.2);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 18px rgba(30, 41, 59, 0.06);
   overflow: visible;
 }
 .priceVariantAccordionShell .priceSummaryList {
@@ -10508,7 +11207,9 @@
   overflow: hidden;
   border: 1px solid rgba(6, 182, 212, 0.18);
   background: var(--p-color-bg-surface, #fff);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
 }
 .priceSummaryCardCompact .priceSummaryHeader {
   padding: 12px 16px;
@@ -10535,12 +11236,15 @@
   gap: 10px;
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.96);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: background var(--transition-snappy), border-color var(--transition-snappy), box-shadow var(--transition-snappy);
+  transition:
+    background var(--transition-snappy),
+    border-color var(--transition-snappy),
+    box-shadow var(--transition-snappy);
 }
 .priceVariantToolsToggleBtn:hover {
   border-color: rgba(6, 182, 212, 0.28);
@@ -10827,7 +11531,9 @@
   border-radius: 8px;
   cursor: pointer;
   color: var(--p-color-text-subdued, #6d7175);
-  transition: color var(--transition-snappy), background var(--transition-snappy);
+  transition:
+    color var(--transition-snappy),
+    background var(--transition-snappy);
 }
 .priceTabNavBtn:hover:not(:disabled) {
   color: var(--p-color-text, #202223);
@@ -10850,7 +11556,11 @@
   flex-shrink: 0;
   font-weight: 500;
   color: var(--p-color-text-subdued, #6d7175);
-  transition: color var(--transition-snappy), background var(--transition-snappy), border-color var(--transition-snappy), box-shadow var(--transition-snappy);
+  transition:
+    color var(--transition-snappy),
+    background var(--transition-snappy),
+    border-color var(--transition-snappy),
+    box-shadow var(--transition-snappy);
   min-height: 40px;
   position: relative;
 }
@@ -10865,7 +11575,9 @@
   border-radius: 2px;
   background: currentColor;
   opacity: 0.35;
-  transition: opacity var(--transition-snappy), height var(--transition-snappy);
+  transition:
+    opacity var(--transition-snappy),
+    height var(--transition-snappy);
 }
 .priceTab:hover {
   color: var(--p-color-text, #202223);
@@ -10913,7 +11625,11 @@
 }
 .priceEditorPanel {
   padding: clamp(16px, 2.5vw, 28px) clamp(16px, 3vw, 32px) clamp(20px, 3vw, 32px);
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.03) 0%, var(--p-color-bg-surface, #fff) 20%);
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.03) 0%,
+    var(--p-color-bg-surface, #fff) 20%
+  );
   border-radius: 14px;
   position: relative;
   border-left: 4px solid var(--price-editor-accent, #06b6d4);
@@ -10959,9 +11675,9 @@
   min-width: 0;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.96) 100%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.04);
 }
 .priceEditorPanel .priceEditorIntroLabel {
   display: inline-flex;
@@ -11021,7 +11737,9 @@
   border: 1px solid var(--p-color-border-secondary, #e1e3e5);
   border-radius: 14px;
   margin-bottom: clamp(14px, 2vw, 20px);
-  transition: border-color var(--transition-quick), box-shadow var(--transition-quick);
+  transition:
+    border-color var(--transition-quick),
+    box-shadow var(--transition-quick);
 }
 .priceSectionBlock:last-of-type {
   margin-bottom: 0;
@@ -11050,7 +11768,7 @@
   gap: 12px;
   padding: 14px 16px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
 }
 .priceMethodRecommendationCardPreferred {
@@ -11098,7 +11816,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  border: 1px solid rgba(30, 41, 59, 0.1);
   border-radius: 10px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.96);
@@ -11110,7 +11828,7 @@
   padding: 8px 12px;
   margin: 0;
   cursor: pointer;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.06);
   transition: background var(--transition-snappy);
 }
 .priceMethodRadioRow:last-child {
@@ -11162,7 +11880,7 @@
 }
 .priceMethodRadioInfo:hover {
   color: var(--text-primary);
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
 }
 .priceMethodRadioInfo:focus-visible {
   outline: var(--ripx-focus-outline, 2px solid rgba(6, 182, 212, 0.45));
@@ -11203,7 +11921,9 @@
 .priceMethodChoiceCardActive {
   border-color: rgba(6, 182, 212, 0.42);
   background: linear-gradient(180deg, rgba(6, 182, 212, 0.14) 0%, rgba(6, 182, 212, 0.05) 100%);
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.18), 0 10px 28px rgba(6, 182, 212, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.18),
+    0 10px 28px rgba(6, 182, 212, 0.12);
 }
 .priceMethodChoiceCardDisabled {
   cursor: not-allowed;
@@ -11307,11 +12027,11 @@
 }
 .nativeVariantAssistantScroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.18);
+  background: rgba(30, 41, 59, 0.18);
 }
 .nativeVariantProductCard {
   margin: 8px 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.78);
   overflow: hidden;
@@ -11354,7 +12074,7 @@
 }
 .nativeVariantListItem {
   width: 100%;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(249, 250, 251, 0.95);
   border-radius: 12px;
   padding: 12px 14px;
@@ -11560,7 +12280,7 @@
 }
 
 .priceMatrixProductStartRow td {
-  border-top: 1px solid rgba(15, 23, 42, 0.12);
+  border-top: 1px solid rgba(30, 41, 59, 0.12);
 }
 
 .priceMatrixRowChanged td {
@@ -11649,13 +12369,7 @@
 
 .priceMatrixVariantId {
   font-family:
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    'Liberation Mono',
-    'Courier New',
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
     monospace;
   font-size: 0.8rem;
 }
@@ -11689,7 +12403,10 @@
   border-radius: 14px;
   border: 1px solid var(--p-color-border-secondary, #e1e3e5);
   background: var(--p-color-bg-surface, #fff);
-  transition: box-shadow var(--transition-quick), border-color var(--transition-quick), transform var(--transition-snappy);
+  transition:
+    box-shadow var(--transition-quick),
+    border-color var(--transition-quick),
+    transform var(--transition-snappy);
   overflow: hidden;
 }
 .pricePerProductCard:hover {
@@ -11752,7 +12469,11 @@
   text-align: center;
   padding: 48px 28px;
   color: var(--p-color-text-subdued, #6d7175);
-  background: linear-gradient(180deg, var(--p-color-bg-surface-secondary, #f9fafb) 0%, var(--p-color-bg-surface, #fff) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--p-color-bg-surface-secondary, #f9fafb) 0%,
+    var(--p-color-bg-surface, #fff) 100%
+  );
   border-radius: 16px;
   border: 2px dashed var(--p-color-border, #8c9196);
 }
@@ -11799,7 +12520,7 @@
   gap: 6px;
   padding: 6px 8px;
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.96);
 }
 .priceMetaCompactItemButton {
@@ -11808,7 +12529,7 @@
   gap: 8px;
   padding: 6px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.96);
   color: inherit;
   font: inherit;
@@ -11817,6 +12538,17 @@
 .priceMetaCompactItemButton:hover {
   border-color: rgba(6, 182, 212, 0.28);
   background: #fff;
+}
+
+[data-theme='dark'] .priceMetaCompactItemButton {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .priceMetaCompactItemButton:hover {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.34);
 }
 .priceMetaCompactItemTitle {
   font-size: 0.78rem;
@@ -11865,19 +12597,22 @@
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.96);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: background var(--transition-snappy), border-color var(--transition-snappy), box-shadow var(--transition-snappy);
+  transition:
+    background var(--transition-snappy),
+    border-color var(--transition-snappy),
+    box-shadow var(--transition-snappy);
 }
 .priceGuideToggleBtn:hover {
   border-color: rgba(6, 182, 212, 0.28);
   background: rgba(255, 255, 255, 1);
 }
 .priceGuideToggleBtnOpen {
-  border-color: color-mix(in srgb, #06b6d4 35%, rgba(15, 23, 42, 0.1));
+  border-color: color-mix(in srgb, #06b6d4 35%, rgba(30, 41, 59, 0.1));
   box-shadow: 0 2px 10px rgba(6, 182, 212, 0.08);
 }
 .priceGuideToggleLabel {
@@ -11955,7 +12690,9 @@
   border-radius: 8px;
   color: var(--p-color-text-subdued, #6d7175);
   cursor: help;
-  transition: background var(--transition-snappy), color var(--transition-snappy);
+  transition:
+    background var(--transition-snappy),
+    color var(--transition-snappy);
 }
 .productScopeHeaderInfo:hover {
   background: rgba(6, 182, 212, 0.1);
@@ -12012,7 +12749,7 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 12px;
   padding: 12px;
   background: var(--p-color-bg-surface-secondary, #f9fafb);
@@ -12073,7 +12810,9 @@
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: border-color var(--transition-snappy), box-shadow var(--transition-snappy);
+  transition:
+    border-color var(--transition-snappy),
+    box-shadow var(--transition-snappy);
 }
 .priceProductPickerRow:hover {
   border-color: rgba(6, 182, 212, 0.25);
@@ -12081,7 +12820,9 @@
 }
 .priceProductPickerRowSelected {
   border-color: rgba(6, 182, 212, 0.45);
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.12), 0 4px 12px rgba(6, 182, 212, 0.09);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.12),
+    0 4px 12px rgba(6, 182, 212, 0.09);
   background: linear-gradient(180deg, rgba(232, 250, 255, 0.9) 0%, rgba(255, 255, 255, 0.96) 100%);
 }
 .priceProductPickerThumb {
@@ -12155,7 +12896,7 @@
   padding: 8px 6px 8px 10px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
 }
 @media (max-width: 640px) {
   .priceProductPickerGrid {
@@ -12223,7 +12964,9 @@
   padding: 6px 12px;
   margin: -6px -12px;
   border-radius: 8px;
-  transition: background-color var(--transition-snappy), color var(--transition-snappy);
+  transition:
+    background-color var(--transition-snappy),
+    color var(--transition-snappy);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -12250,11 +12993,13 @@
 .priceDrawerBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(30, 41, 59, 0.5);
   z-index: 9998;
   opacity: 0;
   visibility: hidden;
-  transition: opacity var(--transition-emphasis), visibility var(--transition-emphasis);
+  transition:
+    opacity var(--transition-emphasis),
+    visibility var(--transition-emphasis);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -12361,7 +13106,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--transition-quick), color var(--transition-quick), transform var(--transition-snappy);
+  transition:
+    background var(--transition-quick),
+    color var(--transition-quick),
+    transform var(--transition-snappy);
 }
 .priceDrawerCloseBtn:hover {
   background: var(--p-color-bg-surface-hover, #e1e3e5);
@@ -12410,24 +13158,27 @@
 }
 .priceSummaryAccordionItem {
   --variant-accent: #06b6d4;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 16px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
-  transition: border-color var(--transition-quick), box-shadow var(--transition-quick), transform var(--transition-brisk);
+  box-shadow: 0 4px 14px rgba(30, 41, 59, 0.05);
+  transition:
+    border-color var(--transition-quick),
+    box-shadow var(--transition-quick),
+    transform var(--transition-brisk);
 }
 /* transform on an ancestor breaks sticky positioning; skip lift when expanded */
 .priceSummaryAccordionItem:not(:has(.priceSummaryRowExpanded)):hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.08);
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) {
   overflow: visible;
-  border-color: color-mix(in srgb, var(--variant-accent) 34%, rgba(15, 23, 42, 0.1));
+  border-color: color-mix(in srgb, var(--variant-accent) 34%, rgba(30, 41, 59, 0.1));
   box-shadow:
-    0 16px 34px color-mix(in srgb, var(--variant-accent) 16%, rgba(15, 23, 42, 0.1)),
-    0 0 0 1px color-mix(in srgb, var(--variant-accent) 14%, rgba(15, 23, 42, 0.03));
+    0 16px 34px color-mix(in srgb, var(--variant-accent) 16%, rgba(30, 41, 59, 0.1)),
+    0 0 0 1px color-mix(in srgb, var(--variant-accent) 14%, rgba(30, 41, 59, 0.03));
 }
 .priceSummaryAccordionItem .priceSummaryRow {
   border-bottom: none;
@@ -12438,7 +13189,9 @@
   gap: 18px;
   width: 100%;
   padding: 18px 20px 18px 24px;
-  transition: background var(--transition-standard), box-shadow var(--transition-standard);
+  transition:
+    background var(--transition-standard),
+    box-shadow var(--transition-standard);
   position: relative;
   min-height: 88px;
   box-sizing: border-box;
@@ -12457,7 +13210,9 @@
     color-mix(in srgb, var(--variant-accent) 78%, #0369a1 22%) 100%
   );
   opacity: 0;
-  transition: opacity var(--transition-standard), width var(--transition-quick);
+  transition:
+    opacity var(--transition-standard),
+    width var(--transition-quick);
   box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) .priceSummaryRow::before {
@@ -12515,11 +13270,11 @@
   border-bottom: none;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    0 10px 26px -16px rgba(15, 23, 42, 0.35),
+    0 10px 26px -16px rgba(30, 41, 59, 0.35),
     0 4px 12px -8px rgba(6, 182, 212, 0.22);
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) .priceSummaryRowClickable {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.06);
 }
 .priceSummaryRowDetails {
   flex: 1.4 1 420px;
@@ -12534,11 +13289,14 @@
   padding: 12px 14px;
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.92);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  transition: border-color var(--transition-quick), background var(--transition-quick), transform var(--transition-brisk);
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  transition:
+    border-color var(--transition-quick),
+    background var(--transition-quick),
+    transform var(--transition-brisk);
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) .priceSummaryInfoBlock {
-  border-color: color-mix(in srgb, var(--variant-accent) 16%, rgba(15, 23, 42, 0.08));
+  border-color: color-mix(in srgb, var(--variant-accent) 16%, rgba(30, 41, 59, 0.08));
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--variant-accent) 5%, white 95%) 0%,
@@ -12571,7 +13329,12 @@
   background: linear-gradient(145deg, rgba(6, 182, 212, 0.12) 0%, rgba(6, 182, 212, 0.05) 100%);
   color: var(--p-color-text-subdued, #6d7175);
   border: 1px solid rgba(6, 182, 212, 0.2);
-  transition: transform var(--transition-spring-strong), background var(--transition-standard), color var(--transition-standard), box-shadow var(--transition-standard), border-color var(--transition-standard);
+  transition:
+    transform var(--transition-spring-strong),
+    background var(--transition-standard),
+    color var(--transition-standard),
+    box-shadow var(--transition-standard),
+    border-color var(--transition-standard);
   justify-self: end;
 }
 .priceSummaryRowClickable:hover .priceSummaryAccordionChevron {
@@ -12585,7 +13348,9 @@
   background: linear-gradient(145deg, rgba(6, 182, 212, 0.25) 0%, rgba(6, 182, 212, 0.12) 100%);
   color: #0d9488;
   border-color: rgba(6, 182, 212, 0.4);
-  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 2px 12px rgba(6, 182, 212, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .priceAccordionBody {
   width: 100%;
@@ -12593,9 +13358,15 @@
   padding: 0 16px 20px;
   margin: 0;
   border-radius: 0;
-  background: linear-gradient(180deg, var(--p-color-bg-surface-secondary, #f4f5f6) 0%, var(--p-color-bg-surface-secondary, #f0f1f2) 100%);
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: linear-gradient(
+    180deg,
+    var(--p-color-bg-surface-secondary, #f4f5f6) 0%,
+    var(--p-color-bg-surface-secondary, #f0f1f2) 100%
+  );
+  border-top: 1px solid rgba(30, 41, 59, 0.06);
+  box-shadow:
+    inset 0 2px 10px rgba(0, 0, 0, 0.03),
+    0 1px 0 rgba(255, 255, 255, 0.5);
   transition: box-shadow var(--transition-quick);
   /* Let inner sticky section titles reach the viewport */
   overflow: visible;
@@ -12619,9 +13390,9 @@
   border-radius: 16px;
   max-width: none;
   background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   border-left: 4px solid color-mix(in srgb, var(--variant-accent) 42%, white 58%);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 6px 18px rgba(30, 41, 59, 0.06);
   position: relative;
   counter-reset: price-step;
   overflow: visible;
@@ -12713,7 +13484,7 @@
   min-width: 0;
   padding: 14px 16px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 0.95) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
@@ -12759,8 +13530,14 @@
   margin-bottom: 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.7) 100%);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-quick), transform var(--transition-quick);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-quick),
+    transform var(--transition-quick);
   position: relative;
   overflow: hidden;
   min-height: 0;
@@ -12769,7 +13546,9 @@
 .priceAccordionBody .priceSectionBlock:hover {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
   border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 .priceAccordionBody .priceSectionBlock::before {
   content: '';
@@ -12788,7 +13567,10 @@
 }
 .priceAccordionBody .priceSectionBlock:focus-within {
   border-color: rgba(6, 182, 212, 0.25);
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.15), 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.15),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 /* Section title: full-width header bar (not sticky — avoids stacking with variant row + wizard bar) */
 .priceAccordionBody .priceSectionBlockTitle {
@@ -12826,12 +13608,14 @@
     color-mix(in srgb, var(--variant-accent, #06b6d4) 28%, white 72%) 0%,
     color-mix(in srgb, var(--variant-accent, #06b6d4) 12%, white 88%) 100%
   );
-  color: color-mix(in srgb, var(--variant-accent, #06b6d4) 85%, #0f172a 15%);
+  color: color-mix(in srgb, var(--variant-accent, #06b6d4) 85%, var(--bg-secondary) 15%);
   font-size: 0.8125rem;
   font-weight: 800;
   flex-shrink: 0;
   border: 1px solid color-mix(in srgb, var(--variant-accent, #06b6d4) 32%, rgba(255, 255, 255, 0.5));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
   letter-spacing: 0.02em;
 }
 .priceAccordionBody .priceSectionBlockTitleText {
@@ -12869,7 +13653,10 @@
   border-radius: 50%;
   color: var(--p-color-text-subdued, #6d7175);
   cursor: help;
-  transition: color var(--transition-quick), background var(--transition-quick), box-shadow var(--transition-quick);
+  transition:
+    color var(--transition-quick),
+    background var(--transition-quick),
+    box-shadow var(--transition-quick);
   outline: none;
   flex-shrink: 0;
 }
@@ -12922,10 +13709,16 @@
   flex: 1 1 160px;
   min-width: 0;
 }
-.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout__Item) {
+.priceAccordionBody
+  .priceSectionBlock
+  .priceSectionBlockContent
+  :global(.Polaris-FormLayout__Item) {
   margin-bottom: 0;
 }
-.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout__Item:last-child) {
+.priceAccordionBody
+  .priceSectionBlock
+  .priceSectionBlockContent
+  :global(.Polaris-FormLayout__Item:last-child) {
   margin-bottom: 0;
 }
 .priceAccordionBody .priceSectionBlock label,
@@ -12936,7 +13729,10 @@
   color: var(--p-color-text, #202223);
 }
 .priceAccordionBody .priceSectionBlock .Polaris-HelpText,
-.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout__HelpText) {
+.priceAccordionBody
+  .priceSectionBlock
+  .priceSectionBlockContent
+  :global(.Polaris-FormLayout__HelpText) {
   font-size: 0.6875rem;
   color: var(--p-color-text-subdued, #6d7175);
   margin-top: 6px;
@@ -12947,7 +13743,9 @@
 .priceAccordionBody .Polaris-Select__Input {
   border-radius: 10px;
   border-color: rgba(0, 0, 0, 0.1);
-  transition: border-color var(--transition-quick), box-shadow var(--transition-quick);
+  transition:
+    border-color var(--transition-quick),
+    box-shadow var(--transition-quick);
 }
 .priceAccordionBody .Polaris-TextField__Input:hover,
 .priceAccordionBody .Polaris-Select__Input:hover {
@@ -12988,7 +13786,11 @@
   letter-spacing: 0.02em;
   border: 1px solid rgba(6, 182, 212, 0.3);
   background: rgba(255, 255, 255, 0.95);
-  transition: background var(--transition-quick), border-color var(--transition-quick), transform var(--transition-snappy), box-shadow var(--transition-quick);
+  transition:
+    background var(--transition-quick),
+    border-color var(--transition-quick),
+    transform var(--transition-snappy),
+    box-shadow var(--transition-quick);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .priceAccordionBody .priceQuickSetStrip .Polaris-Button:hover {
@@ -13013,7 +13815,7 @@
   flex-direction: column;
   gap: 10px;
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.06);
 }
 /* Per-product grid: card tiles */
 .priceAccordionBody .pricePerProductGrid {
@@ -13024,19 +13826,29 @@
 .priceAccordionBody .pricePerProductCard {
   border-radius: 14px;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   overflow: hidden;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-quick), transform var(--transition-quick);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-quick),
+    transform var(--transition-quick);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.7) 100%);
 }
 .priceAccordionBody .pricePerProductCard:hover {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
   border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 .priceAccordionBody .pricePerProductCard:focus-within {
   border-color: rgba(6, 182, 212, 0.25);
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.2), 0 2px 6px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.2),
+    0 2px 6px rgba(0, 0, 0, 0.04);
 }
 .priceAccordionBody .pricePerProductCard .Polaris-Card {
   padding: 18px 20px;
@@ -13059,7 +13871,7 @@
 .priceAccordionBody .pricePerVariantSection {
   margin-top: 4px;
   padding-top: 18px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-top: 1px solid rgba(30, 41, 59, 0.06);
 }
 .priceAccordionBody .pricePerVariantSectionHeader {
   display: flex;
@@ -13077,7 +13889,7 @@
   padding: 16px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 .priceAccordionBody .pricePerVariantRowHeader {
@@ -13278,15 +14090,15 @@
   border: 1px solid transparent;
 }
 .priceSummaryStatusPillActive {
-  color: color-mix(in srgb, var(--variant-accent) 78%, #0f172a 22%);
+  color: color-mix(in srgb, var(--variant-accent) 78%, var(--bg-secondary) 22%);
   background: color-mix(in srgb, var(--variant-accent) 14%, white 86%);
   border-color: color-mix(in srgb, var(--variant-accent) 22%, white 78%);
-  box-shadow: 0 4px 10px -8px color-mix(in srgb, var(--variant-accent) 30%, rgba(15, 23, 42, 0.2));
+  box-shadow: 0 4px 10px -8px color-mix(in srgb, var(--variant-accent) 30%, rgba(30, 41, 59, 0.2));
 }
 .priceSummaryStatusPillMuted {
   color: #475569;
   background: rgba(248, 250, 252, 0.96);
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: rgba(30, 41, 59, 0.08);
 }
 @media (max-width: 900px) {
   .priceSummaryRow {
@@ -13342,7 +14154,11 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-quick), border-color var(--transition-quick), color var(--transition-quick), transform var(--transition-snappy);
+  transition:
+    background var(--transition-quick),
+    border-color var(--transition-quick),
+    color var(--transition-quick),
+    transform var(--transition-snappy);
 }
 .priceSummaryEditBtn:hover {
   background: rgba(6, 182, 212, 0.1);
@@ -13392,7 +14208,7 @@
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.82);
 }
 
@@ -13484,7 +14300,7 @@
       rgba(6, 182, 212, 0.08) 100%
     );
   box-shadow:
-    0 22px 54px rgba(15, 23, 42, 0.1),
+    0 22px 54px rgba(30, 41, 59, 0.1),
     0 0 0 1px rgba(255, 255, 255, 0.55) inset,
     0 0 42px rgba(6, 182, 212, 0.08);
   backdrop-filter: blur(18px);
@@ -13564,7 +14380,7 @@
   border-color: rgba(6, 182, 212, 0.28);
   background: rgba(255, 255, 255, 0.88);
   box-shadow:
-    0 14px 28px rgba(15, 23, 42, 0.06),
+    0 14px 28px rgba(30, 41, 59, 0.06),
     0 0 22px rgba(6, 182, 212, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
@@ -13602,7 +14418,7 @@
     radial-gradient(circle at top left, rgba(6, 182, 212, 0.12), transparent 30%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92));
   box-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.08),
+    0 18px 42px rgba(30, 41, 59, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
@@ -13621,9 +14437,8 @@
 .checkoutSetupDisclosure {
   border-radius: 18px;
   border: 1px solid rgba(6, 182, 212, 0.16);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  box-shadow: 0 12px 28px rgba(30, 41, 59, 0.06);
 }
 
 .checkoutSetupDisclosure[open] {
@@ -13762,7 +14577,7 @@
     rgba(6, 182, 212, 0.08) 100%
   );
   box-shadow:
-    0 14px 34px rgba(15, 23, 42, 0.08),
+    0 14px 34px rgba(30, 41, 59, 0.08),
     0 0 0 1px rgba(255, 255, 255, 0.46) inset;
 }
 
@@ -13834,7 +14649,11 @@
   cursor: pointer;
   font-size: 0.82rem;
   font-weight: 700;
-  transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .checkoutPresetButton span {
@@ -14011,12 +14830,12 @@
   gap: 10px;
   padding: 12px 14px 14px;
   border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.04) 0%, rgba(15, 23, 42, 0.02) 100%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.04) 0%, rgba(30, 41, 59, 0.02) 100%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.92) 100%);
   box-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.07),
+    0 18px 42px rgba(30, 41, 59, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -14040,9 +14859,8 @@
   flex: 0 0 auto;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.88) 100%);
+  border: 1px solid rgba(30, 41, 59, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.88) 100%);
   color: inherit;
   cursor: pointer;
   text-align: left;
@@ -14052,29 +14870,28 @@
     box-shadow var(--transition-standard),
     background var(--transition-standard);
   box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.04),
+    0 8px 18px rgba(30, 41, 59, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .checkoutVariantBrowserTab:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--checkout-variant-accent) 26%, rgba(15, 23, 42, 0.08));
+  border-color: color-mix(in srgb, var(--checkout-variant-accent) 26%, rgba(30, 41, 59, 0.08));
   box-shadow:
-    0 14px 28px color-mix(in srgb, var(--checkout-variant-accent) 14%, rgba(15, 23, 42, 0.08)),
+    0 14px 28px color-mix(in srgb, var(--checkout-variant-accent) 14%, rgba(30, 41, 59, 0.08)),
     0 0 22px color-mix(in srgb, var(--checkout-variant-accent) 10%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
 .checkoutVariantBrowserTabActive {
-  border-color: color-mix(in srgb, var(--checkout-variant-accent) 34%, rgba(15, 23, 42, 0.08));
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--checkout-variant-accent-soft) 76%, white 24%) 0%,
-      rgba(255, 255, 255, 0.98) 100%
-    );
+  border-color: color-mix(in srgb, var(--checkout-variant-accent) 34%, rgba(30, 41, 59, 0.08));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--checkout-variant-accent-soft) 76%, white 24%) 0%,
+    rgba(255, 255, 255, 0.98) 100%
+  );
   box-shadow:
-    0 18px 36px color-mix(in srgb, var(--checkout-variant-accent) 16%, rgba(15, 23, 42, 0.08)),
+    0 18px 36px color-mix(in srgb, var(--checkout-variant-accent) 16%, rgba(30, 41, 59, 0.08)),
     0 0 28px color-mix(in srgb, var(--checkout-variant-accent) 14%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
@@ -14119,11 +14936,11 @@
   justify-content: center;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent) 18%, rgba(15, 23, 42, 0.08));
+  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent) 18%, rgba(30, 41, 59, 0.08));
   background: rgba(255, 255, 255, 0.72);
   font-size: 0.72rem;
   font-weight: 800;
-  color: color-mix(in srgb, var(--checkout-variant-accent) 62%, #0f172a 38%);
+  color: color-mix(in srgb, var(--checkout-variant-accent) 62%, var(--bg-secondary) 38%);
 }
 
 .checkoutVariantBrowserStatus {
@@ -14138,12 +14955,12 @@
   gap: 14px;
   padding: 16px;
   border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.035) 0%, rgba(15, 23, 42, 0.015) 100%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.035) 0%, rgba(30, 41, 59, 0.015) 100%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.92) 100%);
   box-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.07),
+    0 18px 42px rgba(30, 41, 59, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -14155,7 +14972,10 @@
 .checkoutVariantTableHead,
 .checkoutVariantTableRow {
   display: grid;
-  grid-template-columns: minmax(210px, 1.25fr) repeat(5, minmax(112px, 0.68fr)) minmax(250px, 1.08fr);
+  grid-template-columns: minmax(210px, 1.25fr) repeat(5, minmax(112px, 0.68fr)) minmax(
+      250px,
+      1.08fr
+    );
   gap: 10px;
   align-items: center;
 }
@@ -14174,12 +14994,12 @@
   --checkout-variant-accent-soft: rgba(6, 182, 212, 0.14);
   padding: 12px;
   border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent) 16%, rgba(15, 23, 42, 0.08));
+  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent) 16%, rgba(30, 41, 59, 0.08));
   background:
     linear-gradient(90deg, var(--checkout-variant-accent-soft), transparent 32%),
     rgba(255, 255, 255, 0.82);
   box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.05),
+    0 10px 24px rgba(30, 41, 59, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
@@ -14264,21 +15084,39 @@
   flex-direction: column !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Header),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Header
+),
 :global(body.ripx-checkout-variant-modal-open .Polaris-Modal__Header),
 :global(body.ripx-checkout-variant-modal-open div[class*='Modal__Header']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Header),
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal__Header']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) div[class*='Modal__Header']) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Header
+),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal__Header']
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal])
+    div[class*='Modal__Header']
+) {
   flex: 0 0 auto !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Body),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Body
+),
 :global(body.ripx-checkout-variant-modal-open .Polaris-Modal__Body),
 :global(body.ripx-checkout-variant-modal-open div[class*='Modal__Body']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Body),
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal__Body']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) div[class*='Modal__Body']) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal__Body
+),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal__Body']
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal])
+    div[class*='Modal__Body']
+) {
   display: flex !important;
   flex: 1 1 auto !important;
   flex-direction: column !important;
@@ -14288,12 +15126,23 @@
   padding: 0 !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal__BodyWrapper),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal__BodyWrapper
+),
 :global(body.ripx-checkout-variant-modal-open .Polaris-Modal__BodyWrapper),
 :global(body.ripx-checkout-variant-modal-open div[class*='Modal__BodyWrapper']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal__BodyWrapper),
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal__BodyWrapper']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) div[class*='Modal__BodyWrapper']) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal])
+    .Polaris-Modal__BodyWrapper
+),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal])
+    div[class*='Modal__BodyWrapper']
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal])
+    div[class*='Modal__BodyWrapper']
+) {
   display: flex !important;
   flex: 1 1 auto !important;
   flex-direction: column !important;
@@ -14303,12 +15152,21 @@
   padding: 0 !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Section),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Section
+),
 :global(body.ripx-checkout-variant-modal-open .Polaris-Modal-Section),
 :global(body.ripx-checkout-variant-modal-open div[class*='Modal-Section']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Section),
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal-Section']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) div[class*='Modal-Section']) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Section
+),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal-Section']
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal])
+    div[class*='Modal-Section']
+) {
   display: block !important;
   flex: 1 1 auto !important;
   height: 100% !important;
@@ -14321,12 +15179,21 @@
   scrollbar-width: thin !important;
 }
 
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Footer),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Footer
+),
 :global(body.ripx-checkout-variant-modal-open .Polaris-Modal-Footer),
 :global(body.ripx-checkout-variant-modal-open div[class*='Modal-Footer']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Footer),
-:global(.Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal-Footer']),
-:global(div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) div[class*='Modal-Footer']) {
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal]) .Polaris-Modal-Footer
+),
+:global(
+  .Polaris-Modal-Dialog__Modal:has([data-checkout-variant-editor-modal]) div[class*='Modal-Footer']
+),
+:global(
+  div[class*='Modal-Dialog__Modal']:has([data-checkout-variant-editor-modal])
+    div[class*='Modal-Footer']
+) {
   flex: 0 0 auto !important;
 }
 
@@ -14389,7 +15256,7 @@
 .checkoutStudioRailGroup + .checkoutStudioRailGroup,
 .checkoutStudioSectionOutline {
   padding-top: 10px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-top: 1px solid rgba(30, 41, 59, 0.06);
 }
 
 .checkoutStudioRailGroupLabel {
@@ -14437,7 +15304,7 @@
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 900;
@@ -14512,12 +15379,21 @@
   margin: 0 16px 12px;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 18%, rgba(15, 23, 42, 0.08));
+  border: 1px solid
+    color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 18%, rgba(30, 41, 59, 0.08));
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--checkout-variant-accent-soft, rgba(6, 182, 212, 0.14)) 68%, transparent), transparent 42%),
+    linear-gradient(
+      135deg,
+      color-mix(
+        in srgb,
+        var(--checkout-variant-accent-soft, rgba(6, 182, 212, 0.14)) 68%,
+        transparent
+      ),
+      transparent 42%
+    ),
     rgba(255, 255, 255, 0.9);
   box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.06),
+    0 12px 28px rgba(30, 41, 59, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
@@ -14729,7 +15605,7 @@
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.82)),
     rgba(255, 255, 255, 0.8);
   box-shadow:
-    0 14px 30px rgba(15, 23, 42, 0.06),
+    0 14px 30px rgba(30, 41, 59, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
@@ -14745,7 +15621,7 @@
   gap: 2px;
   padding: 9px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   background: rgba(248, 250, 252, 0.74);
   color: var(--text-secondary);
   text-align: left;
@@ -14791,7 +15667,7 @@
   align-items: start;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.7);
 }
 
@@ -14834,7 +15710,7 @@
   gap: 9px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(255, 255, 255, 0.68);
 }
 
@@ -14852,7 +15728,7 @@
   gap: 9px;
   padding: 10px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(255, 255, 255, 0.58);
 }
 
@@ -14867,7 +15743,7 @@
   gap: 4px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(255, 255, 255, 0.68);
 }
 
@@ -14912,7 +15788,7 @@
   gap: 7px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.78);
   color: inherit;
   text-align: left;
@@ -14925,7 +15801,7 @@
 
 .checkoutQuickSetupCard:hover {
   border-color: rgba(6, 182, 212, 0.3);
-  box-shadow: 0 10px 24px -22px rgba(15, 23, 42, 0.5);
+  box-shadow: 0 10px 24px -22px rgba(30, 41, 59, 0.5);
   transform: translateY(-1px);
 }
 
@@ -14954,7 +15830,7 @@
   gap: 10px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(255, 255, 255, 0.64);
 }
 
@@ -14979,7 +15855,7 @@
   min-width: 0;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(248, 250, 252, 0.72);
 }
 
@@ -15028,7 +15904,7 @@
   min-height: 24px;
   padding: 4px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   background: rgba(255, 255, 255, 0.62);
   color: var(--text-secondary);
   font-size: 0.68rem;
@@ -15047,7 +15923,7 @@
   align-items: center;
   padding: 10px;
   border-radius: 13px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(255, 255, 255, 0.7);
 }
 
@@ -15081,7 +15957,7 @@
 .checkoutPreviewRailStack span {
   padding: 7px 9px;
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   background: rgba(248, 250, 252, 0.74);
   color: var(--text-secondary);
   font-size: 0.72rem;
@@ -15104,7 +15980,7 @@
   gap: 5px;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(248, 250, 252, 0.76);
 }
 
@@ -15142,7 +16018,7 @@
   align-items: center;
   padding: 8px 9px;
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   background: rgba(248, 250, 252, 0.74);
   color: var(--text-secondary);
   font-size: 0.72rem;
@@ -15159,7 +16035,7 @@
   justify-content: space-between;
   gap: 14px;
   padding: 12px 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-top: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(12px);
 }
@@ -15200,7 +16076,7 @@
   gap: 8px;
   padding: 14px;
   border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.74);
   color: var(--text-secondary);
   text-align: left;
@@ -15290,7 +16166,7 @@
   gap: 5px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.7);
 }
 
@@ -15316,7 +16192,7 @@
   gap: 4px;
   margin-top: 2px;
   padding-top: 8px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-top: 1px solid rgba(30, 41, 59, 0.06);
 }
 
 .checkoutProductSourceAction {
@@ -15357,14 +16233,17 @@
   gap: 7px;
   padding: 10px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(248, 250, 252, 0.72);
 }
 
 .checkoutProductMatrixHead,
 .checkoutProductMatrixRow {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(100px, 0.7fr) minmax(80px, 0.45fr) minmax(130px, 0.8fr);
+  grid-template-columns: minmax(180px, 1.2fr) minmax(100px, 0.7fr) minmax(80px, 0.45fr) minmax(
+      130px,
+      0.8fr
+    );
   gap: 8px;
   align-items: center;
 }
@@ -15459,7 +16338,7 @@
   align-items: start;
   padding: 14px;
   border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.74);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
@@ -15532,12 +16411,21 @@
   gap: 10px;
   padding: 13px 16px;
   border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 18%, rgba(15, 23, 42, 0.08));
+  border: 1px solid
+    color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 18%, rgba(30, 41, 59, 0.08));
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--checkout-variant-accent-soft, rgba(6, 182, 212, 0.14)) 88%, transparent 12%), transparent 34%),
+    radial-gradient(
+      circle at top right,
+      color-mix(
+        in srgb,
+        var(--checkout-variant-accent-soft, rgba(6, 182, 212, 0.14)) 88%,
+        transparent 12%
+      ),
+      transparent 34%
+    ),
     linear-gradient(145deg, rgba(255, 255, 255, 0.94) 0%, rgba(239, 246, 255, 0.74) 100%);
   box-shadow:
-    0 14px 30px rgba(15, 23, 42, 0.06),
+    0 14px 30px rgba(30, 41, 59, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
   transition:
     border-color var(--transition-standard),
@@ -15545,9 +16433,13 @@
 }
 
 .checkoutVariantHero:hover {
-  border-color: color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 30%, rgba(15, 23, 42, 0.08));
+  border-color: color-mix(
+    in srgb,
+    var(--checkout-variant-accent, #06b6d4) 30%,
+    rgba(30, 41, 59, 0.08)
+  );
   box-shadow:
-    0 20px 38px rgba(15, 23, 42, 0.08),
+    0 20px 38px rgba(30, 41, 59, 0.08),
     0 0 28px color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 10%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
@@ -15561,7 +16453,8 @@
 
 .checkoutVariantSnapshot {
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 12%, rgba(15, 23, 42, 0.08));
+  border: 1px solid
+    color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 12%, rgba(30, 41, 59, 0.08));
   background: rgba(255, 255, 255, 0.64);
 }
 
@@ -15600,7 +16493,7 @@
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 72%, #0f172a 28%);
+  color: color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 72%, var(--bg-secondary) 28%);
 }
 
 .checkoutVariantMetrics {
@@ -15615,7 +16508,8 @@
   gap: 4px;
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 14%, rgba(15, 23, 42, 0.08));
+  border: 1px solid
+    color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 14%, rgba(30, 41, 59, 0.08));
   background: rgba(255, 255, 255, 0.74);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
   transition:
@@ -15626,7 +16520,11 @@
 
 .checkoutVariantMetric:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--checkout-variant-accent, #06b6d4) 22%, rgba(15, 23, 42, 0.08));
+  border-color: color-mix(
+    in srgb,
+    var(--checkout-variant-accent, #06b6d4) 22%,
+    rgba(30, 41, 59, 0.08)
+  );
   background: rgba(255, 255, 255, 0.88);
 }
 
@@ -15836,7 +16734,7 @@
   background: linear-gradient(160deg, rgba(239, 246, 255, 0.92) 0%, rgba(250, 245, 255, 0.94) 100%);
   padding: 16px;
   box-shadow:
-    0 14px 28px rgba(15, 23, 42, 0.07),
+    0 14px 28px rgba(30, 41, 59, 0.07),
     0 0 22px rgba(6, 182, 212, 0.05);
 }
 
@@ -15868,7 +16766,7 @@
   align-items: center;
   padding: 5px 9px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 800;
@@ -15917,7 +16815,7 @@
   gap: 5px;
   padding: 9px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   background: rgba(255, 255, 255, 0.66);
 }
 
@@ -16164,7 +17062,7 @@
   gap: 8px;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.62);
 }
 
@@ -16216,10 +17114,9 @@
   flex-direction: column;
   gap: 12px;
   border: 1px solid rgba(6, 182, 212, 0.14);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.84) 100%);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.84) 100%);
   box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.055),
+    0 12px 28px rgba(30, 41, 59, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
@@ -16291,7 +17188,7 @@
   gap: 6px;
   padding: 11px;
   border-radius: 13px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(255, 255, 255, 0.72);
   color: inherit;
   text-align: left;
@@ -16305,7 +17202,7 @@
 .checkoutProductSourceChoice:hover,
 .checkoutProductSourceChoice:focus-visible {
   border-color: rgba(6, 182, 212, 0.3);
-  box-shadow: 0 10px 22px -18px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 10px 22px -18px rgba(30, 41, 59, 0.45);
   transform: translateY(-1px);
   outline: none;
 }
@@ -16404,10 +17301,9 @@
   padding: 16px;
   border-radius: 16px;
   border: 1px solid rgba(6, 182, 212, 0.16);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.88) 100%);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.88) 100%);
   box-shadow:
-    0 12px 26px rgba(15, 23, 42, 0.055),
+    0 12px 26px rgba(30, 41, 59, 0.055),
     0 0 20px rgba(6, 182, 212, 0.045);
 }
 
@@ -16473,7 +17369,7 @@
   border: 1px solid rgba(6, 182, 212, 0.14);
   background: rgba(248, 250, 252, 0.72);
   box-shadow:
-    0 14px 28px rgba(15, 23, 42, 0.06),
+    0 14px 28px rgba(30, 41, 59, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
@@ -16591,7 +17487,7 @@
 .checkoutQuickAddShell:focus-within {
   border-color: rgba(6, 182, 212, 0.28);
   box-shadow:
-    0 18px 38px rgba(15, 23, 42, 0.08),
+    0 18px 38px rgba(30, 41, 59, 0.08),
     0 0 0 2px rgba(6, 182, 212, 0.08),
     0 0 28px rgba(6, 182, 212, 0.09);
 }
@@ -16640,6 +17536,74 @@
   font-size: 0.74rem;
   line-height: 1.4;
   color: var(--text-secondary);
+}
+
+[data-theme='dark'] .checkoutStudioHeroBadges :global(.Polaris-Badge),
+[data-theme='dark'] .checkoutStudioCommandMeta :global(.Polaris-Badge),
+[data-theme='dark'] .checkoutStudioReadinessItem :global(.Polaris-Badge),
+[data-theme='dark'] .checkoutPreviewChecklist :global(.Polaris-Badge),
+[data-theme='dark'] .checkoutConfidenceLane :global(.Polaris-Badge),
+[data-theme='dark'] .priceSurfaceChipRow :global(.Polaris-Badge),
+[data-theme='dark'] .priceSurfaceGuideTop :global(.Polaris-Badge) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow: 0 0 0 1px rgba(30, 41, 59, 0.28) inset;
+}
+
+[data-theme='dark'] .checkoutStudioHeroBadges :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .checkoutStudioCommandMeta :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .checkoutStudioReadinessItem :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .checkoutPreviewChecklist :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .checkoutConfidenceLane :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .priceSurfaceGuideTop :global(.Polaris-Badge--toneSuccess) {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .checkoutStudioHeroBadges :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .checkoutStudioCommandMeta :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .checkoutStudioReadinessItem :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .checkoutPreviewChecklist :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .checkoutConfidenceLane :global(.Polaris-Badge--toneInfo) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .checkoutStudioHeroBadges :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .checkoutStudioHeroBadges :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .checkoutStudioCommandMeta :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .checkoutStudioCommandMeta :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .checkoutStudioReadinessItem :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .checkoutStudioReadinessItem :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .checkoutPreviewChecklist :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .checkoutPreviewChecklist :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .checkoutConfidenceLane :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .checkoutConfidenceLane :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .priceSurfaceGuideTop :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .priceSurfaceGuideTop :global(.Polaris-Badge--toneAttention) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .checkoutStudioHeroBadges :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .checkoutStudioCommandMeta :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .checkoutStudioReadinessItem :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .checkoutPreviewChecklist :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .checkoutConfidenceLane :global(.Polaris-Badge--toneCritical) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .checkoutRuntimeBadge,
+[data-theme='dark'] .checkoutQuickAddButtonBadge {
+  background: rgba(6, 182, 212, 0.16);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
 }
 
 .checkoutQuickAddPreview {
@@ -16937,7 +17901,7 @@
 .advancedStudioDetailHeader {
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.08);
 }
 
 .advancedStudioDetailEyebrow {
@@ -17051,7 +18015,7 @@
   align-self: flex-start;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   color: var(--text-secondary);
   font-size: 0.68rem;
   font-weight: 800;
@@ -17300,7 +18264,9 @@
 .customRuleTableHead,
 .customRuleTableRow {
   display: grid;
-  grid-template-columns: 72px minmax(140px, 0.9fr) minmax(120px, 0.75fr) minmax(220px, 1.4fr) 120px 148px;
+  grid-template-columns:
+    72px minmax(140px, 0.9fr) minmax(120px, 0.75fr) minmax(220px, 1.4fr)
+    120px 148px;
   gap: 10px;
   align-items: start;
 }
@@ -17337,7 +18303,7 @@
   min-width: 34px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 800;
@@ -17357,7 +18323,7 @@
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   background: rgba(248, 250, 252, 0.92);
   color: var(--text-secondary);
   cursor: pointer;
@@ -17487,4 +18453,1391 @@
   .advancedStudioWorkspace {
     grid-template-columns: 1fr;
   }
+}
+
+[data-theme='dark'] .setupProgress,
+[data-theme='dark'] .setupGuidance,
+[data-theme='dark'] .setupCheckItem,
+[data-theme='dark'] .targetingSummary,
+[data-theme='dark'] .targetingCardPreview,
+[data-theme='dark'] .targetingProgressMini,
+[data-theme='dark'] .targetingAdvancedSection,
+[data-theme='dark'] .targetingAdvancedGrid,
+[data-theme='dark'] .sampleSizeGuidance,
+[data-theme='dark'] .sampleSizeEvidence,
+[data-theme='dark'] .sampleSizeEvidencePanel,
+[data-theme='dark'] .sampleEvidenceTab,
+[data-theme='dark'] .goalConfigPanel,
+[data-theme='dark'] .goalBlock,
+[data-theme='dark'] .goalWorkspaceShell,
+[data-theme='dark'] .goalLibrarySidebar,
+[data-theme='dark'] .goalCatalogToolbar,
+[data-theme='dark'] .goalCatalogTableWrap,
+[data-theme='dark'] .goalCatalogEmptyState,
+[data-theme='dark'] .goalEventModeSwitch,
+[data-theme='dark'] .goalEventFieldGroup,
+[data-theme='dark'] .goalEventPreview,
+[data-theme='dark'] .goalSelectedMeta {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .setupCheckItem:hover,
+[data-theme='dark'] .sampleEvidenceTab:hover,
+[data-theme='dark'] .sampleEvidenceTabActive,
+[data-theme='dark'] .goalCatalogToolbarFilters button:hover,
+[data-theme='dark'] .goalCatalogFilterActive,
+[data-theme='dark'] .goalEventModeSwitch button:hover,
+[data-theme='dark'] .goalEventModeSwitch .goalEventModeActive {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .priceSummaryCard,
+[data-theme='dark'] .priceOptionCard,
+[data-theme='dark'] .priceSimulationWrap,
+[data-theme='dark'] .priceSimulationTable,
+[data-theme='dark'] .priceTabBarWrap,
+[data-theme='dark'] .priceTabPanel,
+[data-theme='dark'] .priceSectionBlock,
+[data-theme='dark'] .priceMatrixTableWrap,
+[data-theme='dark'] .priceMatrixScopeCard,
+[data-theme='dark'] .priceMatrixScopeFooter,
+[data-theme='dark'] .priceProductPickerPanel,
+[data-theme='dark'] .priceQuickSetStrip,
+[data-theme='dark'] .priceAtAGlanceCard,
+[data-theme='dark'] .priceExamplePreview,
+[data-theme='dark'] .priceSummaryListItem,
+[data-theme='dark'] .priceSummaryRow,
+[data-theme='dark'] .priceVariantSummaryCard,
+[data-theme='dark'] .priceDrawerPanel,
+[data-theme='dark'] .priceDrawerFooter,
+[data-theme='dark'] .nativeVariantSelectedCard,
+[data-theme='dark'] .nativeVariantProductCard,
+[data-theme='dark'] .nativeVariantListItem {
+  --p-color-bg-surface: var(--surface-glass);
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58);
+  --p-color-bg-surface-hover: rgba(6, 182, 212, 0.16);
+  --p-color-border-secondary: rgba(6, 182, 212, 0.2);
+  --p-color-text: rgba(241, 245, 249, 0.96);
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .priceSummaryHeader,
+[data-theme='dark'] .priceQuickFillStrip,
+[data-theme='dark'] .priceAtAGlance,
+[data-theme='dark'] .priceTabBarWrap,
+[data-theme='dark'] .priceDrawerHeader,
+[data-theme='dark'] .priceDrawerFooter,
+[data-theme='dark'] .customRuleTableHead {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
+  border-color: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .priceTab,
+[data-theme='dark'] .priceTabNavBtn,
+[data-theme='dark'] .priceSummaryEditBtn,
+[data-theme='dark'] .priceDrawerCloseBtn,
+[data-theme='dark'] .priceVariantToolsToggleBtn,
+[data-theme='dark'] .priceSurfaceGuideCard,
+[data-theme='dark'] .priceSurfaceTab,
+[data-theme='dark'] .nativeVariantProductHeader,
+[data-theme='dark'] .nativeVariantListItem {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .priceTab:hover,
+[data-theme='dark'] .priceTabActive,
+[data-theme='dark'] .priceTabNavBtn:hover:not(:disabled),
+[data-theme='dark'] .priceSummaryEditBtn:hover,
+[data-theme='dark'] .priceDrawerCloseBtn:hover,
+[data-theme='dark'] .priceVariantToolsToggleBtn:hover,
+[data-theme='dark'] .priceVariantToolsToggleBtnOpen,
+[data-theme='dark'] .priceSurfaceGuideCard:hover,
+[data-theme='dark'] .priceSurfaceGuideCardConfigured,
+[data-theme='dark'] .priceSurfaceTabActive,
+[data-theme='dark'] .nativeVariantProductHeader:hover,
+[data-theme='dark'] .nativeVariantListItem:hover,
+[data-theme='dark'] .nativeVariantListItemSelected {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .priceSimulationTable th,
+[data-theme='dark'] .priceMatrixTable th,
+[data-theme='dark'] .priceProductPickerTable th {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(203, 213, 225, 0.82);
+}
+
+[data-theme='dark'] .priceSimulationTable td,
+[data-theme='dark'] .priceMatrixTable td,
+[data-theme='dark'] .priceProductPickerTable td {
+  border-color: rgba(148, 163, 184, 0.14);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .priceDrawerBody::-webkit-scrollbar-track,
+[data-theme='dark'] .nativeVariantAssistantScroll::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.58);
+}
+
+[data-theme='dark'] .priceDrawerBody::-webkit-scrollbar-thumb,
+[data-theme='dark'] .nativeVariantAssistantScroll::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.34);
+}
+
+[data-theme='dark'] .audienceHeader,
+[data-theme='dark'] .audienceModeTabs,
+[data-theme='dark'] .checkoutStudioHero,
+[data-theme='dark'] .checkoutStudioStatCard,
+[data-theme='dark'] .checkoutStudioCommand,
+[data-theme='dark'] .checkoutStudioWorkspace,
+[data-theme='dark'] .checkoutStudioNav,
+[data-theme='dark'] .checkoutStudioEditorPane,
+[data-theme='dark'] .checkoutStudioPreviewPane,
+[data-theme='dark'] .checkoutSectionShell,
+[data-theme='dark'] .checkoutVariantBlock,
+[data-theme='dark'] .checkoutSectionControls,
+[data-theme='dark'] .checkoutSectionPreview,
+[data-theme='dark'] .checkoutQuickAddShell,
+[data-theme='dark'] .checkoutQuickAddButton,
+[data-theme='dark'] .checkoutQuickAddPreview,
+[data-theme='dark'] .checkoutStudioReadinessItem,
+[data-theme='dark'] .checkoutPreviewChecklist,
+[data-theme='dark'] .checkoutConfidenceLane {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    rgba(30, 41, 59, 0.66);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .audienceModeTab:hover,
+[data-theme='dark'] .audienceModeTabActive,
+[data-theme='dark'] .checkoutStudioStatCard:hover,
+[data-theme='dark'] .checkoutQuickAddButton:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .checkoutStudioHero::before {
+  background:
+    linear-gradient(120deg, rgba(6, 182, 212, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(139, 92, 246, 0.1), transparent 38%);
+}
+
+[data-theme='dark'] .checkoutStudioCompactInfo,
+[data-theme='dark'] .checkoutRuntimeBadge,
+[data-theme='dark'] .checkoutQuickAddButtonBadge,
+[data-theme='dark'] .checkoutSectionEditorMeta span {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .advancedStudioWorkspace,
+[data-theme='dark'] .advancedStudioSidebar,
+[data-theme='dark'] .advancedStudioCanvas,
+[data-theme='dark'] .customRuleStudio,
+[data-theme='dark'] .customRuleQuickStartBar,
+[data-theme='dark'] .customRuleTable,
+[data-theme='dark'] .customRuleTableRow,
+[data-theme='dark'] .customRuleRow,
+[data-theme='dark'] .customRuleGroup,
+[data-theme='dark'] .placementPanel .customRuleRow,
+[data-theme='dark'] .placementPanel .advancedEmptyState {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .customRuleTableRow:hover,
+[data-theme='dark'] .customRuleRow:hover,
+[data-theme='dark'] .placementPanel .customRuleRow:hover {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.34);
+}
+
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-TextField__Input),
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-Select__Input),
+[data-theme='dark'] .priceDrawerPanel :global(.Polaris-TextField__Input),
+[data-theme='dark'] .priceDrawerPanel :global(.Polaris-Select__Input),
+[data-theme='dark'] .checkoutStudioWorkspace :global(.Polaris-TextField__Input),
+[data-theme='dark'] .checkoutStudioWorkspace :global(.Polaris-Select__Input),
+[data-theme='dark'] .customRuleStudio :global(.Polaris-TextField__Input),
+[data-theme='dark'] .customRuleStudio :global(.Polaris-Select__Input),
+[data-theme='dark'] .placementPanel :global(.Polaris-TextField__Input),
+[data-theme='dark'] .placementPanel :global(.Polaris-Select__Input) {
+  background-color: var(--surface-slate-soft);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: rgba(241, 245, 249, 0.96);
+  -webkit-text-fill-color: rgba(241, 245, 249, 0.96);
+}
+
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-Select__Backdrop),
+[data-theme='dark'] .priceDrawerPanel :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] .priceDrawerPanel :global(.Polaris-Select__Backdrop),
+[data-theme='dark'] .checkoutStudioWorkspace :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] .checkoutStudioWorkspace :global(.Polaris-Select__Backdrop),
+[data-theme='dark'] .customRuleStudio :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] .customRuleStudio :global(.Polaris-Select__Backdrop),
+[data-theme='dark'] .placementPanel :global(.Polaris-TextField__Backdrop),
+[data-theme='dark'] .placementPanel :global(.Polaris-Select__Backdrop) {
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  background: var(--surface-slate-soft) !important;
+}
+
+[data-theme='dark'] .placementPanel .panelSection,
+[data-theme='dark'] .priceSurfacePanel,
+[data-theme='dark'] .decisionRulesDefaultCard,
+[data-theme='dark'] .decisionRuleCard,
+[data-theme='dark'] .decisionRuleCardCustom,
+[data-theme='dark'] .decisionRulesFootnote,
+[data-theme='dark'] .decisionRuleNotice,
+[data-theme='dark'] .advancedStudioDetail,
+[data-theme='dark'] .customRuleStudioHeader,
+[data-theme='dark'] .checkoutStudioWorkspaceRail,
+[data-theme='dark'] .checkoutStudioReadinessPanel,
+[data-theme='dark'] .checkoutTargetingTile,
+[data-theme='dark'] .checkoutPhaseCard,
+[data-theme='dark'] .checkoutVariantBlock {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .placementPanel .panelSection:hover,
+[data-theme='dark'] .decisionRuleCard:hover,
+[data-theme='dark'] .checkoutTargetingTile:hover,
+[data-theme='dark'] .checkoutPhaseCard:hover,
+[data-theme='dark'] .checkoutPhaseCardActive,
+[data-theme='dark'] .checkoutVariantBlock:focus-within {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+[data-theme='dark'] .checkoutTargetingTile::before,
+[data-theme='dark'] .checkoutPhaseCard::before,
+[data-theme='dark'] .checkoutVariantBlock::before,
+[data-theme='dark'] .checkoutQuickAddButton::before {
+  background:
+    linear-gradient(120deg, rgba(6, 182, 212, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(139, 92, 246, 0.08), transparent 38%);
+}
+
+[data-theme='dark'] .decisionRulesDefaultCard span,
+[data-theme='dark'] .checkoutStudioStatLabel,
+[data-theme='dark'] .checkoutStudioEyebrow,
+[data-theme='dark'] .checkoutQuickAddProof {
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .configWrapper,
+[data-theme='dark'] .configWrapper :global(.Polaris-ShadowBevel),
+[data-theme='dark'] .configWrapper :global(.Polaris-Card),
+[data-theme='dark'] .configWrapper :global(.Polaris-LegacyCard),
+[data-theme='dark'] .configWrapper :global(.Polaris-Box),
+[data-theme='dark'] .targetingTabContent,
+[data-theme='dark'] .targetingTabPanel,
+[data-theme='dark'] .tabPanelInner,
+[data-theme='dark'] .placementBar,
+[data-theme='dark'] .targetingAccordionStackWithRail,
+[data-theme='dark'] .targetingAccordionItem,
+[data-theme='dark'] .targetingAccordionPanel,
+[data-theme='dark'] .placementPanel,
+[data-theme='dark'] .placementQuickPresetsStrip,
+[data-theme='dark'] .scopeCard,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption,
+[data-theme='dark'] .targetingPanel,
+[data-theme='dark'] .targetingPanelHoldout {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .targetingAccordionPanel {
+  background:
+    linear-gradient(180deg, rgba(6, 182, 212, 0.08), rgba(30, 41, 59, 0.54)), var(--surface-glass) !important;
+  border-top-color: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .placementQuickPresetsStripChips .quickPresetChip,
+[data-theme='dark'] .scopeCardCountPill,
+[data-theme='dark'] .scopeCardIcon {
+  background: var(--surface-scrim) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .placementQuickPresetsStripChips .quickPresetChip:hover,
+[data-theme='dark'] .placementQuickPresetsStripChips .quickPresetChipActive,
+[data-theme='dark'] .scopeCard:hover,
+[data-theme='dark'] .scopeCardActive,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption:hover,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .scopeCardLabel,
+[data-theme='dark']
+  .productScopeOptionsRow
+  .scopeCard.scopeCardOption.scopeCardActive
+  .scopeCardLabel {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .scopeCardDesc,
+[data-theme='dark'] .scopeCardActive .scopeCardDesc,
+[data-theme='dark']
+  .productScopeOptionsRow
+  .scopeCard.scopeCardOption.scopeCardActive
+  .scopeCardDesc,
+[data-theme='dark'] .placementQuickPresetsStripLabel {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .configWrapper :global(.Polaris-Banner),
+[data-theme='dark'] .placementPanel :global(.Polaris-Banner) {
+  background: var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .priceAtAGlance,
+[data-theme='dark'] .priceAtAGlanceGrid,
+[data-theme='dark'] .priceAtAGlanceCard,
+[data-theme='dark'] .productScopeSection,
+[data-theme='dark'] .productScopeCard,
+[data-theme='dark'] .productScopeSection .productScopeHeader,
+[data-theme='dark'] .productScopeOptionsWrap,
+[data-theme='dark'] .productScopeOptionsRow,
+[data-theme='dark'] .productScopeSelectPanel,
+[data-theme='dark'] .productScopePickerGrid,
+[data-theme='dark'] .productScopePickerCard,
+[data-theme='dark'] .productScopePickerSelectionList,
+[data-theme='dark'] .productScopePickerSelectionEmpty,
+[data-theme='dark'] .storeResourceList,
+[data-theme='dark'] .storeResourceListHeader,
+[data-theme='dark'] .storeResourceListMeta,
+[data-theme='dark'] .storeResourceListFooter,
+[data-theme='dark'] .storeResourceListEmpty,
+[data-theme='dark'] .storeResourceListLoading,
+[data-theme='dark'] .priceProductPickerPane,
+[data-theme='dark'] .priceProductPickerList,
+[data-theme='dark'] .priceProductPickerSelectedList,
+[data-theme='dark'] .priceProductPickerLoading,
+[data-theme='dark'] .priceProductPickerEmpty {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .productScopePickerCardPrimary {
+  border-color: rgba(6, 182, 212, 0.36) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .productScopeOptionsLabel,
+[data-theme='dark'] .storeResourceSelectedBadge,
+[data-theme='dark'] .productScopePickerMoreBadge,
+[data-theme='dark'] .priceExamplePreviewResult {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .productScopeOptionsRow::after {
+  background: linear-gradient(180deg, transparent, rgba(6, 182, 212, 0.22), transparent);
+}
+
+[data-theme='dark'] .productScopeSelectPanel .storeResourceList,
+[data-theme='dark'] .productScopePickerCard .priceProductPickerRow,
+[data-theme='dark'] .priceProductPickerRow,
+[data-theme='dark'] .priceProductPickerSelectedRow,
+[data-theme='dark'] .storeResourceItem {
+  background: var(--surface-scrim) !important;
+  border-color: rgba(6, 182, 212, 0.18) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+[data-theme='dark'] .productScopePickerCard .priceProductPickerRow:hover,
+[data-theme='dark'] .priceProductPickerRow:hover,
+[data-theme='dark'] .priceProductPickerRowSelected,
+[data-theme='dark'] .priceProductPickerSelectedRow:hover,
+[data-theme='dark'] .storeResourceItem:hover,
+[data-theme='dark'] .storeResourceItemSelected,
+[data-theme='dark'] .storeResourceItemSelected:hover {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(6, 182, 212, 0.4) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(6, 182, 212, 0.1) !important;
+}
+
+[data-theme='dark'] .priceProductPickerThumb,
+[data-theme='dark'] .storeResourceItemIcon,
+[data-theme='dark'] .productScopePickerIcon,
+[data-theme='dark'] .productScopePickerIconMuted,
+[data-theme='dark'] .storeResourceListEmptyIcon,
+[data-theme='dark'] .storeResourceListLoadingIcon {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border: 1px solid rgba(6, 182, 212, 0.24);
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .priceAtAGlanceLabel,
+[data-theme='dark'] .priceAtAGlanceHint,
+[data-theme='dark'] .productScopeSection .productScopeHeader p,
+[data-theme='dark'] .productScopeSelectPanel .productScopeSelectHelp,
+[data-theme='dark'] .priceProductPickerRowHandle,
+[data-theme='dark'] .storeResourceItemHandle {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .priceAtAGlanceValue,
+[data-theme='dark'] .productScopeSection .productScopeHeader h3,
+[data-theme='dark'] .productScopeSelectPanel .productScopeSelectTitle,
+[data-theme='dark'] .priceProductPickerRowTitle,
+[data-theme='dark'] .storeResourceItemTitle {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .storeResourceListScroll::-webkit-scrollbar-track,
+[data-theme='dark'] .priceProductPickerList::-webkit-scrollbar-track,
+[data-theme='dark'] .priceProductPickerSelectedList::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.58);
+}
+
+[data-theme='dark'] .storeResourceListScroll::-webkit-scrollbar-thumb,
+[data-theme='dark'] .priceProductPickerList::-webkit-scrollbar-thumb,
+[data-theme='dark'] .priceProductPickerSelectedList::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.34);
+}
+
+[data-theme='dark'] .placementBarRowTargeting,
+[data-theme='dark'] .placementBarRowTargetingWithRail,
+[data-theme='dark'] .targetingRailDetail,
+[data-theme='dark'] .targetingSummaryRail,
+[data-theme='dark'] .targetingSummaryRailList,
+[data-theme='dark'] .placementBarSummaryTargeting,
+[data-theme='dark'] .targetingSmartStrip,
+[data-theme='dark'] .targetingBestPractice,
+[data-theme='dark'] .targetingFlow,
+[data-theme='dark'] .targetingSidebar,
+[data-theme='dark'] .targetingMain,
+[data-theme='dark'] .targetingLayout {
+  background: transparent !important;
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .placementBarSummaryTargeting {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
+    var(--surface-glass) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .targetingSummaryEyebrow,
+[data-theme='dark'] .targetingSummaryRailLabel,
+[data-theme='dark'] .targetingSummaryRailDetail {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .placementConfigPill,
+[data-theme='dark'] .placementBarSummaryTargeting .placementConfigPill,
+[data-theme='dark'] .targetingSummaryRailItem,
+[data-theme='dark'] .targetingAccordionItem {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .targetingSummaryRailItem:hover,
+[data-theme='dark'] .targetingSummaryRailItemActive,
+[data-theme='dark']
+  .targetingAccordionItem:has(
+    .targetingAccordionTriggerActive:not(.placementTabHoldout):not(.placementTabAdvanced)
+  ),
+[data-theme='dark']
+  .targetingAccordionItem:has(
+    .targetingAccordionTrigger.placementTabHoldout.targetingAccordionTriggerActive
+  ),
+[data-theme='dark']
+  .targetingAccordionItem:has(
+    .targetingAccordionTrigger.placementTabAdvanced.targetingAccordionTriggerActive
+  ) {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] .targetingSummaryRailStep,
+[data-theme='dark'] .targetingSummaryGlanceIcon,
+[data-theme='dark'] .targetingSummaryRailCoachIcon,
+[data-theme='dark'] .targetingSummaryKbd,
+[data-theme='dark'] .targetingSummaryStatus,
+[data-theme='dark'] .targetingSummaryChipActive .targetingSummaryStatus {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  color: #67e8f9 !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] .targetingSummaryRailTitle,
+[data-theme='dark'] .placementBarSummaryTargeting .placementConfigPill {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .targetingFlowConnector::after {
+  background: var(--surface-slate-panel) !important;
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .targetingSmartStrip,
+[data-theme='dark'] .targetingBestPractice {
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-scrim) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .targetingBestPracticeText,
+[data-theme='dark'] .targetingSmartStrip,
+[data-theme='dark'] .targetingSmartStrip :global(.Polaris-Text),
+[data-theme='dark'] .targetingBestPractice :global(.Polaris-Text) {
+  color: rgba(226, 232, 240, 0.94) !important;
+}
+
+[data-theme='dark'] .configSummary,
+[data-theme='dark'] .setupChecklist,
+[data-theme='dark'] .setupProgressCount,
+[data-theme='dark'] .setupTip,
+[data-theme='dark'] .setupCheckItem,
+[data-theme='dark'] .metricActiveSummary,
+[data-theme='dark'] .decisionRulesToolbarActions,
+[data-theme='dark'] .targetingCoachLine,
+[data-theme='dark'] .checkoutPageScopeLocked,
+[data-theme='dark'] .placementTab,
+[data-theme='dark'] .placementTabStep,
+[data-theme='dark'] .placementTab svg,
+[data-theme='dark'] .placementQuickPresetsStrip,
+[data-theme='dark'] .placementQuickPresetsStripChips .quickPresetChip,
+[data-theme='dark'] .placementPanel .panelSection .quickSelectChips,
+[data-theme='dark'] .placementPanel .panelSection .quickPresetChips,
+[data-theme='dark'] .audienceSubNavBtn,
+[data-theme='dark'] .audienceSubPanel,
+[data-theme='dark'] .inlineAdvancedToggle,
+[data-theme='dark'] .goalConfigWrapper :global(.Polaris-Button),
+[data-theme='dark'] .configWrapper :global(.Polaris-Button),
+[data-theme='dark'] .targetingTabContent :global(.Polaris-Button),
+[data-theme='dark'] .goalEventModal :global(.Polaris-Button),
+[data-theme='dark'] .decisionRulesToolbarActions :global(.Polaris-Button),
+[data-theme='dark'] .goalEventCreateActionsButtons :global(.Polaris-Button),
+[data-theme='dark'] .goalEventKeyComposer :global(.Polaris-Button),
+[data-theme='dark'] .goalEventModalRowActions :global(.Polaris-Button) {
+  --p-color-bg-fill: var(--surface-glass) !important;
+  --p-color-bg-fill-hover: rgba(6, 182, 212, 0.16) !important;
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-border: rgba(6, 182, 212, 0.22) !important;
+  --p-color-text: rgba(226, 232, 240, 0.96) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .setupCheckItem:hover,
+[data-theme='dark'] .targetingCoachLine:hover,
+[data-theme='dark'] .placementTab:hover,
+[data-theme='dark'] .placementTabActive,
+[data-theme='dark'] .placementTabHoldout.placementTabActive,
+[data-theme='dark'] .placementTabAdvanced.placementTabActive,
+[data-theme='dark'] .placementQuickPresetsStripChips .quickPresetChip:hover,
+[data-theme='dark'] .placementQuickPresetsStripChips .quickPresetChipActive,
+[data-theme='dark'] .audienceSubNavBtn:hover,
+[data-theme='dark'] .audienceSubNavBtnActive,
+[data-theme='dark'] .goalConfigWrapper :global(.Polaris-Button:hover),
+[data-theme='dark'] .configWrapper :global(.Polaris-Button:hover),
+[data-theme='dark'] .targetingTabContent :global(.Polaris-Button:hover),
+[data-theme='dark'] .goalEventModal :global(.Polaris-Button:hover) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] .targetingCoachLineWarning {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(251, 191, 36, 0.32) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] .setupProgressText,
+[data-theme='dark'] .configSummary,
+[data-theme='dark'] .setupTip,
+[data-theme='dark'] .metricActiveSummary small,
+[data-theme='dark'] .targetingReadinessLegend,
+[data-theme='dark'] .targetingCoachMessage,
+[data-theme='dark'] .placementQuickPresetsStripLabel,
+[data-theme='dark'] .placementPanel .panelSectionHint,
+[data-theme='dark'] .audienceSubNavBtn:not(.audienceSubNavBtnActive) {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .metricActiveSummary strong,
+[data-theme='dark'] .placementPanel .panelSectionTitle,
+[data-theme='dark'] .placementTabActive,
+[data-theme='dark'] .audienceSubNavBtnActive {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .targetingReadinessDot {
+  border-color: rgba(30, 41, 59, 0.6) !important;
+  box-shadow:
+    0 0 0 3px var(--surface-glass),
+    0 0 0 4px rgba(6, 182, 212, 0.18) !important;
+}
+
+[data-theme='dark'] .targetingCoachJump {
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .targetingCoachJump:hover {
+  color: #a5f3fc !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel,
+[data-theme='dark'] .cogsInlineFields,
+[data-theme='dark'] .decisionRulesPanel,
+[data-theme='dark'] .decisionRulesToolbar,
+[data-theme='dark'] .decisionRulesToolbarChips li,
+[data-theme='dark'] .decisionRulesToolbarActions,
+[data-theme='dark'] .decisionRulesDefaultCard,
+[data-theme='dark'] .decisionRulesAdvanced,
+[data-theme='dark'] .decisionRulesGrid,
+[data-theme='dark'] .decisionRuleCard,
+[data-theme='dark'] .decisionRuleCardCustom,
+[data-theme='dark'] .decisionRuleFields,
+[data-theme='dark'] .decisionRulesFootnote,
+[data-theme='dark'] .decisionRuleNotice,
+[data-theme='dark'] .decisionRuleGuidanceGrid > div,
+[data-theme='dark'] .samplePlanningCard,
+[data-theme='dark'] .sampleSizeInline,
+[data-theme='dark'] .samplePlanningControls,
+[data-theme='dark'] .sampleEvidenceTabs,
+[data-theme='dark'] .sampleEvidenceTab {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.1), transparent 34%),
+    rgba(30, 41, 59, 0.7) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel {
+  border-color: rgba(74, 222, 128, 0.28) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.12), transparent 34%),
+    var(--surface-glass) !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Choice),
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Checkbox),
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-InlineStack),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Choice),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Checkbox),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Choice),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Checkbox) {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Choice__Label),
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Choice__Descriptions),
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Label__Text),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Choice__Label),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Choice__Descriptions),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Label__Text),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Label__Text),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-TextField__HelpText),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Select__HelpText) {
+  color: rgba(226, 232, 240, 0.94) !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Checkbox__Backdrop),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Checkbox__Backdrop),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Checkbox__Backdrop) {
+  background: rgba(30, 41, 59, 0.86) !important;
+  border-color: rgba(74, 222, 128, 0.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(74, 222, 128, 0.08) !important;
+}
+
+[data-theme='dark']
+  .cogsInlinePanel
+  :global(.Polaris-Checkbox__Input:checked + .Polaris-Checkbox__Backdrop),
+[data-theme='dark']
+  .goalSectionGroup
+  :global(.Polaris-Checkbox__Input:checked + .Polaris-Checkbox__Backdrop),
+[data-theme='dark']
+  .decisionRulesPanel
+  :global(.Polaris-Checkbox__Input:checked + .Polaris-Checkbox__Backdrop) {
+  background: rgba(34, 197, 94, 0.28) !important;
+  border-color: rgba(74, 222, 128, 0.58) !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Checkbox__Icon),
+[data-theme='dark'] .goalSectionGroup :global(.Polaris-Checkbox__Icon),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Checkbox__Icon) {
+  color: #86efac !important;
+  fill: #86efac !important;
+}
+
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-TextField),
+[data-theme='dark'] .cogsInlinePanel :global(.Polaris-Select),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-TextField),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Select) {
+  --p-color-bg-surface: var(--surface-slate-soft) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .decisionRulesToolbarEyebrow,
+[data-theme='dark'] .decisionRulesToolbarChipKey,
+[data-theme='dark'] .decisionRulesDefaultCard span,
+[data-theme='dark'] .samplePlanningHeader span {
+  color: #93c5fd !important;
+}
+
+[data-theme='dark'] .decisionRulesDefaultCard strong,
+[data-theme='dark'] .decisionRuleCardHeader strong,
+[data-theme='dark'] .decisionRuleGuidanceGrid strong,
+[data-theme='dark'] .samplePlanningHeader strong,
+[data-theme='dark'] .sampleEvidenceTab strong {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .decisionRulesCrossLink,
+[data-theme='dark'] .decisionRulesDefaultCard small,
+[data-theme='dark'] .decisionRuleCardHeader small,
+[data-theme='dark'] .decisionRulesFootnote,
+[data-theme='dark'] .decisionRuleNotice,
+[data-theme='dark'] .decisionRuleGuidanceGrid span,
+[data-theme='dark'] .samplePlanningHeader small,
+[data-theme='dark'] .samplePlanningRulesEcho,
+[data-theme='dark'] .sampleEvidenceTab span {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .decisionRuleIcon,
+[data-theme='dark'] .decisionRulesToolbarChipKey,
+[data-theme='dark'] .sampleEvidenceTabActive,
+[data-theme='dark'] .sampleEvidenceTab:hover,
+[data-theme='dark'] .decisionRulesToolbarActions :global(.Polaris-Button:hover),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Button:hover) {
+  background: rgba(59, 130, 246, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.44) !important;
+  color: #93c5fd !important;
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(96, 165, 250, 0.12) !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge) {
+  background: rgba(30, 41, 59, 0.74) !important;
+  border: 1px solid rgba(96, 165, 250, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge *),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge *) {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusSuccess),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusSuccess) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusInfo),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusInfo) {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusWarning),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusWarning),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusAttention),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusAttention) {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .decisionRuleCardFooter :global(.Polaris-Badge--statusCritical),
+[data-theme='dark'] .decisionRulesPanel :global(.Polaris-Badge--statusCritical) {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.36) !important;
+  color: #fca5a5 !important;
+}
+
+/* Final dark fallbacks for late-defined Variant Config modules. Keep this at the end of the file so it wins source order. */
+[data-theme='dark'] .priceConfigWrap,
+[data-theme='dark'] .priceVariantPricingShell,
+[data-theme='dark'] .priceVariantAccordionShell,
+[data-theme='dark'] .priceSummaryCard,
+[data-theme='dark'] .priceSummaryHeader,
+[data-theme='dark'] .priceQuickFillStrip,
+[data-theme='dark'] .priceAtAGlance,
+[data-theme='dark'] .priceAtAGlanceGrid,
+[data-theme='dark'] .priceAtAGlanceCard,
+[data-theme='dark'] .priceExamplePreview,
+[data-theme='dark'] .priceSimulationWrap,
+[data-theme='dark'] .priceConfigCard,
+[data-theme='dark'] .priceConfigCardHeader,
+[data-theme='dark'] .priceTabBarWrap,
+[data-theme='dark'] .priceEditorPanel,
+[data-theme='dark'] .priceEditorPanel .priceEditorIntroCard,
+[data-theme='dark'] .priceSectionBlock,
+[data-theme='dark'] .priceMethodRecommendationCard,
+[data-theme='dark'] .priceMethodRadioList,
+[data-theme='dark'] .priceMethodRadioRow,
+[data-theme='dark'] .priceMethodChoiceCard,
+[data-theme='dark'] .priceMethodStatusCard,
+[data-theme='dark'] .nativeVariantSelectedCard,
+[data-theme='dark'] .nativeVariantProductCard,
+[data-theme='dark'] .nativeVariantListItem,
+[data-theme='dark'] .priceQuickSetStrip,
+[data-theme='dark'] .priceMatrixBulkBar,
+[data-theme='dark'] .priceMatrixWrap,
+[data-theme='dark'] .priceMatrixTable thead th,
+[data-theme='dark'] .priceMatrixProductCell,
+[data-theme='dark'] .pricePerProductCard,
+[data-theme='dark'] .pricePerVariantRow,
+[data-theme='dark'] .priceEmptyState,
+[data-theme='dark'] .priceGuidanceCompact,
+[data-theme='dark'] .priceMetaCompactRow,
+[data-theme='dark'] .priceMetaCompactItem,
+[data-theme='dark'] .priceModeCompactNotice,
+[data-theme='dark'] .priceGuideToggleBtn,
+[data-theme='dark'] .priceProductPickerPane,
+[data-theme='dark'] .priceProductPickerRow,
+[data-theme='dark'] .priceProductPickerSelectedRow,
+[data-theme='dark'] .priceOptionCard,
+[data-theme='dark'] .priceDrawerPanel,
+[data-theme='dark'] .priceDrawerHeader,
+[data-theme='dark'] .priceDrawerCloseBtn,
+[data-theme='dark'] .priceSummaryList,
+[data-theme='dark'] .priceSummaryAccordionItem,
+[data-theme='dark'] .priceSummaryRowExpanded,
+[data-theme='dark'] .priceSummaryInfoBlock,
+[data-theme='dark'] .priceSurfacePanel,
+[data-theme='dark'] .priceSurfaceHeaderToggle,
+[data-theme='dark'] .priceSurfaceInlineStatus,
+[data-theme='dark'] .priceSurfaceGuidePanel,
+[data-theme='dark'] .priceSurfaceGuideCard,
+[data-theme='dark'] .priceSurfaceMappingGridRow,
+[data-theme='dark'] .priceSurfaceEmptyState,
+[data-theme='dark'] .priceSurfaceTabRow,
+[data-theme='dark'] .priceSurfaceTab,
+[data-theme='dark'] .priceSurfaceRowNumber,
+[data-theme='dark'] .priceSurfaceEmptyIcon,
+[data-theme='dark'] .productScopeSection,
+[data-theme='dark'] .productScopeCard,
+[data-theme='dark'] .productScopeSection .productScopeHeader,
+[data-theme='dark'] .productScopeOptionsWrap,
+[data-theme='dark'] .productScopeOptionsRow,
+[data-theme='dark'] .productScopeOptionsLabel,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardIcon,
+[data-theme='dark'] .productScopeSelectPanel,
+[data-theme='dark'] .productScopePickerGrid,
+[data-theme='dark'] .productScopePickerCard,
+[data-theme='dark'] .productScopePickerSelectionList,
+[data-theme='dark'] .productScopePickerSelectionEmpty,
+[data-theme='dark'] .productScopePickerMoreBadge,
+[data-theme='dark'] .storeResourceList,
+[data-theme='dark'] .storeResourceListHeader,
+[data-theme='dark'] .storeResourceListMeta,
+[data-theme='dark'] .storeResourceListFooter,
+[data-theme='dark'] .storeResourceListEmpty,
+[data-theme='dark'] .storeResourceListLoading,
+[data-theme='dark'] .storeResourceItem,
+[data-theme='dark'] .storeResourceItemIcon,
+[data-theme='dark'] .storeResourceSelectedBadge,
+[data-theme='dark'] .priceAccordionBody,
+[data-theme='dark'] .priceAccordionBody .priceEditorPanel,
+[data-theme='dark'] .priceAccordionBody .priceEditorHeader,
+[data-theme='dark'] .priceAccordionBody .priceEditorIntroCard,
+[data-theme='dark'] .priceAccordionBody .priceSectionBlock,
+[data-theme='dark'] .priceAccordionBody .priceSectionBlockTitle,
+[data-theme='dark'] .checkoutStudioStatCard,
+[data-theme='dark'] .checkoutStudioCommandHeader,
+[data-theme='dark'] .checkoutSetupDisclosure,
+[data-theme='dark'] .checkoutSetupSummary::after,
+[data-theme='dark'] .checkoutStudioEmptyState,
+[data-theme='dark'] .checkoutStudioEmptyPreview span,
+[data-theme='dark'] .checkoutTargetingSummaryChip,
+[data-theme='dark'] .checkoutPhaseSummaryChip,
+[data-theme='dark'] .checkoutTargetingTile,
+[data-theme='dark'] .checkoutPhaseCard,
+[data-theme='dark'] .checkoutVariantBlock,
+[data-theme='dark'] .checkoutQuickAddButton,
+[data-theme='dark'] .checkoutPresetButton,
+[data-theme='dark'] .checkoutReadinessPreview,
+[data-theme='dark'] .checkoutReadinessPreviewItem,
+[data-theme='dark'] .checkoutVariantBrowser,
+[data-theme='dark'] .checkoutVariantBrowserTab,
+[data-theme='dark'] .checkoutVariantBrowserTabTraffic,
+[data-theme='dark'] .checkoutVariantTableShell,
+[data-theme='dark'] .checkoutVariantTableRow,
+[data-theme='dark'] .checkoutStudioWorkspaceRail,
+[data-theme='dark'] .checkoutModalCommandStrip,
+[data-theme='dark'] .checkoutModeIntroPanel,
+[data-theme='dark'] .checkoutVerifyContext,
+[data-theme='dark'] .checkoutSubstepSwitch,
+[data-theme='dark'] .checkoutModeIntroSteps span,
+[data-theme='dark'] .checkoutInactiveModeBanner,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel,
+[data-theme='dark'] .checkoutStudioReadinessPanel,
+[data-theme='dark'] .checkoutStudioSectionOutlineItem,
+[data-theme='dark'] .checkoutStudioReadinessItem,
+[data-theme='dark'] .checkoutPreviewRailCard,
+[data-theme='dark'] .checkoutPreviewConfidenceCard,
+[data-theme='dark'] .checkoutConfidenceInspectorDetails,
+[data-theme='dark'] .checkoutConfidenceCollapsedSummary,
+[data-theme='dark'] .checkoutGuidedSetupShell,
+[data-theme='dark'] .checkoutQuickSetupCard,
+[data-theme='dark'] .checkoutMinimumSetupPanel,
+[data-theme='dark'] .checkoutMinimumSetupList > span,
+[data-theme='dark'] .checkoutConfidenceSummaryChips span,
+[data-theme='dark'] .checkoutConfidenceLane,
+[data-theme='dark'] .checkoutPreviewRailStats span,
+[data-theme='dark'] .checkoutPreviewRailStack span,
+[data-theme='dark'] .checkoutPreviewLayerCard,
+[data-theme='dark'] .checkoutPreviewChecklist span,
+[data-theme='dark'] .checkoutStudioWorkspaceFooter,
+[data-theme='dark'] .checkoutSurfaceModeCard,
+[data-theme='dark'] .checkoutProductProcessStrip div,
+[data-theme='dark'] .checkoutProductSourceCard,
+[data-theme='dark'] .checkoutProductMatrix,
+[data-theme='dark'] .checkoutProductMatrixRow,
+[data-theme='dark'] .checkoutVariantEditorTabs,
+[data-theme='dark'] .checkoutVariantEditorTab,
+[data-theme='dark'] .checkoutLaunchReviewCard,
+[data-theme='dark'] .checkoutModalPreviewPanel,
+[data-theme='dark'] .checkoutModalSectionRow,
+[data-theme='dark'] .checkoutVariantHero,
+[data-theme='dark'] .checkoutVariantSnapshot,
+[data-theme='dark'] .checkoutVariantMetric,
+[data-theme='dark'] .checkoutVariantEmptyHint,
+[data-theme='dark'] .checkoutMethodSummary,
+[data-theme='dark'] .checkoutSectionAccordionChip,
+[data-theme='dark'] .checkoutSectionAccordionChevron,
+[data-theme='dark'] .checkoutSectionPreview,
+[data-theme='dark'] .checkoutSectionPreviewEmpty,
+[data-theme='dark'] .checkoutSectionPreviewMeta,
+[data-theme='dark'] .checkoutSectionHealthGrid > span,
+[data-theme='dark'] .checkoutProductPreviewCard,
+[data-theme='dark'] .checkoutProductPreviewMedia,
+[data-theme='dark'] .checkoutProductPreviewMediaPlaceholder,
+[data-theme='dark'] .checkoutSectionPrimaryPanel,
+[data-theme='dark'] .checkoutSectionAdvancedDetails,
+[data-theme='dark'] .checkoutSectionGuideIcon,
+[data-theme='dark'] .checkoutSectionControls,
+[data-theme='dark'] .checkoutBulletEditor,
+[data-theme='dark'] .checkoutBulletEmpty,
+[data-theme='dark'] .checkoutProductEditor,
+[data-theme='dark'] .checkoutProductSourceChoice,
+[data-theme='dark'] .checkoutProductSourceNote,
+[data-theme='dark'] .checkoutRuntimePreviewNotes,
+[data-theme='dark'] .checkoutProductEditorCard,
+[data-theme='dark'] .checkoutQuickAddShell,
+[data-theme='dark'] .checkoutStarterPill,
+[data-theme='dark'] .checkoutMethodGuide,
+[data-theme='dark'] .checkoutMethodActionChip,
+[data-theme='dark'] .checkoutMethodEditorPanel,
+[data-theme='dark'] .checkoutMethodEmpty,
+[data-theme='dark'] .checkoutQuickAddPreview {
+  --p-color-bg-surface: var(--surface-glass) !important;
+  --p-color-bg-surface-secondary: rgba(30, 41, 59, 0.58) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.08), transparent 34%),
+    var(--surface-glass) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .priceSummaryCard,
+[data-theme='dark'] .priceSummaryHeader {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.16), transparent 36%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.5), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.32) !important;
+  box-shadow:
+    0 16px 34px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(103, 232, 249, 0.1) !important;
+}
+
+[data-theme='dark'] .priceMethodRecommendationCard {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+[data-theme='dark'] .priceMethodRecommendationCardPreferred {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(8, 47, 73, 0.48), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.36) !important;
+}
+
+[data-theme='dark'] .priceMethodRecommendationCardMuted {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(69, 26, 3, 0.38), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+}
+
+[data-theme='dark'] .checkoutStudioHero {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.2), transparent 36%),
+    radial-gradient(circle at 100% 10%, rgba(139, 92, 246, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.56), rgba(30, 27, 75, 0.34) 52%, rgba(15, 23, 42, 0.86)) !important;
+  border-color: rgba(103, 232, 249, 0.3) !important;
+  box-shadow:
+    0 18px 42px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(196, 181, 253, 0.12) !important;
+}
+
+[data-theme='dark'] .checkoutPhaseCard,
+[data-theme='dark'] .checkoutQuickSetupCard,
+[data-theme='dark'] .checkoutTargetingTile,
+[data-theme='dark'] .checkoutVariantBlock {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+}
+
+[data-theme='dark'] .checkoutPhaseCardActive {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.2), transparent 36%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.54), rgba(15, 23, 42, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+}
+
+[data-theme='dark'] .checkoutMinimumSetupItemRequired,
+[data-theme='dark'] .checkoutSectionHealthItemAttention,
+[data-theme='dark'] .checkoutInactiveModeBanner,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel,
+[data-theme='dark'] .checkoutProductStudioWarning,
+[data-theme='dark'] .checkoutRuntimePreviewNotes,
+[data-theme='dark'] .priceMatrixChangedCell {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme='dark'] .checkoutInactiveModeBanner strong,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel strong,
+[data-theme='dark'] .checkoutProductStudioWarning strong,
+[data-theme='dark'] .checkoutRuntimePreviewNotes strong {
+  color: #fde68a !important;
+}
+
+[data-theme='dark'] .checkoutInactiveModeBanner span,
+[data-theme='dark'] .checkoutSurfaceConfirmPanel span,
+[data-theme='dark'] .checkoutProductStudioWarning span,
+[data-theme='dark'] .checkoutRuntimePreviewNotes span {
+  color: rgba(254, 243, 199, 0.82) !important;
+}
+
+[data-theme='dark'] .priceMethodChoiceCard:hover:not(:disabled),
+[data-theme='dark'] .priceMethodChoiceCardActive,
+[data-theme='dark'] .priceProductPickerRow:hover,
+[data-theme='dark'] .priceProductPickerRowSelected,
+[data-theme='dark'] .priceGuideToggleBtn:hover,
+[data-theme='dark'] .priceGuideToggleBtnOpen,
+[data-theme='dark'] .priceSurfaceHeaderToggle:hover,
+[data-theme='dark'] .priceSurfaceGuideCard:hover:not(:disabled),
+[data-theme='dark'] .priceSurfaceGuideCardConfigured,
+[data-theme='dark'] .priceSurfaceTabActive,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption:hover,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive,
+[data-theme='dark'] .storeResourceItem:hover,
+[data-theme='dark'] .storeResourceItemSelected,
+[data-theme='dark'] .storeResourceItemSelected:hover,
+[data-theme='dark'] .priceTab:hover,
+[data-theme='dark'] .priceTabActive,
+[data-theme='dark'] .priceSummaryRowClickable:hover,
+[data-theme='dark'] .checkoutPresetButton:hover,
+[data-theme='dark'] .checkoutPresetButtonActive,
+[data-theme='dark'] .checkoutQuickAddButton:hover,
+[data-theme='dark'] .checkoutPhaseCard:hover,
+[data-theme='dark'] .checkoutPhaseCardActive,
+[data-theme='dark'] .checkoutVariantBrowserTab:hover,
+[data-theme='dark'] .checkoutVariantBrowserTabActive,
+[data-theme='dark'] .checkoutStudioRailItem:hover,
+[data-theme='dark'] .checkoutStudioRailItem:focus-visible,
+[data-theme='dark'] .checkoutStudioRailItemActive,
+[data-theme='dark'] .checkoutSubstepSwitch button:hover,
+[data-theme='dark'] .checkoutSubstepSwitch button:focus-visible,
+[data-theme='dark'] .checkoutSubstepSwitchActive,
+[data-theme='dark'] .checkoutSurfaceModeCardActive,
+[data-theme='dark'] .checkoutProductSourceCardActive,
+[data-theme='dark'] .checkoutProductSourceAction:hover,
+[data-theme='dark'] .checkoutVariantEditorTabActive,
+[data-theme='dark'] .checkoutMethodActionChip:hover,
+[data-theme='dark'] .checkoutMethodActionChipActive,
+[data-theme='dark'] .checkoutProductSourceChoice:hover,
+[data-theme='dark'] .checkoutProductSourceChoice:focus-visible,
+[data-theme='dark'] .checkoutProductSourceChoiceActive {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme='dark'] .priceEditorIntroValue,
+[data-theme='dark'] .priceAtAGlanceValue,
+[data-theme='dark'] .priceMethodRadioLabel,
+[data-theme='dark'] .priceMethodChoiceTitle,
+[data-theme='dark'] .priceMethodStatusValue,
+[data-theme='dark'] .nativeVariantProductTitle,
+[data-theme='dark'] .nativeVariantListTitle,
+[data-theme='dark'] .priceMetaCompactItemTitle,
+[data-theme='dark'] .priceGuideToggleTitle,
+[data-theme='dark'] .priceMatrixProductTitle,
+[data-theme='dark'] .priceSummaryInfoValue,
+[data-theme='dark'] .priceSurfaceGuideTitle,
+[data-theme='dark'] .productScopeSection .productScopeHeader h3,
+[data-theme='dark'] .productScopeSelectPanel .productScopeSelectTitle,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardLabel,
+[data-theme='dark'] .scopeCardLabel,
+[data-theme='dark'] .storeResourceItemTitle,
+[data-theme='dark'] .checkoutStudioStatValue,
+[data-theme='dark'] .checkoutSetupSummary strong,
+[data-theme='dark'] .checkoutPhaseTitle,
+[data-theme='dark'] .checkoutReadinessPreviewHeader,
+[data-theme='dark'] .checkoutVariantBrowserTabTitle,
+[data-theme='dark'] .checkoutVariantTableCellMain strong,
+[data-theme='dark'] .checkoutVariantTableCell strong,
+[data-theme='dark'] .checkoutVariantMetricValue,
+[data-theme='dark'] .checkoutMethodSummaryValue,
+[data-theme='dark'] .checkoutVariantSnapshot summary span,
+[data-theme='dark'] .checkoutVariantMetricValue,
+[data-theme='dark'] .checkoutPreviewRailSummary,
+[data-theme='dark'] .checkoutSurfaceModeCard strong,
+[data-theme='dark'] .checkoutProductSourceCard strong,
+[data-theme='dark'] .checkoutProductMatrixRow strong,
+[data-theme='dark'] .checkoutProductPreviewTop strong,
+[data-theme='dark'] .checkoutProductPreviewPrices strong,
+[data-theme='dark'] .checkoutSectionPrimaryPanel strong,
+[data-theme='dark'] .checkoutSectionAdvancedDetails summary,
+[data-theme='dark'] .checkoutProductSourceChoice strong,
+[data-theme='dark'] .checkoutQuickAddButton strong,
+[data-theme='dark'] .checkoutMethodGuideValue,
+[data-theme='dark'] .checkoutMethodEditorHeader strong {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .priceVariantToolsToggleHint,
+[data-theme='dark'] .priceAtAGlanceLabel,
+[data-theme='dark'] .priceAtAGlanceHint,
+[data-theme='dark'] .priceSimulationFootnote,
+[data-theme='dark'] .priceTabMeta,
+[data-theme='dark'] .priceTabPreview,
+[data-theme='dark'] .priceEditorIntroLabel,
+[data-theme='dark'] .priceEditorIntroHint,
+[data-theme='dark'] .priceSectionBlockTitle,
+[data-theme='dark'] .priceMethodChoiceBody,
+[data-theme='dark'] .priceMethodChoiceMeta,
+[data-theme='dark'] .priceMethodStatusLabel,
+[data-theme='dark'] .nativeVariantProductMeta,
+[data-theme='dark'] .nativeVariantListMeta,
+[data-theme='dark'] .priceMetaCompactItemHint,
+[data-theme='dark'] .priceMetaCompactScopeHint,
+[data-theme='dark'] .priceProductPickerRowHandle,
+[data-theme='dark'] .priceMatrixVariantTitle,
+[data-theme='dark'] .priceMatrixProductSubtle,
+[data-theme='dark'] .priceSummaryInfoLabel,
+[data-theme='dark'] .priceSurfaceHeaderHint,
+[data-theme='dark'] .priceSurfaceGuideDescription,
+[data-theme='dark'] .priceSurfaceGuideMeta,
+[data-theme='dark'] .productScopeSection .productScopeHeader p,
+[data-theme='dark'] .productScopeSelectPanel .productScopeSelectHelp,
+[data-theme='dark'] .productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardDesc,
+[data-theme='dark'] .scopeCardDesc,
+[data-theme='dark'] .storeResourceItemHandle,
+[data-theme='dark'] .checkoutStudioStatHint,
+[data-theme='dark'] .checkoutSetupSummary small,
+[data-theme='dark'] .checkoutPhaseDescription,
+[data-theme='dark'] .checkoutVariantBrowserTabSummary,
+[data-theme='dark'] .checkoutVariantTableCellMain span span,
+[data-theme='dark'] .checkoutVariantTableCell span,
+[data-theme='dark'] .checkoutVariantEmptyHint,
+[data-theme='dark'] .checkoutSectionAccordionSummary,
+[data-theme='dark'] .checkoutSectionPreviewList,
+[data-theme='dark'] .checkoutSectionPreviewFooter,
+[data-theme='dark'] .checkoutSectionHealthGrid small,
+[data-theme='dark'] .checkoutProductPreviewSubtitle,
+[data-theme='dark'] .checkoutProductPreviewPrices span,
+[data-theme='dark'] .checkoutSectionPrimaryPanel small,
+[data-theme='dark'] .checkoutProductSourceChoice span,
+[data-theme='dark'] .checkoutProductSourceChoice small,
+[data-theme='dark'] .checkoutQuickAddButton span,
+[data-theme='dark'] .checkoutMethodEmpty {
+  color: rgba(203, 213, 225, 0.78) !important;
+}
+
+[data-theme='dark'] .priceSummaryTableWrap thead th,
+[data-theme='dark'] .priceSummaryTableWrap tbody td,
+[data-theme='dark'] .priceMatrixTable thead th,
+[data-theme='dark'] .priceMatrixTable tbody td,
+[data-theme='dark'] .priceMatrixProductStartRow td,
+[data-theme='dark'] .pricePerVariantSection,
+[data-theme='dark'] .priceSurfaceBody,
+[data-theme='dark'] .priceSurfaceMappingHeaderRow,
+[data-theme='dark'] .priceSurfaceMappingGridRow,
+[data-theme='dark'] .productScopeStandaloneIds,
+[data-theme='dark'] .productScopeOptionsRow,
+[data-theme='dark'] .productScopeSelectPanel,
+[data-theme='dark'] .storeResourceListHeader,
+[data-theme='dark'] .storeResourceListFooter,
+[data-theme='dark'] .checkoutVariantTableHead,
+[data-theme='dark'] .checkoutStudioRailGroup + .checkoutStudioRailGroup,
+[data-theme='dark'] .checkoutStudioSectionOutline,
+[data-theme='dark'] .checkoutProductSourceRequirements,
+[data-theme='dark'] .checkoutStudioWorkspaceFooter {
+  border-color: rgba(6, 182, 212, 0.18) !important;
+}
+
+[data-theme='dark'] .priceEditorPanel :global(.Polaris-TextField),
+[data-theme='dark'] .priceEditorPanel :global(.Polaris-Select),
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-TextField),
+[data-theme='dark'] .priceSummaryCard :global(.Polaris-Select),
+[data-theme='dark'] .priceSurfacePanel :global(.Polaris-TextField),
+[data-theme='dark'] .priceSurfacePanel :global(.Polaris-Select),
+[data-theme='dark'] .productScopeSelectPanel :global(.Polaris-TextField),
+[data-theme='dark'] .productScopeSelectPanel :global(.Polaris-Select),
+[data-theme='dark'] .storeResourceList :global(.Polaris-TextField),
+[data-theme='dark'] .storeResourceList :global(.Polaris-Select),
+[data-theme='dark'] .checkoutVariantBlock :global(.Polaris-TextField),
+[data-theme='dark'] .checkoutVariantBlock :global(.Polaris-Select),
+[data-theme='dark'] .checkoutSectionControls :global(.Polaris-TextField),
+[data-theme='dark'] .checkoutSectionControls :global(.Polaris-Select),
+[data-theme='dark'] .checkoutMethodEditorPanel :global(.Polaris-TextField),
+[data-theme='dark'] .checkoutMethodEditorPanel :global(.Polaris-Select) {
+  --p-color-bg-surface: var(--surface-slate-soft) !important;
+  --p-color-text: rgba(241, 245, 249, 0.96) !important;
+  --p-color-text-subdued: rgba(203, 213, 225, 0.78) !important;
 }

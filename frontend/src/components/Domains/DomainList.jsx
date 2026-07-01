@@ -156,6 +156,7 @@ import {
   invalidateShopifyConnectionQueries,
   invalidateShopifyDomainListQueries,
 } from '../../utils/shopifyQueryInvalidation';
+import { getShopifyDomainStatusPresentation } from '../../utils/commandCenterPresentation';
 
 /** postMessage type from OAuth success tab when store connected from embed */
 const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
@@ -465,8 +466,22 @@ function DomainList() {
   const isLoading = useEmailDomains ? meLoading : accountStoresLoading;
   const error = useEmailDomains ? meError : accountStoresError;
   const domains = React.useMemo(() => data?.domains ?? [], [data]);
-  const { getState: getShopifyInstallStateFromHook, getMessage: getShopifyInstallMessage } =
-    useShopifyInstallStatus(domains, 'domains-list');
+  const canAddDomains = useEmailDomains;
+  const {
+    getState: getShopifyInstallStateFromHook,
+    getMessage: getShopifyInstallMessage,
+    getDetail: getShopifyInstallDetail,
+  } = useShopifyInstallStatus(domains, 'domains-list');
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'add' || !canAddDomains || addModalOpen) return;
+    setAddModalOpen(true);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('action');
+      return next;
+    });
+  }, [searchParams, canAddDomains, addModalOpen, setSearchParams]);
 
   // Smart resume: if Shopify connect session completed, open that store automatically.
   useEffect(() => {
@@ -499,14 +514,13 @@ function DomainList() {
   const getShopifyInstallBadge = domainValue => {
     const status = getShopifyInstallState(domainValue);
     if (!status) return null;
-    const labels = {
-      connected: 'Connected',
-      needs_install: 'Needs install',
-      needs_link: 'Needs link',
-      restricted: 'Restricted',
-      checking: 'Checking…',
-      unknown: 'Status unknown',
-    };
+    const detail = getShopifyInstallDetail(domainValue);
+    const { statusLabel } = getShopifyDomainStatusPresentation({
+      installState: status,
+      installDetail: detail,
+      isShopify: true,
+      canOpen: true,
+    });
     const detailMessage = getShopifyInstallMessage(domainValue);
     const defaultTitle =
       status === 'needs_install'
@@ -515,13 +529,13 @@ function DomainList() {
           ? 'RipX app is installed but this store is not linked to your account yet'
           : status === 'restricted'
             ? 'This store is connected but your account access is currently restricted'
-            : labels[status];
+            : statusLabel;
     return (
       <span
         className={`${styles.shopifyInstallBadge} ${styles[`shopifyInstallBadge_${status}`]}`}
         title={detailMessage || defaultTitle}
       >
-        {labels[status]}
+        {statusLabel}
       </span>
     );
   };
@@ -1208,6 +1222,10 @@ function DomainList() {
       return;
     }
     if (isShopifyStoreDomain(normalized)) {
+      if (!useEmailDomains) {
+        setAddError('Sign in with your email to add or connect domains.');
+        return;
+      }
       setAddDomainFlow('shopify');
       setNewDomain(normalizeShopifyDomain(normalized));
       setAddError(null);
@@ -1396,9 +1414,22 @@ function DomainList() {
               </div>
               <h2 className={styles.mainEmptyHeading}>No stores</h2>
               <p className={styles.mainEmptyText}>
-                No stores found for this session. Open the app from Shopify Admin or sign in to see
-                your stores.
+                {canAddDomains
+                  ? 'No stores found for this account. Add a custom domain to start testing.'
+                  : 'No stores found for this session. Open the app from Shopify Admin or sign in to see your stores.'}
               </p>
+              {canAddDomains && (
+                <div className={styles.mainEmptyActions}>
+                  <button
+                    type="button"
+                    className={styles.mainEmptyCta}
+                    onClick={() => setAddModalOpen(true)}
+                  >
+                    <Icon source={PlusIcon} />
+                    Add domain
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -1423,7 +1454,7 @@ function DomainList() {
                 ? 'Connect your websites and open any domain to manage A/B tests, analytics, and experiments.'
                 : 'Open the app for your store to manage A/B tests, analytics, and experiments.'}
             </p>
-            {useEmailDomains && (
+            {canAddDomains && (
               <div className={styles.domainsHeroQuickActions}>
                 <button
                   type="button"
@@ -1438,26 +1469,28 @@ function DomainList() {
                     <span className={styles.domainsQuickActionDesc}>Connect a website</span>
                   </span>
                 </button>
-                <button
-                  type="button"
-                  className={styles.domainsQuickActionCard}
-                  onClick={() => setApiKeyModalOpen(true)}
-                >
-                  <span className={styles.domainsQuickActionIcon}>
-                    <Icon source={LinkIcon} tone="base" />
-                  </span>
-                  <span className={styles.domainsQuickActionText}>
-                    <span className={styles.domainsQuickActionLabel}>Connect with API key</span>
-                    <span className={styles.domainsQuickActionDesc}>Use existing key</span>
-                  </span>
-                </button>
+                {useEmailDomains && (
+                  <button
+                    type="button"
+                    className={styles.domainsQuickActionCard}
+                    onClick={() => setApiKeyModalOpen(true)}
+                  >
+                    <span className={styles.domainsQuickActionIcon}>
+                      <Icon source={LinkIcon} tone="base" />
+                    </span>
+                    <span className={styles.domainsQuickActionText}>
+                      <span className={styles.domainsQuickActionLabel}>Connect with API key</span>
+                      <span className={styles.domainsQuickActionDesc}>Use existing key</span>
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>
         </header>
 
         {/* Stats strip */}
-        {useEmailDomains && (
+        {canAddDomains && (
           <div className={styles.domainsStatsStrip}>
             <div className={styles.domainsStatsItem}>
               <span className={styles.domainsStatsValue}>{domains.length}</span>
@@ -1863,7 +1896,9 @@ function DomainList() {
                     <div className={styles.addModalDescription}>
                       <h3 className={styles.addModalIntroTitle}>How do you want to connect?</h3>
                       <p className={styles.addModalIntroSubtitle}>
-                        Choose your site type below. You can add more domains later from this page.
+                        {useEmailDomains
+                          ? 'Choose your site type below. You can add more domains later from this page.'
+                          : 'Sign in with your email to add or connect domains.'}
                       </p>
                     </div>
                   </div>
@@ -1940,33 +1975,35 @@ function DomainList() {
                         →
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      className={styles.addModalChoiceCard}
-                      data-type="shopify"
-                      onClick={() => {
-                        setAddDomainFlow('shopify');
-                        setNewDomain(suggestedShopifyDomain || '');
-                        setAddError(null);
-                      }}
-                      aria-describedby="add-modal-choice-shopify-desc"
-                    >
-                      <div className={styles.addModalChoiceCardTop}>
-                        <span className={styles.addModalChoiceCardIcon}>
-                          <Icon source={LinkIcon} tone="base" />
-                        </span>
-                        <span className={styles.addModalChoiceCardLabel}>Shopify store</span>
-                      </div>
-                      <p
-                        id="add-modal-choice-shopify-desc"
-                        className={styles.addModalChoiceCardDesc}
+                    {useEmailDomains && (
+                      <button
+                        type="button"
+                        className={styles.addModalChoiceCard}
+                        data-type="shopify"
+                        onClick={() => {
+                          setAddDomainFlow('shopify');
+                          setNewDomain(suggestedShopifyDomain || '');
+                          setAddError(null);
+                        }}
+                        aria-describedby="add-modal-choice-shopify-desc"
                       >
-                        One-click connect. We’ll open Shopify to install and link the store.
-                      </p>
-                      <span className={styles.addModalChoiceCardArrow} aria-hidden>
-                        →
-                      </span>
-                    </button>
+                        <div className={styles.addModalChoiceCardTop}>
+                          <span className={styles.addModalChoiceCardIcon}>
+                            <Icon source={LinkIcon} tone="base" />
+                          </span>
+                          <span className={styles.addModalChoiceCardLabel}>Shopify store</span>
+                        </div>
+                        <p
+                          id="add-modal-choice-shopify-desc"
+                          className={styles.addModalChoiceCardDesc}
+                        >
+                          One-click connect. We’ll open Shopify to install and link the store.
+                        </p>
+                        <span className={styles.addModalChoiceCardArrow} aria-hidden>
+                          →
+                        </span>
+                      </button>
+                    )}
                   </div>
                 </>
               )}

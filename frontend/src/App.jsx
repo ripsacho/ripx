@@ -68,17 +68,33 @@ import {
   apiPostPublic,
   getHealthUrl,
   apiGet,
+  clearAuthStorage,
   resetRedirectingToLogin,
+  redirectToAppUrl,
   getEmbeddedAppBasePath,
   getUrlWithEmbedParams,
   getConnectUrl,
 } from './services';
-import { useSessionCheck } from './hooks';
+import { useAdminMe, useSessionCheck } from './hooks';
 
 /** Redirect to Connect preserving query (host, shop) for embed. */
 function NavigateToConnect() {
   const location = useLocation();
   return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
+}
+
+function GlobalDocsRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{
+        pathname: ROUTES.DOCS,
+        search: location.search,
+        hash: location.hash,
+      }}
+      replace
+    />
+  );
 }
 
 function LegacyAppRouteRedirect({ target }) {
@@ -720,6 +736,21 @@ function AppContent() {
   const showAssistantWidget = showTopBar && !isAdminRoute && !shouldHideAssistantWidget;
   const shouldRaiseAssistantWidget =
     location.pathname === ROUTES.DASHBOARD || /^\/app\/[^/]+\/?$/.test(location.pathname);
+  const hasEmailToken = !!getEmailToken();
+  const shouldRequireEmailIdentity =
+    hasCreds && !isPublicPath && !isOnConnectOrAuthPath && !connectToken;
+  const {
+    data: shellIdentityData,
+    isLoading: shellIdentityLoading,
+    isError: shellIdentityError,
+  } = useAdminMe({
+    enabled: shouldRequireEmailIdentity && hasEmailToken,
+  });
+  const shellIdentityEmail =
+    shellIdentityData?.email ||
+    (shellIdentityData?.adminId && String(shellIdentityData.adminId).includes('@')
+      ? shellIdentityData.adminId
+      : null);
   const appTestDetailMatch =
     location.pathname.match(/^\/app\/[^/]+\/tests\/([^/]+)$/) ||
     location.pathname.match(/^\/tests\/([^/]+)$/);
@@ -757,18 +788,13 @@ function AppContent() {
     }
   };
 
-  // On Domains page skip session check so a 401 from /me/domains never triggers redirect; DomainList handles sign-in via "Sign in required" + open Connect in new tab.
-  // On /app/:domain use /account/stores so email users (non-admin) don't get 401 from /admin/me and redirect to login.
-  const sessionCheckEndpoint = isDomainsRoute
-    ? null
-    : isAppDomainRoute
-      ? '/account/stores'
-      : '/admin/me';
+  // Protected app pages are email-session first. /admin/me is the identity source used to
+  // validate the signed-in user and keep stale local shop/API hints from rendering the shell.
+  const sessionCheckEndpoint = '/admin/me';
   useSessionCheck(hasCreds && !isPublicPath && !connectToken, () => sessionCheckEndpoint);
 
-  // Initial auth check: before showing any protected app content, validate session once to avoid flash of app then redirect to login.
-  // On Domains with only shop (no token), skip; on Domains with email session use /me/domains.
-  // On /app/:domain use /account/stores so email users (non-admin) don't get 401 from /admin/me and redirect to login.
+  // Initial auth check: before showing protected app content, validate the email identity once
+  // to avoid flashing app UI when local credentials are stale or only shop/API-key based.
   useEffect(() => {
     if (!isProtectedRouteWithCreds || authCheckStartedRef.current) return;
     authCheckStartedRef.current = true;
@@ -777,26 +803,13 @@ function AppContent() {
     const timeoutId = window.setTimeout(() => {
       setAuthCheckStatus(AUTH_CHECK.DONE);
     }, timeoutMs);
-    const endpoint =
-      isDomainsRoute && getEmailToken()
-        ? '/me/domains'
-        : isDomainsRoute && !getEmailToken()
-          ? null
-          : isAppDomainRoute
-            ? '/account/stores'
-            : '/admin/me';
-    if (!endpoint) {
-      window.clearTimeout(timeoutId);
-      setAuthCheckStatus(AUTH_CHECK.DONE);
-      return;
-    }
-    apiGet(endpoint)
+    apiGet('/admin/me')
       .catch(() => {})
       .finally(() => {
         window.clearTimeout(timeoutId);
         setAuthCheckStatus(AUTH_CHECK.DONE);
       });
-  }, [isProtectedRouteWithCreds, isDomainsRoute, isAppDomainRoute]);
+  }, [isProtectedRouteWithCreds]);
 
   // Reset auth check when navigating to/from connect or when creds change so we re-validate on next protected visit
   useEffect(() => {
@@ -812,6 +825,35 @@ function AppContent() {
       resetRedirectingToLogin();
     }
   }, [isOnConnectOrAuthPath]);
+
+  useEffect(() => {
+    if (!shouldRequireEmailIdentity) return;
+    if (!hasEmailToken || shellIdentityError || (!shellIdentityLoading && !shellIdentityEmail)) {
+      clearAuthStorage();
+      resetRedirectingToLogin();
+      redirectToAppUrl(
+        getConnectUrl({
+          reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+        })
+      );
+      return;
+    }
+    if (shellIdentityLoading) return;
+    if (shellIdentityEmail) return;
+    clearAuthStorage();
+    resetRedirectingToLogin();
+    redirectToAppUrl(
+      getConnectUrl({
+        reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+      })
+    );
+  }, [
+    shouldRequireEmailIdentity,
+    hasEmailToken,
+    shellIdentityLoading,
+    shellIdentityError,
+    shellIdentityEmail,
+  ]);
 
   if (connectToken) {
     return <ConnectTokenExchange connectToken={connectToken} />;
@@ -858,7 +900,7 @@ function AppContent() {
       { shop: effectiveDiscountLaunchDomain }
     );
     if (replaceIfDifferent(target)) {
-      return <RouteLoading message="Opening Installation settings..." fullScreen />;
+      return <RouteLoading message="Opening Store setup…" fullScreen />;
     }
   }
 
@@ -947,7 +989,7 @@ function AppContent() {
     );
   }
 
-  if (!hasCreds && !isPublicPath && !isAdminRoute) {
+  if (!hasCreds && !isPublicPath) {
     return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
   }
 
@@ -981,6 +1023,15 @@ function AppContent() {
   // Show loader until initial session validation completes; avoids flash of user panel then redirect to login
   if (isProtectedRouteWithCreds && authCheckStatus !== AUTH_CHECK.DONE) {
     return <RouteLoading message="Loading…" fullScreen />;
+  }
+
+  // The authenticated app shell must be backed by an email login so TopBar can always show
+  // the signed-in user. Shop/API-key-only hints are treated as incomplete and sent to Connect.
+  if (
+    shouldRequireEmailIdentity &&
+    (shellIdentityLoading || shellIdentityError || !shellIdentityEmail)
+  ) {
+    return <RouteLoading message="Checking account…" fullScreen />;
   }
 
   const isSupportPage = location.pathname === ROUTES.SUPPORT;
@@ -1042,6 +1093,7 @@ function AppContent() {
             sidebarCollapsed={sidebarCollapsed}
             showMobileToggle={isMobile && showSidebar}
             onMobileToggle={() => setMobileSidebarOpen(open => !open)}
+            userEmail={shellIdentityEmail}
           />
         )}
         {health?.maintenance && (
@@ -1184,14 +1236,7 @@ function AppContent() {
                 path="/app/:domain/notifications"
                 element={<Navigate to={ROUTES.NOTIFICATIONS} replace />}
               />
-              <Route
-                path="/app/:domain/docs"
-                element={
-                  <Suspense fallback={<RouteLoading />}>
-                    <Documentation />
-                  </Suspense>
-                }
-              />
+              <Route path="/app/:domain/docs" element={<GlobalDocsRedirect />} />
               <Route
                 path="/app/:domain/support"
                 element={<Navigate to={ROUTES.SUPPORT} replace />}

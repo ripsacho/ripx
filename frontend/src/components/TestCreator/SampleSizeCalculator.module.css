@@ -74,7 +74,10 @@
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--sample-size-time-200), color var(--sample-size-time-200), box-shadow var(--sample-size-time-200);
+  transition:
+    background var(--sample-size-time-200),
+    color var(--sample-size-time-200),
+    box-shadow var(--sample-size-time-200);
   font-family: inherit;
   color: var(--calc-muted);
   background: transparent;
@@ -151,7 +154,9 @@
   border: 1px solid var(--calc-border);
   border-radius: var(--calc-radius);
   position: relative;
-  transition: border-color var(--sample-size-time-200), box-shadow var(--sample-size-time-200);
+  transition:
+    border-color var(--sample-size-time-200),
+    box-shadow var(--sample-size-time-200);
 }
 
 .rootEmbedded .section {
@@ -430,25 +435,42 @@
 }
 
 /* Dark theme */
-[data-theme="dark"] .root {
+[data-theme='dark'] .root {
   --calc-bg: rgba(30, 41, 59, 0.6);
   --calc-border: rgba(59, 130, 246, 0.25);
   --calc-text: var(--text-primary);
   --calc-muted: var(--text-secondary);
 }
 
-[data-theme="dark"] .section {
+[data-theme='dark'] .section {
   background: var(--calc-bg);
 }
 
-[data-theme="dark"] .preset {
-  background: rgba(15, 23, 42, 0.5);
+[data-theme='dark'] .preset {
+  background: rgba(30, 41, 59, 0.5);
 }
 
-[data-theme="dark"] .resultRow {
-  background: rgba(15, 23, 42, 0.4);
+[data-theme='dark'] .resultRow {
+  background: rgba(30, 41, 59, 0.4);
 }
 
-[data-theme="dark"] .modeBtnActive {
+[data-theme='dark'] .metricCaveat {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .rootEmbedded .section {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(59, 130, 246, 0.24);
+}
+
+[data-theme='dark'] .resultExplanation {
+  background: rgba(30, 41, 59, 0.44);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  color: var(--calc-muted);
+}
+
+[data-theme='dark'] .modeBtnActive {
   background: rgba(30, 41, 59, 0.9);
 }

@@ -58,7 +58,7 @@ shopify app deploy
 
 ## Verify on the store
 
-In the embedded app, open **App settings → Installation → Shopify Functions (this app)** and use **Refresh validation**. You should see the cart transform listed under Admin API `shopifyFunctions`. No running price test is required for deployment or validation.
+In the embedded app, open **Store settings → Store setup → Shopify Functions (this app)** and use **Refresh validation**. You should see the cart transform listed under Admin API `shopifyFunctions`. No running price test is required for deployment or validation.
 
 ## Fixed-amount verification check (doc-style)
 

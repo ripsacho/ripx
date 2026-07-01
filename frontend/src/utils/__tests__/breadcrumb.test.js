@@ -166,11 +166,24 @@ describe('getBreadcrumb', () => {
     });
   });
 
-  it('returns Dashboard > App settings when in app settings', () => {
+  it('returns Dashboard > Store settings when in app settings', () => {
     expect(getBreadcrumb('/app/my-store.com/settings')).toEqual({
       parent: 'Dashboard',
-      current: 'App settings',
+      current: 'Store settings',
       parentPath: '/app/my-store.com',
+    });
+  });
+
+  it('returns Store settings > tab label when settings tab param is set', () => {
+    expect(getBreadcrumb('/app/my-store.com/settings', '?tab=advanced')).toEqual({
+      parent: 'Store settings',
+      current: 'Advanced',
+      parentPath: '/app/my-store.com/settings',
+    });
+    expect(getBreadcrumb('/app/my-store.com/settings', '?tab=installation')).toEqual({
+      parent: 'Store settings',
+      current: 'Store setup',
+      parentPath: '/app/my-store.com/settings',
     });
   });
 

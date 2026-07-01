@@ -13,7 +13,7 @@
   padding: 0;
 }
 
-[data-theme="dark"] .wrapper {
+[data-theme='dark'] .wrapper {
   --traffic-border: rgba(255, 255, 255, 0.1);
   --traffic-bg: rgba(255, 255, 255, 0.03);
   --traffic-text: var(--text-primary);
@@ -102,6 +102,26 @@
   gap: 8px;
 }
 
+.variantCountBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--traffic-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--traffic-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.variantCountBadgeLimit {
+  border-color: rgba(234, 88, 12, 0.35);
+  background: rgba(255, 247, 237, 0.95);
+  color: #9a3412;
+}
+
 .toolbarBtn {
   display: inline-flex;
   align-items: center;
@@ -112,7 +132,10 @@
   font-weight: 600;
   border-radius: 8px;
   cursor: pointer;
-  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
+  transition:
+    background var(--traffic-time-200),
+    border-color var(--traffic-time-200),
+    color var(--traffic-time-200);
   border: 1px solid var(--traffic-border);
   background: #fff;
   color: var(--traffic-text);
@@ -134,6 +157,40 @@
   background: #f3f4f6;
 }
 
+.tooltipButtonWrap {
+  display: inline-flex;
+}
+
+.toolbarBtn:disabled,
+.toolbarBtn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.56;
+  filter: saturate(0.65);
+}
+
+.toolbarBtn:disabled:hover,
+.toolbarBtn[aria-disabled='true']:hover {
+  background: #fff;
+  border-color: var(--traffic-border);
+  color: var(--traffic-text);
+}
+
+[data-theme='dark'] .toolbarBtn {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .toolbarBtn:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .toolbarBtn:active {
+  background: rgba(6, 182, 212, 0.2);
+}
+
 .toolbarBtnPrimary {
   background: var(--traffic-accent);
   border-color: var(--traffic-accent);
@@ -151,25 +208,37 @@
   outline-offset: 2px;
 }
 
-[data-theme="dark"] .toolbarBtn {
+[data-theme='dark'] .toolbarBtn {
   background: var(--bg-secondary);
   border-color: var(--traffic-border);
   color: var(--traffic-text);
 }
 
-[data-theme="dark"] .toolbarBtn:hover {
+[data-theme='dark'] .toolbarBtn:hover {
   background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-[data-theme="dark"] .toolbarBtnPrimary {
+[data-theme='dark'] .toolbarBtnPrimary {
   background: var(--traffic-accent);
   border-color: var(--traffic-accent);
 }
 
-[data-theme="dark"] .toolbarBtnPrimary:hover {
+[data-theme='dark'] .toolbarBtnPrimary:hover {
   background: #22d3ee;
   border-color: #22d3ee;
+}
+
+[data-theme='dark'] .variantCountBadge {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: rgba(203, 213, 225, 0.84);
+}
+
+[data-theme='dark'] .variantCountBadgeLimit {
+  background: rgba(124, 45, 18, 0.2);
+  border-color: rgba(251, 146, 60, 0.34);
+  color: #fdba74;
 }
 
 @media (max-width: 640px) {
@@ -190,6 +259,10 @@
 
   .toolbarActions .toolbarBtn {
     flex: 1;
+  }
+
+  .toolbarActions .variantCountBadge {
+    justify-content: center;
   }
 }
 
@@ -250,7 +323,9 @@
   background: linear-gradient(180deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.08) 100%);
   color: #15803d;
   border-color: rgba(34, 197, 94, 0.3);
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 0 12px rgba(34, 197, 94, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .sliderSectionTotalWarn {
@@ -259,14 +334,14 @@
   border-color: rgba(245, 158, 11, 0.35);
 }
 
-[data-theme="dark"] .sliderSectionTotalOk {
+[data-theme='dark'] .sliderSectionTotalOk {
   background: linear-gradient(180deg, rgba(34, 197, 94, 0.25) 0%, rgba(34, 197, 94, 0.12) 100%);
   color: #4ade80;
   border-color: rgba(34, 197, 94, 0.4);
   box-shadow: 0 0 16px rgba(34, 197, 94, 0.2);
 }
 
-[data-theme="dark"] .sliderSectionTotalWarn {
+[data-theme='dark'] .sliderSectionTotalWarn {
   background: linear-gradient(180deg, rgba(251, 191, 36, 0.2) 0%, rgba(251, 191, 36, 0.08) 100%);
   color: #fcd34d;
   border-color: rgba(251, 191, 36, 0.4);
@@ -352,7 +427,9 @@
   cursor: default;
   border: 1px solid rgba(0, 0, 0, 0.07);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: box-shadow var(--traffic-time-200) ease, border-color var(--traffic-time-200) ease;
+  transition:
+    box-shadow var(--traffic-time-200) ease,
+    border-color var(--traffic-time-200) ease;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -382,7 +459,11 @@
   justify-content: space-between;
   cursor: grab;
   background: var(--segment-color);
-  transition: box-shadow var(--traffic-time-250) ease, top var(--traffic-time-200) ease, bottom var(--traffic-time-200) ease, filter var(--traffic-time-200) ease;
+  transition:
+    box-shadow var(--traffic-time-250) ease,
+    top var(--traffic-time-200) ease,
+    bottom var(--traffic-time-200) ease,
+    filter var(--traffic-time-200) ease;
   overflow: hidden;
   padding: 0 4px;
 }
@@ -451,13 +532,15 @@
   letter-spacing: 0.02em;
   line-height: 1.2;
   color: rgba(255, 255, 255, 0.98);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 0, 0, 0.15);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 20px rgba(0, 0, 0, 0.15);
   pointer-events: none;
   text-align: center;
   white-space: nowrap;
 }
 
-[data-theme="dark"] .segment::before {
+[data-theme='dark'] .segment::before {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
 }
 
@@ -478,8 +561,13 @@
   background: #fff;
   border: 1px solid rgba(6, 182, 212, 0.35);
   border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transition: box-shadow var(--traffic-time-200) ease, border-color var(--traffic-time-200) ease, background var(--traffic-time-200) ease;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition:
+    box-shadow var(--traffic-time-200) ease,
+    border-color var(--traffic-time-200) ease,
+    background var(--traffic-time-200) ease;
 }
 
 .handle:hover {
@@ -507,11 +595,34 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+[data-theme='dark'] .handle {
+  background: var(--surface-slate-panel);
+  border-color: rgba(6, 182, 212, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.12) inset,
+    0 4px 14px rgba(0, 0, 0, 0.34);
+}
+
+[data-theme='dark'] .handle:hover,
+[data-theme='dark'] .handle:active,
+[data-theme='dark'] .segmentDragging .handle {
+  background: rgba(6, 182, 212, 0.18);
+  border-color: rgba(6, 182, 212, 0.58);
+  box-shadow:
+    0 0 18px rgba(6, 182, 212, 0.28),
+    0 4px 14px rgba(0, 0, 0, 0.34);
+}
+
 .handleGrip {
   width: 3px;
   height: 22px;
   border-radius: 2px;
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.5) 0%, var(--traffic-accent) 50%, rgba(6, 182, 212, 0.5) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.5) 0%,
+    var(--traffic-accent) 50%,
+    rgba(6, 182, 212, 0.5) 100%
+  );
   box-shadow: 0 0 6px rgba(6, 182, 212, 0.35);
   pointer-events: none;
 }
@@ -591,73 +702,84 @@
 }
 
 /* Dark theme – futuristic slider */
-[data-theme="dark"] .sliderBarCard {
+[data-theme='dark'] .sliderBarCard {
   background: var(--bg-secondary);
   border-color: var(--traffic-border);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-[data-theme="dark"] .sliderBarCard::before {
+[data-theme='dark'] .sliderBarCard::before {
   background: var(--traffic-accent);
   opacity: 0.9;
 }
 
-[data-theme="dark"] .sliderHint {
+[data-theme='dark'] .sliderHint {
   color: var(--traffic-muted);
 }
 
-[data-theme="dark"] .sliderLegendBadge {
+[data-theme='dark'] .sliderLegendBadge {
   background: rgba(255, 255, 255, 0.08);
   color: var(--traffic-muted);
 }
 
-[data-theme="dark"] .sliderTrack {
+[data-theme='dark'] .sliderTrack {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
   border-color: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-[data-theme="dark"] .sliderTrack.trackDragging {
+[data-theme='dark'] .sliderTrack.trackDragging {
   border-color: rgba(6, 182, 212, 0.5);
-  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2), 0 4px 24px rgba(6, 182, 212, 0.15);
+  box-shadow:
+    0 0 0 2px rgba(6, 182, 212, 0.2),
+    0 4px 24px rgba(6, 182, 212, 0.15);
 }
 
-[data-theme="dark"] .segment:hover {
+[data-theme='dark'] .segment:hover {
   filter: brightness(1.15);
 }
 
-[data-theme="dark"] .segmentDragging {
+[data-theme='dark'] .segmentDragging {
   filter: brightness(1.2);
 }
 
-[data-theme="dark"] .handle {
+[data-theme='dark'] .handle {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
   border-color: rgba(6, 182, 212, 0.4);
-  box-shadow: 0 0 16px rgba(6, 182, 212, 0.25), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 0 16px rgba(6, 182, 212, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-[data-theme="dark"] .handle:hover,
-[data-theme="dark"] .handle:focus-visible {
+[data-theme='dark'] .handle:hover,
+[data-theme='dark'] .handle:focus-visible {
   border-color: rgba(6, 182, 212, 0.6);
   box-shadow: 0 0 24px rgba(6, 182, 212, 0.35);
 }
 
-[data-theme="dark"] .handleGrip {
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.6) 0%, #22d3ee 50%, rgba(6, 182, 212, 0.6) 100%);
+[data-theme='dark'] .handleGrip {
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.6) 0%,
+    #22d3ee 50%,
+    rgba(6, 182, 212, 0.6) 100%
+  );
   box-shadow: 0 0 12px rgba(6, 182, 212, 0.5);
 }
 
-[data-theme="dark"] .sliderLegend {
+[data-theme='dark'] .sliderLegend {
   border-top-color: rgba(6, 182, 212, 0.15);
 }
 
-[data-theme="dark"] .sliderLegendItem {
+[data-theme='dark'] .sliderLegendItem {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-[data-theme="dark"] .sliderLegendDot {
+[data-theme='dark'] .sliderLegendDot {
   box-shadow: 0 0 12px color-mix(in srgb, var(--legend-color) 60%, transparent);
 }
 
@@ -674,7 +796,9 @@
   border: 1px solid var(--traffic-border);
   background: #fff;
   overflow: hidden;
-  transition: border-color var(--traffic-time-200), box-shadow var(--traffic-time-200);
+  transition:
+    border-color var(--traffic-time-200),
+    box-shadow var(--traffic-time-200);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
@@ -691,13 +815,13 @@
   width: 4px;
 }
 
-[data-theme="dark"] .variantCard {
+[data-theme='dark'] .variantCard {
   background: var(--bg-secondary);
   border-color: var(--traffic-border);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-[data-theme="dark"] .variantCard:hover {
+[data-theme='dark'] .variantCard:hover {
   border-color: rgba(255, 255, 255, 0.15);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
@@ -747,7 +871,10 @@
   line-height: 1;
   border-radius: 8px;
   cursor: pointer;
-  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
+  transition:
+    background var(--traffic-time-200),
+    border-color var(--traffic-time-200),
+    color var(--traffic-time-200);
 }
 
 .variantCardRemoveBtn:hover {
@@ -761,13 +888,13 @@
   outline-offset: 2px;
 }
 
-[data-theme="dark"] .variantCardRemoveBtn {
+[data-theme='dark'] .variantCardRemoveBtn {
   background: var(--bg-tertiary);
   border-color: var(--traffic-border);
   color: var(--text-tertiary);
 }
 
-[data-theme="dark"] .variantCardRemoveBtn:hover {
+[data-theme='dark'] .variantCardRemoveBtn:hover {
   background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.3);
   color: #fca5a5;
@@ -808,7 +935,10 @@
   font-variant-numeric: tabular-nums;
   color: var(--traffic-text);
   cursor: pointer;
-  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
+  transition:
+    background var(--traffic-time-200),
+    border-color var(--traffic-time-200),
+    color var(--traffic-time-200);
   flex-shrink: 0;
 }
 
@@ -840,7 +970,9 @@
   border-radius: 8px;
   text-align: center;
   outline: none;
-  transition: border-color var(--traffic-time-200), box-shadow var(--traffic-time-200);
+  transition:
+    border-color var(--traffic-time-200),
+    box-shadow var(--traffic-time-200);
   appearance: textfield;
   -moz-appearance: textfield;
 }
@@ -909,7 +1041,10 @@
   font-weight: 600;
   color: var(--traffic-text);
   cursor: pointer;
-  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
+  transition:
+    background var(--traffic-time-200),
+    border-color var(--traffic-time-200),
+    color var(--traffic-time-200);
 }
 
 .previewActionButtons .cardActionBtn {
@@ -1010,43 +1145,43 @@
   color: var(--traffic-muted);
 }
 
-[data-theme="dark"] .cardActionBtnPrimary {
+[data-theme='dark'] .cardActionBtnPrimary {
   background: var(--traffic-accent);
   border-color: var(--traffic-accent);
   color: #fff;
 }
 
-[data-theme="dark"] .cardActionBtnPrimary:hover {
+[data-theme='dark'] .cardActionBtnPrimary:hover {
   background: #22d3ee;
   border-color: #22d3ee;
   color: #fff;
 }
 
-[data-theme="dark"] .cardActionBtnCustomer {
+[data-theme='dark'] .cardActionBtnCustomer {
   background: rgba(34, 197, 94, 0.16);
   border-color: rgba(74, 222, 128, 0.35);
   color: #4ade80;
 }
 
-[data-theme="dark"] .cardActionBtnCopy {
+[data-theme='dark'] .cardActionBtnCopy {
   background: rgba(129, 140, 248, 0.16);
   border-color: rgba(165, 180, 252, 0.32);
   color: #a5b4fc;
 }
 
-[data-theme="dark"] .stepperBtn {
+[data-theme='dark'] .stepperBtn {
   background: var(--bg-tertiary);
   border-color: var(--traffic-border);
   color: var(--traffic-text);
 }
 
-[data-theme="dark"] .stepperBtn:hover {
+[data-theme='dark'] .stepperBtn:hover {
   background: var(--traffic-accent);
   color: #fff;
   border-color: var(--traffic-accent);
 }
 
-[data-theme="dark"] .stepperInput {
+[data-theme='dark'] .stepperInput {
   background: var(--bg-tertiary);
   border-color: var(--traffic-border);
   color: var(--traffic-text);
@@ -1076,11 +1211,11 @@
   background: #f3f4f6;
 }
 
-[data-theme="dark"] .variantNameDisplay:hover {
+[data-theme='dark'] .variantNameDisplay:hover {
   background: var(--bg-tertiary);
 }
 
-[data-theme="dark"] .variantNameDisplay:active {
+[data-theme='dark'] .variantNameDisplay:active {
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -1114,7 +1249,9 @@
   padding: 2px 6px;
   background: var(--traffic-bg);
   border-radius: 6px;
-  transition: opacity var(--traffic-time-200), transform var(--traffic-time-200);
+  transition:
+    opacity var(--traffic-time-200),
+    transform var(--traffic-time-200);
 }
 
 .variantNameEdit {
@@ -1132,7 +1269,9 @@
   border: 1px solid var(--traffic-accent);
   border-radius: 8px;
   outline: none;
-  transition: border-color var(--traffic-time-200), box-shadow var(--traffic-time-200);
+  transition:
+    border-color var(--traffic-time-200),
+    box-shadow var(--traffic-time-200);
 }
 
 .variantNameInput:focus {
@@ -1143,73 +1282,515 @@
   color: var(--traffic-muted);
 }
 
-
-
 /* Polaris Tooltip wrapper - ensure buttons align properly */
 .previewActionButtons .Polaris-Tooltip-Wrapper,
-.previewActionButtons [class*="Tooltip"] {
+.previewActionButtons [class*='Tooltip'] {
   display: inline-flex;
   flex: 0 0 auto;
 }
 
 .previewActionButtons .Polaris-Tooltip-Wrapper .cardActionBtn,
-.previewActionButtons [class*="Tooltip"] .cardActionBtn {
+.previewActionButtons [class*='Tooltip'] .cardActionBtn {
   width: 36px;
 }
 
-/* Enhanced tooltip styling - Polaris tooltips (variant card actions) */
-:global(.Polaris-Tooltip-TooltipOverlay) {
-  --tooltip-text: #f6f6f7;
-  --tooltip-border: rgba(255, 255, 255, 0.08);
-  --tooltip-shadow: 0 10px 32px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.15);
-  animation: tooltipFadeIn var(--traffic-time-200) ease-out;
+.toolbarBtn:disabled,
+.toolbarBtn[aria-disabled='true'],
+[data-theme='dark'] .toolbarBtn:disabled,
+[data-theme='dark'] .toolbarBtn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.56;
+  filter: saturate(0.65);
 }
 
-@keyframes tooltipFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.toolbarBtn:disabled:hover,
+.toolbarBtn[aria-disabled='true']:hover {
+  background: #fff;
+  border-color: var(--traffic-border);
+  color: var(--traffic-text);
 }
 
-:global(.Polaris-Tooltip-TooltipOverlay__Content) {
-  background: #25282c !important;
-  color: var(--tooltip-text) !important;
-  padding: 10px 16px !important;
-  border-radius: 12px !important;
-  font-size: 0.84375rem !important;
-  font-weight: 500 !important;
-  letter-spacing: 0.015em !important;
-  line-height: 1.45 !important;
-  box-shadow: var(--tooltip-shadow) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
+[data-theme='dark'] .toolbarBtn:disabled:hover,
+[data-theme='dark'] .toolbarBtn[aria-disabled='true']:hover {
+  background: var(--bg-secondary);
+  border-color: var(--traffic-border);
+  color: var(--traffic-text);
 }
 
-:global(.Polaris-Tooltip-TooltipOverlay__Content) .Polaris-Text {
-  color: var(--tooltip-text) !important;
+/* Final dark theme pass for the traffic allocation editor. */
+[data-theme='dark'] .wrapper {
+  --traffic-border: rgba(6, 182, 212, 0.2);
+  --traffic-bg: rgba(15, 23, 42, 0.72);
+  --traffic-text: rgba(241, 245, 249, 0.96);
+  --traffic-muted: rgba(203, 213, 225, 0.78);
 }
 
-:global(.Polaris-Tooltip-TooltipOverlay__Tail),
-:global(.Polaris-Tooltip-TooltipOverlay__Tail) path {
-  fill: #25282c !important;
+[data-theme='dark'] .toolbarBar,
+[data-theme='dark'] .sliderBarCard {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.82)) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-[data-theme="dark"] :global(.Polaris-Tooltip-TooltipOverlay) {
-  --tooltip-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+[data-theme='dark'] .sliderSectionTitle,
+[data-theme='dark'] .previewActionTitle,
+[data-theme='dark'] .variantNameText,
+[data-theme='dark'] .trafficLabel,
+[data-theme='dark'] .trafficUnit,
+[data-theme='dark'] .sliderScaleLabel,
+[data-theme='dark'] .sliderHint,
+[data-theme='dark'] .sliderLegendName,
+[data-theme='dark'] .sliderLegendPct {
+  color: inherit;
 }
 
-[data-theme="dark"] :global(.Polaris-Tooltip-TooltipOverlay__Content) {
-  background: #121418 !important;
-  border-color: rgba(6, 182, 212, 0.15) !important;
+[data-theme='dark'] .sliderSectionTotal {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: rgba(203, 213, 225, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-[data-theme="dark"] :global(.Polaris-Tooltip-TooltipOverlay__Tail),
-[data-theme="dark"] :global(.Polaris-Tooltip-TooltipOverlay__Tail) path {
-  fill: #121418 !important;
+[data-theme='dark'] .sliderTrack {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.76), rgba(15, 23, 42, 0.86)) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme='dark'] .sliderTrack.trackDragging {
+  border-color: rgba(103, 232, 249, 0.52) !important;
+  box-shadow:
+    0 0 0 2px rgba(6, 182, 212, 0.18),
+    0 12px 28px rgba(6, 182, 212, 0.12),
+    inset 0 1px 3px rgba(0, 0, 0, 0.48) !important;
+}
+
+[data-theme='dark'] .sliderLegend {
+  border-top-color: rgba(6, 182, 212, 0.18) !important;
+}
+
+[data-theme='dark'] .sliderLegendItem {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.58), rgba(15, 23, 42, 0.72)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: rgba(226, 232, 240, 0.92) !important;
+}
+
+[data-theme='dark'] .variantCard {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color) 16%, transparent), transparent 38%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.74), rgba(15, 23, 42, 0.86)) !important;
+  border-color: color-mix(in srgb, var(--variant-color) 28%, rgba(148, 163, 184, 0.2)) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .variantCard:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color) 24%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.8), rgba(15, 23, 42, 0.88)) !important;
+  border-color: color-mix(in srgb, var(--variant-color) 46%, rgba(103, 232, 249, 0.24)) !important;
+  box-shadow:
+    0 16px 34px color-mix(in srgb, var(--variant-color) 12%, rgba(0, 0, 0, 0.28)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+
+[data-theme='dark'] .variantCardActions {
+  border-top-color: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .variantNameDisplay:hover,
+[data-theme='dark'] .variantNameEditHint,
+[data-theme='dark'] .stepperBtn,
+[data-theme='dark'] .stepperInput,
+[data-theme='dark'] .cardActionBtn,
+[data-theme='dark'] .variantCardRemoveBtn {
+  background: rgba(15, 23, 42, 0.78) !important;
+  border-color: rgba(6, 182, 212, 0.22) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+}
+
+[data-theme='dark'] .stepperBtn:hover,
+[data-theme='dark'] .cardActionBtn:hover,
+[data-theme='dark'] .variantNameDisplay:hover {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(103, 232, 249, 0.42) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] .stepperInput:focus,
+[data-theme='dark'] .variantNameInput:focus {
+  border-color: rgba(103, 232, 249, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.18) !important;
+}
+
+[data-theme='dark'] .variantNameInput {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] .cardActionBtnPrimary,
+[data-theme='dark'] .cardActionBtnPrimary:hover {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee) !important;
+  border-color: rgba(103, 232, 249, 0.58) !important;
+  color: #020617 !important;
+}
+
+[data-theme='dark'] .cardActionBtnCustomer:hover {
+  background: rgba(34, 197, 94, 0.22) !important;
+  border-color: rgba(74, 222, 128, 0.5) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] .cardActionBtnCopy:hover {
+  background: rgba(129, 140, 248, 0.22) !important;
+  border-color: rgba(165, 180, 252, 0.5) !important;
+  color: #c4b5fd !important;
+}
+
+[data-theme='dark'] .variantCardRemoveBtn:hover {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.38) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme='dark'] .cardActionBtnDisabled,
+[data-theme='dark'] .cardActionBtnDisabled:hover {
+  background: rgba(15, 23, 42, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  color: rgba(148, 163, 184, 0.72) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section],
+[data-theme='dark'] [data-ripx-traffic-slider-card] {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  color: rgba(226, 232, 240, 0.94) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section] {
+  padding: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 16px;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-grid] {
+  color: rgba(241, 245, 249, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 20%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 36%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.96) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 30%, transparent), transparent 44%),
+    linear-gradient(180deg, rgba(51, 65, 85, 0.86), rgba(15, 23, 42, 0.94)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 56%, rgba(103, 232, 249, 0.28)) !important;
+  box-shadow:
+    0 18px 38px color-mix(in srgb, var(--variant-color, #06b6d4) 16%, rgba(0, 0, 0, 0.32)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantCardInner,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantCardHead,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantCardTraffic,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .trafficControl {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Dark hover reset: keep interactions visible without bright lift/glow flashes. */
+[data-theme='dark'] [data-ripx-traffic-allocation] *,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::before,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::after {
+  transition-duration: 0.12s !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover,
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card],
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  transform: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 22%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 44%, rgba(103, 232, 249, 0.24)) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .segment:hover {
+  filter: brightness(1.06) saturate(1.02) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 14px color-mix(in srgb, var(--segment-color, #06b6d4) 22%, transparent) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:active,
+[data-theme='dark'] [data-ripx-traffic-allocation] .segmentDragging .handle {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.52) !important;
+  box-shadow:
+    0 0 12px rgba(6, 182, 212, 0.22),
+    0 2px 8px rgba(0, 0, 0, 0.34) !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] .stepperBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .cardActionBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .variantNameDisplay:hover {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(103, 232, 249, 0.42) !important;
+  color: #67e8f9 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] .stepperBtn:active,
+[data-theme='dark'] [data-ripx-traffic-variant-card] .cardActionBtn:active {
+  transform: none !important;
+}
+
+/* Dark theme: no hover animation/effect for Traffic Allocation. */
+[data-theme='dark'] [data-ripx-traffic-allocation],
+[data-theme='dark'] [data-ripx-traffic-allocation] *,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::before,
+[data-theme='dark'] [data-ripx-traffic-allocation] *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover,
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .sliderTrack:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .segment:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantNameDisplay:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .cardActionBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantCardRemoveBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .toolbarBtn:hover {
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(6, 182, 212, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.84)) !important;
+  border-color: rgba(6, 182, 212, 0.28) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 20%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 36%, rgba(148, 163, 184, 0.22)) !important;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .segment:hover {
+  box-shadow: inherit !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .handle:active,
+[data-theme='dark'] [data-ripx-traffic-allocation] .segmentDragging .handle {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 1)) !important;
+  border-color: rgba(103, 232, 249, 0.48) !important;
+  box-shadow:
+    0 0 18px rgba(6, 182, 212, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.36) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantNameDisplay:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .cardActionBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantCardRemoveBtn:hover,
+[data-theme='dark'] [data-ripx-traffic-allocation] .toolbarBtn:hover {
+  background: rgba(15, 23, 42, 0.88) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  color: rgba(226, 232, 240, 0.98) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+/* Authoritative dark Traffic Allocation colors. Keep cards stable, but preserve semantic preview actions. */
+[data-theme='dark'] [data-ripx-traffic-section] {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.13), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.94)) !important;
+  border: 1px solid rgba(6, 182, 212, 0.28) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-slider-card] {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.76), rgba(15, 23, 42, 0.88)) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-variant-card] {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-color, #06b6d4) 18%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.92)) !important;
+  border-color: color-mix(in srgb, var(--variant-color, #06b6d4) 34%, rgba(148, 163, 184, 0.22)) !important;
+  color: rgba(241, 245, 249, 0.98) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-section]:hover,
+[data-theme='dark'] [data-ripx-traffic-slider-card]:hover,
+[data-theme='dark'] [data-ripx-traffic-variant-card]:hover {
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .sliderTrack {
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.84), rgba(15, 23, 42, 0.94)) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .sliderLegendItem,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperBtn,
+[data-theme='dark'] [data-ripx-traffic-allocation] .stepperInput,
+[data-theme='dark'] [data-ripx-traffic-allocation] .variantNameInput {
+  background: rgba(15, 23, 42, 0.84) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionTitle {
+  color: rgba(203, 213, 225, 0.86) !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnPrimary,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnPrimary:hover {
+  background: rgba(6, 182, 212, 0.18) !important;
+  border-color: rgba(103, 232, 249, 0.5) !important;
+  color: #67e8f9 !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnPrimary:hover {
+  background: rgba(6, 182, 212, 0.26) !important;
+  border-color: rgba(103, 232, 249, 0.68) !important;
+  color: #cffafe !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCustomer,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCustomer:hover {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.42) !important;
+  color: #86efac !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCustomer:hover {
+  background: rgba(34, 197, 94, 0.24) !important;
+  border-color: rgba(134, 239, 172, 0.58) !important;
+  color: #bbf7d0 !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCopy,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCopy:hover {
+  background: rgba(129, 140, 248, 0.16) !important;
+  border-color: rgba(165, 180, 252, 0.42) !important;
+  color: #c4b5fd !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnCopy:hover {
+  background: rgba(129, 140, 248, 0.24) !important;
+  border-color: rgba(196, 181, 253, 0.6) !important;
+  color: #ddd6fe !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnIcon,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnIcon :global(.Polaris-Icon),
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnIcon svg {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnDisabled,
+[data-theme='dark'] [data-ripx-traffic-allocation] .previewActionButtons .cardActionBtnDisabled:hover {
+  background: rgba(15, 23, 42, 0.58) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: rgba(148, 163, 184, 0.72) !important;
+  opacity: 0.62 !important;
 }

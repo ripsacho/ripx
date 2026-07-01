@@ -4,7 +4,7 @@
  */
 
 /** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
-const SCRIPT_VERSION = '1.0.46';
+const SCRIPT_VERSION = '1.0.47';
 
 /**
  * DB/API may use "pricing"; storefront logic expects "price".
@@ -166,19 +166,23 @@ function buildStorefrontRuntimeConfig(
   tests,
   req,
   goalMetricDefinitions = [],
-  priceSurfaceRegistry = {}
+  priceSurfaceRegistry = {},
+  options = {}
 ) {
   const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
     /\/+$/,
     ''
   );
   const shopMappings = normalizePriceSurfaceMappings(priceSurfaceRegistry.shopMappings);
+  const runtimeSource = String(options.runtimeSource || 'unknown').trim() || 'unknown';
 
   return {
     apiUrl: `${appUrl}/api`,
     featureFlagUrl: `${appUrl}/api/feature-flags/evaluate`,
+    scriptHealthUrl: `${appUrl}/api/track/storefront-script-health`,
     shopDomain: shop,
     version: SCRIPT_VERSION,
+    runtimeSource,
     consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
     heatmapCollection: getHeatmapCollectionRuntimeConfig(),
     activeTests: (tests || []).map(mapTestToStorefrontPayload),
@@ -309,7 +313,13 @@ function buildEarlyStorefrontAntiFlickerBootstrap(activeTests, priceSurfaceRegis
       ? buildPriceAntiFlickerCss(activeTests, priceSurfaceRegistry)
       : 'html[data-ripx-af="strict"] body{opacity:0 !important;}';
   return (
-    ';(function(){try{var h=document.documentElement;if(!h||h.getAttribute("data-ripx-af"))return;' +
+    ';(function(){try{function ripxHasPreviewCtx(){try{var q=String(window.location&&window.location.search||"");' +
+    'if(/(?:^|[?&])ab_preview(?:=|&|$)/.test(q)||/(?:^|[?&])ab_preview_test=/.test(q))return true;' +
+    'if(window.sessionStorage){var raw=window.sessionStorage.getItem("__ripx_preview_ctx_v1__");' +
+    'if(raw){var parsed=JSON.parse(raw);if(parsed&&parsed.preview)return true;}}' +
+    'var wn=String(window.name||"");if(wn.indexOf("__ripx_preview_ctx_v1__:")===0)return true;' +
+    '}catch(_ePreviewCtx){}return false;}' +
+    'if(ripxHasPreviewCtx())return;var h=document.documentElement;if(!h||h.getAttribute("data-ripx-af"))return;' +
     `h.setAttribute("data-ripx-af","${mode}");var id="ripx-anti-flicker-style";` +
     'if(!document.getElementById(id)){var s=document.createElement("style");s.id=id;' +
     `s.textContent=${JSON.stringify(css)};` +

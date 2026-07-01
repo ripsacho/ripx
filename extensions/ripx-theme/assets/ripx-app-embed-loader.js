@@ -20,11 +20,59 @@
 
   var config = readConfig();
   var shopHost = String(config.shopHost || window.location.hostname || '').trim();
-  var version = String(config.version || '').trim() || '1.0.46';
+  var version = String(config.version || '').trim() || '1.0.47';
   var directScriptBaseUrl = String(config.directScriptBaseUrl || '').trim();
 
-  function hasRipx() {
+  function hasRuntimeConfig() {
+    try {
+      var cfg = window.AB_TEST_RUNTIME_CONFIG || {};
+      return !!(cfg.apiUrl && String(cfg.apiUrl).trim());
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  function hasRipxVersion() {
     return !!(window.RipX && window.RipX.version);
+  }
+
+  function hasRipx() {
+    return hasRipxVersion() && hasRuntimeConfig();
+  }
+
+  function reportInitFailure(reason) {
+    try {
+      if (!directScriptBaseUrl || !shopHost) return;
+      var endpoint = String(directScriptBaseUrl).replace(/\/+$/, '') + '/api/track/client-error';
+      var payload = {
+        error: 'ripx_storefront_init_failed',
+        url: String(window.location.href || ''),
+        shop_domain: shopHost,
+        metadata: {
+          reason: String(reason || 'unknown'),
+          primarySrc: buildPrimarySrc(),
+          fallbackConfigured: !!directScriptBaseUrl,
+          preview: hasPreviewCtx(),
+          attemptCount: attemptCount,
+          version: version,
+        },
+      };
+      var body = JSON.stringify(payload);
+      if (navigator && typeof navigator.sendBeacon === 'function') {
+        var blob = new Blob([body], { type: 'application/json' });
+        navigator.sendBeacon(endpoint, blob);
+        return;
+      }
+      if (typeof window.fetch === 'function') {
+        window.fetch(endpoint, {
+          method: 'POST',
+          mode: 'cors',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: body,
+        });
+      }
+    } catch (_e) {}
   }
 
   function readPreviewCtx() {
@@ -109,8 +157,26 @@
     }
   }
 
-  function appendScript(src, isFallback) {
-    if (!src || hasScriptTagFor(src)) return;
+  function removeScriptTagsFor(src) {
+    if (!src) return;
+    var normalized = String(src).split('?')[0];
+    try {
+      Array.prototype.slice.call(document.scripts || []).forEach(function (script) {
+        var current = String((script && script.src) || '').split('?')[0];
+        if (current && current === normalized && script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      });
+    } catch (_e) {}
+  }
+
+  function appendScript(src, isFallback, forceReload) {
+    if (!src) return;
+    if (forceReload) {
+      removeScriptTagsFor(src);
+    } else if (hasScriptTagFor(src)) {
+      return;
+    }
     var tag = document.createElement('script');
     tag.src = src;
     tag.async = false;
@@ -139,7 +205,8 @@
           at: Date.now(),
         };
       } catch (_eStatus) {}
-      if (!isFallback && directScriptBaseUrl) appendScript(withPreviewBust(buildDirectSrc()), true);
+      if (!isFallback && directScriptBaseUrl)
+        appendScript(withPreviewBust(buildDirectSrc()), true, forceReload === true);
     };
     (document.head || document.documentElement || document.body).appendChild(tag);
   }
@@ -180,12 +247,15 @@
       return;
     }
 
+    var runtimePresentWithoutConfig = hasRipxVersion() && !hasRuntimeConfig();
     attemptCount += 1;
-    appendScript(withPreviewBust(buildPrimarySrc()), false);
-    if (directScriptBaseUrl) appendScript(withPreviewBust(buildDirectSrc()), true);
+    appendScript(withPreviewBust(buildPrimarySrc()), false, runtimePresentWithoutConfig);
+    if (directScriptBaseUrl)
+      appendScript(withPreviewBust(buildDirectSrc()), true, runtimePresentWithoutConfig);
 
     if (attemptCount >= maxAttempts) {
       stopEnsure();
+      reportInitFailure('runtime_missing_after_retries');
       try {
         window.__RIPX_APP_EMBED_LOADER_STATUS__ = {
           ok: false,

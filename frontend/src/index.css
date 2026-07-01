@@ -31,6 +31,11 @@
   --text-tertiary: #8c9196;
   --text-inverse: #ffffff;
   --text-link: #06b6d4;
+  --text-link-hover: #0891b2;
+  --text-link-active: #0e7490;
+  --p-color-text-link: var(--text-link);
+  --p-color-text-link-hover: var(--text-link-hover);
+  --p-color-text-link-active: var(--text-link-active);
 
   /* Border Colors */
   --border-primary: rgba(0, 0, 0, 0.08);
@@ -122,11 +127,20 @@
   --surface-2: 0 4px 12px var(--shadow-sm), 0 2px 6px var(--shadow-sm);
   --surface-3: 0 8px 24px var(--shadow-md), 0 2px 8px var(--shadow-sm);
 
+  /* Tooltip (inverted bubble on light UI) */
+  --surface-tooltip: #202223;
+  --surface-tooltip-text: #f9fafb;
+  --surface-tooltip-border: rgba(0, 0, 0, 0.14);
+  /* Tail outer path sits on the page background — must be opaque, not a subtle inner border */
+  --surface-tooltip-tail-border: #202223;
+  --surface-tooltip-shadow: 0 10px 28px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
+
   /* Transitions */
   --transition-fast: 0.15s ease;
   --transition-base: 0.2s ease;
   --transition-slow: 0.3s ease;
   --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color-scheme: light;
 }
 
 /* Respect reduced motion preference globally */
@@ -139,54 +153,142 @@
   }
 }
 
-/* Dark Theme - Futuristic cyan/violet */
+/* Dark Theme - Slate gray with cyan/violet accents */
 [data-theme='dark'] {
-  /* Background Colors */
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #121212;
-  --bg-tertiary: #1a1a1a;
-  --bg-hover: rgba(6, 182, 212, 0.1);
-  --bg-active: rgba(6, 182, 212, 0.15);
+  /* Background Colors — slate-gray canvas (not pure black) */
+  --bg-primary: #111827;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-hover: rgba(148, 163, 184, 0.1);
+  --bg-active: rgba(6, 182, 212, 0.14);
 
   /* Text Colors */
-  --text-primary: #f5f5f5;
-  --text-secondary: #d4d4d4;
-  --text-tertiary: #a3a3a3;
-  --text-inverse: #0a0a0a;
-  --text-link: #06b6d4;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-inverse: #111827;
+  --text-link: #67e8f9;
+  --text-link-hover: #a5f3fc;
+  --text-link-active: #cffafe;
+  --ripx-link-underline: rgba(103, 232, 249, 0.68);
+  --ripx-link-underline-hover: rgba(165, 243, 252, 0.95);
+  --ripx-link-glow: 0 0 14px rgba(34, 211, 238, 0.22);
+  --ripx-link-glow-hover: 0 0 18px rgba(103, 232, 249, 0.38);
+  --p-color-text-link: var(--text-link);
+  --p-color-text-link-hover: var(--text-link-hover);
+  --p-color-text-link-active: var(--text-link-active);
 
-  /* Border Colors */
-  --border-primary: rgba(6, 182, 212, 0.2);
-  --border-secondary: rgba(6, 182, 212, 0.1);
-  --border-accent: rgba(6, 182, 212, 0.4);
+  /* Border Colors — soft slate with cyan accent option */
+  --border-primary: rgba(148, 163, 184, 0.18);
+  --border-secondary: rgba(148, 163, 184, 0.1);
+  --border-accent: rgba(6, 182, 212, 0.38);
 
-  /* Shadow Colors - Enhanced Depth */
-  --shadow-sm: rgba(0, 0, 0, 0.3);
-  --shadow-md: rgba(0, 0, 0, 0.5);
-  --shadow-lg: rgba(0, 0, 0, 0.7);
-  --shadow-xl: rgba(0, 0, 0, 0.8);
-  --shadow-2xl: rgba(0, 0, 0, 0.95);
+  /* Shadow Colors — softer depth on gray surfaces */
+  --shadow-sm: rgba(30, 41, 59, 0.35);
+  --shadow-md: rgba(30, 41, 59, 0.5);
+  --shadow-lg: rgba(30, 41, 59, 0.62);
+  --shadow-xl: rgba(30, 41, 59, 0.72);
+  --shadow-2xl: rgba(30, 41, 59, 0.85);
 
   /* Glow Effects */
-  --glow-primary: rgba(6, 182, 212, 0.2);
+  --glow-primary: rgba(6, 182, 212, 0.22);
   --glow-success: rgba(139, 92, 246, 0.2);
 
   /* Accent Colors - Futuristic cyan/violet */
   --accent-primary: #06b6d4;
   --accent-secondary: #8b5cf6;
-  --accent-hover: rgba(6, 182, 212, 0.2);
+  --accent-hover: rgba(6, 182, 212, 0.18);
 
-  /* Status Colors */
+  /* Futuristic palette — dark overrides */
+  --futuristic-block-bg: linear-gradient(
+    165deg,
+    rgba(30, 41, 59, 0.98) 0%,
+    rgba(17, 24, 39, 0.96) 52%,
+    rgba(6, 182, 212, 0.06) 100%
+  );
+  --futuristic-border: rgba(148, 163, 184, 0.16);
+
+  /* Semantic surface tokens — use in modules instead of hardcoded rgba/hex */
+  --surface-elevated: #1e293b;
+  --surface-elevated-high: #293548;
+  --surface-muted: rgba(148, 163, 184, 0.08);
+  --surface-overlay: rgba(17, 24, 39, 0.72);
+  --surface-scrim: rgba(17, 24, 39, 0.62);
+  --surface-glass: rgba(30, 41, 59, 0.72);
+  --surface-glass-strong: rgba(30, 41, 59, 0.96);
+  --surface-glass-subtle: rgba(30, 41, 59, 0.58);
+  --surface-slate-soft: rgba(30, 41, 59, 0.82);
+  --surface-slate-solid: rgba(30, 41, 59, 0.97);
+  --surface-slate-panel: rgba(30, 41, 59, 0.88);
+
+  /* Button surfaces — elevated from page bg, slate border aligned with cards/inputs */
+  --surface-button: #334155;
+  --surface-button-hover: #3d4f66;
+  --surface-button-active: #475569;
+  --ripx-button-border: rgba(148, 163, 184, 0.62);
+  --ripx-button-border-hover: rgba(6, 182, 212, 0.72);
+  --ripx-button-ring: var(--ripx-button-border);
+  --ripx-button-ring-hover: var(--ripx-button-border-hover);
+  --ripx-button-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --ripx-button-shadow-hover:
+    0 2px 8px rgba(0, 0, 0, 0.46),
+    0 0 12px rgba(6, 182, 212, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --ripx-button-outline-shadow: 0 0 0 1px var(--ripx-button-border);
+  --ripx-button-outline-shadow-hover: 0 0 0 1px var(--ripx-button-border-hover);
+
+  /* Tooltip (slate bubble on dark UI) */
+  --surface-tooltip: rgba(30, 41, 59, 0.98);
+  --surface-tooltip-text: rgba(241, 245, 249, 0.96);
+  --surface-tooltip-border: rgba(6, 182, 212, 0.22);
+  --surface-tooltip-tail-border: rgba(6, 182, 212, 0.32);
+  --surface-tooltip-shadow: 0 14px 36px rgba(0, 0, 0, 0.56), 0 0 0 1px rgba(148, 163, 184, 0.08) inset;
   --status-success: #4ade80;
   --status-warning: #f59e0b;
   --status-error: #ef4444;
   --status-info: #60a5fa;
 
   /* Polaris CSS Variable Overrides */
-  --p-shadow-button: 0 0 0 1px var(--border-primary);
-  --p-shadow-button-hover: 0 0 0 1px var(--border-accent);
-  --p-shadow-button-focus: 0 0 0 1px var(--accent-primary);
-  --p-shadow-button-active: 0 0 0 1px var(--accent-primary);
+  --p-color-bg: var(--bg-primary);
+  --p-color-bg-surface: var(--bg-secondary);
+  --p-color-bg-surface-secondary: var(--bg-tertiary);
+  --p-color-bg-surface-hover: var(--bg-hover);
+  --p-color-bg-surface-active: var(--bg-active);
+  --p-color-text: var(--text-primary);
+  --p-color-text-secondary: var(--text-secondary);
+  --p-color-border: var(--border-primary);
+  --p-color-border-secondary: var(--border-secondary);
+  --p-color-bg-fill: var(--surface-button);
+  --p-color-bg-fill-hover: var(--surface-button-hover);
+  --p-color-bg-fill-active: var(--surface-button-active);
+  --p-color-bg-fill-selected: var(--surface-button-active);
+  --p-color-bg-fill-secondary: var(--bg-secondary);
+  --p-color-bg-fill-secondary-hover: var(--bg-tertiary);
+  --p-color-bg-fill-secondary-active: var(--surface-button-active);
+  --p-color-bg-fill-transparent: rgba(148, 163, 184, 0.1);
+  --p-color-bg-fill-transparent-hover: rgba(148, 163, 184, 0.16);
+  --p-color-bg-fill-transparent-active: rgba(6, 182, 212, 0.14);
+  --p-color-bg-fill-brand: var(--accent-primary);
+  --p-color-bg-fill-brand-hover: #0891b2;
+  --p-color-bg-fill-brand-active: #0e7490;
+  --p-color-bg-fill-brand-selected: var(--accent-primary);
+  --p-color-text-brand-on-bg-fill: var(--text-inverse);
+  --p-color-icon: var(--text-secondary);
+  --p-color-icon-hover: var(--text-primary);
+  --p-shadow-button:
+    var(--ripx-button-outline-shadow),
+    var(--ripx-button-shadow);
+  --p-shadow-button-hover:
+    var(--ripx-button-outline-shadow-hover),
+    var(--ripx-button-shadow-hover);
+  --p-shadow-button-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  --p-shadow-button-focus: 0 0 0 1px var(--accent-primary), 0 0 0 3px rgba(6, 182, 212, 0.28);
+  --p-shadow-button-active: var(--p-shadow-button-inset);
+  --p-shadow-button-primary: 0 0 0 1px rgba(6, 182, 212, 0.55), 0 2px 8px rgba(6, 182, 212, 0.22);
+  --p-shadow-button-primary-hover: 0 0 0 1px rgba(34, 211, 238, 0.62), 0 4px 12px rgba(6, 182, 212, 0.32);
+  --p-shadow-button-primary-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35);
   --p-border-subdued: var(--border-primary);
   --p-border: var(--border-primary);
   --p-border-base: var(--border-primary);
@@ -198,8 +300,9 @@
   --surface-1: 0 1px 3px var(--shadow-sm);
   --surface-2: 0 4px 12px var(--shadow-sm), 0 2px 6px var(--shadow-sm);
   --surface-3: 0 8px 24px var(--shadow-md), 0 2px 8px var(--shadow-sm);
-  --ripx-surface-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  --ripx-surface-shadow-hover: 0 10px 32px rgba(6, 182, 212, 0.1);
+  --ripx-surface-shadow: 0 4px 20px rgba(30, 41, 59, 0.45);
+  --ripx-surface-shadow-hover: 0 10px 32px rgba(6, 182, 212, 0.12);
+  color-scheme: dark;
 }
 
 /* ============================================
@@ -299,6 +402,88 @@ code {
 
 [data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
   background: rgba(6, 182, 212, 0.4);
+}
+
+/* Dark theme: CSS-module page icon wrappers can contain raw SVG icons that do not inherit color. */
+[data-theme='dark']
+  :where(
+    [class*='HeroIcon'],
+    [class*='heroIcon'],
+    [class*='ShellIcon'],
+    [class*='shellIcon'],
+    [class*='HeaderIcon'],
+    [class*='headerIcon'],
+    [class*='SectionHeaderIcon'],
+    [class*='sectionHeaderIcon'],
+    [class*='SectionIconWrap'],
+    [class*='sectionIconWrap'],
+    [class*='QuickActionIcon'],
+    [class*='quickActionIcon'],
+    [class*='FeatureIcon'],
+    [class*='featureIcon']
+  ) {
+  color: #a5f3fc;
+}
+
+[data-theme='dark']
+  :where(
+    [class*='HeroIcon'],
+    [class*='heroIcon'],
+    [class*='ShellIcon'],
+    [class*='shellIcon'],
+    [class*='HeaderIcon'],
+    [class*='headerIcon'],
+    [class*='SectionHeaderIcon'],
+    [class*='sectionHeaderIcon'],
+    [class*='SectionIconWrap'],
+    [class*='sectionIconWrap'],
+    [class*='QuickActionIcon'],
+    [class*='quickActionIcon'],
+    [class*='FeatureIcon'],
+    [class*='featureIcon']
+  )
+  :where(svg, svg *, .Polaris-Icon, .Polaris-Icon *) {
+  color: currentColor !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+/* Dark theme: search fields use prefix/search wrappers that often contain subdued Polaris icons. */
+[data-theme='dark']
+  :where(
+    .Polaris-TextField__Prefix,
+    [class*='searchIcon'],
+    [class*='SearchIcon'],
+    [class*='searchPrefix'],
+    [class*='SearchPrefix']
+  ) {
+  color: var(--text-tertiary) !important;
+}
+
+[data-theme='dark']
+  :where(
+    .Polaris-TextField__Prefix,
+    [class*='searchIcon'],
+    [class*='SearchIcon'],
+    [class*='searchPrefix'],
+    [class*='SearchPrefix']
+  )
+  :where(.Polaris-Icon, .Polaris-Icon *, svg, svg *) {
+  color: currentColor !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+[data-theme='dark']
+  :where(.Polaris-TextField:focus-within, [class*='search']:focus-within)
+  :where(
+    .Polaris-TextField__Prefix,
+    [class*='searchIcon'],
+    [class*='SearchIcon'],
+    [class*='searchPrefix'],
+    [class*='SearchPrefix']
+  ) {
+  color: #a5f3fc !important;
 }
 
 /* Smooth Page Transitions */
@@ -411,7 +596,7 @@ textarea:focus-visible {
   background:
     radial-gradient(circle at 12% 10%, rgba(34, 211, 238, 0.22), transparent 30%),
     radial-gradient(circle at 88% 20%, rgba(139, 92, 246, 0.22), transparent 32%),
-    linear-gradient(135deg, #020617 0%, #08111f 48%, #0f172a 100%) !important;
+    linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 48%, var(--bg-tertiary) 100%) !important;
 }
 
 .main-content-wrapper--marketing::before {
@@ -579,8 +764,12 @@ textarea:focus-visible {
   z-index: 900;
 }
 
+[data-theme='dark'] .sidebar-overlay {
+  background: var(--surface-scrim);
+}
+
 [data-theme='dark'] .sidebar {
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
 }
 
 /* Sidebar Header - Compact, clean */
@@ -756,14 +945,14 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] .sidebar-collapse-button-hover {
-  background: linear-gradient(135deg, rgba(18, 18, 18, 0.95) 0%, rgba(26, 26, 26, 0.95) 100%);
+  background: linear-gradient(135deg, var(--surface-glass-strong) 0%, var(--surface-glass) 100%);
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
   border-color: var(--accent-primary);
 }
 
 [data-theme='dark'] .sidebar-collapse-button-hover:hover {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(18, 18, 18, 0.95) 100%);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, var(--surface-glass-strong) 100%);
   box-shadow:
     0 8px 28px rgba(0, 0, 0, 0.8),
     0 0 0 2px var(--accent-primary),
@@ -934,6 +1123,11 @@ textarea:focus-visible {
   flex-shrink: 0;
 }
 
+[data-theme='dark'] .sidebar-nav-badge {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(139, 92, 246, 0.2));
+  color: #67e8f9;
+}
+
 .sidebar-nav-badge--success {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(6, 182, 212, 0.18));
   color: #047857;
@@ -976,7 +1170,7 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] .sidebar-nav-status-dot {
-  border-color: rgba(15, 23, 42, 0.95);
+  border-color: var(--surface-slate-solid);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
@@ -1075,7 +1269,7 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] .sidebar-hover-drawer {
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   border-color: var(--border-primary);
   box-shadow:
     4px 0 24px rgba(0, 0, 0, 0.5),
@@ -1507,7 +1701,7 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] .test-control-actions-bar {
-  background: rgba(26, 26, 26, 0.6);
+  background: rgba(51, 65, 85, 0.6);
 }
 
 /* Test Control Buttons */
@@ -1669,7 +1863,7 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] .advanced-filter-bar {
-  background: rgba(26, 26, 26, 0.8);
+  background: rgba(51, 65, 85, 0.8);
   backdrop-filter: blur(10px);
 }
 
@@ -2446,20 +2640,17 @@ body:has(.wizard-page) {
 }
 
 [data-theme='dark'] .wizard-progress-bar {
-  background: linear-gradient(
-    165deg,
-    rgba(26, 28, 30, 0.98) 0%,
-    rgba(22, 26, 30, 0.97) 40%,
-    rgba(18, 28, 32, 0.95) 100%
-  );
-  border-color: rgba(6, 182, 212, 0.15);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    var(--futuristic-block-bg);
+  border-color: var(--border-primary);
   border-left: 4px solid var(--futuristic-cyan);
   border-radius: 0 0 18px 18px;
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.02) inset,
-    0 6px 20px -4px rgba(0, 0, 0, 0.5),
-    0 2px 8px -2px rgba(6, 182, 212, 0.08),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 6px 20px -4px var(--shadow-md),
+    0 2px 8px -2px rgba(6, 182, 212, 0.1),
+    0 0 0 1px var(--border-secondary);
 }
 
 [data-theme='dark'] .wizard-progress-bar::before {
@@ -2473,11 +2664,14 @@ body:has(.wizard-page) {
 }
 
 [data-theme='dark'] .wizard-progress-bar.is-stuck {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 34%),
+    var(--surface-glass-strong);
   box-shadow:
-    0 8px 36px rgba(0, 0, 0, 0.6),
-    0 2px 16px rgba(6, 182, 212, 0.12),
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 0 0 1px rgba(255, 255, 255, 0.06);
+    0 8px 36px var(--shadow-lg),
+    0 2px 16px rgba(6, 182, 212, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 0 0 1px var(--border-primary);
 }
 
 /* Editable wizard title */
@@ -2679,7 +2873,7 @@ body:has(.wizard-page) {
 [data-theme='dark'] .wizard-title-modal-field:focus-within {
   border-color: rgba(6, 182, 212, 0.5);
   box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.22);
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(30, 41, 59, 0.55);
 }
 
 [data-theme='dark'] .wizard-title-modal-suggestion-chip {
@@ -2693,7 +2887,7 @@ body:has(.wizard-page) {
 }
 
 [data-theme='dark'] .wizard-title-modal-preview {
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--surface-glass);
   border-color: rgba(6, 182, 212, 0.45);
 }
 
@@ -3501,16 +3695,54 @@ body:has(.wizard-page) {
   color: var(--text-primary);
 }
 
-/* Polaris Tooltip - compact, avoid blocking */
+/* Polaris Tooltip — theme-aware (light default, dark override) */
 .Polaris-Tooltip-TooltipOverlay {
   z-index: 1000;
+  --p-color-bg-surface: var(--surface-tooltip);
+  --p-color-text: var(--surface-tooltip-text);
+  --p-color-text-inverse: var(--surface-tooltip-text);
+  --p-color-tooltip-tail-up-border-experimental: var(--surface-tooltip-tail-border);
+  --p-color-tooltip-tail-down-border-experimental: var(--surface-tooltip-tail-border);
+  color: var(--surface-tooltip-text);
 }
+
 .Polaris-Tooltip-TooltipOverlay__Content {
-  max-width: 200px !important;
+  max-width: 220px !important;
   font-size: 0.8125rem !important;
   line-height: 1.35 !important;
   padding: 8px 12px !important;
   word-wrap: break-word;
+  background: var(--surface-tooltip) !important;
+  background-color: var(--surface-tooltip) !important;
+  color: var(--surface-tooltip-text) !important;
+  border: 1px solid var(--surface-tooltip-border) !important;
+  box-shadow: var(--surface-tooltip-shadow) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay__Content .Polaris-Text,
+.Polaris-Tooltip-TooltipOverlay__Content [class*='Polaris-Text'],
+.Polaris-Tooltip-TooltipOverlay__Content span {
+  color: var(--surface-tooltip-text) !important;
+}
+
+/* Polaris tail = two SVG paths: outer border ring + inner fill */
+.Polaris-Tooltip-TooltipOverlay [class*='TooltipOverlay__Tail'] {
+  --p-color-bg-surface: var(--surface-tooltip);
+  --p-color-tooltip-tail-up-border-experimental: var(--surface-tooltip-tail-border);
+  --p-color-tooltip-tail-down-border-experimental: var(--surface-tooltip-tail-border);
+}
+
+.Polaris-Tooltip-TooltipOverlay [class*='TooltipOverlay__Tail'] path:first-of-type {
+  fill: var(--surface-tooltip-tail-border) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay [class*='TooltipOverlay__Tail'] path:last-of-type {
+  fill: var(--surface-tooltip) !important;
+}
+
+[data-theme='dark'] .Polaris-Tooltip-TooltipOverlay__Content {
+  background-color: var(--surface-tooltip) !important;
+  background: var(--surface-tooltip) !important;
 }
 
 /* DataTable - Dark Theme - High Specificity */
@@ -3602,32 +3834,53 @@ body:has(.wizard-page) {
 
 /* Badge - Dark Theme */
 [data-theme='dark'] .Polaris-Badge {
-  color: var(--text-primary);
+  background: var(--surface-glass) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow: 0 0 0 1px rgba(30, 41, 59, 0.28) inset !important;
 }
 
-[data-theme='dark'] .Polaris-Badge--statusSuccess {
-  background: rgba(74, 222, 128, 0.2);
-  color: var(--status-success);
+[data-theme='dark'] .Polaris-Badge *,
+[data-theme='dark'] .Polaris-Badge__Content {
+  color: inherit !important;
+  background: transparent !important;
 }
 
-[data-theme='dark'] .Polaris-Badge--statusInfo {
-  background: rgba(96, 165, 250, 0.2);
-  color: var(--status-info);
+[data-theme='dark'] .Polaris-Badge--statusSuccess,
+[data-theme='dark'] .Polaris-Badge--toneSuccess {
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  color: #86efac !important;
 }
 
-[data-theme='dark'] .Polaris-Badge--statusWarning {
-  background: rgba(6, 182, 212, 0.2);
-  color: var(--status-warning);
+[data-theme='dark'] .Polaris-Badge--statusInfo,
+[data-theme='dark'] .Polaris-Badge--toneInfo {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(6, 182, 212, 0.34) !important;
+  color: #67e8f9 !important;
 }
 
-[data-theme='dark'] .Polaris-Badge--statusCritical {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--status-error);
+[data-theme='dark'] .Polaris-Badge--statusWarning,
+[data-theme='dark'] .Polaris-Badge--statusAttention,
+[data-theme='dark'] .Polaris-Badge--toneWarning,
+[data-theme='dark'] .Polaris-Badge--toneAttention {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  color: #fcd34d !important;
 }
 
-[data-theme='dark'] .Polaris-Badge--statusAttention {
-  background: rgba(6, 182, 212, 0.2);
-  color: var(--status-warning);
+[data-theme='dark'] .Polaris-Badge--statusCritical,
+[data-theme='dark'] .Polaris-Badge--toneCritical {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.36) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme='dark'] .Polaris-Badge--toneMagic,
+[data-theme='dark'] .Polaris-Badge--statusNew {
+  background: rgba(139, 92, 246, 0.16) !important;
+  border-color: rgba(167, 139, 250, 0.34) !important;
+  color: #c4b5fd !important;
 }
 
 /* EmptyState - Dark Theme */
@@ -4186,7 +4439,7 @@ body.ripx-price-product-modal-open div[class*='Polaris-Modal'][class*='Backdrop'
   right: 0 !important;
   width: calc(100vw - var(--ripx-app-sidebar-width, 0px)) !important;
   height: 100vh !important;
-  background: rgba(15, 23, 42, 0.34) !important;
+  background: rgba(30, 41, 59, 0.34) !important;
   backdrop-filter: blur(6px) saturate(1.02) !important;
   -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
 }
@@ -4211,7 +4464,7 @@ body.ripx-checkout-variant-modal-open div[class*='Polaris-Backdrop'] {
   right: 0 !important;
   width: calc(100vw - var(--ripx-app-sidebar-width, 0px)) !important;
   height: 100vh !important;
-  background: rgba(15, 23, 42, 0.32) !important;
+  background: rgba(30, 41, 59, 0.32) !important;
   backdrop-filter: blur(6px) saturate(1.02) !important;
   -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
   pointer-events: none !important;
@@ -4228,7 +4481,7 @@ body.ripx-checkout-variant-modal-open div[class*='Polaris-Backdrop'] {
   bottom: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  background: rgba(15, 23, 42, 0.34) !important;
+  background: rgba(30, 41, 59, 0.34) !important;
   backdrop-filter: blur(6px) saturate(1.02) !important;
   -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
   pointer-events: none !important;
@@ -4339,13 +4592,10 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
   fill: var(--text-secondary);
 }
 
-/* Link - Dark Theme */
-[data-theme='dark'] .Polaris-Link {
-  color: var(--text-link);
-}
-
-[data-theme='dark'] .Polaris-Link:hover {
-  color: var(--accent-secondary);
+/* Link - Dark Theme (see final cascade for full inline link polish) */
+[data-theme='dark'] .Polaris-Link,
+[data-theme='dark'] .Polaris-Link[class*='Polaris-Link']:not([class*='monochrome']) {
+  color: var(--text-link) !important;
 }
 
 /* Tabs - Dark Theme (Removed - using advanced tab styles below) */
@@ -4448,13 +4698,16 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 [data-theme='dark'] .Polaris-DataTable .Polaris-Button--plain,
 [data-theme='dark'] .Polaris-DataTable .Polaris-Button[plain],
 [data-theme='dark'] .Polaris-DataTable td .Polaris-Button--plain,
-[data-theme='dark'] .Polaris-DataTable td .Polaris-Button[plain],
+[data-theme='dark'] .Polaris-DataTable td .Polaris-Button[plain] {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
 [data-theme='dark'] .Polaris-DataTable .Polaris-Button--plain .Polaris-Button__Text,
 [data-theme='dark'] .Polaris-DataTable .Polaris-Button[plain] .Polaris-Button__Text,
 [data-theme='dark'] .Polaris-DataTable td .Polaris-Button--plain .Polaris-Button__Text,
 [data-theme='dark'] .Polaris-DataTable td .Polaris-Button[plain] .Polaris-Button__Text {
-  background: var(--bg-secondary) !important;
-  border: 1px solid var(--border-primary) !important;
   color: var(--text-primary) !important;
 }
 
@@ -4503,18 +4756,19 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 /* All Buttons in Dark Theme - Ensure Consistency */
 [data-theme='dark']
   button:not([class*='Polaris']):not(.sidebar button):not(.profile-tab):not(.sidebar-toggle) {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  background: var(--surface-button);
+  border: 1px solid var(--ripx-button-border);
   color: var(--text-primary);
+  box-shadow: var(--ripx-button-shadow);
   transition: all var(--transition-base);
 }
 
 [data-theme='dark']
   button:not([class*='Polaris']):not(.sidebar button):not(.profile-tab):not(.sidebar-toggle):hover {
-  background: var(--bg-hover);
-  border-color: var(--border-accent);
+  background: var(--surface-button-hover);
+  border-color: var(--ripx-button-border-hover);
   color: var(--accent-primary);
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.2);
+  box-shadow: var(--ripx-button-shadow-hover);
 }
 
 [data-theme='dark']
@@ -4529,18 +4783,22 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 [data-theme='dark']
   .Polaris-InlineStack
   .Polaris-Button:not([primary]):not([plain]):not([destructive]) {
-  background: var(--bg-secondary) !important;
-  border: 1px solid var(--border-primary) !important;
+  --pc-button-bg: var(--surface-button);
+  --pc-button-box-shadow: var(--p-shadow-button);
+  background: var(--surface-button) !important;
+  border: 1px solid var(--ripx-button-border) !important;
+  box-shadow: var(--p-shadow-button) !important;
   color: var(--text-primary) !important;
 }
 
 [data-theme='dark']
   .Polaris-InlineStack
   .Polaris-Button:not([primary]):not([plain]):not([destructive]):hover {
-  background: var(--bg-hover) !important;
-  border-color: var(--border-accent) !important;
+  --pc-button-bg_hover: var(--surface-button-hover);
+  background: var(--surface-button-hover) !important;
+  border-color: var(--ripx-button-border-hover) !important;
+  box-shadow: var(--p-shadow-button-hover) !important;
   color: var(--accent-primary) !important;
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.2) !important;
 }
 
 /* Dashboard Create Test Button - Dark Theme */
@@ -5081,6 +5339,103 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
   color: var(--text-inverse);
 }
 
+/* Final dark fallback for the sticky wizard step rail. A later legacy progress block can otherwise
+   re-lighten the container after the primary dark theme styles above. */
+[data-theme='dark'] .wizard-page .wizard-progress-bar {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    linear-gradient(165deg, var(--surface-slate-solid) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+  border-color: rgba(6, 182, 212, 0.24) !important;
+  border-left-color: var(--futuristic-cyan) !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.34),
+    0 2px 16px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-progress-bar.is-stuck {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 34%),
+    rgba(30, 41, 59, 0.98) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.58),
+    0 2px 18px rgba(6, 182, 212, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-progress {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-indicator {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-indicator::after,
+[data-theme='dark'] .wizard-page .wizard-step-indicator:not(:last-child)::after {
+  background: linear-gradient(
+    90deg,
+    rgba(6, 182, 212, 0.2) 0%,
+    rgba(148, 163, 184, 0.16) 100%
+  ) !important;
+  box-shadow: none !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-indicator.completed::after {
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    var(--futuristic-violet) 100%
+  ) !important;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.28) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-indicator.active::after {
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan) 0%,
+    rgba(6, 182, 212, 0.22) 100%
+  ) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-number {
+  background: rgba(30, 41, 59, 0.84) !important;
+  border-color: rgba(6, 182, 212, 0.26) !important;
+  color: rgba(203, 213, 225, 0.88) !important;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-indicator.active .wizard-step-number,
+[data-theme='dark'] .wizard-page .wizard-step-indicator.completed .wizard-step-number {
+  background: linear-gradient(
+    145deg,
+    var(--futuristic-cyan) 0%,
+    #0891b2 48%,
+    var(--futuristic-violet) 100%
+  ) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-label {
+  color: rgba(203, 213, 225, 0.76) !important;
+}
+
+[data-theme='dark'] .wizard-page .wizard-step-indicator.active .wizard-step-label,
+[data-theme='dark'] .wizard-page .wizard-step-indicator.completed .wizard-step-label,
+[data-theme='dark'] .wizard-page .wizard-step-indicator.clickable:hover .wizard-step-label {
+  color: #67e8f9 !important;
+}
+
 /* View Details Button - Force Background with All Selectors */
 [data-theme='dark'] .Polaris-Card .Polaris-DataTable button[class*='Button'],
 [data-theme='dark'] .Polaris-Card .Polaris-DataTable .Polaris-Button,
@@ -5582,12 +5937,15 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 
 /* Buttons - Primary */
 [data-theme='dark'] .Polaris-Button--primary,
-[data-theme='dark'] .Polaris-Button[primary],
-[data-theme='dark'] .Polaris-Button--primary .Polaris-Button__Text,
-[data-theme='dark'] .Polaris-Button[primary] .Polaris-Button__Text {
+[data-theme='dark'] .Polaris-Button[primary] {
   background: var(--accent-primary) !important;
   color: var(--text-inverse) !important;
   border-color: var(--accent-primary) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--primary .Polaris-Button__Text,
+[data-theme='dark'] .Polaris-Button[primary] .Polaris-Button__Text {
+  color: var(--text-inverse) !important;
 }
 
 [data-theme='dark'] .Polaris-Button--primary:hover,
@@ -5624,11 +5982,14 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 
 /* Buttons - Secondary */
 [data-theme='dark'] .Polaris-Button--secondary,
-[data-theme='dark'] .Polaris-Button--secondary .Polaris-Button__Text,
-[data-theme='dark'] .Polaris-Button[secondary],
-[data-theme='dark'] .Polaris-Button[secondary] .Polaris-Button__Text {
+[data-theme='dark'] .Polaris-Button[secondary] {
   background: transparent !important;
   border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--secondary .Polaris-Button__Text,
+[data-theme='dark'] .Polaris-Button[secondary] .Polaris-Button__Text {
   color: var(--text-primary) !important;
 }
 
@@ -5659,11 +6020,14 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 
 /* Buttons - Plain */
 [data-theme='dark'] .Polaris-Button--plain,
-[data-theme='dark'] .Polaris-Button--plain .Polaris-Button__Text,
-[data-theme='dark'] .Polaris-Button[plain],
-[data-theme='dark'] .Polaris-Button[plain] .Polaris-Button__Text {
+[data-theme='dark'] .Polaris-Button[plain] {
   background: transparent !important;
   border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--plain .Polaris-Button__Text,
+[data-theme='dark'] .Polaris-Button[plain] .Polaris-Button__Text {
   color: var(--text-primary) !important;
 }
 
@@ -5693,10 +6057,13 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 }
 
 /* Buttons - Destructive */
-[data-theme='dark'] .Polaris-Button--destructive,
-[data-theme='dark'] .Polaris-Button--destructive .Polaris-Button__Text {
+[data-theme='dark'] .Polaris-Button--destructive {
   background: transparent;
   border: 1px solid var(--status-error);
+  color: var(--status-error);
+}
+
+[data-theme='dark'] .Polaris-Button--destructive .Polaris-Button__Text {
   color: var(--status-error);
 }
 
@@ -7208,7 +7575,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-bottom-bar {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
@@ -7245,7 +7612,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-bottom-bar-trigger {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-bottom-bar-trigger:hover {
@@ -7253,7 +7620,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-bottom-bar-trigger:hover {
-  background: #252525;
+  background: var(--bg-secondary);
 }
 
 .variant-visual-editor-bottom-bar-label-wrap {
@@ -7325,7 +7692,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-overlay {
-  background: #141414;
+  background: var(--bg-primary);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow:
     0 -4px 6px -1px rgba(0, 0, 0, 0.3),
@@ -7369,7 +7736,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-overlay-header {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -7453,7 +7820,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 
 .variant-visual-editor-history-btn:hover:not(:disabled) {
   background: #f1f5f9;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--bg-secondary));
   border-color: var(--border-primary, #cbd5e1);
 }
 
@@ -7463,13 +7830,13 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-history-btn {
-  background: #252525;
+  background: var(--bg-secondary);
   border-color: rgba(255, 255, 255, 0.1);
-  color: #d1d5db;
+  color: var(--text-secondary);
 }
 
 [data-theme='dark'] .variant-visual-editor-history-btn:hover:not(:disabled) {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-snippet-collapse-btn {
@@ -7494,7 +7861,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-collapse-btn {
-  background: #252525;
+  background: var(--bg-secondary);
   border-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -7515,7 +7882,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-collapse-btn:hover {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-snippet-overlay-body {
@@ -7530,7 +7897,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-overlay-body {
-  background: #141414;
+  background: var(--bg-primary);
 }
 
 /* Empty state: compact, inviting */
@@ -7547,7 +7914,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-empty {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -7560,7 +7927,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-empty-icon {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-snippet-empty .Polaris-Text {
@@ -7616,12 +7983,12 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-change-cancel {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.1);
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-change-cancel:hover {
-  background: #3d3d3d;
+  background: var(--surface-elevated-high);
 }
 
 /* Limit exceeded message */
@@ -7681,7 +8048,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-element-tab-wrap {
-  background: #252525;
+  background: var(--bg-secondary);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -7703,7 +8070,7 @@ body > .Polaris-Tabs:not(:first-of-type),
   .variant-visual-editor-snippet-element-tab-wrap:has(
     .variant-visual-editor-snippet-element-tab--active
   ) {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   box-shadow:
     0 0 0 1px var(--accent-primary, #06b6d4),
     0 2px 12px rgba(0, 0, 0, 0.4);
@@ -7728,7 +8095,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-element-tab:hover {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-snippet-element-tab--active {
@@ -7737,7 +8104,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-element-tab--active {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-snippet-element-tab-remove {
@@ -7790,7 +8157,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-card {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
@@ -7823,7 +8190,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-card-header-row {
-  background: #252525;
+  background: var(--bg-secondary);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -7866,7 +8233,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-change-selector-btn {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   border-color: var(--accent-primary, #06b6d4);
   color: var(--accent-primary, #06b6d4);
 }
@@ -7894,7 +8261,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-remove-element-btn {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
   border-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -7927,7 +8294,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-card-sidebar {
-  background: #252525;
+  background: var(--bg-secondary);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -7964,7 +8331,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-tab:hover {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-snippet-tab--active {
@@ -7977,7 +8344,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-tab--active {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.12);
 }
 
@@ -7990,7 +8357,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-snippet-card-content {
-  background: #141414;
+  background: var(--bg-primary);
 }
 
 .variant-visual-editor-snippet-card-content
@@ -8037,7 +8404,7 @@ body > .Polaris-Tabs:not(:first-of-type),
   overflow: auto;
   padding: 0.75rem;
   border-radius: 10px;
-  background: #0f172a;
+  background: var(--bg-secondary);
   color: #e2e8f0;
   font-size: 0.74rem;
   line-height: 1.5;
@@ -8045,7 +8412,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-generated-code {
-  background: #0b0f19;
+  background: var(--bg-secondary);
 }
 
 .variant-visual-editor-selector-field-wrap {
@@ -8113,7 +8480,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-position-btn {
-  background: #252525;
+  background: var(--bg-secondary);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -8124,7 +8491,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-position-btn:hover {
-  background: #2d2d2d;
+  background: var(--bg-tertiary);
 }
 
 .variant-visual-editor-position-btn--active {
@@ -8143,7 +8510,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme='dark'] .variant-visual-editor-position-btn--active {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   color: var(--accent-primary, #06b6d4);
   border-color: var(--accent-primary, #06b6d4);
   box-shadow:
@@ -8245,7 +8612,7 @@ body > .Polaris-Tabs:not(:first-of-type),
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(30, 41, 59, 0.5);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   animation: variant-visual-editor-fadeIn 0.2s ease-out;
@@ -8261,7 +8628,7 @@ body > .Polaris-Tabs:not(:first-of-type),
   font-size: 0.8125rem;
   font-weight: 600;
   color: #fff;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(30, 41, 59, 0.85);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   text-align: center;
@@ -9829,7 +10196,7 @@ body > .Polaris-Tabs:not(:first-of-type),
 
 [data-theme='dark'] .variant-selector-check {
   background: var(--variant-color, var(--accent-primary));
-  color: var(--bg-primary);
+  color: var(--text-inverse);
 }
 
 [data-theme='dark'] .variant-navigation-buttons {
@@ -10037,4 +10404,299 @@ body > .Polaris-Tabs:not(:first-of-type),
   .split-divider-handle svg {
     transform: rotate(90deg);
   }
+}
+
+/* ============================================
+   DARK GRAY THEME — GLOBAL POLISH (final cascade)
+   ============================================ */
+
+[data-theme='dark'] .Polaris-Card,
+[data-theme='dark'] .Polaris-LegacyCard,
+[data-theme='dark'] .Polaris-Box {
+  --p-color-bg-surface: var(--bg-secondary);
+  --p-color-bg: var(--bg-secondary);
+}
+
+[data-theme='dark'] .Polaris-Card,
+[data-theme='dark'] .Polaris-LegacyCard {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  box-shadow: var(--ripx-surface-shadow) !important;
+}
+
+[data-theme='dark'] .Polaris-Modal-Dialog__Modal,
+[data-theme='dark'] .Polaris-Popover__PopoverOverlay,
+[data-theme='dark'] .Polaris-Popover__Content {
+  background: var(--surface-slate-solid) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .Polaris-TextField__Input,
+[data-theme='dark'] .Polaris-Select__Input,
+[data-theme='dark'] .Polaris-TextField__Backdrop,
+[data-theme='dark'] .Polaris-Select__Backdrop {
+  background: var(--surface-glass-subtle) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .Polaris-TextField__Input::placeholder,
+[data-theme='dark'] .Polaris-Select__Input::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+[data-theme='dark'] .Polaris-Badge {
+  border-color: var(--border-primary);
+}
+
+[data-theme='dark'] .main-content-wrapper {
+  background: linear-gradient(
+    180deg,
+    var(--bg-primary) 0%,
+    color-mix(in srgb, var(--bg-secondary) 65%, var(--bg-primary)) 45%,
+    var(--bg-primary) 100%
+  );
+}
+
+/*
+ * Multi-line buttons: surface styles belong on the button only.
+ * Background/border on .Polaris-Button__Text paints each wrapped line separately.
+ */
+[data-theme='dark'] .Polaris-Button .Polaris-Button__Text,
+[data-theme='dark'] .Polaris-Button .Polaris-Button__Icon,
+[data-theme='dark'] .Polaris-DataTable .Polaris-Button .Polaris-Button__Text {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Polaris 12 buttons — dark theme (variantSecondary / variantTertiary / variantPrimary) */
+[data-theme='dark'] .Polaris-Button--variantSecondary,
+[data-theme='dark'] .Polaris-Button[class*='variantSecondary'] {
+  --pc-button-bg: var(--surface-button);
+  --pc-button-bg_hover: var(--surface-button-hover);
+  --pc-button-bg_active: var(--surface-button-active);
+  --pc-button-bg_pressed: var(--surface-button-active);
+  --pc-button-box-shadow: var(--p-shadow-button);
+  --pc-button-box-shadow_hover: var(--p-shadow-button-hover);
+  --pc-button-box-shadow_active: var(--p-shadow-button-inset);
+  --pc-button-color: var(--text-primary);
+  --pc-button-icon-fill: var(--text-secondary);
+  border: 1px solid var(--ripx-button-border) !important;
+  box-shadow: var(--p-shadow-button) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--variantSecondary:hover,
+[data-theme='dark'] .Polaris-Button[class*='variantSecondary']:hover {
+  border-color: var(--ripx-button-border-hover) !important;
+  box-shadow: var(--p-shadow-button-hover) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--variantTertiary,
+[data-theme='dark'] .Polaris-Button[class*='variantTertiary'] {
+  --pc-button-bg: rgba(148, 163, 184, 0.12);
+  --pc-button-bg_hover: rgba(148, 163, 184, 0.18);
+  --pc-button-bg_active: rgba(6, 182, 212, 0.16);
+  --pc-button-box-shadow: var(--p-shadow-button);
+  --pc-button-box-shadow_hover: var(--p-shadow-button-hover);
+  --pc-button-box-shadow_active: var(--p-shadow-button-inset);
+  --pc-button-color: var(--text-primary);
+  --pc-button-icon-fill: var(--text-secondary);
+  border: 1px solid var(--ripx-button-border) !important;
+  box-shadow: var(--p-shadow-button) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--variantTertiary:hover,
+[data-theme='dark'] .Polaris-Button[class*='variantTertiary']:hover {
+  border-color: var(--ripx-button-border-hover) !important;
+  box-shadow: var(--p-shadow-button-hover) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--variantPrimary,
+[data-theme='dark'] .Polaris-Button[class*='variantPrimary'] {
+  --pc-button-bg: var(--accent-primary);
+  --pc-button-bg_hover: #0891b2;
+  --pc-button-bg_active: #0e7490;
+  --pc-button-box-shadow: var(--p-shadow-button-primary);
+  --pc-button-box-shadow_hover: var(--p-shadow-button-primary-hover);
+  --pc-button-box-shadow_active: var(--p-shadow-button-primary-inset);
+  --pc-button-color: var(--text-inverse);
+  --pc-button-icon-fill: var(--text-inverse);
+}
+
+[data-theme='dark'] .Polaris-Button--variantPlain,
+[data-theme='dark'] .Polaris-Button[class*='variantPlain']:not([class*='MonochromePlain']) {
+  --pc-button-color: var(--text-link);
+  --pc-button-color_hover: var(--text-link-hover);
+  --pc-button-color_active: var(--text-link-active);
+}
+
+/* Dark theme — inline text links (Polaris + unstyled anchors) */
+[data-theme='dark'] .Polaris-Link,
+[data-theme='dark'] .Polaris-Link[class*='Polaris-Link']:not([class*='monochrome']),
+[data-theme='dark'] .Polaris-Text a[href]:where(:not([class]), [class='']),
+[data-theme='dark'] .Polaris-Banner a[href]:where(:not([class]), [class='']),
+[data-theme='dark'] .Polaris-LegacyCard a[href]:where(:not([class]), [class='']),
+[data-theme='dark'] .Polaris-Card a[href]:where(:not([class]), [class='']),
+[data-theme='dark'] .main-content-wrapper a[href]:where(:not([class]), [class='']):not(
+    :has(> button)
+  ):not(:has(> .Polaris-Button)) {
+  color: var(--text-link) !important;
+  font-weight: 600;
+  text-decoration: underline !important;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--ripx-link-underline) !important;
+  text-shadow: var(--ripx-link-glow);
+  transition:
+    color var(--transition-fast),
+    text-decoration-color var(--transition-fast),
+    text-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+[data-theme='dark'] .Polaris-Link:hover,
+[data-theme='dark'] .Polaris-Link[class*='Polaris-Link']:not([class*='monochrome']):hover,
+[data-theme='dark'] .Polaris-Text a[href]:where(:not([class]), [class='']):hover,
+[data-theme='dark'] .Polaris-Banner a[href]:where(:not([class]), [class='']):hover,
+[data-theme='dark'] .Polaris-LegacyCard a[href]:where(:not([class]), [class='']):hover,
+[data-theme='dark'] .Polaris-Card a[href]:where(:not([class]), [class='']):hover,
+[data-theme='dark'] .main-content-wrapper a[href]:where(:not([class]), [class='']):not(
+    :has(> button)
+  ):not(:has(> .Polaris-Button)):hover {
+  color: var(--text-link-hover) !important;
+  text-decoration-color: var(--ripx-link-underline-hover) !important;
+  text-shadow: var(--ripx-link-glow-hover);
+}
+
+[data-theme='dark'] .Polaris-Link:focus-visible,
+[data-theme='dark'] .Polaris-Link[class*='Polaris-Link']:not([class*='monochrome']):focus-visible,
+[data-theme='dark'] .Polaris-Text a[href]:where(:not([class]), [class='']):focus-visible,
+[data-theme='dark'] .Polaris-Banner a[href]:where(:not([class]), [class='']):focus-visible,
+[data-theme='dark'] .Polaris-LegacyCard a[href]:where(:not([class]), [class='']):focus-visible,
+[data-theme='dark'] .Polaris-Card a[href]:where(:not([class]), [class='']):focus-visible,
+[data-theme='dark'] .main-content-wrapper a[href]:where(:not([class]), [class='']):not(
+    :has(> button)
+  ):not(:has(> .Polaris-Button)):focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.55);
+  outline-offset: 3px;
+  border-radius: 4px;
+  text-decoration-color: var(--text-link-hover) !important;
+}
+
+[data-theme='dark'] .Polaris-Button--variantPlain,
+[data-theme='dark'] .Polaris-Button[class*='variantPlain']:not([class*='MonochromePlain']) {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.16em;
+  text-decoration-color: var(--ripx-link-underline);
+  text-shadow: var(--ripx-link-glow);
+}
+
+[data-theme='dark'] .Polaris-Button--variantPlain:hover,
+[data-theme='dark'] .Polaris-Button[class*='variantPlain']:not([class*='MonochromePlain']):hover {
+  text-decoration-color: var(--ripx-link-underline-hover);
+  text-shadow: var(--ripx-link-glow-hover);
+}
+
+/* Inline text links — light theme default */
+.Polaris-Link,
+.Polaris-Link[class*='Polaris-Link']:not([class*='monochrome']) {
+  color: var(--text-link) !important;
+  font-weight: 550;
+  text-decoration: underline !important;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, var(--text-link) 55%, transparent);
+  transition:
+    color var(--transition-fast),
+    text-decoration-color var(--transition-fast);
+}
+
+.Polaris-Link:hover,
+.Polaris-Link[class*='Polaris-Link']:not([class*='monochrome']):hover {
+  color: var(--text-link-hover) !important;
+  text-decoration-color: var(--text-link) !important;
+}
+
+.Polaris-Text a[href]:where(:not([class]), [class='']),
+.Polaris-Banner a[href]:where(:not([class]), [class='']),
+.Polaris-LegacyCard a[href]:where(:not([class]), [class='']),
+.Polaris-Card a[href]:where(:not([class]), [class='']) {
+  color: var(--text-link);
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, var(--text-link) 52%, transparent);
+  transition:
+    color var(--transition-fast),
+    text-decoration-color var(--transition-fast);
+}
+
+.Polaris-Text a[href]:where(:not([class]), [class='']):hover,
+.Polaris-Banner a[href]:where(:not([class]), [class='']):hover,
+.Polaris-LegacyCard a[href]:where(:not([class]), [class='']):hover,
+.Polaris-Card a[href]:where(:not([class]), [class='']):hover {
+  color: var(--text-link-hover);
+  text-decoration-color: var(--text-link);
+}
+
+.main-content-wrapper a[href]:where(:not([class]), [class='']):not(:has(> button)):not(
+    :has(> .Polaris-Button)
+  ) {
+  color: var(--text-link);
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, var(--text-link) 52%, transparent);
+  transition:
+    color var(--transition-fast),
+    text-decoration-color var(--transition-fast);
+}
+
+.main-content-wrapper a[href]:where(:not([class]), [class='']):not(:has(> button)):not(
+    :has(> .Polaris-Button)
+  ):hover {
+  color: var(--text-link-hover);
+  text-decoration-color: var(--text-link);
+}
+
+/* Polaris Tooltip — final cascade (wins over module-level :global overrides) */
+.Polaris-Tooltip-TooltipOverlay {
+  --p-color-bg-surface: var(--surface-tooltip) !important;
+  --p-color-text: var(--surface-tooltip-text) !important;
+  --p-color-text-inverse: var(--surface-tooltip-text) !important;
+  --p-color-tooltip-tail-up-border-experimental: var(--surface-tooltip-tail-border) !important;
+  --p-color-tooltip-tail-down-border-experimental: var(--surface-tooltip-tail-border) !important;
+  color: var(--surface-tooltip-text) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay__Content {
+  background: var(--surface-tooltip) !important;
+  background-color: var(--surface-tooltip) !important;
+  color: var(--surface-tooltip-text) !important;
+  border: 1px solid var(--surface-tooltip-border) !important;
+  box-shadow: var(--surface-tooltip-shadow) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay__Content .Polaris-Text,
+.Polaris-Tooltip-TooltipOverlay__Content [class*='Polaris-Text'],
+.Polaris-Tooltip-TooltipOverlay__Content span,
+.Polaris-Tooltip-TooltipOverlay__Content p {
+  color: var(--surface-tooltip-text) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay [class*='TooltipOverlay__Tail'] {
+  --p-color-bg-surface: var(--surface-tooltip) !important;
+  --p-color-tooltip-tail-up-border-experimental: var(--surface-tooltip-tail-border) !important;
+  --p-color-tooltip-tail-down-border-experimental: var(--surface-tooltip-tail-border) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay [class*='TooltipOverlay__Tail'] path:first-of-type {
+  fill: var(--surface-tooltip-tail-border) !important;
+}
+
+.Polaris-Tooltip-TooltipOverlay [class*='TooltipOverlay__Tail'] path:last-of-type {
+  fill: var(--surface-tooltip) !important;
 }

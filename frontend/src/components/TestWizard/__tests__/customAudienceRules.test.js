@@ -241,6 +241,16 @@ describe('customAudienceRules', () => {
     ).toBe('Mobile · New · United States (US) · Paid search · iOS');
 
     expect(
+      summarizeStandardAudienceSegments({
+        traffic_source: 'all',
+        traffic_source_rules: [
+          { type: 'include', value: 'paid_search' },
+          { type: 'exclude', value: 'direct' },
+        ],
+      })
+    ).toBe('Include Paid Search · Exclude Direct');
+
+    expect(
       summarizeAudienceTargeting(
         {
           device: 'desktop',

@@ -7,7 +7,7 @@ const path = require('path');
 
 function parseShopifyScopes(raw) {
   return String(raw || '')
-    .split(',')
+    .split(/[,\s]+/)
     .map(s => s.trim())
     .filter(Boolean)
     .sort();
@@ -35,13 +35,35 @@ function loadRequiredShopifyScopes() {
   return [];
 }
 
-function missingShopifyScopes(grantedScopeRaw, requiredScopes = loadRequiredShopifyScopes()) {
+/**
+ * Shopify OAuth often returns only write_* scopes even when read_* was requested.
+ * write_* includes read access for the same resource, so treat it as satisfying read_*.
+ */
+function expandGrantedShopifyScopes(grantedScopeRaw) {
   const granted = parseShopifyScopes(grantedScopeRaw);
-  return requiredScopes.filter(scope => !granted.includes(scope));
+  const expanded = new Set(granted);
+  for (const scope of granted) {
+    if (scope.startsWith('write_')) {
+      expanded.add(`read_${scope.slice('write_'.length)}`);
+    }
+  }
+  return Array.from(expanded).sort();
+}
+
+function normalizeGrantedShopifyScopeString(grantedScopeRaw) {
+  const expanded = expandGrantedShopifyScopes(grantedScopeRaw);
+  return expanded.length > 0 ? expanded.join(',') : '';
+}
+
+function missingShopifyScopes(grantedScopeRaw, requiredScopes = loadRequiredShopifyScopes()) {
+  const grantedSet = new Set(expandGrantedShopifyScopes(grantedScopeRaw));
+  return requiredScopes.filter(scope => !grantedSet.has(scope));
 }
 
 module.exports = {
   parseShopifyScopes,
   loadRequiredShopifyScopes,
+  expandGrantedShopifyScopes,
+  normalizeGrantedShopifyScopeString,
   missingShopifyScopes,
 };

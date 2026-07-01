@@ -5,6 +5,8 @@
  * Extracted from TestWizard.jsx to reduce file size and allow reuse.
  */
 
+export const MAX_TEST_VARIANTS = 10;
+
 export const TEST_TEMPLATES = {
   price: {
     name: 'Price Test',

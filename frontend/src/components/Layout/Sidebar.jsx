@@ -17,8 +17,11 @@ import {
   HomeIcon,
   SettingsIcon,
   TargetIcon,
+  BookIcon,
+  ChatIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
+import { buildDocsPath } from '../../utils/docsLinks';
 import { useTests } from '../../hooks';
 import { apiGet, getNavigateToWithEmbed } from '../../services';
 import { prefetchOnHover } from '../../utils/prefetch';
@@ -29,11 +32,20 @@ import { useNavigationLoading } from '../../contexts/NavigationLoadingContext';
 
 function navigateSidebarPath(navigate, beginNavigation, path) {
   const raw = String(path || '');
-  const q = raw.indexOf('?');
-  const pathname = q >= 0 ? raw.slice(0, q) : raw;
-  const extraParams = q >= 0 ? Object.fromEntries(new URLSearchParams(raw.slice(q + 1))) : null;
+  const hashIndex = raw.indexOf('#');
+  const hash = hashIndex >= 0 ? raw.slice(hashIndex) : '';
+  const beforeHash = hashIndex >= 0 ? raw.slice(0, hashIndex) : raw;
+  const q = beforeHash.indexOf('?');
+  const pathname = q >= 0 ? beforeHash.slice(0, q) : beforeHash;
+  const extraParams =
+    q >= 0 ? Object.fromEntries(new URLSearchParams(beforeHash.slice(q + 1))) : null;
   beginNavigation();
-  navigate(getNavigateToWithEmbed(pathname, extraParams));
+  const target =
+    pathname === ROUTES.DOCS
+      ? { pathname, search: q >= 0 ? `?${beforeHash.slice(q + 1)}` : undefined }
+      : getNavigateToWithEmbed(pathname, extraParams);
+  if (hash) target.hash = hash;
+  navigate(target);
 }
 
 const baseNavigationGroups = (domain = null) => {
@@ -45,6 +57,9 @@ const baseNavigationGroups = (domain = null) => {
   const createTest = domain ? ROUTES.appCreateTest(domain) : ROUTES.CREATE_TEST;
   const analytics = domain ? ROUTES.appAnalytics(domain) : ROUTES.ANALYTICS;
   const goalsMetrics = domain ? ROUTES.appGoalsMetrics(domain) : null;
+  const docsFeatureGuides = buildDocsPath({ mode: 'feature-guides' });
+  const docsSetup = buildDocsPath({ mode: 'setup', sectionId: 'installation' });
+  const supportPath = domain ? ROUTES.appSupport(domain) : ROUTES.SUPPORT;
   const appSettings = domain
     ? `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`
     : ROUTES.SETUP;
@@ -77,7 +92,15 @@ const baseNavigationGroups = (domain = null) => {
     },
     {
       label: 'Configuration',
-      items: [{ path: appSettings, label: 'Settings', icon: SettingsIcon }],
+      items: [{ path: appSettings, label: 'Store settings', icon: SettingsIcon }],
+    },
+    {
+      label: 'Help',
+      items: [
+        { path: docsFeatureGuides, label: 'Feature guides', icon: BookIcon },
+        { path: docsSetup, label: 'Setup docs', icon: BookIcon },
+        { path: supportPath, label: 'Support', icon: ChatIcon },
+      ],
     },
   ];
 };
@@ -114,6 +137,17 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
           items: [
             { path: ROUTES.USER_PANEL, label: 'Home', icon: HomeIcon },
             { path: ROUTES.DOMAINS, label: 'My domains', icon: ConnectIcon },
+          ],
+        },
+        {
+          label: 'Help',
+          items: [
+            {
+              path: buildDocsPath({ mode: 'feature-guides' }),
+              label: 'Feature guides',
+              icon: BookIcon,
+            },
+            { path: ROUTES.SUPPORT, label: 'Support', icon: ChatIcon },
           ],
         },
       ];

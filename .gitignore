@@ -21,8 +21,10 @@ yarn.lock
 .env.test
 .env.staging
 .env.*.local
+.env.tunnel.snapshot.json
 # Allow .env.example as template only
 !.env.example
+!.env.production.example
 
 # Credentials, keys, certificates
 *.pem
@@ -114,6 +116,7 @@ e2e/test-results/
 .shopify/
 
 # Generated Shopify extension config (contains environment URLs/secrets)
+extensions/ripx-checkout-ui/dist/
 extensions/ripx-checkout-ui/src/ripxConfig.generated.js
 extensions/ripx-checkout-discount/src/ripxConfig.js
 

@@ -539,7 +539,7 @@ async function runActivationPreflight(test, shopDomain) {
           : passwordGatedOnly
             ? 'Your store uses a password page, so RipX could not verify the tracking script automatically. Remove the storefront password, or open /apps/ripx/script.js in a browser while logged into the store.'
             : storefrontProbe.proxyStatus?.scriptDetected === false
-              ? 'RipX could not load the storefront script. Check Settings → Installation (App Proxy and theme embed).'
+              ? 'RipX could not load the storefront script. Check Store settings → Store setup (App Proxy and theme embed).'
               : 'Theme app embed was not detected. Enable RipX under Online Store → Themes → Customize → App embeds.',
         meta: {
           storefront_runtime_ready: runtimeReady,

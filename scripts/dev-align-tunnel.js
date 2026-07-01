@@ -1,18 +1,8 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-
-function readAppUrlFromEnv(envPath) {
-  const src = fs.readFileSync(envPath, 'utf8');
-  const line = src
-    .split('\n')
-    .map(s => s.trim())
-    .find(s => s.startsWith('APP_URL='));
-  if (!line) return '';
-  return line.slice('APP_URL='.length).trim().replace(/^"|"$/g, '');
-}
+const { readAppUrlFromEnv } = require('./lib/devTunnelEnv');
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -92,14 +82,40 @@ function main() {
   const ok = batch && extBatch && batch === extBatch;
 
   console.log('\n[dev:align-tunnel] Verification summary');
+  console.log(`- overall_status: ${parsed?.summary?.overall_status || 'unknown'}`);
   console.log(`- overall_ok: ${parsed?.summary?.overall_ok === true ? 'true' : 'false'}`);
   console.log(`- batch_resolve_url: ${batch || '(missing)'}`);
   console.log(`- extension_batch_url: ${extBatch || '(missing)'}`);
   console.log(`- urls_match: ${ok ? 'true' : 'false'}`);
 
-  if (!ok || parsed?.summary?.overall_ok !== true) {
+  const blockingStatus = String(parsed?.summary?.overall_status || '').toLowerCase();
+  const hasBlockingErrors = blockingStatus === 'error';
+
+  if (!ok) {
+    console.error('[dev:align-tunnel] Alignment check failed: batch URLs do not match.');
+    process.exit(1);
+  }
+
+  if (hasBlockingErrors) {
+    const failed = (parsed.checklist || []).filter(item => !item.ok && item.severity === 'error');
+    failed.forEach(item => {
+      console.error(`- [error] ${item.id}: ${item.message || ''}`);
+    });
     console.error('[dev:align-tunnel] Alignment check failed.');
     process.exit(1);
+  }
+
+  if (parsed?.summary?.overall_ok !== true) {
+    const warnings = (parsed.checklist || []).filter(
+      item => !item.ok && item.severity === 'warning'
+    );
+    warnings.forEach(item => {
+      console.log(`- [warning] ${item.id}: ${item.message || ''}`);
+    });
+    console.log(
+      '[dev:align-tunnel] Alignment check passed with warnings (expected for ephemeral Cloudflare tunnels in local dev).'
+    );
+    return;
   }
 
   console.log('[dev:align-tunnel] Alignment check passed.');

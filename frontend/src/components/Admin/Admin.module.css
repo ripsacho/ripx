@@ -96,9 +96,13 @@
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
   border-right: 1px solid rgba(6, 182, 212, 0.1);
   border-radius: 0;
-  box-shadow: 2px 0 20px -4px var(--shadow-lg), 0 0 0 1px var(--border-secondary);
+  box-shadow:
+    2px 0 20px -4px var(--shadow-lg),
+    0 0 0 1px var(--border-secondary);
   overflow: hidden;
-  transition: width var(--admin-time-280) cubic-bezier(0.4, 0, 0.2, 1), background-color var(--transition-slow, var(--admin-time-200) ease);
+  transition:
+    width var(--admin-time-280) cubic-bezier(0.4, 0, 0.2, 1),
+    background-color var(--transition-slow, var(--admin-time-200) ease);
 }
 
 .adminSidebar.collapsed {
@@ -193,7 +197,7 @@
 }
 
 [data-theme='dark'] .adminHoverDrawer {
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   border-color: var(--border-primary);
 }
 
@@ -210,7 +214,7 @@
 }
 
 [data-theme='dark'] .adminSidebar {
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   border-right-color: rgba(6, 182, 212, 0.12);
 }
 
@@ -278,7 +282,9 @@
   background: none;
   cursor: pointer;
   border-radius: 10px;
-  transition: background var(--admin-time-200) ease, opacity var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    opacity var(--admin-time-200) ease;
 }
 
 .adminSidebarLogoCollapsedBtn:hover {
@@ -345,7 +351,11 @@
   background: #ffffff;
   color: #202223;
   cursor: pointer;
-  transition: opacity var(--admin-time-200) ease, background var(--admin-time-200) ease, border-color var(--admin-time-200) ease, color var(--admin-time-200) ease;
+  transition:
+    opacity var(--admin-time-200) ease,
+    background var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease,
+    color var(--admin-time-200) ease;
   opacity: 0;
   pointer-events: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
@@ -356,6 +366,16 @@
   pointer-events: auto;
   background: #ffffff;
   color: #202223;
+}
+
+[data-theme='dark'] .adminExpandBtnCollapsed,
+[data-theme='dark'] .adminSidebar.collapsed .adminSidebarHeaderRow:hover .adminExpandBtnCollapsed {
+  background: var(--surface-slate-panel);
+  border-color: rgba(6, 182, 212, 0.28);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.1) inset,
+    0 8px 18px rgba(0, 0, 0, 0.3);
 }
 
 .adminExpandBtnCollapsed:hover {
@@ -378,14 +398,14 @@
 }
 
 [data-theme='dark'] .adminExpandBtnCollapsed {
-  background: #1a1a1a;
+  background: var(--bg-tertiary);
   color: #f6f6f7;
   border-color: rgba(255, 255, 255, 0.15);
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
 }
 
 [data-theme='dark'] .adminSidebar.collapsed .adminSidebarHeaderRow:hover .adminExpandBtnCollapsed {
-  background: #1a1a1a !important;
+  background: var(--bg-tertiary) !important;
   color: #f6f6f7 !important;
 }
 
@@ -418,7 +438,9 @@
   border-color: var(--accent-primary);
   color: var(--accent-primary);
   transform: scale(1.05);
-  box-shadow: 0 2px 8px var(--shadow-md), 0 0 0 1px rgba(6, 182, 212, 0.3);
+  box-shadow:
+    0 2px 8px var(--shadow-md),
+    0 0 0 1px rgba(6, 182, 212, 0.3);
 }
 
 .adminCollapseBtn :global(svg) {
@@ -434,7 +456,9 @@
 [data-theme='dark'] .adminCollapseBtn:hover {
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, var(--bg-secondary) 100%);
   border-color: var(--accent-primary);
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.2), 0 0 0 2px var(--accent-primary);
+  box-shadow:
+    0 4px 16px rgba(6, 182, 212, 0.2),
+    0 0 0 2px var(--accent-primary);
 }
 
 .adminSidebarTitle {
@@ -879,7 +903,12 @@
   padding: 0.4rem 0.3rem 0.5rem;
   border-radius: 12px;
   border: 1px solid rgba(6, 182, 212, 0.16);
-  background: linear-gradient(155deg, rgba(6, 182, 212, 0.09) 0%, rgba(139, 92, 246, 0.03) 45%, transparent 100%);
+  background: linear-gradient(
+    155deg,
+    rgba(6, 182, 212, 0.09) 0%,
+    rgba(139, 92, 246, 0.03) 45%,
+    transparent 100%
+  );
   box-shadow: 0 2px 16px rgba(6, 182, 212, 0.05);
 }
 
@@ -1168,7 +1197,10 @@
   border: 1px solid rgba(6, 182, 212, 0.28);
   border-radius: 8px;
   cursor: pointer;
-  transition: background var(--admin-time-150) ease, border-color var(--admin-time-150) ease, color var(--admin-time-150) ease;
+  transition:
+    background var(--admin-time-150) ease,
+    border-color var(--admin-time-150) ease,
+    color var(--admin-time-150) ease;
 }
 
 .adminNavEmptyClear:hover {
@@ -1270,7 +1302,9 @@
   height: 32px;
   flex-shrink: 0;
   border-radius: 8px;
-  transition: background var(--admin-time-200) ease, color var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    color var(--admin-time-200) ease;
 }
 
 .adminNavItem:hover .adminNavIcon {
@@ -1336,7 +1370,8 @@
   align-items: center;
   gap: 0;
   pointer-events: none;
-  animation: adminFloatingBackToTopIn var(--admin-time-350) cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: adminFloatingBackToTopIn var(--admin-time-350) cubic-bezier(0.34, 1.56, 0.64, 1)
+    forwards;
 }
 
 .adminFloatingBackToTopWrap > * {
@@ -1360,7 +1395,11 @@
   white-space: nowrap;
   opacity: 0;
   transform: translateX(12px);
-  transition: opacity var(--admin-time-220) ease, transform var(--admin-time-220) ease, color var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
+  transition:
+    opacity var(--admin-time-220) ease,
+    transform var(--admin-time-220) ease,
+    color var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease;
   z-index: 0;
 }
 
@@ -1387,7 +1426,11 @@
     0 4px 14px rgba(0, 0, 0, 0.08),
     0 2px 6px rgba(6, 182, 212, 0.06);
   cursor: pointer;
-  transition: transform var(--admin-time-220) cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow var(--admin-time-220) ease, background var(--admin-time-220) ease, color var(--admin-time-220) ease;
+  transition:
+    transform var(--admin-time-220) cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow var(--admin-time-220) ease,
+    background var(--admin-time-220) ease,
+    color var(--admin-time-220) ease;
 }
 
 .adminFloatingBackToTop:hover {
@@ -1574,7 +1617,10 @@
   font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background var(--admin-time-200) ease, color var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    color var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease;
 }
 
 .adminSidebarBtnContent {
@@ -1657,7 +1703,10 @@
   font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background var(--admin-time-200) ease, color var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    color var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease;
 }
 
 .adminSidebar:not(.collapsed) .adminSidebarFooterLink .adminSidebarBtnContent {
@@ -1717,7 +1766,13 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   opacity: 0.5;
   border-radius: 2px;
 }
@@ -1836,7 +1891,10 @@
   padding: 0.35rem 0.65rem;
   border-radius: 8px;
   cursor: pointer;
-  transition: background var(--admin-time-150) ease, border-color var(--admin-time-150) ease, color var(--admin-time-150) ease;
+  transition:
+    background var(--admin-time-150) ease,
+    border-color var(--admin-time-150) ease,
+    color var(--admin-time-150) ease;
 }
 
 .adminFooterLink:hover,
@@ -1928,7 +1986,10 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--admin-time-200) ease, border-color var(--admin-time-200) ease, box-shadow var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease,
+    box-shadow var(--admin-time-200) ease;
 }
 
 .adminHeroBack:hover {
@@ -2053,8 +2114,12 @@
 }
 
 [data-theme='dark'] .adminHeroIcon {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.28) 0%, rgba(139, 92, 246, 0.22) 100%);
-  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.2);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(139, 92, 246, 0.16));
+  border: 1px solid rgba(165, 243, 252, 0.22);
+  color: #a5f3fc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(6, 182, 212, 0.16);
 }
 
 [data-theme='dark'] .adminHeroBack {
@@ -2099,8 +2164,8 @@
 /* Back arrow / back action: button-like, clear affordance */
 .adminPage :global(.Polaris-Page__Header) :global(a[href]),
 .adminPage :global(.Polaris-Page__Header) :global(.Polaris-Link),
-.adminPage :global(.Polaris-Page__Header) :global([class*="BackAction"]),
-.adminPage :global(.Polaris-Page__Header) :global(button[aria-label*="back" i]) {
+.adminPage :global(.Polaris-Page__Header) :global([class*='BackAction']),
+.adminPage :global(.Polaris-Page__Header) :global(button[aria-label*='back' i]) {
   display: inline-flex !important;
   align-items: center;
   gap: 0.4rem;
@@ -2114,12 +2179,15 @@
   border-radius: var(--radius-md) !important;
   border: 1px solid rgba(6, 182, 212, 0.25) !important;
   background: rgba(6, 182, 212, 0.06) !important;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .adminPage :global(.Polaris-Page__Header) :global(a[href]:hover),
 .adminPage :global(.Polaris-Page__Header) :global(.Polaris-Link:hover),
-.adminPage :global(.Polaris-Page__Header) :global([class*="BackAction"]:hover) {
+.adminPage :global(.Polaris-Page__Header) :global([class*='BackAction']:hover) {
   background: rgba(6, 182, 212, 0.12) !important;
   border-color: rgba(6, 182, 212, 0.4) !important;
   color: var(--futuristic-cyan) !important;
@@ -2154,7 +2222,7 @@
 
 /* Subtitle / description: readable, muted */
 .adminPage :global(.Polaris-Page-Header__Subtitle),
-.adminPage :global(.Polaris-Page__Title) + [class*="Subtitle"],
+.adminPage :global(.Polaris-Page__Title) + [class*='Subtitle'],
 .adminPage :global(.Polaris-Page__Header p) {
   font-size: 0.9375rem !important;
   line-height: 1.45 !important;
@@ -2176,7 +2244,9 @@
   font-weight: 500;
   min-height: 38px;
   padding-inline: 1rem;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .adminPage :global(.Polaris-Page__Header) :global(.Polaris-Button:active) {
@@ -2191,13 +2261,13 @@
 
 /* Destructive actions (Suspend, Lock, Stop): clear critical styling */
 .adminPage :global(.Polaris-Button--destructive),
-.adminPage :global(button.Polaris-Button[tone="critical"]) {
+.adminPage :global(button.Polaris-Button[tone='critical']) {
   border-color: var(--status-error);
   color: var(--status-error);
 }
 
 .adminPage :global(.Polaris-Button--destructive:hover),
-.adminPage :global(button.Polaris-Button[tone="critical"]:hover) {
+.adminPage :global(button.Polaris-Button[tone='critical']:hover) {
   background: rgba(215, 44, 13, 0.08) !important;
   border-color: var(--status-error) !important;
   color: var(--status-error) !important;
@@ -2208,7 +2278,9 @@
   border: 1px solid rgba(6, 182, 212, 0.18);
   border-radius: var(--radius-lg);
   box-shadow: var(--surface-2);
-  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth),
+  transition:
+    transform var(--transition-smooth),
+    box-shadow var(--transition-smooth),
     border-color var(--transition-smooth);
   overflow: hidden;
 }
@@ -2245,7 +2317,9 @@
   padding: 1.25rem;
   overflow: hidden;
   transition: all var(--transition-smooth);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.02);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.02);
 }
 
 .adminStatCard::before {
@@ -2255,18 +2329,26 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   opacity: 0.85;
 }
 
 .adminStatCard:hover {
   border-color: var(--border-accent);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.1);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(6, 182, 212, 0.1);
   transform: translateY(-2px);
 }
 
 [data-theme='dark'] .adminStatCard {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.7) 0%, rgba(18, 18, 18, 0.6) 100%);
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.7) 0%, rgba(30, 41, 59, 0.6) 100%);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -2530,7 +2612,10 @@
   border: 1px solid transparent;
   text-decoration: none;
   cursor: pointer;
-  transition: background var(--admin-time-200) ease, border-color var(--admin-time-200) ease, color var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease,
+    color var(--admin-time-200) ease;
   white-space: nowrap;
 }
 
@@ -2558,7 +2643,9 @@
   background: transparent;
   border: 1px solid rgba(6, 182, 212, 0.3);
   cursor: pointer;
-  transition: background var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
+  transition:
+    background var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease;
   white-space: nowrap;
 }
 
@@ -2637,14 +2724,14 @@
 
 /* Admin page buttons: match design system (cyan/violet accent) */
 .adminPage :global(.Polaris-Button--primary),
-.adminPage :global(button.Polaris-Button[variant="primary"]) {
+.adminPage :global(button.Polaris-Button[variant='primary']) {
   background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-teal)) !important;
   border-color: rgba(6, 182, 212, 0.4) !important;
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
 }
 
 .adminPage :global(.Polaris-Button--primary:hover),
-.adminPage :global(button.Polaris-Button[variant="primary"]:hover) {
+.adminPage :global(button.Polaris-Button[variant='primary']:hover) {
   background: linear-gradient(135deg, #08c4e0, var(--futuristic-cyan)) !important;
   border-color: var(--futuristic-cyan) !important;
   box-shadow: 0 4px 12px rgba(6, 182, 212, 0.35);
@@ -2662,13 +2749,13 @@
 }
 
 .adminPage :global(.Polaris-Button--secondary),
-.adminPage :global(button.Polaris-Button[variant="secondary"]) {
+.adminPage :global(button.Polaris-Button[variant='secondary']) {
   border-color: rgba(6, 182, 212, 0.35);
   color: var(--futuristic-cyan);
 }
 
 .adminPage :global(.Polaris-Button--secondary:hover),
-.adminPage :global(button.Polaris-Button[variant="secondary"]:hover) {
+.adminPage :global(button.Polaris-Button[variant='secondary']:hover) {
   background: rgba(6, 182, 212, 0.06) !important;
   border-color: var(--futuristic-cyan) !important;
 }
@@ -2688,7 +2775,7 @@
 
 /* Table action buttons (View, Set role, Lock, etc.): touch-friendly */
 .adminTableWrap :global(.Polaris-Button--plain),
-.adminTableWrap :global(.Polaris-Button[size="slim"]) {
+.adminTableWrap :global(.Polaris-Button[size='slim']) {
   min-height: 32px;
   padding-inline: 0.6rem;
   border-radius: var(--radius-md);
@@ -2705,7 +2792,7 @@
 }
 
 .adminPage :global(.Polaris-Button--primary:focus-visible),
-.adminPage :global(button.Polaris-Button[variant="primary"]:focus-visible) {
+.adminPage :global(button.Polaris-Button[variant='primary']:focus-visible) {
   box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.25) !important;
 }
 
@@ -2714,7 +2801,9 @@
 .adminPage :global(.Polaris-Modal-Dialog__Container) {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-secondary);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(6, 182, 212, 0.08);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(6, 182, 212, 0.08);
 }
 
 .adminPage :global(.Polaris-Modal-Header) {
@@ -2756,8 +2845,8 @@
 }
 
 /* User detail modal: full viewport overlay so dialog is centered on screen */
-.adminPage :global(.Polaris-Modal-DialogContainer):has([data-modal="user-detail"]),
-.adminPage :global([class*="Modal"][class*="Container"]):has([data-modal="user-detail"]) {
+.adminPage :global(.Polaris-Modal-DialogContainer):has([data-modal='user-detail']),
+.adminPage :global([class*='Modal'][class*='Container']):has([data-modal='user-detail']) {
   left: 0 !important;
   right: 0 !important;
   top: 0 !important;
@@ -2771,26 +2860,34 @@
 }
 
 @media (min-width: 640px) {
-  .adminPage :global(.Polaris-Modal-DialogContainer):has([data-modal="user-detail"]),
-  .adminPage :global([class*="Modal"][class*="Container"]):has([data-modal="user-detail"]) {
+  .adminPage :global(.Polaris-Modal-DialogContainer):has([data-modal='user-detail']),
+  .adminPage :global([class*='Modal'][class*='Container']):has([data-modal='user-detail']) {
     padding: 1.5rem !important;
   }
 }
 
 /* User detail modal: dialog flex layout (size/position set in index.css for portaled modal) */
-.adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]),
-.adminPage :global([class*="Modal"][class*="Dialog"]):has([data-modal="user-detail"]) {
+.adminPage :global(.Polaris-Modal-Dialog):has([data-modal='user-detail']),
+.adminPage :global([class*='Modal'][class*='Dialog']):has([data-modal='user-detail']) {
   display: flex !important;
   flex-direction: column !important;
 }
 
-[data-theme='dark'] .adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]),
-[data-theme='dark'] .adminPage :global([class*="Modal"][class*="Dialog"]):has([data-modal="user-detail"]) {
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+[data-theme='dark'] .adminPage :global(.Polaris-Modal-Dialog):has([data-modal='user-detail']),
+[data-theme='dark']
+  .adminPage
+  :global([class*='Modal'][class*='Dialog']):has([data-modal='user-detail']) {
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08) !important;
 }
 
-.adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]) :global([class*="Modal-Body"]),
-.adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]) :global([class*="Modal__Body"]) {
+.adminPage
+  :global(.Polaris-Modal-Dialog):has([data-modal='user-detail'])
+  :global([class*='Modal-Body']),
+.adminPage
+  :global(.Polaris-Modal-Dialog):has([data-modal='user-detail'])
+  :global([class*='Modal__Body']) {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   overflow: hidden !important;
@@ -2798,7 +2895,9 @@
   flex-direction: column !important;
 }
 
-.adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]) :global(.Polaris-Modal-Section) {
+.adminPage
+  :global(.Polaris-Modal-Dialog):has([data-modal='user-detail'])
+  :global(.Polaris-Modal-Section) {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   overflow: hidden !important;
@@ -2808,8 +2907,12 @@
 }
 
 /* User detail modal: header accent */
-.adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]) :global(.Polaris-Modal-Header),
-.adminPage :global(.Polaris-Modal-Dialog):has([data-modal="user-detail"]) :global([class*="Modal-Header"]) {
+.adminPage
+  :global(.Polaris-Modal-Dialog):has([data-modal='user-detail'])
+  :global(.Polaris-Modal-Header),
+.adminPage
+  :global(.Polaris-Modal-Dialog):has([data-modal='user-detail'])
+  :global([class*='Modal-Header']) {
   padding: 1rem 1.25rem !important;
   border-radius: 14px 14px 0 0 !important;
 }
@@ -3000,7 +3103,9 @@
 .adminListToolbar :global(.Polaris-TextField__Input),
 .adminListToolbar :global(.Polaris-Select__Input) {
   border-radius: 8px;
-  transition: border-color var(--admin-time-150) ease, box-shadow var(--admin-time-150) ease;
+  transition:
+    border-color var(--admin-time-150) ease,
+    box-shadow var(--admin-time-150) ease;
 }
 
 .adminListToolbar :global(.Polaris-TextField__Input:focus),
@@ -3045,7 +3150,10 @@
 .adminBtnGhost {
   border-radius: 10px !important;
   font-weight: 600 !important;
-  transition: transform var(--admin-time-120) ease, box-shadow var(--admin-time-160) ease, border-color var(--admin-time-160) ease,
+  transition:
+    transform var(--admin-time-120) ease,
+    box-shadow var(--admin-time-160) ease,
+    border-color var(--admin-time-160) ease,
     background var(--admin-time-160) ease !important;
 }
 
@@ -3168,7 +3276,12 @@
   font-size: 0.8125rem;
   font-weight: 500;
   border-radius: 8px;
-  transition: background var(--admin-time-150) ease, color var(--admin-time-150) ease, border-color var(--admin-time-150) ease, box-shadow var(--admin-time-150) ease, transform var(--admin-time-100) ease;
+  transition:
+    background var(--admin-time-150) ease,
+    color var(--admin-time-150) ease,
+    border-color var(--admin-time-150) ease,
+    box-shadow var(--admin-time-150) ease,
+    transform var(--admin-time-100) ease;
 }
 
 .adminListActions :global(.Polaris-Button:hover):not(:disabled),
@@ -3226,9 +3339,11 @@
 .adminListActions :global([class*='critical'][class*='plain']:hover):not(:disabled),
 .adminListActions :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled),
 .adminListActionsPrimary :global([class*='critical'][class*='plain']:hover):not(:disabled),
-.adminListActionsPrimary :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled),
+.adminListActionsPrimary
+  :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled),
 .adminListActionsDanger :global([class*='critical'][class*='plain']:hover):not(:disabled),
-.adminListActionsDanger :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled) {
+.adminListActionsDanger
+  :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled) {
   background: rgba(220, 38, 38, 0.08);
   border-color: rgba(220, 38, 38, 0.25);
   color: #dc2626;
@@ -3250,7 +3365,9 @@
   padding: 0;
   font-size: inherit;
   text-decoration: none;
-  transition: color var(--admin-time-150) ease, text-decoration var(--admin-time-150) ease;
+  transition:
+    color var(--admin-time-150) ease,
+    text-decoration var(--admin-time-150) ease;
 }
 
 .adminListLink:hover {
@@ -3499,7 +3616,12 @@
 .adminUserModalHeader {
   padding: 0.875rem 1rem 1rem;
   margin: 0 -1rem 0;
-  background: linear-gradient(165deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.05) 45%, transparent 100%);
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.1) 0%,
+    rgba(139, 92, 246, 0.05) 45%,
+    transparent 100%
+  );
   border-bottom: 1px solid var(--border-secondary);
   border-radius: 0 0 14px 14px;
   flex-shrink: 0;
@@ -3513,7 +3635,13 @@
   left: 1rem;
   right: 1rem;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.35), rgba(139, 92, 246, 0.2), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(6, 182, 212, 0.35),
+    rgba(139, 92, 246, 0.2),
+    transparent
+  );
   opacity: 0.9;
   border-radius: 1px;
 }
@@ -3574,7 +3702,9 @@
   padding: 0.875rem 1rem 1rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
-  transition: box-shadow var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
+  transition:
+    box-shadow var(--admin-time-200) ease,
+    border-color var(--admin-time-200) ease;
   position: relative;
   overflow: hidden;
 }

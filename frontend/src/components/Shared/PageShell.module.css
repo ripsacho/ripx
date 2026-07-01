@@ -54,3 +54,14 @@
   box-shadow: var(--surface-3);
 }
 
+[data-theme='dark'] .page :global(.Polaris-Card) {
+  background: var(--bg-secondary);
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow: var(--ripx-surface-shadow);
+}
+
+[data-theme='dark'] .page :global(.Polaris-Card:hover) {
+  border-color: rgba(6, 182, 212, 0.34);
+  box-shadow: var(--ripx-surface-shadow-hover);
+}
+

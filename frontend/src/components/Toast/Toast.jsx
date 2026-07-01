@@ -30,6 +30,43 @@ function StoreSwitchLeadingIcon() {
   );
 }
 
+function formatToastText(value) {
+  if (value === null || value === undefined || value === '') {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(formatToastText).filter(Boolean).join('. ');
+  }
+  if (typeof value === 'object') {
+    const parts = [
+      value.message,
+      value.error,
+      value.status,
+      value.code,
+      value.field
+        ? `Field: ${Array.isArray(value.field) ? value.field.join('.') : value.field}`
+        : '',
+    ]
+      .map(formatToastText)
+      .filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join('. ');
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return 'Unexpected notification detail.';
+    }
+  }
+  return String(value);
+}
+
 function Toast({
   message,
   title,
@@ -43,15 +80,18 @@ function Toast({
   /** Thin countdown bar at bottom (e.g. store switch) */
   showProgress = false,
 }) {
-  const hasStack = Boolean(title || detail);
-  const bodyLine = detail || message;
-  const visible = Boolean(hasStack ? bodyLine || title : message);
+  const safeMessage = formatToastText(message);
+  const safeTitle = formatToastText(title);
+  const safeDetail = formatToastText(detail);
+  const hasStack = Boolean(safeTitle || safeDetail);
+  const bodyLine = safeDetail || safeMessage;
+  const visible = Boolean(hasStack ? bodyLine || safeTitle : safeMessage);
 
   const ariaLabel = useMemo(() => {
-    if (title && detail) return `${title}. ${detail}`;
-    if (title && bodyLine) return `${title}. ${bodyLine}`;
-    return message || '';
-  }, [title, detail, bodyLine, message]);
+    if (safeTitle && safeDetail) return `${safeTitle}. ${safeDetail}`;
+    if (safeTitle && bodyLine) return `${safeTitle}. ${bodyLine}`;
+    return safeMessage || '';
+  }, [safeTitle, safeDetail, bodyLine, safeMessage]);
 
   useEffect(() => {
     if (!visible || duration <= 0 || !onClose) return;
@@ -82,11 +122,11 @@ function Toast({
         )}
         {hasStack ? (
           <div className="toast-message-stack">
-            {title ? <span className="toast-title">{title}</span> : null}
+            {safeTitle ? <span className="toast-title">{safeTitle}</span> : null}
             {bodyLine ? <span className="toast-detail">{bodyLine}</span> : null}
           </div>
         ) : (
-          <span className="toast-message">{message}</span>
+          <span className="toast-message">{safeMessage}</span>
         )}
         <button
           type="button"

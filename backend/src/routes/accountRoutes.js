@@ -14,6 +14,39 @@ const { asyncHandler } = require('../middleware/asyncHandler');
 const { HTTP_STATUS } = require('../constants');
 const userModel = require('../models/user');
 const standaloneUser = require('../models/standaloneUser');
+const { probeStorefrontReadinessBatch } = require('../services/storefrontSetupService');
+
+async function resolveAccountIdForRequest(req) {
+  if (req.accountId) {
+    return req.accountId;
+  }
+  if (req.authType === 'email' && req.email) {
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
+    const user = await userModel.getByEmail(email);
+    if (!user) {
+      return null;
+    }
+    const resolved = (await standaloneUser.ensureAccountForUser(user.id)) || {};
+    return resolved.accountId || null;
+  }
+  return null;
+}
+
+async function listAllowedShopifyDomainsForAccount(accountId) {
+  if (!accountId) {
+    return [];
+  }
+  const stores = await getStoresForAccount(accountId);
+  return stores
+    .map(store =>
+      String(store.domain || '')
+        .trim()
+        .toLowerCase()
+    )
+    .filter(domain => isShopifyDomain(domain));
+}
 
 /**
  * GET /api/account/stores
@@ -92,6 +125,35 @@ router.get(
     }
 
     return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Not authenticated');
+  })
+);
+
+/**
+ * GET /api/account/stores/storefront-readiness
+ * Batch App Proxy + theme embed probes for Shopify stores on the authenticated account.
+ */
+router.get(
+  '/stores/storefront-readiness',
+  asyncHandler(async (req, res) => {
+    const accountId = await resolveAccountIdForRequest(req);
+    if (!accountId) {
+      return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Not authenticated');
+    }
+
+    const allowedShopifyDomains = await listAllowedShopifyDomainsForAccount(accountId);
+    const requestedRaw = String(req.query.shops || req.query.shop || '').trim();
+    const requestedShops = requestedRaw
+      ? requestedRaw
+          .split(/[,\s]+/)
+          .map(value => value.trim().toLowerCase())
+          .filter(Boolean)
+      : allowedShopifyDomains;
+
+    const allowedSet = new Set(allowedShopifyDomains);
+    const shopsToProbe = requestedShops.filter(shop => allowedSet.has(shop));
+    const shops = await probeStorefrontReadinessBatch(shopsToProbe);
+
+    return sendSuccess(res, HTTP_STATUS.OK, { shops });
   })
 );
 

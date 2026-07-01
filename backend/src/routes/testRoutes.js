@@ -44,16 +44,31 @@ const {
 } = require('../services/testActivationService');
 const {
   normalizeShippingTestPayload,
+  normalizeShippingVariantConfig,
   isShippingTestPayload,
+  summarizeShippingConfigNormalization,
 } = require('../services/shippingTestConfigService');
 const {
   normalizeCheckoutExperienceTestPayload,
 } = require('../services/checkoutExperienceConfigService');
 const { buildShippingCapabilityReport } = require('../services/shippingCapabilityPlanner');
+const { buildShippingCurrentSetupReport } = require('../services/shippingCurrentSetupService');
 const { buildShippingExecutionPlan } = require('../services/shippingExecutionPlanner');
+const {
+  getShippingCarrierCallbackTrace,
+} = require('../services/shippingCarrierCallbackTraceService');
+const { buildShippingPreviewDebugChecklist } = require('../services/shippingPreviewDebugService');
+const { buildShippingLiveDebugReport } = require('../services/shippingLiveDebugService');
+const {
+  buildDeliveryCustomizationConfigCompareReport,
+  simulateDeliveryCustomizationHide,
+} = require('../services/shippingDcDebugService');
 const {
   executeShippingTestPlan,
   cleanupManagedShippingResources,
+  compareShippingCarrierCallbackUrls,
+  fetchCarrierServicesViaAdmin,
+  syncLiveCarrierCallbacksForTest,
 } = require('../services/shippingAutoExecutionService');
 const {
   buildTestCheckoutReadiness,
@@ -162,6 +177,195 @@ function normalizeHoldout(value) {
   return { value: parsed };
 }
 
+const DRAFT_TEST_TYPES = new Set([
+  'price',
+  'pricing',
+  'content',
+  'shipping',
+  'offer',
+  'theme',
+  'checkout',
+  'combination',
+  'template',
+  'split-url',
+  'onsite-edit',
+]);
+const MAX_TEST_VARIANTS = 10;
+
+function normalizeDraftTestType(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return { type: 'content' };
+  }
+  if (!DRAFT_TEST_TYPES.has(normalized)) {
+    return { error: `Unsupported draft test type: ${normalized}` };
+  }
+  return { type: normalized };
+}
+
+function getDraftTypeLabel(type) {
+  const normalized = normalizeDraftTestType(type).type || 'content';
+  if (normalized === 'onsite-edit') {
+    return 'onsite edit';
+  }
+  if (normalized === 'split-url') {
+    return 'split URL';
+  }
+  if (normalized === 'pricing') {
+    return 'price';
+  }
+  return normalized || 'experiment';
+}
+
+function getDefaultDraftVariants(type) {
+  const normalizedType = normalizeDraftTestType(type).type || 'content';
+  if (normalizedType === 'shipping') {
+    return [
+      { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+      { name: 'Variant A', allocation: 50, config: {} },
+    ];
+  }
+  return [
+    { name: 'Control', allocation: 50, config: {} },
+    { name: 'Variant A', allocation: 50, config: {} },
+  ];
+}
+
+function normalizeDraftVariants(input, type) {
+  const source = Array.isArray(input) && input.length > 0 ? input : getDefaultDraftVariants(type);
+  return source.filter(Boolean).map((variant, index) => {
+    const name =
+      String(variant?.name || '').trim() ||
+      (index === 0 ? 'Control' : `Variant ${String.fromCharCode(64 + Math.min(index, 26))}`);
+    const config =
+      variant?.config && typeof variant.config === 'object' && !Array.isArray(variant.config)
+        ? variant.config
+        : {};
+    return {
+      ...variant,
+      name,
+      allocation: Number(variant?.allocation) || 0,
+      config,
+    };
+  });
+}
+
+function mergeIncomingDraftVariants(existingTest, incomingVariants) {
+  if (!existingTest || !Array.isArray(existingTest.variants) || !Array.isArray(incomingVariants)) {
+    return incomingVariants;
+  }
+
+  const consumedExistingIndices = new Set();
+  return incomingVariants.map((incomingVariant, incomingIndex) => {
+    const matchIndex = existingTest.variants.findIndex((existingVariant, existingIndex) => {
+      if (consumedExistingIndices.has(existingIndex)) {
+        return false;
+      }
+      if (
+        incomingVariant?.id &&
+        existingVariant?.id &&
+        String(incomingVariant.id) === String(existingVariant.id)
+      ) {
+        return true;
+      }
+      if (
+        incomingVariant?.name &&
+        existingVariant?.name &&
+        String(incomingVariant.name) === String(existingVariant.name)
+      ) {
+        return true;
+      }
+      return existingIndex === incomingIndex;
+    });
+
+    const existingVariant = matchIndex >= 0 ? existingTest.variants[matchIndex] : null;
+    if (matchIndex >= 0) {
+      consumedExistingIndices.add(matchIndex);
+    }
+
+    const hasCodeProp = Object.prototype.hasOwnProperty.call(incomingVariant || {}, 'code');
+    const nextCode = hasCodeProp
+      ? incomingVariant.code
+      : existingVariant
+        ? existingVariant.code
+        : undefined;
+    const nextConfig = incomingVariant?.config
+      ? { ...(existingVariant?.config || {}), ...incomingVariant.config }
+      : existingVariant?.config || {};
+
+    return {
+      ...(existingVariant || {}),
+      ...(incomingVariant || {}),
+      ...(nextCode !== undefined ? { code: nextCode } : {}),
+      ...(Object.keys(nextConfig).length > 0 ? { config: nextConfig } : {}),
+    };
+  });
+}
+
+function normalizeDraftTestPayload(rawPayload, shopDomain, existingTest = null) {
+  const raw = rawPayload && typeof rawPayload === 'object' ? { ...rawPayload } : {};
+  const typeResult = normalizeDraftTestType(raw.type || existingTest?.type);
+  if (typeResult.error) {
+    return { errors: [typeResult.error] };
+  }
+  const type = typeResult.type;
+  if (Array.isArray(raw.variants) && raw.variants.length > MAX_TEST_VARIANTS) {
+    return { errors: [`A test can include at most ${MAX_TEST_VARIANTS} variants`] };
+  }
+  const name = String(raw.name || '').trim() || `Untitled ${getDraftTypeLabel(type)} test`;
+  const description =
+    raw.description === null || raw.description === undefined
+      ? null
+      : String(raw.description).trim() || null;
+
+  const draft = {
+    ...raw,
+    shop_domain: shopDomain,
+    status: 'draft',
+    name,
+    description,
+    type,
+    goal:
+      raw.goal && typeof raw.goal === 'object'
+        ? { type: 'conversion', metric: 'revenue', secondary: [], ...raw.goal }
+        : { type: 'conversion', metric: 'revenue', secondary: [] },
+    variants: normalizeDraftVariants(raw.variants, type),
+  };
+
+  if (existingTest) {
+    draft.variants = mergeIncomingDraftVariants(existingTest, draft.variants);
+  }
+
+  if (draft.segments !== undefined) {
+    draft.segments = normalizeSegments(draft.segments);
+  }
+
+  if (draft.holdout_percent !== undefined) {
+    const holdoutResult = normalizeHoldout(draft.holdout_percent);
+    if (holdoutResult.error) {
+      return { errors: [holdoutResult.error] };
+    }
+    draft.holdout_percent = holdoutResult.value;
+  }
+
+  if (draft.scheduled_start_at === '') {
+    draft.scheduled_start_at = null;
+  }
+  if (draft.scheduled_stop_at === '') {
+    draft.scheduled_stop_at = null;
+  }
+  draft.auto_start = draft.auto_start === true;
+  draft.auto_stop = draft.auto_stop === true;
+
+  let normalized = normalizeCheckoutExperienceTestPayload(normalizeShippingTestPayload(draft));
+  normalized = enrichGoalWithTemplateKey(normalized);
+  normalized = normalizePriceTestDirectOverride(normalized);
+
+  return { draft: normalized, errors: [] };
+}
+
 function getExperimentGroupKey(test) {
   if (!test || typeof test !== 'object') {
     return '';
@@ -211,9 +415,366 @@ function resolveShippingDiagnosticsUrls() {
     String(process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL || '').trim() ||
     (appUrl ? `${appUrl}/api/track/shipping-carrier-rates` : '');
   return {
+    app_url: appUrl || null,
     shipping_resolve_batch_url: checkoutResolveUrl || null,
     carrier_callback_url: carrierCallbackUrl || null,
   };
+}
+
+function resolveUrlHost(url) {
+  try {
+    return new URL(String(url || '').trim()).host;
+  } catch {
+    return null;
+  }
+}
+
+function pruneStaleStoredCarrierCallbacks(test = {}, expectedHost = null) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  const staleHosts = new Set();
+  let cleanedCount = 0;
+
+  const nextVariants = variants.map(variant => {
+    const nextVariant = { ...(variant || {}) };
+    const config =
+      nextVariant.config && typeof nextVariant.config === 'object' ? { ...nextVariant.config } : {};
+    const metadata =
+      config.metadata && typeof config.metadata === 'object' ? { ...config.metadata } : {};
+    const resources = Array.isArray(metadata.shipping_resources) ? metadata.shipping_resources : [];
+
+    const filteredResources = resources.filter(resource => {
+      if (!resource || typeof resource !== 'object') {
+        return false;
+      }
+      if (String(resource.resource_type || '').trim() !== 'carrier_service') {
+        return true;
+      }
+      const host = resolveUrlHost(resource.callback_url);
+      if (!host || !expectedHost || host === expectedHost) {
+        return true;
+      }
+      staleHosts.add(host);
+      cleanedCount += 1;
+      return false;
+    });
+
+    metadata.shipping_resources = filteredResources;
+    config.metadata = metadata;
+    nextVariant.config = config;
+    return nextVariant;
+  });
+
+  return {
+    variants: nextVariants,
+    cleaned_count: cleanedCount,
+    stale_hosts: Array.from(staleHosts),
+  };
+}
+
+function createTimingTracker() {
+  const startedAt = Date.now();
+  const steps = [];
+  return {
+    async step(name, fn) {
+      const label = String(name || 'unknown_step').trim() || 'unknown_step';
+      const stepStartedAt = Date.now();
+      try {
+        const result = await fn();
+        steps.push({ step: label, status: 'ok', duration_ms: Date.now() - stepStartedAt });
+        return result;
+      } catch (error) {
+        steps.push({
+          step: label,
+          status: 'error',
+          duration_ms: Date.now() - stepStartedAt,
+          error: error?.message || 'unknown_error',
+        });
+        throw error;
+      }
+    },
+    snapshot(extra = {}) {
+      return {
+        total_duration_ms: Date.now() - startedAt,
+        steps,
+        ...extra,
+      };
+    },
+  };
+}
+
+function buildShippingLiveResourceChecks(actions = []) {
+  return (Array.isArray(actions) ? actions : [])
+    .filter(action => action && action.status !== 'skipped_control')
+    .map(action => {
+      const details = action.details && typeof action.details === 'object' ? action.details : {};
+      const service =
+        details.service && typeof details.service === 'object' ? details.service : null;
+      const customization =
+        details.customization && typeof details.customization === 'object'
+          ? details.customization
+          : null;
+      const expectedCallback = String(details.callback_url || '').trim() || null;
+      const liveCallback = String(service?.callback_url || '').trim() || null;
+      const callbackMatches =
+        expectedCallback && liveCallback
+          ? compareShippingCarrierCallbackUrls(expectedCallback, liveCallback)
+          : null;
+      return {
+        variant_index: action.variant_index,
+        variant_name: action.variant_name || null,
+        adapter: action.execution_adapter || null,
+        status: action.status || null,
+        message: details.message || null,
+        live_resource: service
+          ? {
+              type: 'carrier_service',
+              id: service.id ? String(service.id) : null,
+              name: service.name || null,
+              callback_url: liveCallback,
+              expected_callback_url: expectedCallback,
+              callback_matches: callbackMatches,
+              service_discovery: service.service_discovery !== false,
+            }
+          : action.execution_adapter === 'carrier_service'
+            ? {
+                type: 'carrier_service_pending',
+                expected_callback_url: expectedCallback,
+                expected_profile_binding: details.profile_binding || null,
+              }
+            : customization
+              ? {
+                  type: 'delivery_customization',
+                  id: customization.id || null,
+                  title: customization.title || details.title || null,
+                  enabled: customization.enabled !== false,
+                  expected_config: details.config || null,
+                  function: details.function || null,
+                }
+              : {
+                  type: action.execution_adapter || 'unknown',
+                  expected_callback_url: expectedCallback,
+                },
+      };
+    });
+}
+
+async function hydrateShippingLiveResourceChecks(shopDomain, accessToken, checks = []) {
+  const list = Array.isArray(checks) ? checks : [];
+  const carrierChecks = list.filter(
+    item => item?.live_resource?.type === 'carrier_service' && item?.live_resource?.id
+  );
+  if (carrierChecks.length === 0) {
+    return list;
+  }
+
+  let services = [];
+  try {
+    services = await fetchCarrierServicesViaAdmin(shopDomain, accessToken);
+  } catch (error) {
+    logger.warn('Could not refresh carrier services for shipping diagnostics', {
+      shopDomain,
+      error: error?.message || String(error),
+    });
+    return list;
+  }
+
+  const servicesById = new Map(
+    (Array.isArray(services) ? services : []).map(service => [String(service?.id || ''), service])
+  );
+
+  return list.map(check => {
+    if (check?.live_resource?.type !== 'carrier_service') {
+      return check;
+    }
+    const serviceId = String(check.live_resource.id || '').trim();
+    const freshService = servicesById.get(serviceId);
+    if (!freshService?.callback_url) {
+      return check;
+    }
+    const expectedCallback = check.live_resource.expected_callback_url;
+    const liveCallback = String(freshService.callback_url || '').trim();
+    return {
+      ...check,
+      live_resource: {
+        ...check.live_resource,
+        callback_url: liveCallback,
+        callback_matches: compareShippingCarrierCallbackUrls(expectedCallback, liveCallback),
+      },
+    };
+  });
+}
+
+function buildShippingProfileBindingChecks(liveResourceChecks = [], currentSetup = null) {
+  const rates = Array.isArray(currentSetup?.rates) ? currentSetup.rates : [];
+  return liveResourceChecks
+    .filter(item => item?.live_resource?.type === 'carrier_service' && item?.live_resource?.id)
+    .map(item => {
+      const resource = item.live_resource || {};
+      const serviceName = String(resource.name || '')
+        .trim()
+        .toLowerCase();
+      const callbackUrl = String(resource.callback_url || '')
+        .trim()
+        .toLowerCase();
+      const matchingRates = rates.filter(rate => {
+        const carrierName = String(rate?.carrier_service_name || '')
+          .trim()
+          .toLowerCase();
+        const carrierCallback = String(rate?.carrier_service_callback_url || '')
+          .trim()
+          .toLowerCase();
+        return (
+          (serviceName && carrierName && serviceName === carrierName) ||
+          (callbackUrl && carrierCallback && callbackUrl === carrierCallback)
+        );
+      });
+      return {
+        variant_index: item.variant_index,
+        variant_name: item.variant_name || null,
+        carrier_service_name: resource.name || null,
+        carrier_service_callback_url: resource.callback_url || null,
+        bound_to_profile_zone: matchingRates.length > 0,
+        matching_rate_count: matchingRates.length,
+        matches: matchingRates.slice(0, 5).map(rate => ({
+          profile_id: rate.profile_id || null,
+          profile_name: rate.profile_name || null,
+          location_group_id: rate.profile_location_group_id || null,
+          zone_id: rate.zone_id || null,
+          zone_name: rate.zone_name || null,
+          method_definition_id: rate.method_definition_id || null,
+          rate_name: rate.name || null,
+        })),
+        message:
+          matchingRates.length > 0
+            ? 'RipX carrier service appears in at least one Shopify delivery profile/zone.'
+            : 'CarrierService exists, but no matching app/carrier rate was found in Shopify delivery profiles. Shopify checkout may not call this callback until the carrier rate is attached to the selected profile/zone.',
+      };
+    });
+}
+
+function buildShippingVariantDisplaySummary(test = {}) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  const byVariant = variants
+    .map((variant, index) => {
+      const normalized = normalizeShippingVariantConfig(variant?.config || {});
+      const strategy = String(normalized.strategy || 'control').toLowerCase();
+      const actionable = strategy !== 'control';
+      const displayMode = String(normalized.shipping_display_mode || '')
+        .trim()
+        .toLowerCase();
+      const mode =
+        displayMode === 'replace_existing_methods'
+          ? 'replace_existing_methods'
+          : 'add_preview_method';
+      return {
+        variant_index: index,
+        variant_name: variant?.name || `Variant ${index + 1}`,
+        strategy,
+        actionable,
+        display_mode: mode,
+        configured_rate_count: Array.isArray(normalized.rates) ? normalized.rates.length : 0,
+        configured_rates: (Array.isArray(normalized.rates) ? normalized.rates : [])
+          .slice(0, 5)
+          .map((rate, rateIndex) => ({
+            name: rate?.name || null,
+            description: rate?.description || '',
+            delivery_promise: rate?.delivery_promise || null,
+            amount: rate?.amount ?? null,
+            currency: rate?.currency || null,
+            priority: rate?.priority ?? rateIndex + 1,
+            sort_order: rate?.sort_order ?? rate?.priority ?? rateIndex + 1,
+          })),
+      };
+    })
+    .filter(item => item.actionable);
+  return {
+    actionable_variants: byVariant.length,
+    replace_mode_variants: byVariant.filter(
+      item => item.display_mode === 'replace_existing_methods'
+    ).length,
+    additive_mode_variants: byVariant.filter(item => item.display_mode === 'add_preview_method')
+      .length,
+    multi_rate_variants: byVariant.filter(item => item.configured_rate_count > 1).length,
+    variants: byVariant,
+  };
+}
+
+function getShippingConfigRevisionSet(test = {}) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  const revisions = new Set();
+  variants.forEach(variant => {
+    const config = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+    const metadata = config?.metadata && typeof config.metadata === 'object' ? config.metadata : {};
+    const revision = String(
+      metadata.shipping_config_revision || metadata.shippingConfigRevision || ''
+    ).trim();
+    if (revision) {
+      revisions.add(revision);
+    }
+  });
+  return revisions;
+}
+
+function buildShippingRateNameCollisionWarnings(variantDisplaySummary = {}, currentSetup = {}) {
+  const nativeNames = new Set(
+    (Array.isArray(currentSetup?.rates) ? currentSetup.rates : [])
+      .filter(rate => rate?.rate_provider_type !== 'DeliveryParticipant')
+      .map(rate =>
+        String(rate?.name || '')
+          .trim()
+          .toLowerCase()
+      )
+      .filter(Boolean)
+  );
+  if (nativeNames.size === 0 || !Array.isArray(variantDisplaySummary?.variants)) {
+    return [];
+  }
+  const warnings = [];
+  variantDisplaySummary.variants.forEach(variant => {
+    (variant.configured_rates || []).forEach(rate => {
+      const rawName = String(rate?.name || '').trim();
+      if (!rawName) {
+        return;
+      }
+      const visibleName = rawName;
+      if (nativeNames.has(visibleName.toLowerCase())) {
+        warnings.push(
+          `${variant.variant_name || 'Variant'} returns "${visibleName}", which matches an existing native Shopify rate name. Rename the RipX rate or native rate to avoid partial checkout rendering.`
+        );
+      }
+    });
+  });
+  return warnings.slice(0, 5);
+}
+
+function stampShippingConfigRevisionOnVariants(variants = [], revision = new Date().toISOString()) {
+  if (!Array.isArray(variants)) {
+    return variants;
+  }
+  return variants.map((variant, index) => {
+    const current = variant && typeof variant === 'object' ? variant : {};
+    const config = current.config && typeof current.config === 'object' ? current.config : {};
+    const strategy = String(config.strategy || '')
+      .trim()
+      .toLowerCase();
+    const isControlLike =
+      index === 0 ||
+      /^control(\s|$)/i.test(String(current.name || '').trim()) ||
+      strategy === 'control';
+    if (isControlLike) {
+      return current;
+    }
+    return {
+      ...current,
+      config: {
+        ...config,
+        metadata: {
+          ...(config.metadata && typeof config.metadata === 'object' ? config.metadata : {}),
+          shipping_config_revision: revision,
+        },
+      },
+    };
+  });
 }
 
 function applyExperimentGroupToSegments(payload) {
@@ -1175,6 +1736,41 @@ router.post(
 );
 
 /**
+ * POST /api/tests/drafts
+ * Persist an incomplete test draft without launch-level validation.
+ */
+router.post(
+  '/drafts',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    const { draft, errors } = normalizeDraftTestPayload(req.body || {}, shopDomain);
+    if (errors.length > 0) {
+      return sendValidationError(res, errors);
+    }
+
+    try {
+      await ensureTemplateTypeEnabledOrThrow(draft, shopDomain);
+    } catch (error) {
+      if (error?.isValidation) {
+        return sendValidationError(res, [error.message]);
+      }
+      throw error;
+    }
+
+    const test = await createTest(draft);
+    ensureVariantCount(test);
+    auditLogService.log(shopDomain, {
+      entityType: 'test',
+      entityId: test.id,
+      action: 'draft_create',
+    });
+
+    logger.info('Draft test created', { testId: test.id, shopDomain, type: test.type });
+    return sendSuccess(res, HTTP_STATUS.CREATED, { test }, 'Draft saved successfully');
+  })
+);
+
+/**
  * POST /api/tests/plan
  * Authenticated AI-planner contract. Returns a validated draft only; it never saves or launches.
  */
@@ -1197,6 +1793,29 @@ router.post(
       ipAddress: req.ip || req.connection?.remoteAddress,
     });
     return res.status(200).json({ success: true, ...result });
+  })
+);
+
+/**
+ * GET /api/tests/shipping/current-setup
+ * Read the shop's configured shipping rates for draft shopper previews.
+ */
+router.get(
+  '/shipping/current-setup',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const currentSetup = await buildShippingCurrentSetupReport(shopDomain, accessToken);
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      current_setup: currentSetup,
+    });
   })
 );
 
@@ -1562,6 +2181,11 @@ router.get(
       summary: analyticsReport?.summary || null,
     };
     if (isShippingTestPayload(test)) {
+      const normalizedShippingTest = normalizeShippingTestPayload({
+        ...test,
+        variants: Array.isArray(test.variants) ? test.variants : [],
+      });
+      test.variants = normalizedShippingTest.variants;
       const variants = Array.isArray(test.variants) ? test.variants : [];
       const strategy_counts = variants.reduce((acc, variant) => {
         const strategy =
@@ -1791,10 +2415,17 @@ router.get(
       ]);
     }
 
-    const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
-    const executionPlan = buildShippingExecutionPlan(test, capabilityReport);
+    const timing = createTimingTracker();
+    const capabilityReport = await timing.step('build_capability_report', () =>
+      buildShippingCapabilityReport(shopDomain, accessToken)
+    );
+    const executionPlan = await timing.step('build_execution_plan', () =>
+      Promise.resolve(buildShippingExecutionPlan(test, capabilityReport))
+    );
     const urls = resolveShippingDiagnosticsUrls();
-    const runningTests = await getTestsByShop(shopDomain, 'running');
+    const runningTests = await timing.step('fetch_running_tests', () =>
+      getTestsByShop(shopDomain, 'running')
+    );
     const conflicts = (Array.isArray(runningTests) ? runningTests : [])
       .filter(item => String(item?.id || '').trim() && String(item.id) !== String(id))
       .filter(
@@ -1811,6 +2442,119 @@ router.get(
     const actionableVariants = Array.isArray(executionPlan?.variants)
       ? executionPlan.variants.filter(entry => entry?.actionable)
       : [];
+    const dryRunResult = await timing.step('execute_dry_run_plan', () =>
+      executeShippingTestPlan({
+        test,
+        shopDomain,
+        accessToken,
+        apply: false,
+      })
+    );
+    const currentSetup = await timing.step('fetch_current_shipping_setup', () =>
+      buildShippingCurrentSetupReport(shopDomain, accessToken).catch(error => ({
+        source: 'unavailable',
+        profiles: [],
+        rates: [],
+        summary: { total_rates: 0, manual_rate_count: 0, calculated_rate_count: 0 },
+        warnings: [
+          `Could not read Shopify shipping profiles/zones: ${error.message || 'unknown error'}`,
+        ],
+        generated_at: new Date().toISOString(),
+      }))
+    );
+    const dryRunActions = dryRunResult?.execution_result?.actions || [];
+    const liveResourceChecks = await timing.step('hydrate_live_resource_checks', () =>
+      hydrateShippingLiveResourceChecks(
+        shopDomain,
+        accessToken,
+        buildShippingLiveResourceChecks(dryRunActions)
+      )
+    );
+    const profileBindingChecks = buildShippingProfileBindingChecks(
+      liveResourceChecks,
+      currentSetup
+    );
+    const carrierChecks = liveResourceChecks.filter(
+      item => item?.live_resource?.type === 'carrier_service'
+    );
+    const pendingCarrierChecks = liveResourceChecks.filter(
+      item => item?.live_resource?.type === 'carrier_service_pending'
+    );
+    const deliveryCustomizationChecks = liveResourceChecks.filter(
+      item => item?.live_resource?.type === 'delivery_customization'
+    );
+    const staleCarrierCallbacks = carrierChecks.filter(
+      item => item?.live_resource?.callback_matches === false
+    );
+    const revisionSet = getShippingConfigRevisionSet(test);
+    const rawCarrierCallbackTrace = getShippingCarrierCallbackTrace({ testId: id, limit: 20 });
+    const carrierCallbackTrace = rawCarrierCallbackTrace
+      .filter(entry => {
+        if (revisionSet.size === 0) {
+          return true;
+        }
+        const entryRevision = String(entry?.config_revision || '').trim();
+        return entryRevision && revisionSet.has(entryRevision);
+      })
+      .slice(0, 10);
+    const latestCarrierCallback = carrierCallbackTrace[0] || null;
+    const variantDisplaySummary = buildShippingVariantDisplaySummary(test);
+    const normalizationSummary = summarizeShippingConfigNormalization(test.variants || []);
+    const rateNameCollisionWarnings = buildShippingRateNameCollisionWarnings(
+      variantDisplaySummary,
+      currentSetup
+    );
+    const debugChecklist = buildShippingPreviewDebugChecklist({
+      testId: id,
+      testStatus: test?.status || null,
+      urls,
+      storedShippingResources: (Array.isArray(test?.variants) ? test.variants : []).flatMap(
+        variant => {
+          const resources = variant?.config?.metadata?.shipping_resources;
+          return Array.isArray(resources) ? resources : [];
+        }
+      ),
+      readiness: {
+        carrier_callback_configured: Boolean(urls.carrier_callback_url),
+        shipping_checkout_resolve_configured: Boolean(urls.shipping_resolve_batch_url),
+        assignment_signature_required: shouldRequireSignedAssignment(),
+        running_shipping_conflicts: conflicts.length,
+        live_carrier_services_found: carrierChecks.filter(item => item.live_resource?.id).length,
+        pending_carrier_services: pendingCarrierChecks.length,
+        live_delivery_customizations_found: deliveryCustomizationChecks.filter(
+          item => item.live_resource?.id
+        ).length,
+        stale_carrier_callbacks: staleCarrierCallbacks.length,
+        carrier_profile_bindings_found: profileBindingChecks.filter(
+          item => item.bound_to_profile_zone
+        ).length,
+        missing_carrier_profile_bindings: profileBindingChecks.filter(
+          item => !item.bound_to_profile_zone
+        ).length,
+        latest_carrier_callback_seen: Boolean(latestCarrierCallback),
+        latest_carrier_callback_at: latestCarrierCallback?.at || null,
+        latest_carrier_callback_rates_count: latestCarrierCallback?.rates_count ?? null,
+        latest_carrier_callback_rates: latestCarrierCallback?.rates || [],
+        rate_name_collision_warnings: rateNameCollisionWarnings.length,
+        replace_mode_variants: variantDisplaySummary.replace_mode_variants,
+        additive_mode_variants: variantDisplaySummary.additive_mode_variants,
+        multi_rate_variants: variantDisplaySummary.multi_rate_variants,
+      },
+      liveResourceChecks,
+      carrierCallbackTrace,
+    });
+
+    const timingSnapshot = timing.snapshot({
+      test_id: id,
+      action_count: Array.isArray(dryRunActions) ? dryRunActions.length : 0,
+      conflict_count: conflicts.length,
+    });
+    logger.info('Shipping diagnostics timing', {
+      testId: id,
+      shopDomain,
+      timing: timingSnapshot,
+      normalizationSummary,
+    });
 
     return sendSuccess(res, HTTP_STATUS.OK, {
       test_id: id,
@@ -1818,13 +2562,48 @@ router.get(
       execution_plan: executionPlan,
       diagnostics: {
         generated_at: new Date().toISOString(),
+        timing: timingSnapshot,
         readiness: {
           carrier_callback_configured: Boolean(urls.carrier_callback_url),
           shipping_checkout_resolve_configured: Boolean(urls.shipping_resolve_batch_url),
           assignment_signature_required: shouldRequireSignedAssignment(),
           running_shipping_conflicts: conflicts.length,
+          live_carrier_services_found: carrierChecks.filter(item => item.live_resource?.id).length,
+          pending_carrier_services: pendingCarrierChecks.length,
+          live_delivery_customizations_found: deliveryCustomizationChecks.filter(
+            item => item.live_resource?.id
+          ).length,
+          stale_carrier_callbacks: staleCarrierCallbacks.length,
+          carrier_profile_bindings_found: profileBindingChecks.filter(
+            item => item.bound_to_profile_zone
+          ).length,
+          missing_carrier_profile_bindings: profileBindingChecks.filter(
+            item => !item.bound_to_profile_zone
+          ).length,
+          latest_carrier_callback_seen: Boolean(latestCarrierCallback),
+          latest_carrier_callback_at: latestCarrierCallback?.at || null,
+          latest_carrier_callback_rates_count: latestCarrierCallback?.rates_count ?? null,
+          latest_carrier_callback_rates: latestCarrierCallback?.rates || [],
+          rate_name_collision_warnings: rateNameCollisionWarnings.length,
+          replace_mode_variants: variantDisplaySummary.replace_mode_variants,
+          additive_mode_variants: variantDisplaySummary.additive_mode_variants,
+          multi_rate_variants: variantDisplaySummary.multi_rate_variants,
         },
         urls,
+        current_setup: {
+          source: currentSetup.source,
+          summary: currentSetup.summary,
+          warnings: [...(currentSetup.warnings || []), ...rateNameCollisionWarnings],
+          profile_count: Array.isArray(currentSetup.profiles) ? currentSetup.profiles.length : 0,
+          rate_count: Array.isArray(currentSetup.rates) ? currentSetup.rates.length : 0,
+        },
+        live_resource_checks: liveResourceChecks,
+        profile_binding_checks: profileBindingChecks,
+        variant_display_summary: variantDisplaySummary,
+        normalization_summary: normalizationSummary,
+        carrier_callback_trace: carrierCallbackTrace,
+        debug_checklist: debugChecklist,
+        dry_run_summary: dryRunResult?.execution_result?.summary || null,
         assignment_visibility: {
           required_line_attributes: [
             '_ripx_price_test',
@@ -1840,6 +2619,282 @@ router.get(
         conflicts,
       },
     });
+  })
+);
+
+/**
+ * POST /api/tests/:id/shipping/cleanup-stale-callbacks
+ * Remove stale callback host refs from saved shipping metadata.
+ */
+router.post(
+  '/:id/shipping/cleanup-stale-callbacks',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, ['Shipping cleanup is available only for shipping tests.']);
+    }
+
+    const urls = resolveShippingDiagnosticsUrls();
+    const currentHost = resolveUrlHost(urls.carrier_callback_url || urls.app_url);
+    if (!currentHost) {
+      return sendValidationError(res, [
+        'Could not resolve current callback host from RIPX_SHIPPING_CARRIER_CALLBACK_URL or APP_URL.',
+      ]);
+    }
+
+    const dryRun = parseBooleanFlag(req.body?.dry_run ?? req.body?.dryRun);
+    const syncLive =
+      req.body?.sync_live === undefined ? true : parseBooleanFlag(req.body?.sync_live);
+    const rawVariantIndex = req.body?.variantIndex ?? req.body?.variant_index;
+    let variantIndex = null;
+    if (
+      rawVariantIndex !== undefined &&
+      rawVariantIndex !== null &&
+      String(rawVariantIndex).trim()
+    ) {
+      const parsedIndex = Number(rawVariantIndex);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0) {
+        return sendValidationError(res, [
+          'variantIndex must be a non-negative integer when provided.',
+        ]);
+      }
+      variantIndex = parsedIndex;
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    let liveSync = null;
+    if (!dryRun && syncLive && accessToken) {
+      liveSync = await syncLiveCarrierCallbacksForTest({
+        test,
+        shopDomain,
+        accessToken,
+        variantIndex,
+        apply: true,
+      });
+    }
+
+    const cleanup = pruneStaleStoredCarrierCallbacks(test, currentHost);
+    let persistedVariants = cleanup.variants;
+    if (!dryRun && accessToken && (liveSync?.synced_count > 0 || cleanup.cleaned_count > 0)) {
+      const executeResult = await executeShippingTestPlan({
+        test: { ...test, variants: cleanup.variants },
+        shopDomain,
+        accessToken,
+        apply: true,
+        variantIndex,
+      });
+      persistedVariants = executeResult?.persisted_variants || cleanup.variants;
+      await updateTest(id, shopDomain, { variants: persistedVariants });
+    }
+
+    const responseData = {
+      test_id: id,
+      dry_run: dryRun,
+      current_callback_host: currentHost,
+      cleaned_count: cleanup.cleaned_count,
+      stale_hosts: cleanup.stale_hosts,
+      live_sync: liveSync,
+    };
+
+    const message =
+      dryRun && cleanup.cleaned_count > 0
+        ? `Dry run complete. ${cleanup.cleaned_count} stale callback reference(s) would be removed.`
+        : liveSync?.synced_count > 0 && cleanup.cleaned_count > 0
+          ? `Synced ${liveSync.synced_count} live carrier callback(s) and removed ${cleanup.cleaned_count} stale metadata reference(s).`
+          : liveSync?.synced_count > 0
+            ? `Synced ${liveSync.synced_count} live carrier callback(s) to ${currentHost}.`
+            : cleanup.cleaned_count > 0
+              ? `Removed ${cleanup.cleaned_count} stale callback reference(s) from saved shipping metadata.`
+              : 'No stale callback references found in saved shipping metadata.';
+
+    return sendSuccess(res, HTTP_STATUS.OK, responseData, message);
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/live-debug
+ * Deep shipping checkout debug report with live Shopify carrier state and callback probe.
+ */
+router.get(
+  '/:id/shipping/live-debug',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Shipping live debug is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
+    const executionPlan = buildShippingExecutionPlan(test, capabilityReport);
+    const dryRunResult = await executeShippingTestPlan({
+      test,
+      shopDomain,
+      accessToken,
+      apply: false,
+    });
+    const dryRunActions = dryRunResult?.execution_result?.actions || [];
+    const liveResourceChecks = await hydrateShippingLiveResourceChecks(
+      shopDomain,
+      accessToken,
+      buildShippingLiveResourceChecks(dryRunActions)
+    );
+    const carrierChecks = liveResourceChecks.filter(
+      item => item?.live_resource?.type === 'carrier_service'
+    );
+    const staleCarrierCallbacks = carrierChecks.filter(
+      item => item?.live_resource?.callback_matches === false
+    );
+    const carrierCallbackTrace = getShippingCarrierCallbackTrace({ testId: id, limit: 10 });
+    const latestCarrierCallback = carrierCallbackTrace[0] || null;
+
+    const report = await buildShippingLiveDebugReport({
+      test,
+      shopDomain,
+      accessToken,
+      liveResourceChecks,
+      carrierCallbackTrace,
+      readiness: {
+        live_carrier_services_found: carrierChecks.filter(item => item.live_resource?.id).length,
+        stale_carrier_callbacks: staleCarrierCallbacks.length,
+        latest_carrier_callback_seen: Boolean(latestCarrierCallback),
+        latest_carrier_callback_at: latestCarrierCallback?.at || null,
+        latest_carrier_callback_rates_count: latestCarrierCallback?.rates_count ?? null,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      test_id: id,
+      execution_plan: executionPlan,
+      live_debug: report,
+    });
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/dc-config-compare
+ * Compare expected delivery customization metafield vs live Shopify resource.
+ */
+router.get(
+  '/:id/shipping/dc-config-compare',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Delivery customization compare is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const rawVariantIndex = req.query?.variantIndex ?? req.query?.variant_index;
+    let variantIndex = null;
+    if (rawVariantIndex !== undefined && rawVariantIndex !== null && rawVariantIndex !== '') {
+      const parsed = Number.parseInt(String(rawVariantIndex), 10);
+      if (Number.isInteger(parsed) && parsed >= 0) {
+        variantIndex = parsed;
+      }
+    }
+
+    const report = await buildDeliveryCustomizationConfigCompareReport({
+      test,
+      shopDomain,
+      accessToken,
+      variantIndex,
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, report);
+  })
+);
+
+/**
+ * POST /api/tests/:id/shipping/simulate-hide
+ * Simulate delivery customization hide operations for sample checkout options.
+ */
+router.post(
+  '/:id/shipping/simulate-hide',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Delivery customization simulation is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const rawVariantIndex = req.body?.variantIndex ?? req.body?.variant_index;
+    let variantIndex = null;
+    if (rawVariantIndex !== undefined && rawVariantIndex !== null && rawVariantIndex !== '') {
+      const parsed = Number.parseInt(String(rawVariantIndex), 10);
+      if (Number.isInteger(parsed) && parsed >= 0) {
+        variantIndex = parsed;
+      }
+    }
+
+    const deliveryOptions = Array.isArray(req.body?.delivery_options)
+      ? req.body.delivery_options
+      : Array.isArray(req.body?.deliveryOptions)
+        ? req.body.deliveryOptions
+        : [];
+
+    const report = await simulateDeliveryCustomizationHide({
+      test,
+      shopDomain,
+      accessToken,
+      variantIndex,
+      deliveryOptions,
+      configOverride: req.body?.config_override || req.body?.configOverride || null,
+      testId: req.body?.test_id || req.body?.testId || null,
+      variantId: req.body?.variant_id || req.body?.variantId || null,
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, report);
   })
 );
 
@@ -1893,24 +2948,47 @@ router.post(
       variantIndex = parsedIndex;
     }
 
-    const result = await executeShippingTestPlan({
-      test,
-      shopDomain,
-      accessToken,
-      apply: applyMode,
-      variantIndex,
-    });
+    const timing = createTimingTracker();
+    const result = await timing.step('execute_shipping_test_plan', () =>
+      executeShippingTestPlan({
+        test,
+        shopDomain,
+        accessToken,
+        apply: applyMode,
+        variantIndex,
+      })
+    );
     if (applyMode && Array.isArray(result?.persisted_variants)) {
-      await updateTest(id, shopDomain, { variants: result.persisted_variants });
+      await timing.step('persist_shipping_variants', () =>
+        updateTest(id, shopDomain, { variants: result.persisted_variants })
+      );
     }
 
     const failedCount = Number(result?.execution_result?.summary?.failed_count || 0);
+    const manualRequiredCount = Number(
+      result?.execution_result?.summary?.manual_required_count || 0
+    );
     const responseMessage =
       failedCount > 0
         ? 'Shipping execution completed with some failures. Review action details.'
-        : applyMode
-          ? 'Shipping execution applied successfully.'
-          : 'Shipping dry-run completed successfully.';
+        : manualRequiredCount > 0
+          ? 'Shipping execution completed with manual steps required. Review action details.'
+          : applyMode
+            ? 'Shipping execution applied successfully.'
+            : 'Shipping dry-run completed successfully.';
+    const timingSnapshot = timing.snapshot({
+      test_id: id,
+      apply_mode: applyMode ? 'apply' : 'dry_run',
+      variant_index: Number.isInteger(variantIndex) ? variantIndex : null,
+      failed_count: failedCount,
+      manual_required_count: manualRequiredCount,
+    });
+    logger.info('Shipping execute timing', {
+      testId: id,
+      shopDomain,
+      timing: timingSnapshot,
+    });
+
     return sendSuccess(
       res,
       HTTP_STATUS.OK,
@@ -1918,6 +2996,7 @@ router.post(
         test_id: id,
         apply_mode: applyMode ? 'apply' : 'dry_run',
         has_failures: failedCount > 0,
+        timing: timingSnapshot,
         ...result,
       },
       responseMessage
@@ -2093,6 +3172,55 @@ router.put(
 );
 
 /**
+ * PUT /api/tests/:id/draft
+ * Update an existing incomplete draft without launch-level validation.
+ */
+router.put(
+  '/:id/draft',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const existingTest = await getTestById(id, shopDomain);
+    if (!existingTest) {
+      return sendNotFound(res, 'Test');
+    }
+    if (existingTest.status !== 'draft') {
+      return sendValidationError(res, ['Only draft tests can be saved as drafts']);
+    }
+
+    const { draft, errors } = normalizeDraftTestPayload(req.body || {}, shopDomain, existingTest);
+    if (errors.length > 0) {
+      return sendValidationError(res, errors);
+    }
+
+    try {
+      await ensureTemplateTypeEnabledOrThrow(draft, shopDomain);
+    } catch (error) {
+      if (error?.isValidation) {
+        return sendValidationError(res, [error.message]);
+      }
+      throw error;
+    }
+
+    let test = await updateTest(id, shopDomain, draft);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    test = enrichGoalWithTemplateKey(test);
+    ensureVariantCount(test);
+
+    auditLogService.log(shopDomain, {
+      entityType: 'test',
+      entityId: id,
+      action: 'draft_update',
+    });
+    logger.info('Draft test updated', { testId: id, shopDomain, type: test.type });
+    return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Draft saved successfully');
+  })
+);
+
+/**
  * PUT /api/tests/:id
  * Update a test
  */
@@ -2102,7 +3230,13 @@ router.put(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
-    const updates = req.body;
+    const updates = req.body && typeof req.body === 'object' ? req.body : {};
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
+      return sendValidationError(res, [
+        'Status changes must use the dedicated start, stop, rollout, or personalization endpoints',
+      ]);
+    }
 
     if (updates.scheduled_start_at === '') {
       updates.scheduled_start_at = null;
@@ -2143,55 +3277,87 @@ router.put(
       }
 
       if (updates.variants && Array.isArray(updates.variants)) {
-        const matchedIncomingIndices = new Set();
-        const mergedVariants = existingTest.variants.map((existingVariant, index) => {
-          const incoming = updates.variants.find((variant, incomingIndex) => {
-            if (matchedIncomingIndices.has(incomingIndex)) {
+        // Incoming variants are source of truth for edit saves. Match each incoming item to an
+        // existing variant to preserve server-only fields, but do not keep unmatched existing rows.
+        const consumedExistingIndices = new Set();
+        const mergedVariants = updates.variants.map((incomingVariant, incomingIndex) => {
+          const matchIndex = existingTest.variants.findIndex((existingVariant, existingIndex) => {
+            if (consumedExistingIndices.has(existingIndex)) {
               return false;
             }
-            if (variant?.id && existingVariant?.id && variant.id === existingVariant.id) {
+            if (
+              incomingVariant?.id &&
+              existingVariant?.id &&
+              incomingVariant.id === existingVariant.id
+            ) {
               return true;
             }
-            if (variant?.name && existingVariant?.name && variant.name === existingVariant.name) {
+            if (
+              incomingVariant?.name &&
+              existingVariant?.name &&
+              incomingVariant.name === existingVariant.name
+            ) {
               return true;
             }
-            return incomingIndex === index;
+            return existingIndex === incomingIndex;
           });
 
-          if (!incoming) {
-            return existingVariant;
+          const existingVariant = matchIndex >= 0 ? existingTest.variants[matchIndex] : null;
+          if (matchIndex >= 0) {
+            consumedExistingIndices.add(matchIndex);
           }
 
-          matchedIncomingIndices.add(updates.variants.indexOf(incoming));
-          const hasCodeProp = Object.prototype.hasOwnProperty.call(incoming, 'code');
-          const nextCode = hasCodeProp ? incoming.code : existingVariant.code;
-          const nextConfig = incoming.config
-            ? { ...(existingVariant.config || {}), ...incoming.config }
-            : existingVariant.config || {};
+          const hasCodeProp = Object.prototype.hasOwnProperty.call(incomingVariant || {}, 'code');
+          const nextCode = hasCodeProp
+            ? incomingVariant.code
+            : existingVariant
+              ? existingVariant.code
+              : undefined;
+          const nextConfig = incomingVariant?.config
+            ? { ...(existingVariant?.config || {}), ...incomingVariant.config }
+            : existingVariant?.config || {};
 
           return {
-            ...existingVariant,
-            ...incoming,
+            ...(existingVariant || {}),
+            ...(incomingVariant || {}),
             ...(nextCode !== undefined ? { code: nextCode } : {}),
             ...(Object.keys(nextConfig).length > 0 ? { config: nextConfig } : {}),
           };
         });
 
-        // Append new variants that don't match any existing (user added variants)
-        const newVariants = updates.variants.filter(
-          (_, incomingIndex) => !matchedIncomingIndices.has(incomingIndex)
-        );
-        const allVariants = [...mergedVariants, ...newVariants];
         // Ensure allocations are numbers (JSON may send strings)
-        updates.variants = allVariants.map(v => ({
+        updates.variants = mergedVariants.map(v => ({
           ...v,
           allocation: Number(v.allocation) || 0,
         }));
       }
 
+      if (updates.segments && typeof updates.segments === 'object') {
+        const hasIncomingPriceSurfaceMappings = Object.prototype.hasOwnProperty.call(
+          updates.segments,
+          'price_surface_mappings'
+        );
+        if (!hasIncomingPriceSurfaceMappings) {
+          const existingPriceSurfaceMappings = Array.isArray(
+            existingTest?.segments?.price_surface_mappings
+          )
+            ? existingTest.segments.price_surface_mappings
+            : null;
+          if (existingPriceSurfaceMappings) {
+            updates.segments.price_surface_mappings = existingPriceSurfaceMappings;
+          }
+        }
+      }
+
       let testData = normalizeCheckoutExperienceTestPayload(
         normalizeShippingTestPayload({ ...existingTest, ...updates })
       );
+      if (updates.variants && isShippingTestPayload(testData) && Array.isArray(testData.variants)) {
+        testData = {
+          ...testData,
+          variants: stampShippingConfigRevisionOnVariants(testData.variants),
+        };
+      }
       testData = enrichGoalWithTemplateKey(testData);
       testData = normalizePriceTestDirectOverride(testData);
       if (Array.isArray(testData.variants)) {

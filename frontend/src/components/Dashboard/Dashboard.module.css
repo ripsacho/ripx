@@ -577,7 +577,7 @@
 }
 
 [data-theme='dark'] .dashboardPage {
-  --dash-glass: rgba(26, 26, 26, 0.68);
+  --dash-glass: var(--surface-glass);
   --dash-glass-border: rgba(6, 182, 212, 0.14);
   --dash-glow: rgba(6, 182, 212, 0.18);
 }
@@ -620,9 +620,9 @@
 [data-theme='dark'] .heroSection {
   background: linear-gradient(
     135deg,
-    rgba(26, 26, 26, 0.92) 0%,
-    rgba(18, 18, 18, 0.88) 50%,
-    rgba(26, 26, 26, 0.92) 100%
+    rgba(51, 65, 85, 0.92) 0%,
+    rgba(30, 41, 59, 0.88) 50%,
+    rgba(51, 65, 85, 0.92) 100%
   );
   border-color: rgba(6, 182, 212, 0.1);
   box-shadow:
@@ -780,6 +780,60 @@
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+[data-theme='dark'] .testCardFuturistic :global(.test-card-badges) :global(.Polaris-Badge),
+[data-theme='dark'] .testCardMetaRow :global(.Polaris-Badge) {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(30, 41, 59, 0.28) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark']
+  .testCardFuturistic
+  :global(.test-card-badges)
+  :global(.Polaris-Badge--toneSuccess),
+[data-theme='dark'] .testCardMetaRow :global(.Polaris-Badge--toneSuccess) {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark']
+  .testCardFuturistic
+  :global(.test-card-badges)
+  :global(.Polaris-Badge--toneInfo),
+[data-theme='dark'] .testCardMetaRow :global(.Polaris-Badge--toneInfo) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
+[data-theme='dark']
+  .testCardFuturistic
+  :global(.test-card-badges)
+  :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .testCardMetaRow :global(.Polaris-Badge--toneWarning),
+[data-theme='dark']
+  .testCardFuturistic
+  :global(.test-card-badges)
+  :global(.Polaris-Badge--toneAttention),
+[data-theme='dark'] .testCardMetaRow :global(.Polaris-Badge--toneAttention) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark']
+  .testCardFuturistic
+  :global(.test-card-badges)
+  :global(.Polaris-Badge--toneCritical),
+[data-theme='dark'] .testCardMetaRow :global(.Polaris-Badge--toneCritical) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
 }
 
 .testCardFuturistic[data-status='running'] {
@@ -944,6 +998,9 @@
   width: 28px;
   height: 28px;
   margin: 0;
+  color: currentColor;
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 .heroTitleWrap {
@@ -1275,12 +1332,15 @@
   cursor: not-allowed;
 }
 
-.refreshBtn:global(svg) {
+.refreshBtn svg {
   width: 16px;
   height: 16px;
+  color: currentColor;
+  fill: currentColor;
+  stroke: currentColor;
 }
 
-.refreshSpinning:global(svg) {
+.refreshSpinning svg {
   animation: dashSpin var(--dash-anim-spin) var(--dash-anim-linear) infinite;
 }
 
@@ -1291,7 +1351,9 @@
 }
 
 [data-theme='dark'] .refreshBtn {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(165, 243, 252, 0.22);
+  color: #a5f3fc;
 }
 
 .cmdKHint {
@@ -1327,6 +1389,151 @@
   border-radius: 6px;
   margin-right: 0.25rem;
   animation: dashPulse var(--dash-anim-pulse) var(--dash-anim-ease) infinite;
+}
+
+[data-theme='dark'] .heroSection {
+  background:
+    radial-gradient(circle at 96% 8%, rgba(139, 92, 246, 0.2), transparent 34%),
+    radial-gradient(circle at 4% 0%, rgba(6, 182, 212, 0.18), transparent 32%),
+    linear-gradient(145deg, rgba(30, 41, 59, 0.94), rgba(2, 6, 23, 0.88));
+  border-color: rgba(6, 182, 212, 0.24);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .heroSection::after {
+  background-image:
+    linear-gradient(rgba(6, 182, 212, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.07) 1px, transparent 1px);
+  opacity: 0.48;
+}
+
+[data-theme='dark'] .heroGlowAccent {
+  background:
+    radial-gradient(ellipse 88% 82% at 100% 0%, rgba(6, 182, 212, 0.18), transparent 62%),
+    radial-gradient(ellipse 62% 64% at 70% 24%, rgba(139, 92, 246, 0.12), transparent 68%);
+}
+
+[data-theme='dark'] .noiseOverlay {
+  opacity: 0.065;
+}
+
+[data-theme='dark'] .heroIconWrap,
+[data-theme='dark'] .heroProgressWrap,
+[data-theme='dark'] .heroStat,
+[data-theme='dark'] .lastUpdated {
+  background: rgba(30, 41, 59, 0.64);
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .heroIconWrap {
+  color: #a5f3fc;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(139, 92, 246, 0.16));
+  border: 1px solid rgba(165, 243, 252, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(6, 182, 212, 0.16);
+}
+
+[data-theme='dark'] .heroIconWrap svg,
+[data-theme='dark'] .heroIconWrap svg *,
+[data-theme='dark'] .refreshBtn svg,
+[data-theme='dark'] .refreshBtn svg * {
+  color: #a5f3fc;
+  fill: #a5f3fc;
+  stroke: #a5f3fc;
+}
+
+[data-theme='dark'] .refreshBtn:hover:not(:disabled) svg,
+[data-theme='dark'] .refreshBtn:hover:not(:disabled) svg * {
+  color: #ffffff;
+  fill: #ffffff;
+  stroke: #ffffff;
+}
+
+[data-theme='dark'] .heroTitle {
+  background: linear-gradient(135deg, #f8fafc 0%, #67e8f9 56%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+[data-theme='dark'] .heroTitleTag,
+[data-theme='dark'] .heroActivePct,
+[data-theme='dark'] .heroSubtitle,
+[data-theme='dark'] .heroStatLabel,
+[data-theme='dark'] .heroProgressLabel {
+  color: rgba(203, 213, 225, 0.84);
+}
+
+[data-theme='dark'] .heroStatValue {
+  color: rgba(241, 245, 249, 0.98);
+}
+
+[data-theme='dark'] .heroStat:hover {
+  border-color: rgba(6, 182, 212, 0.32);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.3),
+    0 0 20px rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .heroBadge {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.16));
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .heroBadgeInactive,
+[data-theme='dark'] .heroActivePct,
+[data-theme='dark'] .cmdKHint,
+[data-theme='dark'] .refreshBtn {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(203, 213, 225, 0.9);
+}
+
+[data-theme='dark'] .heroQuickLink {
+  color: rgba(203, 213, 225, 0.88);
+}
+
+[data-theme='dark'] .heroQuickLink:hover,
+[data-theme='dark'] .cmdKHint:hover,
+[data-theme='dark'] .refreshBtn:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.38);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .heroQuickLinkDivider {
+  background: rgba(6, 182, 212, 0.28);
+}
+
+[data-theme='dark'] .insightBanner {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(6, 182, 212, 0.14), rgba(30, 41, 59, 0.52));
+  border-color: rgba(6, 182, 212, 0.28);
+  color: rgba(203, 213, 225, 0.92);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .insightLink {
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .insightLink:hover {
+  color: #c4b5fd;
+}
+
+[data-theme='dark'] .liveIndicator {
+  background: rgba(6, 182, 212, 0.18);
+  color: #67e8f9;
 }
 
 /* Status filter bar */
@@ -1915,7 +2122,7 @@
   font-size: 0.9rem;
   cursor: pointer;
   box-shadow:
-    0 18px 44px rgba(15, 23, 42, 0.18),
+    0 18px 44px rgba(30, 41, 59, 0.18),
     0 8px 26px rgba(139, 92, 246, 0.24),
     0 0 0 1px rgba(255, 255, 255, 0.18) inset;
   transition: all var(--dash-motion-slow) var(--dash-motion-spring);
@@ -1925,7 +2132,7 @@
 .fab:hover {
   transform: translateY(-2px);
   box-shadow:
-    0 22px 54px rgba(15, 23, 42, 0.22),
+    0 22px 54px rgba(30, 41, 59, 0.22),
     0 12px 32px rgba(139, 92, 246, 0.3),
     0 0 0 1px rgba(255, 255, 255, 0.25) inset;
 }
@@ -2146,7 +2353,7 @@
 }
 
 [data-theme='dark'] .sectionCard {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.7) 0%, rgba(18, 18, 18, 0.6) 100%);
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.7) 0%, rgba(30, 41, 59, 0.6) 100%);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -2514,7 +2721,7 @@
 }
 
 [data-theme='dark'] .tipsCard {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.7) 0%, rgba(18, 18, 18, 0.6) 100%);
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.7) 0%, rgba(30, 41, 59, 0.6) 100%);
 }
 
 /* Corner accent on tips card */

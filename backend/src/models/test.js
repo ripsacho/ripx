@@ -283,6 +283,12 @@ class TestModel {
       const test = result.rows[0];
       test.goal = safeParseJSON(test.goal, {}, 'goal', test.id);
       test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', test.id));
+      test.segments = safeParseJSON(test.segments, {}, 'segments', test.id);
+      const targetIdsParsed = Array.isArray(test.target_ids)
+        ? test.target_ids
+        : safeParseJSON(test.target_ids, null, 'target_ids', test.id);
+      test.target_ids =
+        Array.isArray(targetIdsParsed) && targetIdsParsed.length > 0 ? targetIdsParsed : null;
 
       return test;
     } catch (error) {
@@ -388,7 +394,11 @@ class TestModel {
         WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
           AND (
             status = 'running'
-            OR (status IN ('stopped', 'completed') AND personalization_mode IN ('personalized', 'rollout'))
+            OR (
+              status IN ('stopped', 'completed')
+              AND personalization_mode IN ('personalized', 'rollout')
+              AND LOWER(COALESCE(type, '')) IN ('price', 'pricing')
+            )
           )
         ORDER BY created_at DESC
       `;
@@ -542,7 +552,6 @@ class TestModel {
       'rollout_started_at',
       'started_at',
       'stopped_at',
-      'tenant_id',
     ]);
 
     const fields = [];
@@ -637,6 +646,11 @@ class TestModel {
       test.goal = safeParseJSON(test.goal, {}, 'goal', testId);
       test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', testId));
       test.segments = safeParseJSON(test.segments, {}, 'segments', testId);
+      const targetIdsParsed = Array.isArray(test.target_ids)
+        ? test.target_ids
+        : safeParseJSON(test.target_ids, null, 'target_ids', testId);
+      test.target_ids =
+        Array.isArray(targetIdsParsed) && targetIdsParsed.length > 0 ? targetIdsParsed : null;
 
       return test;
     } catch (error) {

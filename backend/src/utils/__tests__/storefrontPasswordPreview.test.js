@@ -1,6 +1,7 @@
 const {
   getDevStorefrontPasswordDefault,
   resolveStorefrontPasswordForPreviewRequest,
+  isLikelyShopifyPasswordPage,
 } = require('../storefrontPasswordPreview');
 
 describe('storefrontPasswordPreview', () => {
@@ -42,5 +43,15 @@ describe('storefrontPasswordPreview', () => {
   it('returns empty dev default on unrelated production hosts', () => {
     process.env.NODE_ENV = 'production';
     expect(getDevStorefrontPasswordDefault('app.merchant.com')).toBe('');
+  });
+
+  it('detects Shopify storefront password pages', () => {
+    expect(
+      isLikelyShopifyPasswordPage(
+        '<form><input name="form_type" value="storefront_password"></form>',
+        'https://shop.myshopify.com/password'
+      )
+    ).toBe(true);
+    expect(isLikelyShopifyPasswordPage('<html><body>Product page</body></html>')).toBe(false);
   });
 });

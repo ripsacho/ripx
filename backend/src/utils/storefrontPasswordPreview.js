@@ -138,9 +138,70 @@ async function getShopifyStorefrontPasswordCookie(parsedUrl, password, signal) {
   }
 }
 
+function isLikelyShopifyPasswordPage(html, responseUrl = '') {
+  const lowerHtml = String(html || '').toLowerCase();
+  const lowerUrl = String(responseUrl || '').toLowerCase();
+  return (
+    lowerUrl.includes('/password') ||
+    lowerHtml.includes('name="form_type" value="storefront_password"') ||
+    lowerHtml.includes("name='form_type' value='storefront_password'") ||
+    lowerHtml.includes('this store is password protected') ||
+    lowerHtml.includes('enter store password') ||
+    lowerHtml.includes('/password')
+  );
+}
+
+/**
+ * Fetch a storefront preview page, optionally authenticating with the storefront password first.
+ *
+ * @param {string} targetUrl
+ * @param {string} [storefrontPassword]
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ ok: true, html: string } | { ok: false, reason: string, status?: number }>}
+ */
+async function fetchStorefrontPreviewHtml(targetUrl, storefrontPassword = '', signal) {
+  const parsedTarget = new URL(String(targetUrl || '').trim());
+  const headers = {
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  };
+  const password =
+    storefrontPassword !== null && storefrontPassword !== undefined
+      ? String(storefrontPassword).trim()
+      : '';
+  if (password) {
+    const cookie = await getShopifyStorefrontPasswordCookie(parsedTarget, password, signal);
+    if (cookie) {
+      headers.Cookie = cookie;
+    }
+  }
+  const fetchRes = await fetch(parsedTarget.toString(), {
+    method: 'GET',
+    redirect: 'follow',
+    signal,
+    headers,
+  });
+  if (!fetchRes.ok) {
+    return { ok: false, reason: 'fetch_failed', status: fetchRes.status };
+  }
+  const contentType = String(fetchRes.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('text/html')) {
+    return { ok: false, reason: 'not_html', status: fetchRes.status };
+  }
+  const html = await fetchRes.text();
+  if (isLikelyShopifyPasswordPage(html, fetchRes.url || parsedTarget.toString())) {
+    return { ok: false, reason: 'password_required', status: fetchRes.status };
+  }
+  return { ok: true, html };
+}
+
 module.exports = {
   DEV_STOREFRONT_PASSWORD_FALLBACK,
   getDevStorefrontPasswordDefault,
   resolveStorefrontPasswordForPreviewRequest,
   getShopifyStorefrontPasswordCookie,
+  isLikelyShopifyPasswordPage,
+  fetchStorefrontPreviewHtml,
 };

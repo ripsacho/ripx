@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Page,
   BlockStack,
@@ -39,15 +39,44 @@ import {
   SearchIcon,
   ArrowUpIcon,
   ClipboardIcon,
-  HomeIcon,
   ListBulletedIcon,
   PersonIcon,
   NotificationIcon,
+  MenuHorizontalIcon,
+  XIcon,
 } from '@shopify/polaris-icons';
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Documentation.module.css';
 import { ROUTES } from '../../constants';
+import {
+  DOC_MODES,
+  DOC_HUB_TAB_ID,
+  FEATURE_GUIDE_PATHS,
+  buildDocsUrl,
+  buildSectionTabId,
+  createDefaultDocTabs,
+  filterSectionsByDocMode,
+  findDocModeForSection,
+  getDocModeMeta,
+  getDocsFooterResources,
+  getAudienceJourneys,
+  getDocTabLabel,
+  getFeatureGuideDecisionCards,
+  getFeatureGuideStats,
+  getResearchLibraryForMode,
+  getRelatedSectionIds,
+  getSectionKindMeta,
+  isHubTabId,
+  normalizeDocMode,
+  parseSectionTabId,
+  persistDocMode,
+  persistDocTabs,
+  readPersistedDocMode,
+  readPersistedDocTabs,
+  sectionMatchesDocMode,
+} from './documentationCatalog';
 import { RIPX_STOREFRONT_SCRIPT_VERSION } from '../../constants/app';
+import { THEME_CHANGE_EVENT, getResolvedTheme, updateTheme } from '../../utils/theme';
 import {
   CodeBlock,
   StepList,
@@ -57,6 +86,27 @@ import {
   DocCard,
   DocGrid,
 } from './DocComponents';
+
+const MAX_OPEN_DOC_TABS = 10;
+const GUIDE_HUB_TAB = { id: DOC_HUB_TAB_ID, kind: 'hub', closable: true };
+
+function appendCappedDocTab(tabs, tab) {
+  const current = Array.isArray(tabs) ? tabs : [];
+  if (!tab?.id || current.some(existing => existing.id === tab.id)) return current;
+  const next = [...current, tab];
+  if (next.length <= MAX_OPEN_DOC_TABS) return next;
+  const removableIndex = next.findIndex(
+    existing => existing.id !== DOC_HUB_TAB_ID && existing.id !== tab.id
+  );
+  if (removableIndex < 0) return next.slice(-MAX_OPEN_DOC_TABS);
+  return next.filter((_, index) => index !== removableIndex);
+}
+
+function ensureGuideHubTab(tabs) {
+  const current = Array.isArray(tabs) ? tabs : [];
+  if (current.some(tab => tab.id === DOC_HUB_TAB_ID)) return current;
+  return [GUIDE_HUB_TAB, ...current].slice(0, MAX_OPEN_DOC_TABS);
+}
 
 const SECTIONS = [
   {
@@ -95,6 +145,20 @@ const SECTIONS = [
     keywords: 'standalone api key register domain',
   },
   {
+    id: 'my-domains',
+    title: 'My Domains & Store Access',
+    icon: StoreIcon,
+    group: 'start',
+    keywords: 'domains stores shopify oauth account access install link',
+  },
+  {
+    id: 'local-dev',
+    title: 'Local Shopify Dev',
+    icon: CodeIcon,
+    group: 'start',
+    keywords: 'shopify cli local tunnel cloudflare ngrok otp smtp',
+  },
+  {
     id: 'dashboard',
     title: 'Dashboard',
     icon: ChartVerticalIcon,
@@ -109,11 +173,60 @@ const SECTIONS = [
     keywords: 'lifecycle types traffic allocation variants',
   },
   {
+    id: 'test-decision-guide',
+    title: 'Test Decision Guide',
+    icon: CompassIcon,
+    group: 'core',
+    keywords: 'choose price offer shipping checkout combination test type decision',
+  },
+  {
+    id: 'launch-preflight',
+    title: 'Launch Preflight',
+    icon: CompassIcon,
+    group: 'core',
+    keywords: 'preflight readiness launch canary visual qa guardrails checkout theme',
+  },
+  {
     id: 'price-testing',
     title: 'Price testing (Shopify)',
     icon: TargetIcon,
     group: 'core',
     keywords: 'price checkout catalog discount display pdp catalog alignment',
+  },
+  {
+    id: 'offer-testing',
+    title: 'Offer Testing',
+    icon: LinkIcon,
+    group: 'core',
+    keywords: 'offer discount promotion campaign coupon free shipping',
+  },
+  {
+    id: 'checkout-studio',
+    title: 'Checkout Studio',
+    icon: SettingsIcon,
+    group: 'core',
+    keywords: 'checkout ui payment delivery shipping functions studio readiness',
+  },
+  {
+    id: 'shipping-tests',
+    title: 'Shipping Tests',
+    icon: StoreIcon,
+    group: 'core',
+    keywords: 'shipping rates carrier service delivery customization free shipping diagnostics',
+  },
+  {
+    id: 'onsite-split-url',
+    title: 'Onsite Edit & Split URL',
+    icon: CodeIcon,
+    group: 'core',
+    keywords: 'onsite edit visual editor split url content css javascript landing page',
+  },
+  {
+    id: 'theme-template-tests',
+    title: 'Theme & Template Tests',
+    icon: StoreIcon,
+    group: 'core',
+    keywords: 'theme template selector preflight visual qa app embed',
   },
   {
     id: 'data-flow',
@@ -137,6 +250,13 @@ const SECTIONS = [
     keywords: 'device country segment presets rules',
   },
   {
+    id: 'goals-metrics',
+    title: 'Goals & Metrics',
+    icon: TargetIcon,
+    group: 'core',
+    keywords: 'goals metrics primary secondary guardrail custom event trigger library definitions',
+  },
+  {
     id: 'analytics',
     title: 'Analytics',
     icon: ChartLineIcon,
@@ -152,7 +272,7 @@ const SECTIONS = [
   },
   {
     id: 'settings',
-    title: 'App settings',
+    title: 'Store settings',
     icon: SettingsIcon,
     group: 'integrations',
     keywords: 'sample size confidence webhook theme',
@@ -186,6 +306,35 @@ const SECTIONS = [
     keywords: 'CSV JSON BigQuery report',
   },
   {
+    id: 'profile-notifications',
+    title: 'Profile & Notifications',
+    icon: PersonIcon,
+    group: 'advanced',
+    keywords: 'account profile appearance preferences notifications alerts email',
+  },
+  {
+    id: 'support-agent',
+    title: 'Support & RipX Agent',
+    icon: NotificationIcon,
+    group: 'advanced',
+    keywords: 'support tickets supportai ripx agent chat confirmed actions',
+  },
+  {
+    id: 'admin-ops',
+    title: 'Admin Operations',
+    icon: SettingsIcon,
+    group: 'advanced',
+    keywords: 'admin users domains jobs health feature flags audit support tickets mail processes',
+  },
+  {
+    id: 'automation-guardrails',
+    title: 'Automation & Guardrails',
+    icon: SettingsIcon,
+    group: 'advanced',
+    keywords:
+      'auto stop scheduled tests archive guardrails jobs significance alerts personalization',
+  },
+  {
     id: 'api',
     title: 'API Reference',
     icon: CodeIcon,
@@ -215,10 +364,47 @@ const SECTION_GROUPS = [
   { key: 'advanced', label: 'Advanced' },
 ];
 
-function SectionNav({ section, scrollToSection }) {
-  const idx = SECTIONS.findIndex(s => s.id === section.id);
-  const prev = idx > 0 ? SECTIONS[idx - 1] : null;
-  const next = idx >= 0 && idx < SECTIONS.length - 1 ? SECTIONS[idx + 1] : null;
+function SectionKindBadge({ sectionId }) {
+  const kind = getSectionKindMeta(sectionId);
+  return (
+    <span className={`${styles.sectionKindBadge} ${styles[`sectionKindBadge_${kind.id}`] || ''}`}>
+      {kind.label}
+    </span>
+  );
+}
+
+function RelatedSections({ sectionId, scrollToSection, visibleSections }) {
+  const relatedIds = getRelatedSectionIds(sectionId);
+  const related = relatedIds
+    .map(id => visibleSections.find(section => section.id === id))
+    .filter(Boolean);
+  if (related.length === 0) return null;
+  return (
+    <div className={styles.relatedSections}>
+      <Text variant="headingSm" as="h4">
+        Related sections
+      </Text>
+      <div className={styles.relatedSectionsList}>
+        {related.map(item => (
+          <button
+            key={item.id}
+            type="button"
+            className={styles.relatedSectionLink}
+            onClick={() => scrollToSection(item.id)}
+          >
+            <Icon source={item.icon} />
+            <span>{item.title}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionNav({ section, scrollToSection, visibleSections = SECTIONS }) {
+  const idx = visibleSections.findIndex(s => s.id === section.id);
+  const prev = idx > 0 ? visibleSections[idx - 1] : null;
+  const next = idx >= 0 && idx < visibleSections.length - 1 ? visibleSections[idx + 1] : null;
   if (!prev && !next) return null;
   return (
     <nav className={styles.sectionNav} aria-label="Section navigation">
@@ -260,10 +446,10 @@ function SectionNav({ section, scrollToSection }) {
   );
 }
 
-function CopySectionLink({ sectionId }) {
+function CopySectionLink({ sectionId, docMode = 'all' }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
-    const url = `${window.location.origin}${window.location.pathname}#${sectionId}`;
+    const url = `${window.location.origin}${buildDocsUrl({ mode: docMode, sectionId })}`;
     try {
       await navigator.clipboard?.writeText(url);
       setCopied(true);
@@ -271,7 +457,7 @@ function CopySectionLink({ sectionId }) {
     } catch {
       setCopied(false);
     }
-  }, [sectionId]);
+  }, [docMode, sectionId]);
   return (
     <Tooltip content="Copy link to this section" preferredPosition="above">
       <span className={styles.copySectionLinkWrap}>
@@ -334,8 +520,8 @@ function DocSectionContent({ sectionId }) {
         <BlockStack gap="400">
           <Text as="p" variant="bodyMd">
             RipX works with both Shopify and non-Shopify sites. Get your snippet from{' '}
-            <strong>App settings → Installation</strong> (in the app: open a store, then Settings in
-            the sidebar).
+            <strong>Store settings → Store setup</strong> (in the app: open a store, then Store
+            settings in the sidebar).
           </Text>
           <Text variant="headingMd" as="h4">
             Shopify
@@ -344,8 +530,8 @@ function DocSectionContent({ sectionId }) {
             Use App Proxy + App Embed (recommended) or direct script. Configure App Proxy in Partner
             Dashboard: subpath <code>apps/ripx</code>. Enable <strong>RipX App Embed</strong> in the
             theme editor (it injects in <code>&lt;head&gt;</code> with <code>defer</code> and{' '}
-            <code>fetchpriority=&quot;high&quot;</code> to reduce flicker). Settings → Installation
-            shows the exact snippet for your store (including <code>?v=</code> cache bust).
+            <code>fetchpriority=&quot;high&quot;</code> to reduce flicker). Store settings → Store
+            setup shows the exact snippet for your store (including <code>?v=</code> cache bust).
           </p>
           <CodeBlock
             code={`<!-- App Proxy (recommended) — <head>, defer; v matches RipX runtime embed -->
@@ -362,7 +548,7 @@ function DocSectionContent({ sectionId }) {
             steps={[
               'Register at /connect (Register new site tab) with your domain',
               'Copy API key and connect',
-              'Add snippet from App settings → Installation',
+              'Add snippet from Store settings → Store setup',
             ]}
           />
           <CodeBlock
@@ -370,7 +556,7 @@ function DocSectionContent({ sectionId }) {
             language="html"
           />
           <DocCallout type="info" title="Platform detection">
-            App settings → Installation shows the correct snippet for your platform (Shopify or
+            Store settings → Store setup shows the correct snippet for your platform (Shopify or
             Standalone) with copy buttons.
           </DocCallout>
         </BlockStack>
@@ -473,8 +659,8 @@ npm run dev`}
             Install the script
           </Text>
           <p>
-            After connecting, go to Setup Wizard or App settings → Installation. Copy the script URL
-            and add it to your site&apos;s <code>&lt;head&gt;</code> or before{' '}
+            After connecting, go to Setup Wizard or Store settings → Store setup. Copy the script
+            URL and add it to your site&apos;s <code>&lt;head&gt;</code> or before{' '}
             <code>&lt;/body&gt;</code>.
           </p>
           <Text variant="headingMd" as="h4">
@@ -484,6 +670,124 @@ npm run dev`}
             Use <code>X-RipX-API-Key: your_key</code> or <code>Authorization: Bearer your_key</code>{' '}
             on API requests.
           </p>
+        </BlockStack>
+      );
+
+    case 'my-domains':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            My Domains is the account-level store picker. It lists every Shopify store and
+            standalone domain your signed-in email can access, and it keeps stale store context from
+            leaking into the app while you switch accounts.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Add a store or site
+          </Text>
+          <DocTable
+            headers={['Flow', 'When to use it', 'What happens']}
+            rows={[
+              [
+                'Connect Shopify store',
+                'For *.myshopify.com stores',
+                'Starts Shopify OAuth, links the store to your account, then refreshes My Domains.',
+              ],
+              [
+                'Add standalone domain',
+                'For non-Shopify sites',
+                'Registers the domain and stores an account API key for that site.',
+              ],
+              [
+                'Use existing key',
+                'For a domain already registered outside your account',
+                'Stores the key locally and opens the app for that domain.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Shopify connection states
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Connected:</strong> The app is installed and your account can open the store.
+            </li>
+            <li>
+              <strong>Installed but not linked:</strong> OAuth must be completed by the account that
+              should manage the store.
+            </li>
+            <li>
+              <strong>Restricted:</strong> The store exists, but the account role or access status
+              blocks entry.
+            </li>
+            <li>
+              <strong>Wrong store:</strong> Use the generated incognito/install link to complete
+              OAuth with the intended Shopify account.
+            </li>
+          </ul>
+          <DocCallout type="info" title="Account safety">
+            If you are changing Shopify accounts locally, sign out of Shopify CLI/browser admin,
+            reconnect from My Domains, and confirm the store shown in the OAuth screen before
+            approving access.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'local-dev':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Local development uses the local Shopify app configuration and a public tunnel only when
+            Shopify needs to reach your machine. Keep the Shopify CLI account, app config, and
+            environment variables aligned.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Recommended startup
+          </Text>
+          <CodeBlock
+            code={`# Backend + frontend
+npm run dev
+
+# Shopify CLI with the local-safe config
+npm run shopify:dev`}
+            language="bash"
+          />
+          <Text variant="headingMd" as="h4">
+            Local checklist
+          </Text>
+          <StepList
+            steps={[
+              'Copy .env.example to .env and set DATABASE_URL, JWT_SECRET, APP_URL, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, and VITE_SHOPIFY_API_KEY.',
+              'Use local Shopify credentials that match shopify.app.local.toml.',
+              'Run migrations before opening the app.',
+              'If OTP or magic links should send real email, set RIPX_EMAIL_VERIFICATION_STUB=false and configure SMTP_HOST, SMTP_PORT=587, SMTP_USER, SMTP_PASS, and SMTP_FROM.',
+              'If a tunnel URL changes, update APP_URL and the Shopify Partner Dashboard application URL and redirect URL.',
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Tunnel guidance
+          </Text>
+          <DocTable
+            headers={['Symptom', 'Fix']}
+            rows={[
+              [
+                'Shopify OAuth redirects to the wrong URL',
+                'Sync APP_URL, FRONTEND_URL if used, and Partner Dashboard redirect URLs.',
+              ],
+              [
+                'Old tunnel shows bandwidth or unavailable errors',
+                'Stop stale Shopify CLI/tunnel processes and restart the local-safe Shopify dev command.',
+              ],
+              [
+                'Changing Shopify login account',
+                'Run Shopify CLI logout/login, then reconnect the target store from My Domains.',
+              ],
+            ]}
+          />
+          <DocCallout type="warning" title="Secrets">
+            Do not paste tunnel auth tokens, SMTP passwords, Shopify secrets, or API keys into chat
+            or committed files. If a token is exposed in terminal history, rotate it in the provider
+            dashboard.
+          </DocCallout>
         </BlockStack>
       );
 
@@ -557,6 +861,165 @@ npm run dev`}
               together
             </li>
           </ul>
+        </BlockStack>
+      );
+
+    case 'test-decision-guide':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Use this guide before creating a test. Pick the smallest test type that changes the
+            thing you want to learn, then add checkout or shipping support only when the customer
+            experience must continue past the storefront.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Choose the right test type
+          </Text>
+          <DocTable
+            headers={['Goal', 'Use this test', 'Avoid this when']}
+            rows={[
+              [
+                'Find the best final product price',
+                'Price test',
+                'You only need a promotion or discount campaign; use Offer instead.',
+              ],
+              [
+                'Run promo, coupon, or free-shipping style campaigns',
+                'Offer test',
+                'You need the catalog-equivalent price level to change everywhere.',
+              ],
+              [
+                'Compare shipping rates, thresholds, or delivery names',
+                'Shipping test',
+                'The change is only marketing copy; use Onsite Edit or Checkout Studio.',
+              ],
+              [
+                'Change checkout reassurance, payment, or delivery presentation',
+                'Checkout test / Checkout Studio',
+                'The main learning is PDP content or price; keep it in storefront tests.',
+              ],
+              [
+                'Compare landing pages or templates',
+                'Split URL, Template, or Theme test',
+                'The variant needs precise DOM edits only; use Onsite Edit.',
+              ],
+              [
+                'Test price plus shipping or price plus content together',
+                'Combination test',
+                'You do not have enough traffic to estimate interaction effects.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Capability matrix
+          </Text>
+          <DocTable
+            headers={['Capability', 'Storefront', 'Cart', 'Checkout', 'Notes']}
+            rows={[
+              [
+                'Price',
+                'Yes',
+                'Yes',
+                'Yes with Cart Transform',
+                'Best for final price-level learning.',
+              ],
+              [
+                'Offer',
+                'Optional',
+                'Optional',
+                'Yes with Discount Function',
+                'Best for promo mechanics and campaign messaging.',
+              ],
+              [
+                'Shipping',
+                'Assignment only',
+                'Assignment metadata',
+                'Yes with shipping resolver/functions',
+                'Always run diagnostics and checkout QA.',
+              ],
+              [
+                'Checkout content',
+                'No',
+                'No',
+                'Yes with Checkout UI extension',
+                'Requires checkout extension setup and network access where applicable.',
+              ],
+            ]}
+          />
+          <DocCallout type="info" title="Keep the first test simple">
+            If two test types could answer the same question, start with the one that changes fewer
+            systems. Add checkout, shipping, or combination behavior after the storefront-only
+            version proves the idea is worth deeper rollout.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'launch-preflight':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Launch preflight runs before a test starts. It turns technical checks into a short
+            merchant-facing summary, then keeps the detailed checklist available for developers and
+            support teams.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            What preflight checks
+          </Text>
+          <DocTable
+            headers={['Area', 'What it verifies', 'Typical owner']}
+            rows={[
+              [
+                'Storefront runtime',
+                'RipX script/app embed loads and can assign variants on the target surface.',
+                'Merchant or theme developer',
+              ],
+              [
+                'Shopify OAuth',
+                'The store has a valid app connection and Admin API access.',
+                'Store admin',
+              ],
+              [
+                'Theme selectors',
+                'Price, product, and variant markers are available for PDP/listing edits.',
+                'Theme developer',
+              ],
+              [
+                'Checkout readiness',
+                'Cart Transform, discount, payment, delivery, and checkout UI pieces are attached when required.',
+                'Shopify admin or developer',
+              ],
+              [
+                'Guardrails and QA',
+                'Required guardrails, visual QA metadata, canary settings, and manual launch checklist are present.',
+                'Experiment owner',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Launch decisions
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Blocking errors:</strong> Fix before launch unless an admin intentionally uses
+              force start for a known, contained issue.
+            </li>
+            <li>
+              <strong>Warnings:</strong> Review the recommendation. Many warnings are safe for
+              non-checkout or non-price tests but should be documented.
+            </li>
+            <li>
+              <strong>Canary rollout:</strong> Use a small starting percentage when risk is elevated
+              or when the theme/checkout surface changed recently.
+            </li>
+            <li>
+              <strong>Visual QA required:</strong> Add a baseline ID and latest verification date
+              before starting.
+            </li>
+          </ul>
+          <DocCallout type="info" title="Merchant-friendly summary">
+            The launch dialog shows the top actionable items first and hides routine passed checks
+            inside Technical details. Use that detailed section when opening a support ticket.
+          </DocCallout>
         </BlockStack>
       );
 
@@ -863,6 +1326,289 @@ npm run dev`}
         </BlockStack>
       );
 
+    case 'offer-testing':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Offer tests are for promotion mechanics: percentage or amount discounts, campaign
+            messaging, no-code promo links, and free-shipping style incentives. Use Price tests when
+            the learning is the final product price level.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Offer vs price
+          </Text>
+          <DocTable
+            headers={['Question', 'Use Offer', 'Use Price']}
+            rows={[
+              [
+                'What are you changing?',
+                'Promotion, incentive, discount, or campaign framing.',
+                'The actual product price level.',
+              ],
+              [
+                'Checkout path',
+                'Discount Function or promo-link attribution.',
+                'Cart Transform / Direct Price Override.',
+              ],
+              [
+                'After the test',
+                'Keep, pause, or retire the campaign.',
+                'Publish winning prices to Shopify catalog if appropriate.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Launch checklist
+          </Text>
+          <StepList
+            steps={[
+              'Confirm the offer applies only to the intended products, segments, or cart conditions.',
+              'Verify the checkout discount function or promo link path is configured for the shop.',
+              'Preview attribution so conversions are tied back to the test and variant.',
+              'Run launch preflight and perform an incognito checkout QA pass.',
+            ]}
+          />
+          <DocCallout type="info" title="Promo links">
+            Use Promo Links when the variant should be shared in campaigns or emails. Use the
+            checkout discount path when the offer should follow normal variant assignment.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'checkout-studio':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Checkout Studio centralizes checkout experience testing: content blocks, offer
+            messaging, payment and delivery customizations, shipping behavior, and checkout
+            reporting. It is most useful when checkout must match a storefront assignment.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Checkout surfaces
+          </Text>
+          <DocTable
+            headers={['Surface', 'Use it for', 'Readiness requirement']}
+            rows={[
+              [
+                'Checkout UI extension',
+                'Trust copy, reassurance, offer sections, CTA labels, and layout experiments.',
+                'Sync generated checkout UI config and verify checkout experience diagnostics.',
+              ],
+              [
+                'Cart Transform',
+                'Direct Price Override so checkout charged price matches the test price.',
+                'Attach the RipX Cart Transform function and verify price diagnostics.',
+              ],
+              [
+                'Discount Function',
+                'Offer tests and promotion-style discounts.',
+                'Network access/config must point to the price/offer resolver endpoints.',
+              ],
+              [
+                'Payment customization',
+                'Hide, rename, or reorder payment methods.',
+                'Shopify payment customization function deployed and enabled.',
+              ],
+              [
+                'Delivery customization',
+                'Hide, rename, or reorder delivery methods.',
+                'Shopify delivery customization function deployed and enabled.',
+              ],
+              [
+                'Shipping resolver',
+                'Flat-rate, threshold, carrier quote, and free-shipping tests.',
+                'Shipping diagnostics green or variant classified as manual/discount-only by design.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Setup flow
+          </Text>
+          <StepList
+            steps={[
+              'Open Store settings → Store setup for the store.',
+              'Refresh Shopify function inventory and checkout diagnostics.',
+              'Use Ensure/Verify actions for Cart Transform and discount function configuration.',
+              'Create or edit a test in the wizard and configure the checkout surface mode.',
+              'Run launch preflight and verify checkout/cart behavior in an incognito checkout.',
+            ]}
+          />
+          <DocCallout type="warning" title="Checkout limits">
+            Checkout behavior depends on Shopify plan, function attachment, network access, and
+            theme/cart metadata. If checkout price or shipping cannot be changed automatically,
+            document the limitation and use an Offer or manual QA path instead.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'shipping-tests':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Shipping tests compare rates, thresholds, method names, and delivery-option behavior.
+            RipX can plan and apply some Shopify resources automatically, but every shipping test
+            should still be verified in a live checkout before full rollout.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            What RipX can apply
+          </Text>
+          <DocTable
+            headers={['Strategy', 'Automatic path', 'What to verify']}
+            rows={[
+              [
+                'Flat rate',
+                'CarrierService adapter when the shop supports carrier-calculated shipping.',
+                'The expected title and amount appear for assigned checkout lines.',
+              ],
+              [
+                'Free shipping / threshold',
+                'Discount function or shipping resolver depending on the variant design.',
+                'The threshold, currency, and cart qualification match the test design.',
+              ],
+              [
+                'Carrier quote',
+                'CarrierService callback with a configured quote provider.',
+                'The provider returns stable rates for the target country/cart combinations.',
+              ],
+              [
+                'Delivery customization',
+                'Delivery customization function for hide, rename, or reorder behavior.',
+                'Existing Shopify delivery methods are present and match the configured names.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Rollout workflow
+          </Text>
+          <StepList
+            steps={[
+              'Create a Shipping test and configure each variant with rate, threshold, carrier quote, or delivery-method behavior.',
+              'Run shipping diagnostics from the test review or detail screen.',
+              'Review the execution split: automatic, discount-only, or manual.',
+              'Run a dry run before apply so resource changes and callback needs are visible.',
+              'Apply only when diagnostics are ready, then place a checkout QA order path for control and treatment.',
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Diagnostic outcomes
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Automatic:</strong> RipX can provision the needed CarrierService, delivery
+              customization, or discount behavior.
+            </li>
+            <li>
+              <strong>Discount-only:</strong> No Shopify resource provisioning is needed, but the
+              checkout discount path must be configured.
+            </li>
+            <li>
+              <strong>Manual:</strong> A merchant/developer step is still required, usually because
+              a callback URL, provider, Shopify plan capability, or delivery method name is missing.
+            </li>
+          </ul>
+          <DocCallout type="warning" title="Before enabling on a real shop">
+            Confirm <code>read_shipping</code> and <code>write_shipping</code> scopes, a reachable
+            carrier callback URL, and a successful checkout QA pass. Treat diagnostics as the source
+            of truth when the wizard and Shopify settings disagree.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'onsite-split-url':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Onsite Edit tests change content on the current page. Split URL tests send visitors to
+            alternate landing pages. Both are good first tests because they avoid checkout and
+            catalog complexity.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            When to use each
+          </Text>
+          <DocTable
+            headers={['Test type', 'Best for', 'QA focus']}
+            rows={[
+              [
+                'Onsite Edit',
+                'Headlines, CTA text, image swaps, hiding/showing sections, lightweight CSS/JS.',
+                'Selector stability, mobile layout, and flicker.',
+              ],
+              [
+                'Visual editor',
+                'Merchant-friendly DOM edits without writing code.',
+                'Confirm selectors still match after theme updates.',
+              ],
+              [
+                'Split URL',
+                'Landing page, collection, or PDP variants hosted at different URLs.',
+                'Redirect loops, query parameters, canonical/SEO expectations, and page speed.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            QA checklist
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>Preview every variant in desktop and mobile viewport sizes.</li>
+            <li>Confirm the RipX script loads before the target content needs to change.</li>
+            <li>
+              For Split URL, keep destination pages live and reachable for the full test window.
+            </li>
+            <li>Use launch preflight and document any selector or visual QA exceptions.</li>
+          </ul>
+        </BlockStack>
+      );
+
+    case 'theme-template-tests':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Theme and Template tests are for larger storefront experiences: alternate templates,
+            section layouts, native theme snippets, and redesign experiments. They need stronger QA
+            because theme markup can change selector and price-detection behavior.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Readiness checks
+          </Text>
+          <DocTable
+            headers={['Area', 'What to confirm']}
+            rows={[
+              ['App embed', 'RipX App Embed is enabled and serving the expected script version.'],
+              [
+                'Selectors',
+                'Product, variant, price, and CTA selectors are stable on target pages.',
+              ],
+              ['Visual QA', 'Baseline metadata exists when visual QA is required by policy.'],
+              [
+                'Checkout impact',
+                'Any price, offer, or shipping behavior still passes checkout QA.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Troubleshooting
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              If a variant does not render, check the theme app embed, App Proxy signature, and
+              storefront script health.
+            </li>
+            <li>
+              If price selectors fail, add or adjust price surface mappings before launching price
+              or theme tests.
+            </li>
+            <li>
+              If a theme update lands during a test, rerun preflight and refresh visual QA before
+              scaling traffic.
+            </li>
+          </ul>
+          <DocCallout type="warning" title="Theme changes have broad blast radius">
+            Prefer canary rollout for theme and template tests. Keep a rollback plan and avoid
+            launching major theme experiments at the same time as checkout or shipping changes.
+          </DocCallout>
+        </BlockStack>
+      );
+
     case 'data-flow':
       return (
         <BlockStack gap="400">
@@ -979,6 +1725,55 @@ npm run dev`}
         </BlockStack>
       );
 
+    case 'goals-metrics':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            The <strong>Goals & Metrics</strong> library (sidebar → Goals & Metrics) stores reusable
+            metric definitions you attach in the Test Wizard. Define once, reuse across price,
+            offer, shipping, and content tests.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Metric roles
+          </Text>
+          <DocTable
+            headers={['Role', 'Use when']}
+            rows={[
+              ['Primary', 'Main success metric for significance and winner selection'],
+              ['Secondary', 'Supporting conversions or micro-conversions to monitor'],
+              ['Guardrail', 'Metrics that must not regress (e.g. margin, refund rate)'],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Trigger types
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Manual custom event</strong> — fire via storefront script or GTM
+            </li>
+            <li>
+              <strong>URL match</strong> — count visits to thank-you or confirmation pages
+            </li>
+            <li>
+              <strong>CSS click / form</strong> — track button clicks or form starts/submits
+            </li>
+            <li>
+              <strong>Element visibility</strong> — scroll-depth or module impressions
+            </li>
+            <li>
+              <strong>Custom JavaScript</strong> — advanced DOM or data-layer checks
+            </li>
+          </ul>
+          <DocCallout type="tip" title="Wizard workflow">
+            <p>
+              In the Test Wizard, pick goals from your library or create inline definitions. Primary
+              goals drive auto-stop and significance; guardrails appear in results with regression
+              warnings.
+            </p>
+          </DocCallout>
+        </BlockStack>
+      );
+
     case 'analytics':
       return (
         <BlockStack gap="400">
@@ -1055,11 +1850,18 @@ npm run dev`}
       return (
         <BlockStack gap="400">
           <Text as="p" variant="bodyMd">
-            These tabs are in <strong>App settings</strong> (open a store, then Settings in the
-            sidebar). Account, API, and appearance preferences are now inside Profile.
+            These tabs are in <strong>Store settings</strong> (open a store, then Store settings in
+            the sidebar). Account, API, and appearance preferences are now inside Profile.
           </Text>
           <Text variant="headingMd" as="h4">
-            General Tab
+            Store setup
+          </Text>
+          <p>
+            Theme embed, App Proxy, offer checkout install, and setup verification. Use{' '}
+            <strong>Check setup</strong> after theme or scope changes.
+          </p>
+          <Text variant="headingMd" as="h4">
+            Testing defaults
           </Text>
           <DocTable
             headers={['Setting', 'Range', 'Description']}
@@ -1071,20 +1873,23 @@ npm run dev`}
             ]}
           />
           <Text variant="headingMd" as="h4">
-            Integrations Tab
+            Integrations
           </Text>
           <p>
             GA4 and BigQuery status, config hints, export buttons. Use{' '}
             <strong>Refresh status</strong> to reload.
           </p>
           <Text variant="headingMd" as="h4">
-            Appearance Tab
+            Targeting presets
           </Text>
-          <p>Theme selector: Light, Dark, or Auto (by time of day). Changes apply immediately.</p>
+          <p>Save and reuse targeting configs. Create in Test Wizard, manage in Store settings.</p>
           <Text variant="headingMd" as="h4">
-            Targeting Presets
+            Advanced
           </Text>
-          <p>Save and reuse targeting configs. Create in Test Wizard, manage in App settings.</p>
+          <p>
+            Checkout diagnostics, preview probes, discount verification, and JSON export for
+            support. Appearance preferences live in Profile, not Store settings.
+          </p>
         </BlockStack>
       );
 
@@ -1112,7 +1917,7 @@ npm run dev`}
           </Text>
           <p>
             Create presets in the Test Wizard targeting step. Manage them in{' '}
-            <strong>App settings → Targeting Presets</strong>.
+            <strong>Store settings → Targeting presets</strong>.
           </p>
         </BlockStack>
       );
@@ -1149,7 +1954,7 @@ npm run dev`}
             Export
           </Text>
           <p>
-            Trigger from <strong>App settings → Integrations</strong>. Incremental (new events) or
+            Trigger from <strong>Store settings → Integrations</strong>. Incremental (new events) or
             full (events + tests). Last export time shown in the UI.
           </p>
           <Text variant="headingMd" as="h4">
@@ -1210,8 +2015,8 @@ npm run dev`}
             Setup
           </Text>
           <p>
-            Add your webhook URL in <strong>App settings → General</strong>. The payload includes
-            test ID, status, winner, and metrics.
+            Add your webhook URL in <strong>Store settings → Testing defaults</strong>. The payload
+            includes test ID, status, winner, and metrics.
           </p>
         </BlockStack>
       );
@@ -1249,15 +2054,252 @@ npm run dev`}
             BigQuery Export
           </Text>
           <p>
-            Incremental (new events) or full (events + tests). Trigger from App settings →
+            Incremental (new events) or full (events + tests). Trigger from Store settings →
             Integrations or API.
           </p>
+        </BlockStack>
+      );
+
+    case 'profile-notifications':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Profile holds account-level preferences that are not tied to a single store. Use it for
+            account identity, app appearance, and personal notification preferences.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Profile areas
+          </Text>
+          <DocTable
+            headers={['Area', 'Purpose']}
+            rows={[
+              [
+                'Account',
+                'Email/session details, connected account context, and API documentation link.',
+              ],
+              ['Appearance', 'Light, dark, or automatic theme preference.'],
+              [
+                'Preferences',
+                'Default UI preferences that follow your account rather than one store.',
+              ],
+              [
+                'Notifications',
+                'Experiment alerts, admin notices, support updates, and read/unread state.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Notification guidance
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>Review unread notifications after launches, test stops, and support replies.</li>
+            <li>
+              Use significance alerts for test-level decisions instead of watching dashboards
+              manually.
+            </li>
+            <li>Keep email delivery configured if production alerts must leave the app.</li>
+          </ul>
+        </BlockStack>
+      );
+
+    case 'support-agent':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            Support combines human tickets, ticket threads, SupportAI, and the store-aware RipX
+            Agent. Use the lightweight SupportAI chat for documentation questions and RipX Agent
+            when the answer depends on the current store, test, or diagnostics.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Support channels
+          </Text>
+          <DocTable
+            headers={['Channel', 'Best for', 'Notes']}
+            rows={[
+              [
+                'Contact us',
+                'Human support requests',
+                'Creates a ticket and emails the configured support inbox.',
+              ],
+              [
+                'My requests',
+                'Following up on open or closed tickets',
+                'Thread replies stay attached to the original support request.',
+              ],
+              [
+                'SupportAI',
+                'General docs and setup answers',
+                'Uses the support knowledge base when AI is configured; otherwise shows a setup notice.',
+              ],
+              [
+                'RipX Agent',
+                'Store-aware diagnostics and safe actions',
+                'Can inspect readiness and propose actions; write actions are confirmation-gated.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Production setup
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              Configure <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>,{' '}
+              <code>SMTP_PASS</code>, and <code>SMTP_FROM</code> for ticket and OTP delivery.
+            </li>
+            <li>
+              Set <code>SUPPORT_EMAIL_TO</code> when support tickets should go to a team inbox
+              instead of the sender address.
+            </li>
+            <li>
+              Add <code>OPENAI_API_KEY</code> only when SupportAI should generate real answers.
+            </li>
+            <li>
+              Keep <code>SUPPORT_AGENT_ACTIONS_ENABLED</code> off until confirmed actions are ready
+              for the environment.
+            </li>
+          </ul>
+        </BlockStack>
+      );
+
+    case 'admin-ops':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            The Admin area is for operators and super admins. It centralizes account control, safety
+            switches, operational monitoring, support workflows, and data maintenance.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Admin map
+          </Text>
+          <DocTable
+            headers={['Group', 'Pages', 'Use for']}
+            rows={[
+              [
+                'Core',
+                'Users, Domains, Tests, Test types, Accounts',
+                'Access control, account ownership, and feature availability.',
+              ],
+              [
+                'System & data',
+                'Audit log, KV, Jobs, Feature flags, Aggregation',
+                'Operational debugging, queues, rollups, and controlled rollout.',
+              ],
+              [
+                'Shops & limits',
+                'Shop sessions, settings overrides, rate limits, block list, conflicts',
+                'Per-shop exceptions, throttling, and abuse protection.',
+              ],
+              [
+                'Integrations',
+                'Webhook events, targeting presets, webhooks',
+                'Integration health and reusable targeting data.',
+              ],
+              [
+                'Monitoring & support',
+                'System health, test health, notifications, support tickets, alerts, event catalog, client errors',
+                'Production health, merchant issues, and event quality.',
+              ],
+              [
+                'Product & policy',
+                'Consent/script, legal, maintenance, announcement banner, landing clients, email delivery, usage export',
+                'Policy controls, customer messaging, and compliance operations.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Operational checklist
+          </Text>
+          <StepList
+            steps={[
+              'Check System health before and after deployments.',
+              'Use Test health and Event catalog when analytics or assignment data looks stale.',
+              'Review Jobs and Aggregation after queue or Redis changes.',
+              'Use Feature flags and Test type controls to stage risky functionality.',
+              'Check Email delivery before debugging OTP, magic-link, or support-ticket failures.',
+            ]}
+          />
+          <DocCallout type="warning" title="Admin safety">
+            Restrict admin access with database roles, <code>ADMIN_API_KEY</code> only for scripts,
+            and <code>ADMIN_IP_ALLOWLIST</code> for production networks when possible.
+          </DocCallout>
+        </BlockStack>
+      );
+
+    case 'automation-guardrails':
+      return (
+        <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            RipX can continue working after a test is launched: scheduled starts/stops, significance
+            alerts, guardrail checks, auto-stop, archival jobs, BigQuery exports, and
+            personalization rollout all depend on background workers and feature flags.
+          </Text>
+          <Text variant="headingMd" as="h4">
+            Merchant-visible automation
+          </Text>
+          <DocTable
+            headers={['Automation', 'What it does', 'Where to check']}
+            rows={[
+              [
+                'Scheduled tests',
+                'Starts or stops tests at configured times.',
+                'Test detail, Admin -> Jobs, and notifications.',
+              ],
+              [
+                'Auto-stop',
+                'Stops a test when significance or configured stop conditions are met.',
+                'Store settings defaults, test result status, and outbound webhooks.',
+              ],
+              [
+                'Significance alerts',
+                'Notifies users or admins when a test crosses the configured threshold.',
+                'Notifications, Admin -> Significance alerts.',
+              ],
+              [
+                'Guardrails',
+                'Watches risk metrics and can recommend rollback or personalization changes.',
+                'Launch preflight, Admin -> Jobs, and test health.',
+              ],
+              [
+                'Archive',
+                'Moves old stopped tests out of active views after the retention window.',
+                'Admin -> Jobs and archive settings.',
+              ],
+              [
+                'Warehouse export',
+                'Pushes events, tests, heatmaps, and rollups to BigQuery.',
+                'Settings -> Integrations and Admin -> Aggregation.',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Operator checklist
+          </Text>
+          <StepList
+            steps={[
+              'Set REDIS_URL in environments that should run background jobs.',
+              'Confirm feature flags for scheduled tests, guardrails, significance alerts, and warehouse export.',
+              'Check Admin -> Jobs after deploys and after Redis/network incidents.',
+              'Use Admin -> Test health and Event catalog when metrics are stale or missing.',
+              'Document any manual override in Admin audit log before forcing launch or rollback.',
+            ]}
+          />
+          <DocCallout type="warning" title="Do not assume automation is active">
+            If Redis is not configured, many jobs fall back to manual operation. Production
+            environments should treat job health as part of launch readiness, especially for
+            scheduled tests, guardrails, auto-stop, and exports.
+          </DocCallout>
         </BlockStack>
       );
 
     case 'api':
       return (
         <BlockStack gap="400">
+          <DocCallout type="warning" title="API documentation status">
+            Swagger UI is available at <strong>/api-docs</strong>, but several newer route groups
+            are still documented in runbooks instead of full OpenAPI annotations. Treat the tables
+            below as a route map and use authenticated app flows for merchant operations whenever
+            possible.
+          </DocCallout>
           <Text variant="headingMd" as="h4">
             Authentication
           </Text>
@@ -1285,8 +2327,47 @@ npm run dev`}
               ['GET', '/api/track/script.js', 'Storefront script'],
             ]}
           />
+          <Text variant="headingMd" as="h4">
+            Newer route groups to know
+          </Text>
+          <DocTable
+            headers={['Group', 'Examples', 'Use']}
+            rows={[
+              [
+                'Checkout price',
+                '/api/track/price-resolve-batch, /api/settings/checkout-price-diagnostics',
+                'Discount/Cart Transform resolver and checkout price health.',
+              ],
+              [
+                'Shipping',
+                '/api/track/shipping-resolve-batch, /api/track/shipping-carrier-rates',
+                'Shipping resolver, CarrierService callback, and checkout rate behavior.',
+              ],
+              [
+                'Launch readiness',
+                '/api/tests/:id/preflight, /api/tests/:id/checkout/readiness',
+                'Preflight and checkout readiness checks before launch.',
+              ],
+              [
+                'Settings diagnostics',
+                '/api/settings/installation, /api/settings/shopify-functions-inventory',
+                'Script, App Proxy, Shopify function, and store setup health.',
+              ],
+              [
+                'Support and agent',
+                '/api/support/*, /api/support-agent/*',
+                'Tickets, SupportAI, and store-aware confirmed actions.',
+              ],
+              [
+                'Admin operations',
+                '/api/admin/jobs, /api/admin/system-health, /api/admin/mail-processes',
+                'Operator health, background jobs, mail delivery, and support triage.',
+              ],
+            ]}
+          />
           <DocCallout type="info" title="Full API Docs">
-            Open <strong>/api-docs</strong> in your app for interactive Swagger UI.
+            Open <strong>/api-docs</strong> in your app for interactive Swagger UI. For route groups
+            not yet covered there, use the linked runbooks in the repository docs index.
           </DocCallout>
         </BlockStack>
       );
@@ -1363,53 +2444,397 @@ npm run dev`}
   }
 }
 
-const READING_TIME_MIN = 18;
+const READING_TIME_MIN = 30;
 
-const QUICK_JUMP_SECTIONS = SECTIONS.slice(0, 9);
+const SunIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M10 2.5v2M10 15.5v2M3.5 10h2M14.5 10h2M5.4 5.4l1.4 1.4M13.2 13.2l1.4 1.4M5.4 14.6l1.4-1.4M13.2 6.8l1.4-1.4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <path
+      d="M15.2 11.8a5.8 5.8 0 0 1-7-7 6.2 6.2 0 1 0 7 7Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+function DocsGuideHubPanel({
+  docMode,
+  docModeMeta,
+  filteredSections,
+  featureGuideStats,
+  audienceJourneys,
+  featureGuideDecisionCards,
+  researchResources,
+  quickJumpSections,
+  activeSection,
+  quickJumpListRef,
+  handleQuickJumpMouseDown,
+  handleQuickJumpClick,
+  scrollToFeaturePath,
+  scrollToSection,
+  onFocusSearch,
+}) {
+  return (
+    <div className={styles.docsGuideHubPanel} aria-label="Documentation guide hub">
+      <div className={styles.docsGuideHubCompactHero}>
+        <h2>RipX Documentation</h2>
+        <p>
+          {docModeMeta.description} Public knowledge base at global <code>/docs</code> —{' '}
+          {filteredSections.length} sections in {docModeMeta.label.toLowerCase()}.
+        </p>
+      </div>
+
+      <section className={styles.docsCommandCenter} aria-label="Documentation command center">
+        <div className={styles.docsCommandCard}>
+          <span className={styles.docsCommandEyebrow}>Browse mode</span>
+          <strong>{docModeMeta.label}</strong>
+          <span>{filteredSections.length} curated sections in this view</span>
+        </div>
+        <div className={styles.docsCommandCard}>
+          <span className={styles.docsCommandEyebrow}>Feature paths</span>
+          <strong>{featureGuideStats.pathCount}</strong>
+          <span>{featureGuideStats.totalStepCount} ordered guide steps</span>
+        </div>
+        <div className={styles.docsCommandCard}>
+          <span className={styles.docsCommandEyebrow}>Coverage</span>
+          <strong>{featureGuideStats.uniqueSectionCount}</strong>
+          <span>sections connected across playbooks</span>
+        </div>
+        <button
+          type="button"
+          className={`${styles.docsCommandCard} ${styles.docsCommandCardAction}`}
+          onClick={onFocusSearch}
+        >
+          <span className={styles.docsCommandEyebrow}>Fast search</span>
+          <strong>Command palette</strong>
+          <span>Jump with Cmd/Ctrl + K</span>
+        </button>
+      </section>
+
+      <section className={styles.docsJourneyPanel} aria-labelledby="docs-journeys-heading">
+        <div className={styles.docsJourneyHeader}>
+          <div>
+            <span className={styles.docsDecisionEyebrow}>Role-aware journeys</span>
+            <h2 id="docs-journeys-heading" className={styles.docsDecisionTitle}>
+              Start from the workflow that matches your job
+            </h2>
+          </div>
+          <span className={styles.docsDecisionHint}>Role → path → sections</span>
+        </div>
+        <div className={styles.docsJourneyGrid}>
+          {audienceJourneys.map(journey => (
+            <button
+              key={journey.id}
+              type="button"
+              className={styles.docsJourneyCard}
+              onClick={() => scrollToFeaturePath(journey)}
+            >
+              <span className={styles.docsJourneyAudience}>{journey.audience}</span>
+              <strong>{journey.title}</strong>
+              <span>{journey.description}</span>
+              <span className={styles.docsJourneyMeta}>
+                {journey.sectionIds.length} sections · {getDocModeMeta(journey.mode).shortLabel}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {docMode === 'feature-guides' ? (
+        <section className={styles.docsDecisionMatrix} aria-labelledby="docs-decision-heading">
+          <div className={styles.docsDecisionHeader}>
+            <div>
+              <span className={styles.docsDecisionEyebrow}>Experiment router</span>
+              <h2 id="docs-decision-heading" className={styles.docsDecisionTitle}>
+                Choose the guide by the job you are trying to solve
+              </h2>
+            </div>
+            <span className={styles.docsDecisionHint}>Signal → guide → launch checklist</span>
+          </div>
+          <div className={styles.docsDecisionGrid}>
+            {featureGuideDecisionCards.map(card => (
+              <button
+                key={card.id}
+                type="button"
+                className={styles.docsDecisionCard}
+                onClick={() => scrollToSection(card.sectionId)}
+              >
+                <span className={styles.docsDecisionSignal}>{card.signal}</span>
+                <strong>{card.title}</strong>
+                <span>{card.description}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {researchResources.length > 0 ? (
+        <section className={styles.docsResearchPanel} aria-labelledby="docs-research-heading">
+          <div className={styles.docsJourneyHeader}>
+            <div>
+              <span className={styles.docsDecisionEyebrow}>Research-backed library</span>
+              <h2 id="docs-research-heading" className={styles.docsDecisionTitle}>
+                Deeper runbooks behind this docs mode
+              </h2>
+            </div>
+            <span className={styles.docsDecisionHint}>Repo source → in-page guide</span>
+          </div>
+          <div className={styles.docsResearchGrid}>
+            {researchResources.map(resource => (
+              <button
+                key={resource.id}
+                type="button"
+                className={styles.docsResearchCard}
+                onClick={() => scrollToSection(resource.sectionId)}
+              >
+                <span className={styles.docsResearchTags}>
+                  {resource.tags.map(tag => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </span>
+                <strong>{resource.title}</strong>
+                <span>{resource.summary}</span>
+                <code>{resource.source}</code>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className={styles.docsQuickJumpWrap}>
+        <div className={styles.docsQuickJumpHeader}>
+          <span className={styles.docsQuickJumpLabel}>
+            <span className={styles.docsQuickJumpLabelIcon} aria-hidden>
+              <Icon source={ListBulletedIcon} tone="base" />
+            </span>
+            Quick jump
+          </span>
+          <span className={styles.docsQuickJumpHint}>Drag to scroll</span>
+        </div>
+        <div className={styles.docsQuickJumpListOuter}>
+          <ul
+            ref={quickJumpListRef}
+            className={styles.docsQuickJumpList}
+            aria-label="Quick navigation (scroll or drag horizontally)"
+            onMouseDown={handleQuickJumpMouseDown}
+          >
+            {quickJumpSections.map(s => (
+              <li key={s.id} className={styles.docsQuickJumpItem}>
+                <button
+                  type="button"
+                  className={`${styles.docsQuickJumpBtn} ${activeSection === s.id ? styles.docsQuickJumpBtnActive : ''}`}
+                  onClick={e => handleQuickJumpClick(e, s.id)}
+                  aria-current={activeSection === s.id ? 'true' : undefined}
+                >
+                  <span className={styles.docsQuickJumpBtnIcon}>
+                    <Icon source={s.icon} tone="base" />
+                  </span>
+                  <span className={styles.docsQuickJumpBtnText}>{s.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {docMode === 'feature-guides' ? (
+        <section className={styles.docsFeaturePaths} aria-labelledby="docs-feature-paths-heading">
+          <div className={styles.docsFeaturePathsHeader}>
+            <h2 id="docs-feature-paths-heading" className={styles.docsFeaturePathsTitle}>
+              Guided feature paths
+            </h2>
+            <span className={styles.docsFeaturePathsHint}>
+              Start a path, then follow linked sections in order
+            </span>
+          </div>
+          <div className={styles.docsFeaturePathsGrid}>
+            {FEATURE_GUIDE_PATHS.map(path => (
+              <button
+                key={path.id}
+                type="button"
+                className={styles.docsFeaturePathCard}
+                onClick={() => scrollToFeaturePath(path)}
+              >
+                <span className={styles.docsFeaturePathTopline}>
+                  <span>{path.difficulty || 'Guide'}</span>
+                  <span>{path.sectionIds?.length || 0} steps</span>
+                </span>
+                <span className={styles.docsFeaturePathTitle}>{path.title}</span>
+                <span className={styles.docsFeaturePathSummary}>{path.summary}</span>
+                {path.outcome ? (
+                  <span className={styles.docsFeaturePathOutcome}>{path.outcome}</span>
+                ) : null}
+                <span className={styles.docsFeaturePathMeta}>{path.duration}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
 
 function Documentation() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const docMode = normalizeDocMode(searchParams.get('mode'));
+  const docModeMeta = getDocModeMeta(docMode);
   const [activeSection, setActiveSection] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [tocDrawerOpen, setTocDrawerOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 961px)').matches : true
+  );
+  const [isMobileToc, setIsMobileToc] = useState(() =>
+    typeof window !== 'undefined' ? !window.matchMedia('(min-width: 961px)').matches : false
+  );
   const [scrollProgress, setScrollProgress] = useState(0);
   const [hoveredSection, setHoveredSection] = useState(null);
   const [drawerPosition, setDrawerPosition] = useState(null);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [browserSearchFocused, setBrowserSearchFocused] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [commandSelected, setCommandSelected] = useState(0);
+  const [openDocTabs, setOpenDocTabs] = useState(() =>
+    createDefaultDocTabs(
+      typeof window !== 'undefined'
+        ? (window.location.hash || '').replace(/^#/, '') || 'overview'
+        : 'overview'
+    )
+  );
+  const [activeDocTabId, setActiveDocTabId] = useState(DOC_HUB_TAB_ID);
+  const [resolvedTheme, setResolvedTheme] = useState(() =>
+    typeof window === 'undefined' ? 'light' : getResolvedTheme()
+  );
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const activeNavRef = useRef(null);
   const activeCollapsedRef = useRef(null);
-  const commandInputRef = useRef(null);
+  const browserSearchInputRef = useRef(null);
+  const browserSearchWrapRef = useRef(null);
   const commandResultsRef = useRef(null);
+  const guideHubRef = useRef(null);
   const quickJumpListRef = useRef(null);
   const quickJumpScrollRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
   const quickJumpDidDragRef = useRef(false);
+  const pendingSectionScrollRef = useRef(null);
+  const tabsInitializedRef = useRef(false);
+
+  const sectionsById = useMemo(() => {
+    const map = {};
+    SECTIONS.forEach(section => {
+      map[section.id] = section;
+    });
+    return map;
+  }, []);
 
   const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return SECTIONS;
+    const modeScoped = filterSectionsByDocMode(SECTIONS, docMode);
+    if (!searchQuery.trim()) return modeScoped;
     const q = searchQuery.toLowerCase().trim();
     const terms = q.split(/\s+/).filter(Boolean);
-    return SECTIONS.filter(s => {
+    return modeScoped.filter(s => {
       const title = s.title.toLowerCase();
       const id = s.id.toLowerCase();
       const keywords = (s.keywords || '').toLowerCase();
       const searchable = `${title} ${id} ${keywords}`;
       return terms.every(t => searchable.includes(t));
     });
-  }, [searchQuery]);
+  }, [docMode, searchQuery]);
+
+  const quickJumpSections = useMemo(() => filteredSections.slice(0, 9), [filteredSections]);
+
+  const setDocMode = useCallback(
+    nextMode => {
+      const normalized = normalizeDocMode(nextMode);
+      persistDocMode(normalized);
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          if (normalized === 'all') params.delete('mode');
+          else params.set('mode', normalized);
+          return params;
+        },
+        { replace: true }
+      );
+      const nextSections = filterSectionsByDocMode(SECTIONS, normalized);
+      const nextSectionId = nextSections[0]?.id || 'overview';
+      const nextTab = { id: buildSectionTabId(nextSectionId), kind: 'section', closable: true };
+      setSearchQuery('');
+      setActiveSection(nextSectionId);
+      setActiveDocTabId(nextTab.id);
+      setOpenDocTabs(prev => appendCappedDocTab(ensureGuideHubTab(prev), nextTab));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setSearchParams]
+  );
+
+  const isDarkTheme = resolvedTheme === 'dark';
+  const nextTheme = isDarkTheme ? 'light' : 'dark';
+  const themeToggleLabel = isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode';
+
+  const handleThemeToggle = useCallback(() => {
+    const nextThemeState = updateTheme(nextTheme);
+    setResolvedTheme(nextThemeState?.resolvedTheme || getResolvedTheme());
+  }, [nextTheme]);
+
+  const activeSectionMeta = sectionsById[activeSection] || sectionsById.overview;
+  const activeTabLabel = useMemo(() => {
+    if (isHubTabId(activeDocTabId)) return 'Guide hub';
+    const sectionId = parseSectionTabId(activeDocTabId);
+    return sectionId ? sectionsById[sectionId]?.title || sectionId : activeSectionMeta?.title;
+  }, [activeDocTabId, activeSectionMeta?.title, sectionsById]);
+
+  const ensureDocTab = useCallback(tab => {
+    if (!tab?.id) return;
+    setOpenDocTabs(prev => {
+      const baseTabs = tab.id === DOC_HUB_TAB_ID ? prev : ensureGuideHubTab(prev);
+      return appendCappedDocTab(baseTabs, tab);
+    });
+  }, []);
+
+  const resolveModeForSection = useCallback(
+    sectionId => {
+      if (sectionMatchesDocMode(sectionId, docMode)) return docMode;
+      return findDocModeForSection(sectionId);
+    },
+    [docMode]
+  );
+
+  const footerResources = useMemo(() => getDocsFooterResources(docMode), [docMode]);
+  const featureGuideStats = useMemo(() => getFeatureGuideStats(), []);
+  const featureGuideDecisionCards = useMemo(() => getFeatureGuideDecisionCards(), []);
+  const audienceJourneys = useMemo(() => getAudienceJourneys(docMode), [docMode]);
+  const researchResources = useMemo(() => getResearchLibraryForMode(docMode), [docMode]);
 
   const commandPaletteResults = useMemo(() => {
     const q = commandQuery.toLowerCase().trim();
-    if (!q) return SECTIONS;
+    const baseSections = q ? SECTIONS : filterSectionsByDocMode(SECTIONS, docMode).slice(0, 8);
     const terms = q.split(/\s+/).filter(Boolean);
-    return SECTIONS.filter(s => {
+    const matches = baseSections.filter(s => {
+      if (terms.length === 0) return true;
       const searchable = `${s.title} ${s.id} ${s.keywords || ''}`.toLowerCase();
       return terms.every(t => searchable.includes(t));
     });
-  }, [commandQuery]);
+    return matches
+      .sort((a, b) => {
+        const aInMode = sectionMatchesDocMode(a.id, docMode) ? 0 : 1;
+        const bInMode = sectionMatchesDocMode(b.id, docMode) ? 0 : 1;
+        return aInMode - bInMode || a.title.localeCompare(b.title);
+      })
+      .slice(0, 12);
+  }, [commandQuery, docMode]);
 
   const groupedSections = useMemo(() => {
     const groups = {};
@@ -1424,18 +2849,180 @@ function Documentation() {
     }));
   }, [filteredSections]);
 
-  const scrollToSection = useCallback(id => {
-    setActiveSection(id);
-    const el = document.getElementById(id);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState(null, '', `#${id}`);
-    }
-  }, []);
+  const scrollToSection = useCallback(
+    (id, { openTab = true, activateTab = true, mode } = {}) => {
+      const targetMode = normalizeDocMode(mode || docMode);
+      setActiveSection(id);
+      if (openTab) {
+        const tabId = buildSectionTabId(id);
+        ensureDocTab({ id: tabId, kind: 'section', closable: true });
+        if (activateTab) setActiveDocTabId(tabId);
+      }
+      if (isMobileToc) setTocDrawerOpen(false);
+      const scrollAndReplace = () => {
+        const el = document.getElementById(id);
+        if (!el) {
+          pendingSectionScrollRef.current = { id, mode: targetMode };
+          return;
+        }
+        pendingSectionScrollRef.current = null;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          const url = buildDocsUrl({ mode: targetMode, sectionId: id });
+          window.history.replaceState(null, '', url);
+        }
+      };
+      if (targetMode !== docMode) {
+        persistDocMode(targetMode);
+        setSearchParams(
+          prev => {
+            const params = new URLSearchParams(prev);
+            if (targetMode === 'all') params.delete('mode');
+            else params.set('mode', targetMode);
+            return params;
+          },
+          { replace: true }
+        );
+        setTimeout(scrollAndReplace, 120);
+        return;
+      }
+      scrollAndReplace();
+    },
+    [docMode, ensureDocTab, isMobileToc, setSearchParams]
+  );
+
+  const openSectionFromSearch = useCallback(
+    section => {
+      if (!section) return;
+      setSearchQuery('');
+      scrollToSection(section.id, {
+        openTab: true,
+        activateTab: true,
+        mode: resolveModeForSection(section.id),
+      });
+      setCommandQuery('');
+      setCommandSelected(0);
+      setBrowserSearchFocused(false);
+      browserSearchInputRef.current?.blur();
+    },
+    [resolveModeForSection, scrollToSection]
+  );
+
+  const activateDocTab = useCallback(
+    tabId => {
+      setActiveDocTabId(tabId);
+      if (isHubTabId(tabId)) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(
+            null,
+            '',
+            buildDocsUrl({ mode: docMode, sectionId: 'overview' })
+          );
+        }
+        return;
+      }
+      const sectionId = parseSectionTabId(tabId);
+      if (!sectionId) return;
+
+      const targetMode = resolveModeForSection(sectionId);
+      setSearchQuery('');
+      setActiveSection(sectionId);
+      const scrollAndReplace = () => {
+        const el = document.getElementById(sectionId);
+        if (!el) {
+          pendingSectionScrollRef.current = { id: sectionId, mode: targetMode };
+          return;
+        }
+        pendingSectionScrollRef.current = null;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(null, '', buildDocsUrl({ mode: targetMode, sectionId }));
+        }
+      };
+
+      if (targetMode !== docMode) {
+        persistDocMode(targetMode);
+        setSearchParams(
+          prev => {
+            const params = new URLSearchParams(prev);
+            if (targetMode === 'all') params.delete('mode');
+            else params.set('mode', targetMode);
+            return params;
+          },
+          { replace: true }
+        );
+        setTimeout(scrollAndReplace, 120);
+        return;
+      }
+
+      scrollAndReplace();
+    },
+    [docMode, resolveModeForSection, setSearchParams]
+  );
+
+  const closeDocTab = useCallback(
+    tabId => {
+      setOpenDocTabs(prev => {
+        const idx = prev.findIndex(tab => tab.id === tabId);
+        if (idx < 0) return prev;
+        const next = prev.filter(tab => tab.id !== tabId);
+        if (next.length === 0) {
+          const fallbackTabs = createDefaultDocTabs(activeSection);
+          setTimeout(() => activateDocTab(fallbackTabs[0].id), 0);
+          return fallbackTabs;
+        }
+        if (activeDocTabId === tabId) {
+          const fallback = next[Math.max(0, idx - 1)] || next[0];
+          setTimeout(() => activateDocTab(fallback.id), 0);
+        }
+        return next;
+      });
+    },
+    [activeDocTabId, activeSection, activateDocTab]
+  );
+
+  const goToDocsIndex = useCallback(() => {
+    ensureDocTab({ id: DOC_HUB_TAB_ID, kind: 'hub', closable: true });
+    setActiveDocTabId(DOC_HUB_TAB_ID);
+    setActiveSection('overview');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigate(buildDocsUrl({ mode: docMode, sectionId: 'overview' }), { replace: true });
+  }, [docMode, ensureDocTab, navigate]);
+
+  const scrollToFeaturePath = useCallback(
+    path => {
+      const targetMode = normalizeDocMode(path.mode || 'feature-guides');
+      const firstSectionId =
+        path?.sectionIds?.find(sectionId => sectionMatchesDocMode(sectionId, targetMode)) ||
+        path?.sectionIds?.[0];
+      if (!firstSectionId) return;
+      const resolvedTargetMode = sectionMatchesDocMode(firstSectionId, targetMode)
+        ? targetMode
+        : findDocModeForSection(firstSectionId);
+      if (docMode !== resolvedTargetMode) {
+        setSearchParams(
+          prev => {
+            const params = new URLSearchParams(prev);
+            if (resolvedTargetMode === 'all') params.delete('mode');
+            else params.set('mode', resolvedTargetMode);
+            return params;
+          },
+          { replace: true }
+        );
+      }
+      setTimeout(
+        () => scrollToSection(firstSectionId, { mode: resolvedTargetMode }),
+        docMode === resolvedTargetMode ? 0 : 80
+      );
+    },
+    [docMode, scrollToSection, setSearchParams]
+  );
 
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setActiveSection('overview');
+    setActiveDocTabId(DOC_HUB_TAB_ID);
   }, []);
 
   const handleQuickJumpMouseDown = useCallback(e => {
@@ -1500,34 +3087,157 @@ function Documentation() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Initial hash on mount
+  // Restore persisted tabs once on mount
+  useEffect(() => {
+    if (tabsInitializedRef.current) return;
+    tabsInitializedRef.current = true;
+    const persisted = readPersistedDocTabs({ sections: SECTIONS });
+    if (persisted) {
+      setOpenDocTabs(ensureGuideHubTab(persisted).slice(0, MAX_OPEN_DOC_TABS));
+      const hash =
+        typeof window !== 'undefined' ? (window.location.hash || '').replace(/^#/, '') : '';
+      if (hash && SECTIONS.some(section => section.id === hash)) {
+        setActiveDocTabId(buildSectionTabId(hash));
+      } else {
+        const explicitMode = searchParams.get('mode');
+        const currentMode = normalizeDocMode(explicitMode);
+        const firstSectionTab =
+          persisted.find(tab => {
+            const sectionId = parseSectionTabId(tab.id);
+            return explicitMode && sectionId && sectionMatchesDocMode(sectionId, currentMode);
+          }) || persisted.find(tab => tab.kind === 'section');
+        const firstSectionId = parseSectionTabId(firstSectionTab?.id);
+        if (firstSectionId) {
+          const modeForTab = findDocModeForSection(firstSectionId);
+          const tabMatchesCurrentMode = sectionMatchesDocMode(firstSectionId, currentMode);
+          setActiveSection(explicitMode && !tabMatchesCurrentMode ? 'overview' : firstSectionId);
+          setActiveDocTabId(
+            explicitMode && !tabMatchesCurrentMode ? DOC_HUB_TAB_ID : firstSectionTab.id
+          );
+          if (!explicitMode && modeForTab !== 'all') {
+            persistDocMode(modeForTab);
+            setSearchParams(
+              prev => {
+                const params = new URLSearchParams(prev);
+                params.set('mode', modeForTab);
+                return params;
+              },
+              { replace: true }
+            );
+          }
+        } else {
+          setActiveDocTabId(DOC_HUB_TAB_ID);
+        }
+      }
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    persistDocTabs(openDocTabs);
+  }, [openDocTabs]);
+
+  useEffect(() => {
+    const syncTheme = () => setResolvedTheme(getResolvedTheme());
+    syncTheme();
+    window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
+    window.addEventListener('storage', syncTheme);
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
+      window.removeEventListener('storage', syncTheme);
+    };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 961px)');
+    const onChange = () => {
+      const desktop = media.matches;
+      setIsMobileToc(!desktop);
+      setTocDrawerOpen(desktop);
+    };
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!browserSearchFocused) return undefined;
+    const onPointerDown = event => {
+      if (browserSearchWrapRef.current?.contains(event.target)) return;
+      setBrowserSearchFocused(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [browserSearchFocused]);
+
+  // Restore last browse mode when landing on /docs without ?mode=
+  useEffect(() => {
+    if (searchParams.get('mode')) return;
+    const hash =
+      typeof window !== 'undefined' ? (window.location.hash || '').replace(/^#/, '') : '';
+    if (hash) return;
+    const persisted = readPersistedDocMode();
+    if (!persisted || persisted === 'all') return;
+    setSearchParams(
+      prev => {
+        const params = new URLSearchParams(prev);
+        params.set('mode', persisted);
+        return params;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
+
+  // Initial hash on mount (+ auto-switch mode when deep-linking)
   useEffect(() => {
     const hash =
       typeof window !== 'undefined' ? (window.location.hash || '').replace(/^#/, '') : '';
-    if (hash && SECTIONS.some(s => s.id === hash)) {
-      setActiveSection(hash);
-      setTimeout(() => {
-        const el = document.getElementById(hash);
-        el?.scrollIntoView({ behavior: 'auto', block: 'start' });
-      }, 100);
-    }
-  }, []);
+    if (!hash || !SECTIONS.some(s => s.id === hash)) return;
 
-  // Cmd+K / Ctrl+K command palette
+    const modeForHash = findDocModeForSection(hash);
+    if (modeForHash !== 'all') {
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          if (normalizeDocMode(params.get('mode')) === modeForHash) return prev;
+          params.set('mode', modeForHash);
+          return params;
+        },
+        { replace: true }
+      );
+    }
+    setActiveSection(hash);
+    setActiveDocTabId(buildSectionTabId(hash));
+    setOpenDocTabs(prev => {
+      const tabId = buildSectionTabId(hash);
+      return appendCappedDocTab(ensureGuideHubTab(prev), {
+        id: tabId,
+        kind: 'section',
+        closable: true,
+      });
+    });
+    setTimeout(() => {
+      document.getElementById(hash)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }, 120);
+  }, [setSearchParams]);
+
+  // Cmd+K / Ctrl+K focuses browser search; Escape closes overlays
   useEffect(() => {
     const handleKey = e => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setCommandPaletteOpen(o => !o);
-        setCommandQuery('');
+        setBrowserSearchFocused(true);
         setCommandSelected(0);
-        setTimeout(() => commandInputRef.current?.focus(), 50);
+        setTimeout(() => browserSearchInputRef.current?.focus(), 50);
       }
-      if (e.key === 'Escape') setCommandPaletteOpen(false);
+      if (e.key === 'Escape') {
+        setBrowserSearchFocused(false);
+        browserSearchInputRef.current?.blur();
+        if (isMobileToc) setTocDrawerOpen(false);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [isMobileToc]);
 
   // Clamp commandSelected when results change
   useEffect(() => {
@@ -1538,11 +3248,34 @@ function Documentation() {
 
   // Scroll selected item into view in command palette
   useEffect(() => {
-    if (!commandPaletteOpen || !commandResultsRef.current || commandPaletteResults.length === 0)
+    if (!browserSearchFocused || !commandResultsRef.current || commandPaletteResults.length === 0)
       return;
     const options = commandResultsRef.current.querySelectorAll('[role="option"]');
     options[commandSelected]?.scrollIntoView({ block: 'nearest' });
-  }, [commandSelected, commandPaletteOpen, commandPaletteResults.length]);
+  }, [commandSelected, browserSearchFocused, commandPaletteResults.length]);
+
+  // Complete section jumps that were requested before a mode/filter render finished.
+  useEffect(() => {
+    const pending = pendingSectionScrollRef.current;
+    if (!pending) return;
+    if (pending.mode !== docMode) return;
+    if (!filteredSections.some(section => section.id === pending.id)) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.getElementById(pending.id);
+      if (!el) return;
+      pendingSectionScrollRef.current = null;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(
+          null,
+          '',
+          buildDocsUrl({ mode: pending.mode, sectionId: pending.id })
+        );
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [docMode, filteredSections]);
 
   // Document title when on docs page
   useEffect(() => {
@@ -1603,20 +3336,211 @@ function Documentation() {
         if (intersecting.length > 0) {
           const topmost = intersecting.reduce((a, b) => (a.boundTop < b.boundTop ? a : b));
           setActiveSection(topmost.id);
+          const hubRect = guideHubRef.current?.getBoundingClientRect();
+          const hubStillInFocus =
+            isHubTabId(activeDocTabId) &&
+            hubRect &&
+            hubRect.bottom > 140 &&
+            hubRect.top < window.innerHeight * 0.75;
+          if (hubStillInFocus) return;
           if (typeof window !== 'undefined' && window.history?.replaceState) {
-            window.history.replaceState(null, '', `#${topmost.id}`);
+            window.history.replaceState(
+              null,
+              '',
+              buildDocsUrl({ mode: docMode, sectionId: topmost.id })
+            );
           }
         }
       },
       { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
     );
-    const ids = SECTIONS.map(s => s.id);
+    const ids = filteredSections.map(s => s.id);
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
-  }, []);
+  }, [activeDocTabId, docMode, filteredSections]);
+
+  const handleBrowserSearchKeyDown = useCallback(
+    e => {
+      if (e.key === 'Enter') {
+        const item = commandPaletteResults[commandSelected];
+        if (item) openSectionFromSearch(item);
+        e.preventDefault();
+      } else if (e.key === 'ArrowDown' && commandPaletteResults.length > 0) {
+        setCommandSelected(i => Math.min(i + 1, commandPaletteResults.length - 1));
+        e.preventDefault();
+      } else if (e.key === 'ArrowUp') {
+        setCommandSelected(i => Math.max(i - 1, 0));
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        setBrowserSearchFocused(false);
+        browserSearchInputRef.current?.blur();
+        e.preventDefault();
+      }
+    },
+    [commandPaletteResults, commandSelected, openSectionFromSearch]
+  );
+
+  const handleTocMenuClick = useCallback(() => {
+    if (isMobileToc) {
+      setTocDrawerOpen(open => {
+        if (!open) setSidebarCollapsed(false);
+        return !open;
+      });
+    } else {
+      setSidebarCollapsed(collapsed => !collapsed);
+    }
+  }, [isMobileToc]);
+
+  const showBrowserSearchDropdown = browserSearchFocused;
+  const browserSearchHasQuery = commandQuery.trim().length > 0;
+
+  const browserBodyClassName = [
+    styles.docsBrowserBody,
+    !isMobileToc && sidebarCollapsed ? styles.docsBrowserBodyCollapsed : '',
+    isMobileToc && !tocDrawerOpen ? styles.docsBrowserBodyTocHidden : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const tocDrawerClassName = [
+    styles.docsTocDrawer,
+    styles.docsSidebar,
+    isMobileToc ? styles.docsTocDrawerMobile : styles.docsTocDrawerDesktop,
+    isMobileToc && tocDrawerOpen ? styles.docsTocDrawerMobileOpen : '',
+    sidebarCollapsed ? styles.sidebarCollapsed : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const renderTocSidebar = () => (
+    <aside className={tocDrawerClassName} aria-label="Table of contents">
+      <div className={styles.sidebarHeader}>
+        {!sidebarCollapsed && (
+          <div className={styles.sidebarTitleBlock}>
+            <div className={styles.sidebarTitleIcon}>
+              <Icon source={BookIcon} />
+            </div>
+            <h3 className={styles.sidebarTitle}>Contents</h3>
+          </div>
+        )}
+        <Tooltip
+          content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          preferredPosition="right"
+        >
+          <button
+            type="button"
+            className={styles.sidebarToggle}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <Icon source={sidebarCollapsed ? ChevronDownIcon : ChevronUpIcon} />
+          </button>
+        </Tooltip>
+      </div>
+      {!sidebarCollapsed ? (
+        <>
+          <div className={styles.searchWrap}>
+            <div className={styles.searchInputWrapper}>
+              <span className={styles.searchIcon} aria-hidden>
+                <Icon source={SearchIcon} />
+              </span>
+              <TextField
+                label="Search documentation"
+                labelHidden
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search by title or keywords..."
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div className={styles.sidebarBody}>
+            <nav className={styles.sidebarNav}>
+              {filteredSections.length === 0 ? (
+                <div className={styles.sidebarSearchEmpty} role="status" aria-live="polite">
+                  <Text as="p" tone="subdued">
+                    No sections match &quot;{searchQuery}&quot;
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Try different keywords
+                  </Text>
+                </div>
+              ) : (
+                groupedSections.map(group => (
+                  <div key={group.key} className={styles.navGroup}>
+                    <div className={styles.navGroupLabel}>{group.label}</div>
+                    {group.items.map(s => (
+                      <button
+                        key={s.id}
+                        ref={activeSection === s.id ? activeNavRef : null}
+                        type="button"
+                        className={`${styles.navItem} ${activeSection === s.id ? styles.navItemActive : ''}`}
+                        onClick={() => scrollToSection(s.id)}
+                        aria-current={activeSection === s.id ? 'location' : undefined}
+                        onFocus={() => setHoveredSection(null)}
+                      >
+                        <span className={styles.navItemIcon}>
+                          <Icon source={s.icon} />
+                        </span>
+                        <span className={styles.navItemText}>{s.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))
+              )}
+            </nav>
+            <div className={styles.sidebarFooter}>
+              <Tooltip content="Scroll back to top" preferredPosition="right">
+                <button
+                  type="button"
+                  className={styles.sidebarBackToTop}
+                  onClick={scrollToTop}
+                  aria-label="Back to top"
+                >
+                  <span className={styles.sidebarBackToTopIcon}>
+                    <Icon source={ArrowUpIcon} />
+                  </span>
+                  Back to top
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        </>
+      ) : (
+        <nav className={styles.sidebarNavCollapsed}>
+          {filteredSections.map(s => (
+            <div
+              key={s.id}
+              ref={activeSection === s.id ? activeCollapsedRef : null}
+              className={styles.navItemCollapsedWrap}
+              onMouseEnter={e => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setDrawerPosition({ top: rect.top + rect.height / 2, left: rect.right + 10 });
+                setHoveredSection(s);
+              }}
+              onMouseLeave={() => {
+                setHoveredSection(null);
+                setDrawerPosition(null);
+              }}
+            >
+              <button
+                type="button"
+                className={`${styles.navItemCollapsed} ${activeSection === s.id ? styles.navItemCollapsedActive : ''}`}
+                onClick={() => scrollToSection(s.id)}
+                title={s.title}
+                aria-label={s.title}
+              >
+                <Icon source={s.icon} />
+              </button>
+            </div>
+          ))}
+        </nav>
+      )}
+    </aside>
+  );
 
   return (
     <div
@@ -1631,97 +3555,6 @@ function Documentation() {
         aria-valuemin={0}
         aria-valuemax={100}
       />
-      {commandPaletteOpen && (
-        <div
-          className={styles.commandPaletteOverlay}
-          role="dialog"
-          aria-label="Quick search"
-          onClick={() => setCommandPaletteOpen(false)}
-          onKeyDown={e => {
-            if (e.key === 'Escape') setCommandPaletteOpen(false);
-          }}
-        >
-          <div
-            className={styles.commandPalette}
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => {
-              if (e.key === 'Escape') setCommandPaletteOpen(false);
-            }}
-          >
-            <div className={styles.commandPaletteHeader}>
-              <Icon source={SearchIcon} />
-              <input
-                ref={commandInputRef}
-                type="text"
-                className={styles.commandPaletteInput}
-                placeholder="Search sections..."
-                value={commandQuery}
-                aria-label="Search documentation sections"
-                aria-autocomplete="list"
-                aria-controls="command-palette-results"
-                aria-expanded={commandPaletteResults.length > 0}
-                onChange={e => {
-                  setCommandQuery(e.target.value);
-                  setCommandSelected(0);
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    const item = commandPaletteResults[commandSelected];
-                    if (item) {
-                      scrollToSection(item.id);
-                      setCommandPaletteOpen(false);
-                    }
-                    e.preventDefault();
-                  } else if (e.key === 'ArrowDown' && commandPaletteResults.length > 0) {
-                    setCommandSelected(i => Math.min(i + 1, commandPaletteResults.length - 1));
-                    e.preventDefault();
-                  } else if (e.key === 'ArrowUp') {
-                    setCommandSelected(i => Math.max(i - 1, 0));
-                    e.preventDefault();
-                  }
-                }}
-                autoFocus
-              />
-              <span className={styles.commandPaletteKbd}>↵</span>
-            </div>
-            <div
-              ref={commandResultsRef}
-              id="command-palette-results"
-              className={styles.commandPaletteResults}
-              role="listbox"
-              aria-label="Documentation sections"
-            >
-              {commandPaletteResults.length === 0 ? (
-                <div className={styles.commandPaletteEmpty} role="status" aria-live="polite">
-                  <Text as="p" tone="subdued">
-                    No sections match &quot;{commandQuery}&quot;
-                  </Text>
-                </div>
-              ) : (
-                commandPaletteResults.map((s, i) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    role="option"
-                    aria-selected={i === commandSelected}
-                    className={`${styles.commandPaletteItem} ${i === commandSelected ? styles.commandPaletteItemActive : ''}`}
-                    onClick={() => {
-                      scrollToSection(s.id);
-                      setCommandPaletteOpen(false);
-                    }}
-                  >
-                    <Icon source={s.icon} />
-                    <span>{s.title}</span>
-                    <span className={styles.commandPaletteItemGroup}>
-                      {SECTION_GROUPS.find(g => g.key === s.group)?.label}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
       {showBackToTop && (
         <Tooltip content="Scroll to top" preferredPosition="above">
           <button
@@ -1735,87 +3568,284 @@ function Documentation() {
         </Tooltip>
       )}
       <Page title="" subtitle="">
-        <header className={styles.docsTopBar} aria-label="Documentation header">
-          <span className={styles.docsTopBarTitle}>
-            <span className={styles.docsTopBarTitleIcon}>
-              <Icon source={BookIcon} tone="base" />
-            </span>
-            Documentation
-          </span>
-          <Tooltip content="Back to dashboard" preferredPosition="below">
-            <button
-              type="button"
-              onClick={() => navigate(ROUTES.USER_PANEL)}
-              className={styles.docsTopBarMainApp}
-              aria-label="Go to dashboard"
-            >
-              <span className={styles.docsTopBarMainAppIcon}>
-                <Icon source={HomeIcon} tone="base" />
-              </span>
-              <span className={styles.docsTopBarMainAppLabel}>Dashboard</span>
-            </button>
-          </Tooltip>
-        </header>
-        <div className={styles.docsHero}>
-          <div className={styles.docsHeroRow}>
-            <div className={styles.docsHeroMain}>
-              <h1 className={styles.docsHeroTitle}>RipX Documentation</h1>
-              <p className={styles.docsHeroSubtitle}>
-                Enterprise-grade A/B testing for Shopify and standalone sites. Setup, run, and
-                analyze experiments with statistical rigor.
-              </p>
+        <div className={styles.docsBrowserShell}>
+          <header className={styles.docsBrowserBar} aria-label="Documentation browser chrome">
+            <div className={styles.docsBrowserBarLeft}>
+              <Tooltip content="Table of contents" preferredPosition="below">
+                <button
+                  type="button"
+                  className={styles.docsBrowserIconBtn}
+                  onClick={handleTocMenuClick}
+                  aria-label="Toggle table of contents"
+                  aria-expanded={isMobileToc ? tocDrawerOpen : !sidebarCollapsed}
+                >
+                  <Icon source={MenuHorizontalIcon} />
+                </button>
+              </Tooltip>
+              <button
+                type="button"
+                className={styles.docsBrowserLogo}
+                onClick={goToDocsIndex}
+                aria-label="RipX docs index"
+              >
+                <span className={styles.docsBrowserLogoIcon}>
+                  <Icon source={BookIcon} />
+                </span>
+                <span className={styles.docsBrowserLogoLabel}>RipX Docs</span>
+              </button>
             </div>
-            <div className={styles.docsHeroMeta}>
-              <span className={styles.docsHeroBadges}>
-                <span className={styles.docsHeroBadge}>v1.0.0</span>
-                <span className={styles.docsHeroBadge}>8 Test Types</span>
-                <span className={styles.docsHeroBadge}>Multi-Variant</span>
-                <span className={styles.docsHeroBadge}>GA4 & BigQuery</span>
-                <span className={styles.docsHeroBadge}>{READING_TIME_MIN} min read</span>
-              </span>
-              <span className={styles.docsHeroHint}>
-                <kbd className={styles.kbd}>⌘K</kbd> / <kbd className={styles.kbd}>Ctrl+K</kbd> to
-                search
-              </span>
+            <div className={styles.docsBrowserBarCenter}>
+              <nav className={styles.docsBreadcrumbs} aria-label="Breadcrumb">
+                <span className={styles.docsBreadcrumbItem}>Documentation</span>
+                <span className={styles.docsBreadcrumbSep} aria-hidden="true">
+                  /
+                </span>
+                <span className={styles.docsBreadcrumbItem}>{docModeMeta.shortLabel}</span>
+                <span className={styles.docsBreadcrumbSep} aria-hidden="true">
+                  /
+                </span>
+                <span className={`${styles.docsBreadcrumbItem} ${styles.docsBreadcrumbItemActive}`}>
+                  {activeTabLabel}
+                </span>
+              </nav>
+              <div className={styles.docsBrowserSearchWrap} ref={browserSearchWrapRef}>
+                <div
+                  className={`${styles.docsBrowserSearch} ${
+                    showBrowserSearchDropdown ? styles.docsBrowserSearchActive : ''
+                  }`}
+                  onMouseDown={event => {
+                    if (event.target === browserSearchInputRef.current) return;
+                    setBrowserSearchFocused(true);
+                    browserSearchInputRef.current?.focus();
+                  }}
+                >
+                  <span className={styles.docsBrowserSearchIcon} aria-hidden="true">
+                    <Icon source={SearchIcon} />
+                  </span>
+                  <input
+                    ref={browserSearchInputRef}
+                    type="search"
+                    className={styles.docsBrowserSearchInput}
+                    placeholder="Search sections..."
+                    value={commandQuery}
+                    aria-label="Search documentation sections"
+                    aria-autocomplete="list"
+                    aria-controls="docs-browser-search-results"
+                    aria-expanded={showBrowserSearchDropdown}
+                    aria-activedescendant={
+                      commandPaletteResults[commandSelected]
+                        ? `docs-browser-search-option-${commandPaletteResults[commandSelected].id}`
+                        : undefined
+                    }
+                    onFocus={() => setBrowserSearchFocused(true)}
+                    onChange={e => {
+                      setCommandQuery(e.target.value);
+                      setCommandSelected(0);
+                      setBrowserSearchFocused(true);
+                    }}
+                    onKeyDown={handleBrowserSearchKeyDown}
+                  />
+                  {commandQuery ? (
+                    <button
+                      type="button"
+                      className={styles.docsBrowserSearchClear}
+                      onClick={() => {
+                        setCommandQuery('');
+                        setCommandSelected(0);
+                        setBrowserSearchFocused(true);
+                        browserSearchInputRef.current?.focus();
+                      }}
+                      aria-label="Clear documentation search"
+                    >
+                      <Icon source={XIcon} />
+                    </button>
+                  ) : null}
+                  <span className={styles.docsBrowserSearchKbd}>⌘K</span>
+                </div>
+                {showBrowserSearchDropdown ? (
+                  <div
+                    ref={commandResultsRef}
+                    id="docs-browser-search-results"
+                    className={styles.docsBrowserSearchDropdown}
+                    role="listbox"
+                    aria-label="Documentation sections"
+                  >
+                    <div className={styles.docsBrowserSearchHeader} role="presentation">
+                      <span>
+                        {browserSearchHasQuery
+                          ? `Search results for "${commandQuery.trim()}"`
+                          : `${docModeMeta.shortLabel} starting points`}
+                      </span>
+                      <span>{browserSearchHasQuery ? 'All modes' : 'Current mode'}</span>
+                    </div>
+                    {commandPaletteResults.length === 0 ? (
+                      <div
+                        className={styles.docsBrowserSearchEmpty}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        No sections match &quot;{commandQuery}&quot;. Try a test type, setup step,
+                        or API topic.
+                      </div>
+                    ) : (
+                      commandPaletteResults.map((s, i) => (
+                        <button
+                          key={s.id}
+                          id={`docs-browser-search-option-${s.id}`}
+                          type="button"
+                          role="option"
+                          aria-selected={i === commandSelected}
+                          className={`${styles.docsBrowserSearchItem} ${i === commandSelected ? styles.docsBrowserSearchItemActive : ''}`}
+                          onMouseEnter={() => setCommandSelected(i)}
+                          onClick={() => openSectionFromSearch(s)}
+                        >
+                          <Icon source={s.icon} />
+                          <span className={styles.docsBrowserSearchItemText}>
+                            <span className={styles.commandPaletteItemTitle}>{s.title}</span>
+                            <span className={styles.docsBrowserSearchItemMeta}>
+                              {s.keywords || s.id}
+                            </span>
+                          </span>
+                          <span
+                            className={`${styles.commandPaletteItemGroup} ${
+                              sectionMatchesDocMode(s.id, docMode)
+                                ? styles.docsBrowserSearchItemGroupCurrent
+                                : ''
+                            }`}
+                          >
+                            {sectionMatchesDocMode(s.id, docMode)
+                              ? 'Current'
+                              : getDocModeMeta(findDocModeForSection(s.id)).shortLabel}
+                          </span>
+                          <span className={styles.docsBrowserSearchOpenHint}>Open</span>
+                        </button>
+                      ))
+                    )}
+                    <div className={styles.docsBrowserSearchFooter} role="presentation">
+                      <span>Enter to open</span>
+                      <span>↑ ↓ to move</span>
+                      <span>Esc to close</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
+            <div className={styles.docsBrowserBarRight}>
+              <Tooltip content={themeToggleLabel} preferredPosition="below">
+                <button
+                  type="button"
+                  className={`${styles.docsBrowserIconBtn} ${styles.docsThemeToggle}`}
+                  onClick={handleThemeToggle}
+                  aria-label={themeToggleLabel}
+                >
+                  {isDarkTheme ? <SunIcon /> : <MoonIcon />}
+                </button>
+              </Tooltip>
+            </div>
+          </header>
+          <div className={styles.docsTabStrip} role="tablist" aria-label="Documentation tabs">
+            <div className={styles.docsTabGroup} role="presentation">
+              {DOC_MODES.map(mode => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={docMode === mode.id}
+                  className={`${styles.docsTab} ${docMode === mode.id ? styles.docsTabActive : ''}`}
+                  onClick={() => setDocMode(mode.id)}
+                >
+                  <span className={styles.docsTabLabel}>{mode.shortLabel}</span>
+                </button>
+              ))}
+            </div>
+            {openDocTabs.map(tab => {
+              const sectionId = parseSectionTabId(tab.id);
+              const tabModeMeta = sectionId
+                ? getDocModeMeta(findDocModeForSection(sectionId))
+                : null;
+              const tabIsCrossMode = sectionId ? !sectionMatchesDocMode(sectionId, docMode) : false;
+              const tabLabel = getDocTabLabel(tab, sectionsById);
+
+              return (
+                <span
+                  key={tab.id}
+                  role="presentation"
+                  className={`${styles.docsTabComposite} ${
+                    activeDocTabId === tab.id ? styles.docsTabCompositeActive : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeDocTabId === tab.id}
+                    className={`${styles.docsTab} ${
+                      activeDocTabId === tab.id ? styles.docsTabActive : ''
+                    }`}
+                    onClick={() => activateDocTab(tab.id)}
+                    title={tabIsCrossMode ? `${tabLabel} (${tabModeMeta?.label})` : tabLabel}
+                  >
+                    <span className={styles.docsTabLabel}>{tabLabel}</span>
+                    {tabIsCrossMode && tabModeMeta ? (
+                      <span className={styles.docsTabModeBadge}>{tabModeMeta.shortLabel}</span>
+                    ) : null}
+                  </button>
+                  {tab.closable !== false ? (
+                    <button
+                      type="button"
+                      className={styles.docsTabClose}
+                      aria-label={`Close ${tabLabel} tab`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        closeDocTab(tab.id);
+                      }}
+                    >
+                      <Icon source={XIcon} />
+                    </button>
+                  ) : null}
+                </span>
+              );
+            })}
           </div>
         </div>
 
-        <div className={styles.docsQuickJumpWrap}>
-          <div className={styles.docsQuickJumpHeader}>
-            <span className={styles.docsQuickJumpLabel}>
-              <span className={styles.docsQuickJumpLabelIcon} aria-hidden>
-                <Icon source={ListBulletedIcon} tone="base" />
-              </span>
-              Quick jump
+        <div className={styles.docsStatusBar} aria-label="Documentation browser status">
+          <div className={styles.docsStatusPrimary}>
+            <span className={styles.docsStatusPill}>{docModeMeta.label}</span>
+            <span className={styles.docsStatusText}>
+              Active: <strong>{activeSectionMeta?.title || 'Overview'}</strong>
             </span>
-            <span className={styles.docsQuickJumpHint}>Drag to scroll</span>
           </div>
-          <div className={styles.docsQuickJumpListOuter}>
-            <ul
-              ref={quickJumpListRef}
-              className={styles.docsQuickJumpList}
-              aria-label="Quick navigation (scroll or drag horizontally)"
-              onMouseDown={handleQuickJumpMouseDown}
+          <div className={styles.docsStatusMeta}>
+            <span>{filteredSections.length} sections</span>
+            <span>
+              {openDocTabs.length}/{MAX_OPEN_DOC_TABS} open tabs
+            </span>
+            <span>Tabs are preserved across modes</span>
+            <button
+              type="button"
+              className={styles.docsStatusAction}
+              onClick={() => {
+                setBrowserSearchFocused(true);
+                setCommandSelected(0);
+                setTimeout(() => browserSearchInputRef.current?.focus(), 0);
+              }}
             >
-              {QUICK_JUMP_SECTIONS.map(s => (
-                <li key={s.id} className={styles.docsQuickJumpItem}>
-                  <button
-                    type="button"
-                    className={`${styles.docsQuickJumpBtn} ${activeSection === s.id ? styles.docsQuickJumpBtnActive : ''}`}
-                    onClick={e => handleQuickJumpClick(e, s.id)}
-                    aria-current={activeSection === s.id ? 'true' : undefined}
-                  >
-                    <span className={styles.docsQuickJumpBtnIcon}>
-                      <Icon source={s.icon} tone="base" />
-                    </span>
-                    <span className={styles.docsQuickJumpBtnText}>{s.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+              Search docs
+            </button>
+            <button type="button" className={styles.docsStatusAction} onClick={goToDocsIndex}>
+              Open Guide hub
+            </button>
           </div>
         </div>
+
+        {isMobileToc && tocDrawerOpen ? (
+          <button
+            type="button"
+            className={styles.docsTocOverlay}
+            aria-label="Close table of contents"
+            onClick={() => setTocDrawerOpen(false)}
+          />
+        ) : null}
 
         {hoveredSection && drawerPosition && sidebarCollapsed && (
           <div
@@ -1834,138 +3864,36 @@ function Documentation() {
             </span>
           </div>
         )}
-        <div
-          className={`${styles.docsLayout} ${sidebarCollapsed ? styles.docsLayoutCollapsed : ''}`}
-        >
-          <aside
-            className={`${styles.docsSidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : ''}`}
-          >
-            <div className={styles.sidebarHeader}>
-              {!sidebarCollapsed && (
-                <div className={styles.sidebarTitleBlock}>
-                  <div className={styles.sidebarTitleIcon}>
-                    <Icon source={BookIcon} />
-                  </div>
-                  <h3 className={styles.sidebarTitle}>Contents</h3>
-                </div>
-              )}
-              <Tooltip
-                content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                preferredPosition="right"
-              >
-                <button
-                  type="button"
-                  className={styles.sidebarToggle}
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                  <Icon source={sidebarCollapsed ? ChevronDownIcon : ChevronUpIcon} />
-                </button>
-              </Tooltip>
-            </div>
-            {!sidebarCollapsed ? (
-              <>
-                <div className={styles.searchWrap}>
-                  <div className={styles.searchInputWrapper}>
-                    <span className={styles.searchIcon} aria-hidden>
-                      <Icon source={SearchIcon} />
-                    </span>
-                    <TextField
-                      label="Search documentation"
-                      labelHidden
-                      value={searchQuery}
-                      onChange={setSearchQuery}
-                      placeholder="Search by title or keywords..."
-                      autoComplete="off"
-                    />
-                  </div>
-                </div>
-                <div className={styles.sidebarBody}>
-                  <nav className={styles.sidebarNav}>
-                    {filteredSections.length === 0 ? (
-                      <div className={styles.sidebarSearchEmpty} role="status" aria-live="polite">
-                        <Text as="p" tone="subdued">
-                          No sections match &quot;{searchQuery}&quot;
-                        </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Try different keywords
-                        </Text>
-                      </div>
-                    ) : (
-                      groupedSections.map(group => (
-                        <div key={group.key} className={styles.navGroup}>
-                          <div className={styles.navGroupLabel}>{group.label}</div>
-                          {group.items.map(s => (
-                            <button
-                              key={s.id}
-                              ref={activeSection === s.id ? activeNavRef : null}
-                              type="button"
-                              className={`${styles.navItem} ${activeSection === s.id ? styles.navItemActive : ''}`}
-                              onClick={() => scrollToSection(s.id)}
-                              aria-current={activeSection === s.id ? 'location' : undefined}
-                              onFocus={() => setHoveredSection(null)}
-                            >
-                              <span className={styles.navItemIcon}>
-                                <Icon source={s.icon} />
-                              </span>
-                              <span className={styles.navItemText}>{s.title}</span>
-                            </button>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </nav>
-                  <div className={styles.sidebarFooter}>
-                    <Tooltip content="Scroll back to top" preferredPosition="right">
-                      <button
-                        type="button"
-                        className={styles.sidebarBackToTop}
-                        onClick={scrollToTop}
-                        aria-label="Back to top"
-                      >
-                        <span className={styles.sidebarBackToTopIcon}>
-                          <Icon source={ArrowUpIcon} />
-                        </span>
-                        Back to top
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <nav className={styles.sidebarNavCollapsed}>
-                {filteredSections.map(s => (
-                  <div
-                    key={s.id}
-                    ref={activeSection === s.id ? activeCollapsedRef : null}
-                    className={styles.navItemCollapsedWrap}
-                    onMouseEnter={e => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setDrawerPosition({ top: rect.top + rect.height / 2, left: rect.right + 10 });
-                      setHoveredSection(s);
-                    }}
-                    onMouseLeave={() => {
-                      setHoveredSection(null);
-                      setDrawerPosition(null);
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`${styles.navItemCollapsed} ${activeSection === s.id ? styles.navItemCollapsedActive : ''}`}
-                      onClick={() => scrollToSection(s.id)}
-                      title={s.title}
-                      aria-label={s.title}
-                    >
-                      <Icon source={s.icon} />
-                    </button>
-                  </div>
-                ))}
-              </nav>
-            )}
-          </aside>
+
+        <div className={browserBodyClassName}>
+          {(!isMobileToc || tocDrawerOpen) && renderTocSidebar()}
 
           <main className={styles.docsMain}>
-            {SECTIONS.map(section => (
+            {isHubTabId(activeDocTabId) ? (
+              <div ref={guideHubRef}>
+                <DocsGuideHubPanel
+                  docMode={docMode}
+                  docModeMeta={docModeMeta}
+                  filteredSections={filteredSections}
+                  featureGuideStats={featureGuideStats}
+                  audienceJourneys={audienceJourneys}
+                  featureGuideDecisionCards={featureGuideDecisionCards}
+                  researchResources={researchResources}
+                  quickJumpSections={quickJumpSections}
+                  activeSection={activeSection}
+                  quickJumpListRef={quickJumpListRef}
+                  handleQuickJumpMouseDown={handleQuickJumpMouseDown}
+                  handleQuickJumpClick={handleQuickJumpClick}
+                  scrollToFeaturePath={scrollToFeaturePath}
+                  scrollToSection={scrollToSection}
+                  onFocusSearch={() => {
+                    setBrowserSearchFocused(true);
+                    browserSearchInputRef.current?.focus();
+                  }}
+                />
+              </div>
+            ) : null}
+            {filteredSections.map(section => (
               <section
                 key={section.id}
                 id={section.id}
@@ -1981,15 +3909,22 @@ function Documentation() {
                         </div>
                         <div className={styles.sectionTitleContent}>
                           <h2 id={`doc-heading-${section.id}`}>{section.title}</h2>
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            Reference
-                          </Text>
+                          <SectionKindBadge sectionId={section.id} />
                         </div>
-                        <CopySectionLink sectionId={section.id} />
+                        <CopySectionLink sectionId={section.id} docMode={docMode} />
                       </div>
                       <Divider />
                       <DocSectionContent sectionId={section.id} />
-                      <SectionNav section={section} scrollToSection={scrollToSection} />
+                      <RelatedSections
+                        sectionId={section.id}
+                        scrollToSection={scrollToSection}
+                        visibleSections={filteredSections}
+                      />
+                      <SectionNav
+                        section={section}
+                        scrollToSection={scrollToSection}
+                        visibleSections={filteredSections}
+                      />
                     </BlockStack>
                   </Box>
                 </div>
@@ -2002,37 +3937,49 @@ function Documentation() {
           <Text variant="headingMd" as="h3" id="docs-resources-heading">
             Additional Resources
           </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Curated for {docModeMeta.label.toLowerCase()}
+          </Text>
           <div className={styles.docsResourcesLinks}>
-            <a
-              href="/api-docs"
-              className={styles.docsResourcesLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open API Docs (Swagger) in new tab"
-            >
-              <CodeIcon /> API Docs (Swagger)
-            </a>
-            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <TargetIcon /> Dashboard (tests, quick start)
-            </Link>
-            <Link to={ROUTES.CONNECT} className={styles.docsResourcesLink}>
-              <ConnectIcon /> Connect / API Key
-            </Link>
-            <Link to={ROUTES.PROFILE_APPEARANCE} className={styles.docsResourcesLink}>
-              <SettingsIcon /> Profile appearance
-            </Link>
-            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <SettingsIcon /> App settings
-            </Link>
-            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <CompassIcon /> Setup Wizard
-            </Link>
-            <Link to={ROUTES.PROFILE} className={styles.docsResourcesLink}>
-              <PersonIcon /> Profile
-            </Link>
-            <Link to={ROUTES.NOTIFICATIONS} className={styles.docsResourcesLink}>
-              <NotificationIcon /> Notifications
-            </Link>
+            {footerResources.map(resource => {
+              if (resource.type === 'external') {
+                return (
+                  <a
+                    key={resource.href}
+                    href={resource.href}
+                    className={styles.docsResourcesLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <CodeIcon /> {resource.label}
+                  </a>
+                );
+              }
+              if (resource.type === 'route') {
+                const routePath =
+                  resource.path === 'support'
+                    ? ROUTES.SUPPORT
+                    : resource.path === 'connect'
+                      ? ROUTES.CONNECT
+                      : ROUTES.USER_PANEL;
+                return (
+                  <Link key={resource.path} to={routePath} className={styles.docsResourcesLink}>
+                    {resource.path === 'support' ? <NotificationIcon /> : <ConnectIcon />}{' '}
+                    {resource.label}
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  key={resource.sectionId}
+                  type="button"
+                  className={styles.docsResourcesLink}
+                  onClick={() => scrollToSection(resource.sectionId)}
+                >
+                  <CompassIcon /> {resource.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </Page>

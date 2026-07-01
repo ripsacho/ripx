@@ -9,6 +9,7 @@
 export const PREVIEW_PARAMS = {
   PREVIEW: 'ab_preview',
   TEST_ID: 'ab_preview_test',
+  TEST_TYPE: 'ab_preview_test_type',
   VARIANT_ID: 'ab_preview_variant',
   VARIANT_NAME: 'ab_preview_variant_name',
   TENANT_DOMAIN: 'ab_preview_domain',
@@ -136,8 +137,10 @@ export function normalizePreviewBaseUrl(input) {
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 for visual editor iframe
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 for picker mode
  * @param {boolean} [options.simplePreview=false] - Add ab_preview_simple=1 for no-shell preview
+ * @param {boolean} [options.usePreviewLaunch=false] - TestWizard only: open via /api/track/preview-launch
  * @param {boolean} [options.resetPreviewSession=false] - Clear prior tab preview state before seeding this URL
  * @param {string} [options.previewSessionId] - Optional preview session nonce for diagnostics/cache boundaries
+ * @param {string} [options.testType] - Optional test type hint (`shipping`, `price`, etc.) for storefront preview bootstrap
  * @returns {string|null} Full preview URL or null if baseUrl/testId invalid
  */
 export function buildPreviewUrl({
@@ -146,6 +149,7 @@ export function buildPreviewUrl({
   variantId,
   variantName,
   tenantDomain,
+  testType,
   visualEditor = false,
   visualPicker = false,
   simplePreview = false,
@@ -167,6 +171,12 @@ export function buildPreviewUrl({
       url.searchParams.set(PREVIEW_PARAMS.VARIANT_NAME, String(variantName).trim());
     if (tenantDomain !== null && tenantDomain !== undefined && String(tenantDomain).trim()) {
       url.searchParams.set(PREVIEW_PARAMS.TENANT_DOMAIN, String(tenantDomain).trim());
+    }
+    const normalizedTestType = String(testType || '')
+      .trim()
+      .toLowerCase();
+    if (normalizedTestType) {
+      url.searchParams.set(PREVIEW_PARAMS.TEST_TYPE, normalizedTestType);
     }
     if (visualEditor) url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
     if (visualPicker) url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
@@ -257,6 +267,7 @@ export function buildPreviewDocumentUrl({
     [
       PREVIEW_PARAMS.PREVIEW,
       PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
@@ -376,9 +387,10 @@ export function buildVisualPickerLaunchUrl({
  * @param {Object} options
  * @param {string} options.apiBaseUrl - API base URL (e.g. /api or https://host/api)
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
+ * @param {string} [options.storefrontPassword] - Optional Shopify storefront password (open preview only)
  * @returns {string|null}
  */
-export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
+export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl, storefrontPassword }) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
 
@@ -404,6 +416,7 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
     [
       PREVIEW_PARAMS.PREVIEW,
       PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
@@ -416,6 +429,13 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
         launchUrl.searchParams.set(key, value);
       }
     });
+    const password =
+      storefrontPassword !== null && storefrontPassword !== undefined
+        ? String(storefrontPassword).trim()
+        : '';
+    if (password) {
+      launchUrl.searchParams.set('storefront_password', password);
+    }
     return launchUrl.toString();
   } catch {
     return null;
@@ -430,14 +450,39 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
  * @returns {string|null}
  */
-export function buildShopifyPreviewBootstrapUrl({ previewUrl }) {
+export function buildShopifyPreviewBootstrapUrl({ previewUrl, storefrontPassword } = {}) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
   try {
     const directUrl = new URL(directPreviewUrl);
     const host = String(directUrl.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return null;
-    return `https://${host}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(directPreviewUrl)}`;
+    const bootstrap = new URL(`https://${host}/apps/ripx/preview-bootstrap-v2`);
+    bootstrap.searchParams.set('url', directPreviewUrl);
+    const password =
+      storefrontPassword !== null && storefrontPassword !== undefined
+        ? String(storefrontPassword).trim()
+        : '';
+    if (password) {
+      bootstrap.searchParams.set('storefront_password', password);
+    }
+    [
+      PREVIEW_PARAMS.PREVIEW,
+      PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
+      PREVIEW_PARAMS.VARIANT_ID,
+      PREVIEW_PARAMS.VARIANT_NAME,
+      PREVIEW_PARAMS.TENANT_DOMAIN,
+      PREVIEW_PARAMS.SIMPLE,
+      PREVIEW_PARAMS.RESET_SESSION,
+      PREVIEW_PARAMS.SESSION_ID,
+    ].forEach(key => {
+      const value = directUrl.searchParams.get(key);
+      if (value !== undefined && value !== null && value !== '') {
+        bootstrap.searchParams.set(key, value);
+      }
+    });
+    return bootstrap.toString();
   } catch {
     return null;
   }
@@ -465,6 +510,7 @@ export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
     [
       PREVIEW_PARAMS.PREVIEW,
       PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.TEST_TYPE,
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
@@ -641,6 +687,9 @@ export function ensureShopifyPreviewBootstrapUrl(previewUrl) {
   if (!directPreviewUrl) return '';
   try {
     const parsed = new URL(directPreviewUrl);
+    if (parsed.searchParams.get(PREVIEW_PARAMS.SIMPLE) === PREVIEW_VALUE) {
+      return parsed.toString();
+    }
     const host = String(parsed.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return directPreviewUrl;
     const p = String(parsed.pathname || '').toLowerCase();

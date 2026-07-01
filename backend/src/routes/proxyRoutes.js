@@ -30,6 +30,7 @@ const {
   getStorefrontScriptPath,
   readStorefrontScriptSource,
 } = require('../utils/storefrontScriptSource');
+const { fetchStorefrontPreviewHtml } = require('../utils/storefrontPasswordPreview');
 
 const router = express.Router();
 
@@ -227,7 +228,13 @@ async function serveScript(req, res) {
   }
 
   const [tests, goalMetricDefinitions, shopPriceSurfaceMappings] = await Promise.all([
-    getActiveTestsForStorefront(normalizedShop),
+    getActiveTestsForStorefront(normalizedShop).catch(err => {
+      logger.error('Active storefront tests unavailable for app proxy script', {
+        shop: normalizedShop,
+        error: err.message,
+      });
+      return [];
+    }),
     listGoalMetricDefinitions(normalizedShop).catch(() => []),
     getShopPriceSurfaceMappings(normalizedShop).catch(() => []),
   ]);
@@ -236,8 +243,40 @@ async function serveScript(req, res) {
     tests,
     req,
     goalMetricDefinitions,
-    { shopMappings: shopPriceSurfaceMappings }
+    { shopMappings: shopPriceSurfaceMappings },
+    { runtimeSource: 'app_proxy' }
   );
+  logger.info('Storefront script test set (app_proxy)', {
+    shop: normalizedShop,
+    totalTests: Array.isArray(tests) ? tests.length : 0,
+    servedTests: (Array.isArray(tests) ? tests : []).slice(0, 25).map(test => ({
+      id: test?.id || null,
+      type: test?.type || null,
+      status: test?.status || null,
+      personalizationMode: test?.personalization_mode || null,
+    })),
+  });
+  const nonRunningShippingTests = (Array.isArray(tests) ? tests : []).filter(test => {
+    const type = String(test?.type || '')
+      .trim()
+      .toLowerCase();
+    const status = String(test?.status || '')
+      .trim()
+      .toLowerCase();
+    return type === 'shipping' && status !== 'running';
+  });
+  if (nonRunningShippingTests.length > 0) {
+    logger.warn('Non-running shipping tests served to storefront (app_proxy)', {
+      shop: normalizedShop,
+      count: nonRunningShippingTests.length,
+      tests: nonRunningShippingTests.slice(0, 25).map(test => ({
+        id: test?.id || null,
+        type: test?.type || null,
+        status: test?.status || null,
+        personalizationMode: test?.personalization_mode || null,
+      })),
+    });
+  }
   const scriptPath = getStorefrontScriptPath();
 
   let scriptContents;
@@ -259,6 +298,8 @@ async function serveScript(req, res) {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Script-Version', versionLabel);
   res.set('Cache-Control', getStorefrontScriptCacheControl());
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   res.send(
     `window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n` +
       buildEarlyStorefrontAntiFlickerBootstrap(
@@ -279,10 +320,53 @@ async function servePreviewBootstrap(req, res) {
     return;
   }
   const { normalizedShop, targetUrl } = validated;
+  let parsedTargetUrl;
+  try {
+    parsedTargetUrl = new URL(targetUrl);
+  } catch (_eTargetUrl) {
+    parsedTargetUrl = null;
+  }
+  if (parsedTargetUrl?.searchParams?.get('ab_preview_simple') === '1') {
+    res.set('Cache-Control', 'no-store');
+    res.redirect(302, parsedTargetUrl.toString());
+    return;
+  }
+  const explicitStorefrontPassword =
+    typeof req.query.storefront_password === 'string' ? req.query.storefront_password.trim() : '';
+  const storefrontPassword = explicitStorefrontPassword;
+  let prefetchedHtml = null;
+  let prefetchError = null;
+  if (storefrontPassword) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const prefetchResult = await fetchStorefrontPreviewHtml(
+        targetUrl,
+        storefrontPassword,
+        controller.signal
+      );
+      clearTimeout(timeoutId);
+      if (prefetchResult.ok) {
+        prefetchedHtml = prefetchResult.html;
+      } else {
+        prefetchError = prefetchResult.reason || 'fetch_failed';
+      }
+    } catch (error) {
+      prefetchError = error?.name === 'AbortError' ? 'timeout' : 'fetch_error';
+    }
+  }
+  const passwordHelpMessage = explicitStorefrontPassword
+    ? 'The storefront password saved for this preview was not accepted. Update it in the RipX test wizard under Storefront password, then open debug preview again.'
+    : 'This Shopify store is password protected. Open the product preview link directly and enter the storefront password once in Shopify. Customer view links should not use this bootstrap page.';
   const previewScriptBust = Date.now();
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
     `&ripx_preview_bust=${previewScriptBust}`;
+  const directScriptUrl = process.env.APP_URL
+    ? `${String(process.env.APP_URL).replace(/\/+$/, '')}/api/track/script.js?shop=${encodeURIComponent(
+        normalizedShop
+      )}&v=${SCRIPT_VERSION}&ripx_preview_bust=${previewScriptBust}`
+    : '';
   const html = `<!doctype html>
 <html lang="en">
   <head>
@@ -298,7 +382,15 @@ async function servePreviewBootstrap(req, res) {
     <script>
       (function () {
         var target = ${JSON.stringify(targetUrl)};
+        try {
+          var simpleTarget = new URL(target, window.location.origin);
+          if (simpleTarget.searchParams.get('ab_preview_simple') === '1') {
+            window.location.replace(simpleTarget.toString());
+            return;
+          }
+        } catch (_eSimpleTarget) {}
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+        var directScriptUrl = ${JSON.stringify(directScriptUrl)};
         var mounted = false;
         var redirected = false;
         var retryCount = 0;
@@ -312,6 +404,7 @@ async function servePreviewBootstrap(req, res) {
             var previewCtx = {
               preview: tu.searchParams.get('ab_preview') === '1',
               testId: tu.searchParams.get('ab_preview_test') || null,
+              testType: tu.searchParams.get('ab_preview_test_type') || null,
               variantId: tu.searchParams.get('ab_preview_variant') || null,
               variantName: tu.searchParams.get('ab_preview_variant_name') || null,
               tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
@@ -319,7 +412,7 @@ async function servePreviewBootstrap(req, res) {
               sessionId: tu.searchParams.get('ab_preview_session') || null,
               persistedAtMs: Date.now(),
             };
-            if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+            if (previewCtx.preview || previewCtx.testId || previewCtx.testType || previewCtx.variantId || previewCtx.variantName) {
               try {
                 window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
               } catch (_se) {}
@@ -353,6 +446,47 @@ async function servePreviewBootstrap(req, res) {
             wrap.appendChild(title);
             wrap.appendChild(text);
             wrap.appendChild(retry);
+            wrap.appendChild(open);
+            body.appendChild(wrap);
+          } catch (_e) {}
+        }
+        function isPasswordPageHtml(htmlText) {
+          try {
+            var lower = String(htmlText || '').toLowerCase();
+            return (
+              lower.indexOf('storefront_password') !== -1 ||
+              lower.indexOf('this store is password protected') !== -1 ||
+              lower.indexOf('enter store password') !== -1
+            );
+          } catch (_e) {
+            return false;
+          }
+        }
+        function showPasswordHelp() {
+          try {
+            var body = document.body || document.documentElement;
+            if (!body) return;
+            body.innerHTML = '';
+            var wrap = document.createElement('main');
+            wrap.style.cssText = 'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:12vh auto;padding:24px;border:1px solid #ddd;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.08);';
+            var title = document.createElement('h1');
+            title.textContent = 'Storefront password required';
+            title.style.cssText = 'font-size:22px;margin:0 0 10px;';
+            var text = document.createElement('p');
+            text.textContent = ${JSON.stringify(passwordHelpMessage)};
+            text.style.cssText = 'line-height:1.5;color:#555;margin:0 0 18px;';
+            var open = document.createElement('button');
+            open.textContent = 'Open storefront password page';
+            open.style.cssText = 'padding:10px 14px;border:0;border-radius:9px;background:#111827;color:white;cursor:pointer;';
+            open.onclick = function () {
+              try {
+                window.location.replace('/password');
+              } catch (_e) {
+                window.location.href = '/password';
+              }
+            };
+            wrap.appendChild(title);
+            wrap.appendChild(text);
             wrap.appendChild(open);
             body.appendChild(wrap);
           } catch (_e) {}
@@ -398,6 +532,7 @@ async function servePreviewBootstrap(req, res) {
             'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
               'if(ctx.preview===true||ctx.preview==="1") u.searchParams.set("ab_preview","1");' +
               'if(ctx.testId) u.searchParams.set("ab_preview_test",String(ctx.testId));' +
+              'if(ctx.testType) u.searchParams.set("ab_preview_test_type",String(ctx.testType));' +
               'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
               'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
               'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
@@ -406,7 +541,7 @@ async function servePreviewBootstrap(req, res) {
               'return u;}' +
             'function cleanSimplePreviewAddressBar(){try{var ctx=readCtx();if(!(ctx&&(ctx.simple===true||ctx.simple==="1"))||!history||typeof history.replaceState!=="function")return;var clean=new URL(' +
               JSON.stringify(targetUrl) +
-              ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap"};}catch(_e){}}' +
+              ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_test_type","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap"};}catch(_e){}}' +
             'function toBootstrapHref(href){try{' +
               'var u=new URL(href,window.location.origin);' +
               'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
@@ -457,6 +592,7 @@ async function servePreviewBootstrap(req, res) {
             '<script>(function(){' +
             'var attempts=0;' +
             'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
+            'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
             'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
             'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
             'function injectOnce(src){' +
@@ -480,7 +616,7 @@ async function servePreviewBootstrap(req, res) {
                 'return;' +
               '}' +
               'attempts+=1;' +
-              'injectOnce(appSrc);' +
+              'injectOnce(attempts<=2?appSrc:directSrc||appSrc);' +
               'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
               'else if(!hasRipx()&&hasBootstrap()){' +
                 'try{' +
@@ -559,14 +695,35 @@ async function servePreviewBootstrap(req, res) {
           }
         }
         seedPreviewCtx();
-        fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
-          .then(function (r) {
-            if (!r || !r.ok) throw new Error('target_fetch_failed');
-            return r.text();
-          })
-          .then(mount)
-          .catch(goHard);
-        setTimeout(goHard, 15000);
+        var prefetchedHtml = ${JSON.stringify(prefetchedHtml)};
+        var prefetchError = ${JSON.stringify(prefetchError)};
+        if (prefetchedHtml) {
+          mount(prefetchedHtml);
+        } else if (prefetchError === 'password_required') {
+          showPasswordHelp();
+        } else {
+          fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
+            .then(function (r) {
+              if (!r || !r.ok) throw new Error('target_fetch_failed');
+              return r.text();
+            })
+            .then(function (htmlText) {
+              if (isPasswordPageHtml(htmlText)) {
+                try {
+                  var targetUrlObj = new URL(target, window.location.origin);
+                  if (targetUrlObj.searchParams.get('ab_preview_simple') === '1') {
+                    window.location.replace(targetUrlObj.toString());
+                    return;
+                  }
+                } catch (_eSimpleRedirect) {}
+                showPasswordHelp();
+                return;
+              }
+              mount(htmlText);
+            })
+            .catch(goHard);
+          setTimeout(goHard, 15000);
+        }
       })();
     </script>
   </body>
@@ -692,9 +849,15 @@ async function servePreviewBootstrapLoader(req, res) {
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
     `&ripx_preview_bust=${previewScriptBust}`;
+  const directScriptUrl = process.env.APP_URL
+    ? `${String(process.env.APP_URL).replace(/\/+$/, '')}/api/track/script.js?shop=${encodeURIComponent(
+        normalizedShop
+      )}&v=${SCRIPT_VERSION}&ripx_preview_bust=${previewScriptBust}`
+    : '';
   const js = `(function () {
   var target = ${JSON.stringify(targetUrl)};
   var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+  var directScriptUrl = ${JSON.stringify(directScriptUrl)};
   var redirected = false;
   var mounted = false;
   var fallbackTimer = null;
@@ -709,6 +872,7 @@ async function servePreviewBootstrapLoader(req, res) {
       var previewCtx = {
         preview: tu.searchParams.get('ab_preview') === '1',
         testId: tu.searchParams.get('ab_preview_test') || null,
+        testType: tu.searchParams.get('ab_preview_test_type') || null,
         variantId: tu.searchParams.get('ab_preview_variant') || null,
         variantName: tu.searchParams.get('ab_preview_variant_name') || null,
         tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
@@ -716,7 +880,7 @@ async function servePreviewBootstrapLoader(req, res) {
         sessionId: tu.searchParams.get('ab_preview_session') || null,
         persistedAtMs: Date.now(),
       };
-      if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+      if (previewCtx.preview || previewCtx.testId || previewCtx.testType || previewCtx.variantId || previewCtx.variantName) {
         try {
           window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
         } catch (_se) {}
@@ -799,6 +963,7 @@ async function servePreviewBootstrapLoader(req, res) {
       'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
         'if(ctx.preview===true||ctx.preview==="1") u.searchParams.set("ab_preview","1");' +
         'if(ctx.testId) u.searchParams.set("ab_preview_test",String(ctx.testId));' +
+        'if(ctx.testType) u.searchParams.set("ab_preview_test_type",String(ctx.testType));' +
         'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
         'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
         'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
@@ -807,7 +972,7 @@ async function servePreviewBootstrapLoader(req, res) {
         'return u;}' +
       'function cleanSimplePreviewAddressBar(){try{var ctx=readCtx();if(!(ctx&&(ctx.simple===true||ctx.simple==="1"))||!history||typeof history.replaceState!=="function")return;var clean=new URL(' +
         JSON.stringify(targetUrl) +
-        ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap-loader"};}catch(_e){}}' +
+        ',window.location.origin);["ab_preview","ab_preview_simple","ab_preview_test","ab_preview_test_type","ab_preview_variant","ab_preview_variant_name","ab_preview_domain","ab_preview_reset","ab_preview_session"].forEach(function(k){clean.searchParams.delete(k);});if(clean.hostname&&String(clean.hostname).toLowerCase()!==String(window.location.hostname).toLowerCase())return;history.replaceState(history.state||null,document.title||"",clean.pathname+clean.search+clean.hash);window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__={cleaned:true,at:Date.now(),href:clean.toString(),source:"preview-bootstrap-loader"};}catch(_e){}}' +
       'function toBootstrapHref(href){try{' +
         'var u=new URL(href,window.location.origin);' +
         'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
@@ -858,6 +1023,7 @@ async function servePreviewBootstrapLoader(req, res) {
       '<script>(function(){' +
       'var attempts=0;' +
       'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
+      'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
       'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
       'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
       'function injectOnce(src){' +
@@ -881,7 +1047,7 @@ async function servePreviewBootstrapLoader(req, res) {
           'return;' +
         '}' +
         'attempts+=1;' +
-        'injectOnce(appSrc);' +
+        'injectOnce(attempts<=2?appSrc:directSrc||appSrc);' +
         'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
         'else if(!hasRipx()&&hasBootstrap()){' +
           'try{' +

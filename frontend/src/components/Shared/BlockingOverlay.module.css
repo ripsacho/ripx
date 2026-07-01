@@ -1,0 +1,134 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--surface-scrim);
+  backdrop-filter: blur(3px);
+  pointer-events: all;
+  touch-action: none;
+}
+
+.card {
+  min-width: 290px;
+  max-width: min(460px, calc(100vw - 2rem));
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--ripx-surface-shadow);
+  text-align: center;
+}
+
+.title {
+  font-size: 0.96rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.message {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.stepsList {
+  width: 100%;
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.stepItem {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.79rem;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+}
+
+.stepIndicator {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.stepLabel {
+  text-align: left;
+}
+
+.stepItemActive {
+  color: var(--text-primary);
+}
+
+.stepItemActive .stepIndicator {
+  border-color: #0ea5e9;
+  color: #0ea5e9;
+}
+
+.stepItemComplete {
+  color: #0f766e;
+}
+
+.stepItemComplete .stepIndicator {
+  border-color: #0f766e;
+  background: rgba(15, 118, 110, 0.09);
+  color: #0f766e;
+}
+
+.stepItemError {
+  color: #b91c1c;
+}
+
+.stepItemError .stepIndicator {
+  border-color: #b91c1c;
+  background: rgba(185, 28, 28, 0.08);
+  color: #b91c1c;
+}
+
+[data-theme='dark'] .card {
+  background: rgba(30, 41, 59, 0.94);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: rgba(241, 245, 249, 0.96);
+  box-shadow:
+    0 24px 54px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .message,
+[data-theme='dark'] .stepItem {
+  color: rgba(203, 213, 225, 0.8);
+}
+
+[data-theme='dark'] .stepIndicator {
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+[data-theme='dark'] .stepItemActive {
+  color: rgba(241, 245, 249, 0.96);
+}
+
+[data-theme='dark'] .stepItemComplete {
+  color: #5eead4;
+}
+
+[data-theme='dark'] .stepItemError {
+  color: #fca5a5;
+}

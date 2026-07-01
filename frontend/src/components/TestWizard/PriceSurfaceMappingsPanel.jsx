@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Banner,
@@ -214,6 +214,7 @@ export default function PriceSurfaceMappingsPanel({
   const [previewPickError, setPreviewPickError] = useState('');
   const [pickerModalOpen, setPickerModalOpen] = useState(false);
   const [pickerModalUrl, setPickerModalUrl] = useState('');
+  const autoScopeSelectionDoneRef = useRef(false);
 
   const resolvePickerLaunchUrl = useCallback(
     surface => {
@@ -413,7 +414,7 @@ export default function PriceSurfaceMappingsPanel({
     setNotice('');
     try {
       const response = await apiPut(priceSurfaceSettingsPath(), {
-        mappings: normalizePriceSurfaceMappings(shopMappings),
+        mappings: normalizePriceSurfaceMappingsForEditor(shopMappings),
       });
       const data = unwrapData(response);
       setShopMappings(normalizePriceSurfaceMappingsForEditor(data?.mappings));
@@ -448,6 +449,19 @@ export default function PriceSurfaceMappingsPanel({
 
   const testRows = normalizePriceSurfaceMappingsForEditor(testMappings);
   const shopRows = normalizePriceSurfaceMappingsForEditor(shopMappings);
+
+  useEffect(() => {
+    if (autoScopeSelectionDoneRef.current) {
+      return;
+    }
+    // On first load, prefer Shop defaults when test scope is empty but shop scope has mappings.
+    if (activeScopeTab === 'test' && testRows.length === 0 && shopRows.length > 0) {
+      setActiveScopeTab('shop');
+    }
+    if (testRows.length > 0 || shopRows.length > 0) {
+      autoScopeSelectionDoneRef.current = true;
+    }
+  }, [activeScopeTab, testRows.length, shopRows.length]);
   const duplicateKeys = useMemo(() => {
     const counts = new Map();
     [...testRows, ...shopRows].forEach(row => {

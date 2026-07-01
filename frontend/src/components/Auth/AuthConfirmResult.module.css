@@ -98,3 +98,26 @@
   margin: 0;
   line-height: 1.6;
 }
+
+[data-theme='dark'] .confirmCardSuccess,
+[data-theme='dark'] .confirmCardError {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.38);
+}
+
+[data-theme='dark'] .confirmCardSuccess {
+  border-color: rgba(6, 182, 212, 0.28);
+}
+
+[data-theme='dark'] .confirmCardError {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+[data-theme='dark'] .confirmIconSuccess {
+  color: #34d399;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(34, 197, 94, 0.16));
+}
+
+[data-theme='dark'] .confirmIconError {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+}

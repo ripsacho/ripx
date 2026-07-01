@@ -35,10 +35,83 @@
   padding: 0 var(--analytics-padding-x) 32px;
 }
 
-[data-theme="dark"] .analyticsPage {
-  --analytics-glass: rgba(26, 26, 26, 0.65);
+[data-theme='dark'] .analyticsPage {
+  --analytics-glass: rgba(51, 65, 85, 0.65);
   --analytics-glass-border: rgba(6, 182, 212, 0.12);
   --analytics-glow: rgba(6, 182, 212, 0.25);
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button span),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button__Text) {
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button:hover),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button:focus-visible) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.16) inset,
+    0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button:hover span),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button:focus-visible span),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button:hover .Polaris-Button__Text),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button:focus-visible .Polaris-Button__Text) {
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button[disabled]),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Button.Polaris-Button--disabled) {
+  background: rgba(30, 41, 59, 0.46);
+  border-color: rgba(148, 163, 184, 0.14);
+  color: rgba(148, 163, 184, 0.72);
+  box-shadow: none;
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Badge) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(30, 41, 59, 0.28) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Badge--toneSuccess) {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #86efac;
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Badge--toneInfo) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.34);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Badge--toneWarning),
+[data-theme='dark'] .analyticsPage :global(.Polaris-Badge--toneAttention) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .analyticsPage :global(.Polaris-Badge--toneCritical) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fca5a5;
 }
 
 /* Full-screen layout structure */
@@ -82,8 +155,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.02) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.02) 1px, transparent 0);
   background-size: 32px 32px;
   pointer-events: none;
   z-index: 0;
@@ -189,7 +261,12 @@
   background:
     radial-gradient(ellipse 80% 50% at 20% 30%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
     radial-gradient(ellipse 60% 40% at 85% 70%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 251, 252, 0.9) 50%, rgba(255, 255, 255, 0.95) 100%);
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.95) 0%,
+      rgba(250, 251, 252, 0.9) 50%,
+      rgba(255, 255, 255, 0.95) 100%
+    );
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--analytics-glass-border);
@@ -200,11 +277,16 @@
   animation: analyticsHeroFadeIn var(--analytics-time-500) ease-out;
 }
 
-[data-theme="dark"] .heroSection {
+[data-theme='dark'] .heroSection {
   background:
     radial-gradient(ellipse 80% 50% at 20% 30%, rgba(6, 182, 212, 0.1) 0%, transparent 50%),
     radial-gradient(ellipse 60% 40% at 85% 70%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
-    linear-gradient(135deg, rgba(26, 26, 26, 0.95) 0%, rgba(18, 18, 18, 0.9) 50%, rgba(26, 26, 26, 0.95) 100%);
+    linear-gradient(
+      135deg,
+      var(--surface-glass) 0%,
+      rgba(30, 41, 59, 0.9) 50%,
+      var(--surface-glass) 100%
+    );
   border-color: rgba(6, 182, 212, 0.15);
   box-shadow:
     0 12px 48px rgba(0, 0, 0, 0.5),
@@ -213,8 +295,14 @@
 }
 
 @keyframes analyticsHeroFadeIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Animated gradient top bar */
@@ -257,7 +345,7 @@
   pointer-events: none;
 }
 
-[data-theme="dark"] .heroSection::after {
+[data-theme='dark'] .heroSection::after {
   background: linear-gradient(
     105deg,
     transparent 0%,
@@ -269,13 +357,23 @@
 }
 
 @keyframes analyticsShine {
-  0%, 100% { background-position: -100% 0; }
-  50% { background-position: 200% 0; }
+  0%,
+  100% {
+    background-position: -100% 0;
+  }
+  50% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes gradientShift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .heroBreadcrumb {
@@ -351,8 +449,18 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(248, 250, 252, 0.64)),
     radial-gradient(circle at top left, rgba(6, 182, 212, 0.1), transparent 42%);
   box-shadow:
-    0 8px 26px rgba(15, 23, 42, 0.055),
+    0 8px 26px rgba(30, 41, 59, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+[data-theme='dark'] .heroActions {
+  background:
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.14), transparent 42%),
+    var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.24);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .heroPrimaryBtn {
@@ -395,9 +503,14 @@
   gap: 0.2rem;
   flex-wrap: wrap;
   padding: 0.18rem;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(30, 41, 59, 0.06);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.56);
+}
+
+[data-theme='dark'] .heroUtilityCluster {
+  background: rgba(2, 6, 23, 0.46);
+  border-color: rgba(6, 182, 212, 0.2);
 }
 
 .heroPromoteWrap {
@@ -424,6 +537,18 @@
   transition: all var(--analytics-time-200) ease;
 }
 
+[data-theme='dark'] .heroSecondaryBtn {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .heroSecondaryBtn:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #67e8f9;
+}
+
 .heroSecondaryBtn:hover:not(:disabled) {
   background: rgba(6, 182, 212, 0.1);
   border-color: rgba(6, 182, 212, 0.18);
@@ -446,6 +571,25 @@
     rgba(255, 251, 235, 0.86);
   color: #92400e;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+[data-theme='dark'] .heroSecondaryBtnPromote {
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.18), transparent 48%),
+    rgba(120, 53, 15, 0.24);
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fcd34d;
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.08) inset,
+    0 8px 18px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .heroSecondaryBtnPromote:hover:not(:disabled) {
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.26), transparent 48%),
+    rgba(120, 53, 15, 0.32);
+  border-color: rgba(245, 158, 11, 0.48);
+  color: #fde68a;
 }
 
 .heroSecondaryBtnPromote:hover:not(:disabled) {
@@ -472,9 +616,19 @@
   color: #0e7490;
 }
 
+[data-theme='dark'] .heroSecondaryBtn .heroActionIcon {
+  background: rgba(6, 182, 212, 0.16);
+  color: #67e8f9;
+}
+
 .heroSecondaryBtnPromote .heroActionIcon {
   background: rgba(245, 158, 11, 0.14);
   color: #b45309;
+}
+
+[data-theme='dark'] .heroSecondaryBtnPromote .heroActionIcon {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
 }
 
 .heroActionCopy {
@@ -560,8 +714,13 @@
 }
 
 @keyframes badgePulse {
-  0%, 100% { box-shadow: 0 2px 10px rgba(6, 182, 212, 0.25); }
-  50% { box-shadow: 0 2px 20px rgba(6, 182, 212, 0.45); }
+  0%,
+  100% {
+    box-shadow: 0 2px 10px rgba(6, 182, 212, 0.25);
+  }
+  50% {
+    box-shadow: 0 2px 20px rgba(6, 182, 212, 0.45);
+  }
 }
 
 .heroQuickStats {
@@ -572,6 +731,11 @@
   border: 1px solid rgba(6, 182, 212, 0.12);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+[data-theme='dark'] .heroQuickStats {
+  background: rgba(30, 41, 59, 0.56);
+  border-color: rgba(6, 182, 212, 0.2);
 }
 
 .heroStat {
@@ -599,12 +763,12 @@
   box-shadow: none;
 }
 
-[data-theme="dark"] .heroStat {
+[data-theme='dark'] .heroStat {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(6, 182, 212, 0.12);
 }
 
-[data-theme="dark"] .heroStat:hover {
+[data-theme='dark'] .heroStat:hover {
   box-shadow: 0 8px 24px rgba(6, 182, 212, 0.15);
 }
 
@@ -642,12 +806,32 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
-[data-theme="dark"] .commandCenter {
+[data-theme='dark'] .commandCenter {
   background:
     radial-gradient(circle at top left, rgba(6, 182, 212, 0.12), transparent 34%),
     radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.1), transparent 30%),
     rgba(255, 255, 255, 0.035);
   border-color: rgba(6, 182, 212, 0.18);
+}
+
+[data-theme='dark'] .commandHealth,
+[data-theme='dark'] .commandScopeGrid span,
+[data-theme='dark'] .reportNavigationHeader,
+[data-theme='dark'] .reportReadinessCard {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.06) inset,
+    0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .reportReadinessCard:hover,
+[data-theme='dark'] .reportReadinessCardActive {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.38);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.12) inset,
+    0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
 .commandCenterMain {
@@ -677,12 +861,11 @@
   height: 58px;
   flex: 0 0 auto;
   border-radius: 18px;
-  background:
-    conic-gradient(
-      from -90deg,
-      var(--futuristic-cyan) 0 var(--analytics-health-score, 0%),
-      rgba(15, 23, 42, 0.08) var(--analytics-health-score, 0%) 100%
-    );
+  background: conic-gradient(
+    from -90deg,
+    var(--futuristic-cyan) 0 var(--analytics-health-score, 0%),
+    rgba(30, 41, 59, 0.08) var(--analytics-health-score, 0%) 100%
+  );
 }
 
 .commandHealthGauge::before {
@@ -693,8 +876,8 @@
   background: rgba(255, 255, 255, 0.92);
 }
 
-[data-theme="dark"] .commandHealthGauge::before {
-  background: rgba(18, 18, 18, 0.92);
+[data-theme='dark'] .commandHealthGauge::before {
+  background: rgba(30, 41, 59, 0.92);
 }
 
 .commandHealthGauge span {
@@ -807,7 +990,7 @@
   align-items: flex-start;
   min-width: 0;
   padding: 0.55rem 0.58rem;
-  border: 1px solid rgba(15, 23, 42, 0.055);
+  border: 1px solid rgba(30, 41, 59, 0.055);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.6);
   color: inherit;
@@ -862,7 +1045,7 @@
   justify-self: start;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   color: var(--text-primary);
   font-weight: 800;
 }
@@ -918,8 +1101,14 @@
 }
 
 @keyframes winnerBannerFadeIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .winnerBanner::before {
@@ -948,8 +1137,15 @@
 }
 
 @keyframes winnerIconPulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5); }
-  50% { transform: scale(1.03); box-shadow: 0 8px 28px rgba(6, 182, 212, 0.6); }
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 8px 28px rgba(6, 182, 212, 0.6);
+  }
 }
 
 .winnerContent {
@@ -986,11 +1182,7 @@
   padding: 1.25rem 1.75rem;
   margin-bottom: 0;
   border-radius: 18px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(250, 251, 252, 0.85) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(250, 251, 252, 0.85) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(6, 182, 212, 0.12);
@@ -1027,14 +1219,39 @@
     0 0 0 1px rgba(6, 182, 212, 0.1);
 }
 
-[data-theme="dark"] .filterBar {
-  background: linear-gradient(
-    135deg,
-    rgba(26, 26, 26, 0.9) 0%,
-    rgba(18, 18, 18, 0.85) 100%
-  );
+[data-theme='dark'] .filterBar {
+  background: linear-gradient(135deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
   border-color: rgba(6, 182, 212, 0.18);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .filterBar :global(.Polaris-Select__Input),
+[data-theme='dark'] .filterBar :global(.Polaris-TextField__Input),
+[data-theme='dark'] .chartMetricSelect :global(.Polaris-Select__Input) {
+  background-color: rgba(30, 41, 59, 0.78);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.08) inset;
+}
+
+[data-theme='dark'] .filterBar :global(.Polaris-TextField__Input)::placeholder {
+  color: rgba(148, 163, 184, 0.76);
+}
+
+[data-theme='dark'] .filterBar :global(.Polaris-Button),
+[data-theme='dark'] .visualSectionHeader :global(.Polaris-Button),
+[data-theme='dark'] .chartHeaderWithControl :global(.Polaris-Button) {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .filterBar :global(.Polaris-Button:hover),
+[data-theme='dark'] .visualSectionHeader :global(.Polaris-Button:hover),
+[data-theme='dark'] .chartHeaderWithControl :global(.Polaris-Button:hover) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #67e8f9;
 }
 
 .filterBarLabel {
@@ -1089,12 +1306,22 @@
   border: 1px solid rgba(6, 182, 212, 0.14);
   border-radius: var(--analytics-card-radius);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.9));
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 8px 32px rgba(30, 41, 59, 0.05);
 }
 
-[data-theme="dark"] .variantScoreboard {
-  background: linear-gradient(135deg, rgba(26, 26, 26, 0.94), rgba(18, 18, 18, 0.9));
+[data-theme='dark'] .variantScoreboard {
+  background: linear-gradient(135deg, rgba(51, 65, 85, 0.94), rgba(30, 41, 59, 0.9));
   border-color: rgba(6, 182, 212, 0.2);
+}
+
+[data-theme='dark'] .variantScoreboard,
+[data-theme='dark'] .reportPreviewCard,
+[data-theme='dark'] .chartCard,
+[data-theme='dark'] .dataTableCard,
+[data-theme='dark'] .analyticsSectionCard {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(6, 182, 212, 0.08);
 }
 
 .variantScoreGrid {
@@ -1107,20 +1334,55 @@
   display: grid;
   gap: 1rem;
   padding: 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
-[data-theme="dark"] .variantScoreCard {
+[data-theme='dark'] .variantScoreCard {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+[data-theme='dark'] .variantScoreCard,
+[data-theme='dark'] .variantScoreFooter span,
+[data-theme='dark'] .trafficAllocationRow,
+[data-theme='dark'] .checkoutSignalSummary > div,
+[data-theme='dark'] .checkoutJourneyStep,
+[data-theme='dark'] .checkoutOpsCard,
+[data-theme='dark'] .checkoutSectionMatrixRow {
+  background: rgba(30, 41, 59, 0.58);
+  border-color: rgba(6, 182, 212, 0.14);
+}
+
+[data-theme='dark'] .variantScoreCard {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 18%, transparent), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.8));
+  border-color: color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 28%, rgba(6, 182, 212, 0.12));
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 10%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .checkoutJourneyStep,
+[data-theme='dark'] .checkoutOpsCard,
+[data-theme='dark'] .checkoutSignalSummary > div {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(6, 182, 212, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.62), rgba(15, 23, 42, 0.76));
+  border-color: rgba(6, 182, 212, 0.22);
+}
+
 .variantScoreCardLeader {
-  border-color: color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 42%, transparent);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 16%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--variant-score-color, var(--futuristic-cyan)) 42%,
+    transparent
+  );
+  box-shadow: 0 10px 28px
+    color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 16%, transparent);
 }
 
 .variantScoreHeader {
@@ -1143,7 +1405,8 @@
   height: 12px;
   border-radius: 999px;
   background: var(--variant-score-color, var(--futuristic-cyan));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 16%, transparent);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--variant-score-color, var(--futuristic-cyan)) 16%, transparent);
 }
 
 .variantScoreMetric {
@@ -1219,7 +1482,11 @@
 }
 
 .variantScoreBars span > i {
-  background: linear-gradient(90deg, var(--variant-score-color, var(--futuristic-cyan)), rgba(6, 182, 212, 0.35));
+  background: linear-gradient(
+    90deg,
+    var(--variant-score-color, var(--futuristic-cyan)),
+    rgba(6, 182, 212, 0.35)
+  );
 }
 
 .variantScoreFooter {
@@ -1233,10 +1500,10 @@
   gap: 0.1rem;
   padding: 0.6rem;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.035);
+  background: rgba(30, 41, 59, 0.035);
 }
 
-[data-theme="dark"] .variantScoreFooter span {
+[data-theme='dark'] .variantScoreFooter span {
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1256,7 +1523,7 @@
   gap: 0.75rem;
   min-height: 210px;
   padding: 1.2rem;
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
   color: inherit;
@@ -1273,9 +1540,25 @@
   outline: none;
 }
 
-[data-theme="dark"] .reportPreviewCard {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.94), rgba(18, 18, 18, 0.9));
+[data-theme='dark'] .reportPreviewCard {
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.94), rgba(30, 41, 59, 0.9));
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .reportPreviewCard:hover,
+[data-theme='dark'] .reportPreviewCard:focus-visible {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(6, 182, 212, 0.12), transparent 34%),
+    linear-gradient(180deg, var(--surface-slate-panel), rgba(2, 6, 23, 0.86));
+  border-color: rgba(6, 182, 212, 0.34);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .reportPreviewTopline em {
+  background: rgba(6, 182, 212, 0.16);
+  color: #67e8f9;
 }
 
 .reportPreviewCard_good {
@@ -1365,7 +1648,7 @@
   overflow: hidden;
   height: 18px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
 }
 
 .trafficSplitBars i {
@@ -1384,10 +1667,10 @@
   align-items: center;
   padding: 0.75rem;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.035);
+  background: rgba(30, 41, 59, 0.035);
 }
 
-[data-theme="dark"] .trafficAllocationRow {
+[data-theme='dark'] .trafficAllocationRow {
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1459,7 +1742,7 @@
   background:
     radial-gradient(circle at 10% 10%, rgba(6, 182, 212, 0.08), transparent 32%),
     rgba(255, 255, 255, 0.88);
-  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.055);
+  box-shadow: 0 10px 32px rgba(30, 41, 59, 0.055);
 }
 
 .checkoutSignalSummary,
@@ -1481,9 +1764,9 @@
     rgba(255, 255, 255, 0.82);
 }
 
-[data-theme="dark"] .checkoutSignalSummary > div,
-[data-theme="dark"] .checkoutJourneyStep,
-[data-theme="dark"] .checkoutOpsCard {
+[data-theme='dark'] .checkoutSignalSummary > div,
+[data-theme='dark'] .checkoutJourneyStep,
+[data-theme='dark'] .checkoutOpsCard {
   background:
     radial-gradient(circle at 12% 0%, rgba(6, 182, 212, 0.14), transparent 36%),
     rgba(255, 255, 255, 0.045);
@@ -1518,7 +1801,7 @@
   height: 9px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.08);
+  background: rgba(30, 41, 59, 0.08);
 }
 
 .checkoutJourneyTrack span {
@@ -1540,7 +1823,7 @@
   gap: 0.8rem;
   align-items: center;
   padding: 0.85rem 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(30, 41, 59, 0.08);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.66);
 }
@@ -1554,7 +1837,7 @@
   line-height: 1.35;
 }
 
-[data-theme="dark"] .checkoutSectionMatrixRow {
+[data-theme='dark'] .checkoutSectionMatrixRow {
   background: rgba(255, 255, 255, 0.035);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -1591,14 +1874,14 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.7rem 0;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-top: 1px solid rgba(30, 41, 59, 0.08);
 }
 
 .checkoutOpsRow:first-of-type {
   border-top: 0;
 }
 
-[data-theme="dark"] .phaseThreeCard {
+[data-theme='dark'] .phaseThreeCard {
   background:
     radial-gradient(circle at 10% 10%, rgba(6, 182, 212, 0.12), transparent 32%),
     rgba(255, 255, 255, 0.04);
@@ -1668,7 +1951,7 @@
 .cohortRow > div {
   height: 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(30, 41, 59, 0.06);
   overflow: hidden;
 }
 
@@ -1695,13 +1978,13 @@
   background:
     radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.08), transparent 32%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
-  box-shadow: 0 10px 36px rgba(15, 23, 42, 0.055);
+  box-shadow: 0 10px 36px rgba(30, 41, 59, 0.055);
 }
 
-[data-theme="dark"] .decisionVisualDeck {
+[data-theme='dark'] .decisionVisualDeck {
   background:
     radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.12), transparent 32%),
-    linear-gradient(135deg, rgba(26, 26, 26, 0.96), rgba(18, 18, 18, 0.9));
+    linear-gradient(135deg, rgba(51, 65, 85, 0.96), rgba(30, 41, 59, 0.9));
   border-color: rgba(139, 92, 246, 0.22);
 }
 
@@ -1714,14 +1997,14 @@
 .effectPlotCard,
 .decisionHealthCard,
 .guardrailMatrix {
-  border: 1px solid rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(30, 41, 59, 0.07);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
 }
 
-[data-theme="dark"] .effectPlotCard,
-[data-theme="dark"] .decisionHealthCard,
-[data-theme="dark"] .guardrailMatrix {
+[data-theme='dark'] .effectPlotCard,
+[data-theme='dark'] .decisionHealthCard,
+[data-theme='dark'] .guardrailMatrix {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -1813,7 +2096,12 @@
   position: relative;
   height: 26px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.08), rgba(15, 23, 42, 0.04), rgba(34, 197, 94, 0.09));
+  background: linear-gradient(
+    90deg,
+    rgba(239, 68, 68, 0.08),
+    rgba(30, 41, 59, 0.04),
+    rgba(34, 197, 94, 0.09)
+  );
   overflow: hidden;
 }
 
@@ -1824,7 +2112,7 @@
   bottom: 4px;
   width: 2px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.24);
+  background: rgba(30, 41, 59, 0.24);
 }
 
 .effectZeroLine {
@@ -1854,7 +2142,7 @@
   border: 2px solid #fff;
   border-radius: 999px;
   transform: translate(-50%, -50%);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 4px 12px rgba(30, 41, 59, 0.22);
 }
 
 .effectPointGood,
@@ -1895,7 +2183,7 @@
   overflow: hidden;
   height: 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.07);
+  background: rgba(30, 41, 59, 0.07);
 }
 
 .decisionHealthMeter i,
@@ -1934,11 +2222,7 @@
   padding: 2rem 2.5rem;
   border-radius: var(--analytics-card-radius);
   transition: all var(--analytics-transition);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(250, 251, 252, 0.95) 100%
-  );
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 251, 252, 0.95) 100%);
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow:
     0 6px 32px rgba(0, 0, 0, 0.05),
@@ -1946,12 +2230,8 @@
   overflow: hidden;
 }
 
-[data-theme="dark"] .chartCard {
-  background: linear-gradient(
-    180deg,
-    rgba(26, 26, 26, 0.98) 0%,
-    rgba(18, 18, 18, 0.95) 100%
-  );
+[data-theme='dark'] .chartCard {
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.98) 0%, var(--surface-glass-strong) 100%);
   border-color: rgba(6, 182, 212, 0.12);
 }
 
@@ -1962,7 +2242,13 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   background-size: 200% 100%;
   animation: gradientShift var(--analytics-time-8000) ease infinite;
   opacity: 0.7;
@@ -2017,7 +2303,7 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(139, 92, 246, 0.03) 100%);
 }
 
-[data-theme="dark"] .emptyChart {
+[data-theme='dark'] .emptyChart {
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
   border-color: rgba(6, 182, 212, 0.25);
 }
@@ -2026,11 +2312,7 @@
 .analyticsSectionCard {
   padding: 1.75rem 2.25rem;
   border-radius: var(--analytics-card-radius);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(250, 251, 252, 0.9) 100%
-  );
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 251, 252, 0.9) 100%);
   border: 1px solid rgba(6, 182, 212, 0.12);
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.04),
@@ -2062,12 +2344,8 @@
   box-shadow: 0 8px 32px rgba(6, 182, 212, 0.06);
 }
 
-[data-theme="dark"] .analyticsSectionCard {
-  background: linear-gradient(
-    180deg,
-    rgba(26, 26, 26, 0.95) 0%,
-    rgba(18, 18, 18, 0.9) 100%
-  );
+[data-theme='dark'] .analyticsSectionCard {
+  background: linear-gradient(180deg, var(--surface-glass) 0%, rgba(30, 41, 59, 0.9) 100%);
   border-color: rgba(6, 182, 212, 0.15);
 }
 
@@ -2082,11 +2360,7 @@
   padding: 1rem 1.25rem;
   border-radius: 14px;
   min-width: 140px;
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.06) 0%,
-    rgba(139, 92, 246, 0.04) 100%
-  );
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
   border: 1px solid rgba(6, 182, 212, 0.15);
   transition: all var(--analytics-time-250) ease;
 }
@@ -2096,12 +2370,8 @@
   box-shadow: 0 4px 16px rgba(6, 182, 212, 0.08);
 }
 
-[data-theme="dark"] .bayesianCard {
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.08) 0%,
-    rgba(139, 92, 246, 0.05) 100%
-  );
+[data-theme='dark'] .bayesianCard {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
@@ -2153,16 +2423,34 @@
   animation: analyticsMetricFadeIn var(--analytics-time-450) ease-out both;
 }
 
-.statsGrid :global(.metric-card):nth-child(1) { animation-delay: 0.05s; }
-.statsGrid :global(.metric-card):nth-child(2) { animation-delay: 0.1s; }
-.statsGrid :global(.metric-card):nth-child(3) { animation-delay: 0.15s; }
-.statsGrid :global(.metric-card):nth-child(4) { animation-delay: 0.2s; }
-.statsGrid :global(.metric-card):nth-child(5) { animation-delay: 0.25s; }
-.statsGrid :global(.metric-card):nth-child(6) { animation-delay: 0.3s; }
+.statsGrid :global(.metric-card):nth-child(1) {
+  animation-delay: 0.05s;
+}
+.statsGrid :global(.metric-card):nth-child(2) {
+  animation-delay: 0.1s;
+}
+.statsGrid :global(.metric-card):nth-child(3) {
+  animation-delay: 0.15s;
+}
+.statsGrid :global(.metric-card):nth-child(4) {
+  animation-delay: 0.2s;
+}
+.statsGrid :global(.metric-card):nth-child(5) {
+  animation-delay: 0.25s;
+}
+.statsGrid :global(.metric-card):nth-child(6) {
+  animation-delay: 0.3s;
+}
 
 @keyframes analyticsMetricFadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .statsGrid :global(.metric-card)::after {
@@ -2172,7 +2460,13 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
   opacity: 0;
   transition: opacity var(--analytics-transition);
 }
@@ -2214,7 +2508,7 @@
   animation: analyticsShimmer var(--analytics-time-1800) ease-in-out infinite;
 }
 
-[data-theme="dark"] .skeletonHero {
+[data-theme='dark'] .skeletonHero {
   background: linear-gradient(
     135deg,
     rgba(6, 182, 212, 0.06) 0%,
@@ -2246,12 +2540,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
   animation: analyticsShimmer var(--analytics-time-2000) ease-in-out infinite;
 }
 
@@ -2274,8 +2563,12 @@
 }
 
 @keyframes analyticsShimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Section Header */
@@ -2305,7 +2598,7 @@
   box-shadow: 0 4px 20px rgba(6, 182, 212, 0.06);
 }
 
-[data-theme="dark"] .dataTableCard {
+[data-theme='dark'] .dataTableCard {
   background: rgba(255, 255, 255, 0.02);
   border-color: rgba(6, 182, 212, 0.15);
 }

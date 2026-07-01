@@ -281,7 +281,7 @@ function inferContextKeyFromPath(pathname) {
     if (p.includes('/settings')) {
       return 'app_settings';
     }
-    if (p.includes('/tests/create')) {
+    if (p.includes('/tests/new') || p.includes('/tests/create')) {
       return 'test_create';
     }
     if (p.includes('/tests/')) {
@@ -290,11 +290,17 @@ function inferContextKeyFromPath(pathname) {
     if (p.includes('/analytics')) {
       return 'analytics';
     }
+    if (p.includes('/goals-metrics')) {
+      return 'goals_metrics';
+    }
+    if (p.includes('/docs')) {
+      return 'documentation';
+    }
   }
   if (p.startsWith('/support')) {
     return 'support';
   }
-  if (p.startsWith('/documentation')) {
+  if (p.startsWith('/docs') || p.startsWith('/documentation')) {
     return 'documentation';
   }
   if (p.startsWith('/admin')) {
@@ -312,11 +318,17 @@ function buildAppScopedPath(appDomain, suffix) {
 }
 
 function buildContextualHelpPayload({ contextKey, appDomain }) {
-  const docsPath = '/documentation';
+  const docsSetup = '/docs?mode=setup#installation';
+  const docsSettings = '/docs?mode=setup#settings';
+  const docsTestWizard = '/docs?mode=feature-guides#test-wizard';
+  const docsAnalytics = '/docs?mode=feature-guides#analytics';
+  const docsGoalsMetrics = '/docs?mode=feature-guides#goals-metrics';
+  const docsPreflight = '/docs?mode=feature-guides#launch-preflight';
+  const docsOverview = '/docs#overview';
   const supportPath = '/support';
   const settingsPath = buildAppScopedPath(appDomain, '/settings');
   const setupPath = buildAppScopedPath(appDomain, '/setup');
-  const createTestPath = buildAppScopedPath(appDomain, '/tests/create');
+  const createTestPath = buildAppScopedPath(appDomain, '/tests/new');
   const analyticsPath = buildAppScopedPath(appDomain, '/analytics');
 
   const helpByContext = {
@@ -327,7 +339,7 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'setup_docs',
           title: 'Open setup docs',
           description: 'Follow the guided setup checklist and required Shopify steps.',
-          path: docsPath,
+          path: docsSetup,
         },
         {
           id: 'setup_settings',
@@ -350,7 +362,7 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'settings_docs',
           title: 'Read settings docs',
           description: 'Understand each settings section and safe defaults.',
-          path: docsPath,
+          path: docsSettings,
         },
         {
           id: 'settings_setup',
@@ -373,7 +385,13 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'create_test_docs',
           title: 'View test creation docs',
           description: 'Targeting, variants, and guardrails best practices.',
-          path: docsPath,
+          path: docsTestWizard,
+        },
+        {
+          id: 'create_test_goals',
+          title: 'Configure goals & metrics',
+          description: 'Define reusable primary and guardrail metrics.',
+          path: docsGoalsMetrics,
         },
         {
           id: 'create_test_analytics',
@@ -396,7 +414,7 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'test_detail_docs',
           title: 'Read result interpretation guide',
           description: 'Understand significance and confidence before rollout.',
-          path: docsPath,
+          path: docsPreflight,
         },
         {
           id: 'test_detail_new',
@@ -419,12 +437,41 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'analytics_docs',
           title: 'Open analytics documentation',
           description: 'Metric definitions, attribution, and caveats.',
-          path: docsPath,
+          path: docsAnalytics,
+        },
+        {
+          id: 'analytics_goals',
+          title: 'Review goals library',
+          description: 'Confirm primary, secondary, and guardrail definitions.',
+          path: docsGoalsMetrics,
         },
         {
           id: 'analytics_support',
           title: 'Ask support about a metric',
           description: 'Get help when numbers look inconsistent.',
+          path: supportPath,
+        },
+      ],
+    },
+    goals_metrics: {
+      title: 'Goals & metrics help',
+      suggestions: [
+        {
+          id: 'goals_docs',
+          title: 'Read goals library guide',
+          description: 'Learn trigger types, roles, and wizard workflow.',
+          path: docsGoalsMetrics,
+        },
+        {
+          id: 'goals_create_test',
+          title: 'Create a test',
+          description: 'Attach library metrics in the Test Wizard.',
+          path: createTestPath,
+        },
+        {
+          id: 'goals_support',
+          title: 'Ask support',
+          description: 'Get help when events are not firing as expected.',
           path: supportPath,
         },
       ],
@@ -459,7 +506,7 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'support_docs',
           title: 'Search docs first',
           description: 'Find implementation examples and troubleshooting steps.',
-          path: docsPath,
+          path: docsOverview,
         },
       ],
     },
@@ -487,7 +534,7 @@ function buildContextualHelpPayload({ contextKey, appDomain }) {
           id: 'general_docs',
           title: 'Open documentation',
           description: 'Browse setup guides and implementation references.',
-          path: docsPath,
+          path: docsOverview,
         },
         {
           id: 'general_support',
@@ -1164,8 +1211,8 @@ router.post(
       if (insertErr.message && /metadata|column.*does not exist/i.test(insertErr.message)) {
         result = await query(
           `INSERT INTO support_tickets (user_id, email, subject, category, message, tenant_id, shop_domain)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, created_at`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, created_at`,
           [userId, rawEmail, rawSubject, categoryVal, rawMessage, tenantId, shopDomain]
         );
       } else {

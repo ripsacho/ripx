@@ -372,7 +372,7 @@ function SetupWizard() {
                         <Text variant="bodyMd" tone="subdued">
                           Need the full snippet? Go to{' '}
                           <a href={settingsPath} className={styles.setupLink}>
-                            App settings → Installation
+                            Store settings → Store setup
                           </a>{' '}
                           for the complete HTML.
                         </Text>
@@ -480,7 +480,7 @@ function SetupWizard() {
                       </BlockStack>
                       <Divider />
                       <Button url={settingsPath} size="slim">
-                        App settings → Installation
+                        Store settings → Store setup
                       </Button>
                     </BlockStack>
                   </Card>
@@ -735,7 +735,10 @@ function SetupWizard() {
                               </Badge>
                             </div>
                             <Text variant="bodySm" tone="subdued">
-                              This should be your current dev tunnel or production domain.
+                              Production uses a stable domain set once in deploy config. Local dev
+                              tunnels change when you restart Shopify CLI; `shopify app dev` now
+                              syncs `.env` and extension URLs automatically. Re-apply shipping tests
+                              after a tunnel change.
                             </Text>
                             <InlineStack gap="200" blockAlign="center">
                               <Text variant="bodySm">{appUrl || 'Not set'}</Text>

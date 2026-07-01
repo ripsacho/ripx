@@ -1,17 +1,42 @@
 query RunInput {
   cart {
+    ripxTest: attribute(key: "_ripx_price_test") {
+      value
+    }
+    ripxPublicTest: attribute(key: "ripx_price_test") {
+      value
+    }
+    ripxVariant: attribute(key: "_ripx_variant") {
+      value
+    }
+    ripxPublicVariant: attribute(key: "ripx_variant") {
+      value
+    }
     deliveryGroups {
       cartLines {
         ripxTest: attribute(key: "_ripx_price_test") {
           value
         }
+        ripxPublicTest: attribute(key: "ripx_price_test") {
+          value
+        }
         ripxVariant: attribute(key: "_ripx_variant") {
+          value
+        }
+        ripxPublicVariant: attribute(key: "ripx_variant") {
           value
         }
       }
       deliveryOptions {
         handle
+        code
         title
+        description
+        deliveryMethodType
+        cost {
+          amount
+          currencyCode
+        }
       }
     }
   }

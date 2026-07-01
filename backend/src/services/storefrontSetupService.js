@@ -2,6 +2,7 @@
  * Live storefront App Proxy + theme embed probes (shared by routes and preflight).
  */
 
+const { getShopSession } = require('../models/shopSession');
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 const {
   isLikelyShopifyPasswordPage,
@@ -131,6 +132,42 @@ async function runStorefrontSetupProbe(shopDomain) {
   };
 }
 
+async function probeStorefrontReadinessForShop(shopDomain) {
+  const normalized = String(shopDomain || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return { shopDomain: normalized, available: false, reason: 'invalid_shop' };
+  }
+  const session = await getShopSession(normalized);
+  if (!String(session?.access_token || session?.accessToken || '').trim()) {
+    return { shopDomain: normalized, available: false, reason: 'no_session' };
+  }
+  const probe = await runStorefrontSetupProbe(normalized);
+  return {
+    available: true,
+    ...probe,
+  };
+}
+
+async function probeStorefrontReadinessBatch(shopDomains = []) {
+  const unique = Array.from(
+    new Set(
+      (Array.isArray(shopDomains) ? shopDomains : [])
+        .map(value =>
+          String(value || '')
+            .trim()
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    )
+  );
+  const entries = await Promise.all(
+    unique.map(async shop => [shop, await probeStorefrontReadinessForShop(shop)])
+  );
+  return Object.fromEntries(entries);
+}
+
 function requiresStorefrontRuntimeForTest(test = {}) {
   const type = String(test?.type || '')
     .trim()
@@ -150,5 +187,7 @@ module.exports = {
   checkAppProxyStatus,
   checkEmbedStatus,
   runStorefrontSetupProbe,
+  probeStorefrontReadinessForShop,
+  probeStorefrontReadinessBatch,
   requiresStorefrontRuntimeForTest,
 };

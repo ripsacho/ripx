@@ -19,6 +19,8 @@ import Toast from '../Toast/Toast';
 import { VARIANT_COLORS } from '../../constants';
 import styles from './TrafficAllocationSlider.module.css';
 
+const DEFAULT_MAX_VARIANTS = 10;
+
 function TrafficAllocationSlider({
   variants,
   onChange,
@@ -30,6 +32,8 @@ function TrafficAllocationSlider({
   onCopyPreviewVariant,
   pricePreviewMode = false,
   compact = false,
+  minVariants = 2,
+  maxVariants = DEFAULT_MAX_VARIANTS,
 }) {
   const [localVariants, setLocalVariants] = useState(variants || []);
   const [draggingIndex, setDraggingIndex] = useState(null);
@@ -45,6 +49,9 @@ function TrafficAllocationSlider({
   /** Refs for smooth drag: avoid stale closure and enable RAF throttling */
   const dragStateRef = useRef({ index: null, lastClientX: 0 });
   const rafIdRef = useRef(null);
+  const variantLimitReached = localVariants.length >= maxVariants;
+  const variantLimitMessage = `You can add up to ${maxVariants} variants per test. Remove an existing variant before adding another.`;
+  const variantCountLabel = `${localVariants.length}/${maxVariants} variants`;
 
   // Sync local state with props when variants change externally (e.g. initial load, template change)
   // Skip sync when we just did add/remove and parent hasn't updated yet (avoids undoing add/remove)
@@ -72,6 +79,10 @@ function TrafficAllocationSlider({
   }, [variants]);
 
   const normalizeAllocations = vars => {
+    if (!Array.isArray(vars) || vars.length === 0) return vars;
+    if (vars.length === 1) {
+      return [{ ...vars[0], allocation: 100 }];
+    }
     const total = vars.reduce((sum, v) => sum + (v.allocation || 0), 0);
     if (total === 0) return vars;
 
@@ -242,13 +253,45 @@ function TrafficAllocationSlider({
     }
   }, [editingVariantIndex]);
 
-  /** Next default name: Variant A, Variant B, Variant C, ... (based on current count) */
+  const getVariantLetter = index => {
+    let n = index;
+    let label = '';
+    do {
+      label = String.fromCharCode(65 + (n % 26)) + label;
+      n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+    return label;
+  };
+
+  /** Next default name: first unused treatment label, excluding Control from the count. */
   const getDefaultVariantName = () => {
-    const letter = String.fromCharCode(65 + localVariants.length);
-    return `Variant ${letter}`;
+    const existingNames = new Set(
+      localVariants
+        .map(variant =>
+          String(variant?.name || '')
+            .trim()
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    );
+
+    let index = 0;
+    while (index < 1000) {
+      const candidate = `Variant ${getVariantLetter(index)}`;
+      if (!existingNames.has(candidate.toLowerCase())) {
+        return candidate;
+      }
+      index += 1;
+    }
+
+    return `Variant ${localVariants.length + 1}`;
   };
 
   const handleAddVariant = () => {
+    if (variantLimitReached) {
+      setErrorMessage(variantLimitMessage);
+      return;
+    }
     const defaultName = getDefaultVariantName();
     const newVariant = {
       name: defaultName,
@@ -274,9 +317,34 @@ function TrafficAllocationSlider({
     }
   };
 
+  const addVariantButton = compact ? (
+    <Tooltip content={variantLimitReached ? variantLimitMessage : 'Add another variant'}>
+      <span className={styles.tooltipButtonWrap}>
+        <button
+          type="button"
+          className={`${styles.toolbarBtn} ${styles.toolbarBtnPrimary}`}
+          onClick={handleAddVariant}
+          disabled={variantLimitReached}
+          aria-disabled={variantLimitReached}
+        >
+          <Icon source={PlusIcon} />
+          Add Variant
+        </button>
+      </span>
+    </Tooltip>
+  ) : (
+    <Tooltip content={variantLimitReached ? variantLimitMessage : 'Add another variant'}>
+      <span className={styles.tooltipButtonWrap}>
+        <Button onClick={handleAddVariant} disabled={variantLimitReached}>
+          Add Variant
+        </Button>
+      </span>
+    </Tooltip>
+  );
+
   const handleRemoveVariant = index => {
-    if (localVariants.length <= 2) {
-      setErrorMessage('You need at least 2 variants.');
+    if (localVariants.length <= minVariants) {
+      setErrorMessage(`You need at least ${minVariants} variant${minVariants === 1 ? '' : 's'}.`);
       return;
     }
 
@@ -303,7 +371,7 @@ function TrafficAllocationSlider({
     setLocalVariants(normalized);
     if (onRemoveVariant) {
       pendingCountRef.current = normalized.length;
-      onRemoveVariant(index);
+      onRemoveVariant(index, normalized);
     }
   };
 
@@ -403,17 +471,28 @@ function TrafficAllocationSlider({
   };
 
   const content = (
-    <div className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}>
-      <Toast message={errorMessage} type="error" onClose={clearErrorMessage} duration={3000} />
+    <div
+      className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}
+      data-ripx-traffic-allocation
+    >
       <Toast message={copySuccess} type="success" onClose={clearCopySuccess} duration={2500} />
+      <Toast message={errorMessage} type="error" onClose={clearErrorMessage} duration={3000} />
       {!compact && (
         <div className={styles.nonCompactHeader}>
           <Text variant="headingLg" as="h2">
             Traffic Allocation
           </Text>
           <InlineStack gap="300">
+            <span
+              className={`${styles.variantCountBadge} ${
+                variantLimitReached ? styles.variantCountBadgeLimit : ''
+              }`}
+              aria-label={`Variant count: ${variantCountLabel}`}
+            >
+              {variantCountLabel}
+            </span>
             <Button onClick={handleEqualSplit}>Split Equally</Button>
-            <Button onClick={handleAddVariant}>Add Variant</Button>
+            {addVariantButton}
           </InlineStack>
         </div>
       )}
@@ -431,24 +510,30 @@ function TrafficAllocationSlider({
             </span>
           </div>
           <div className={styles.toolbarActions}>
+            <span
+              className={`${styles.variantCountBadge} ${
+                variantLimitReached ? styles.variantCountBadgeLimit : ''
+              }`}
+              aria-label={`Variant count: ${variantCountLabel}`}
+            >
+              {variantCountLabel}
+            </span>
             <button type="button" className={styles.toolbarBtn} onClick={handleEqualSplit}>
               <Icon source={ChartHorizontalIcon} />
               Split Equally
             </button>
-            <button
-              type="button"
-              className={`${styles.toolbarBtn} ${styles.toolbarBtnPrimary}`}
-              onClick={handleAddVariant}
-            >
-              <Icon source={PlusIcon} />
-              Add Variant
-            </button>
+            {addVariantButton}
           </div>
         </div>
       )}
 
       {/* Traffic split – bar + legend layout */}
-      <div className={styles.sliderSection} role="group" aria-label="Traffic allocation">
+      <div
+        className={styles.sliderSection}
+        role="group"
+        aria-label="Traffic allocation"
+        data-ripx-traffic-section
+      >
         <div className={styles.sliderSectionHeader}>
           <span className={styles.sliderSectionTitle}>Traffic split</span>
           {(() => {
@@ -471,7 +556,7 @@ function TrafficAllocationSlider({
             );
           })()}
         </div>
-        <div className={styles.sliderBarCard}>
+        <div className={styles.sliderBarCard} data-ripx-traffic-slider-card>
           <div className={styles.sliderBarWrap}>
             <span className={styles.sliderScaleLabel} aria-hidden>
               0
@@ -566,19 +651,24 @@ function TrafficAllocationSlider({
       </div>
 
       {/* Variant cards */}
-      <div className={styles.variantCards}>
+      <div className={styles.variantCards} data-ripx-traffic-variant-grid>
         {localVariants.map((variant, index) => {
           const color = COLORS[index % COLORS.length];
           const priceControlVariant = isPriceControlVariant(variant, index);
           const customerTooltip = priceControlVariant
             ? 'Control has no changed price. Open a treatment variant to test cart and checkout price changes.'
-            : 'Customer view: opens clean preview without debug UI';
+            : 'Customer view: opens storefront-domain preview link (no debug overlay).';
           const copyTooltip = priceControlVariant
             ? 'Control has no changed price. Copy a treatment variant link instead.'
-            : 'Copy customer-view preview link';
+            : 'Copy storefront-domain customer-view preview link.';
 
           return (
-            <div key={index} className={styles.variantCard} style={{ '--variant-color': color }}>
+            <div
+              key={index}
+              className={styles.variantCard}
+              style={{ '--variant-color': color }}
+              data-ripx-traffic-variant-card
+            >
               <div className={styles.variantCardAccent} style={{ backgroundColor: color }} />
               <div className={styles.variantCardInner}>
                 <div className={styles.variantCardHead}>
@@ -619,7 +709,7 @@ function TrafficAllocationSlider({
                       </span>
                     </button>
                   )}
-                  {localVariants.length > 2 && index !== 0 && (
+                  {localVariants.length > minVariants && index !== 0 && (
                     <Tooltip content="Remove variant" preferredPosition="below">
                       <button
                         type="button"

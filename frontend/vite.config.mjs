@@ -20,6 +20,7 @@ logger.warn = (message, options) => {
 
 function resolveManualChunk(id) {
   if (!id || typeof id !== 'string') return undefined;
+  if (process.env.RIPX_DISABLE_MANUAL_CHUNKS === 'true') return undefined;
   if (id.includes('node_modules')) {
     if (
       id.includes('/react/') ||
@@ -49,6 +50,8 @@ function resolveManualChunk(id) {
 }
 
 export default defineConfig(() => {
+  const backendPort = Number(process.env.PORT) || 3000;
+  const backendProxyTarget = `http://localhost:${backendPort}`;
   return {
     plugins: [react()],
     customLogger: logger,
@@ -64,7 +67,7 @@ export default defineConfig(() => {
       allowedHosts: true,
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: backendProxyTarget,
           changeOrigin: true,
         },
         // Do not proxy /health: same-origin /health is handled by React Router → /admin/system-health.
@@ -74,6 +77,9 @@ export default defineConfig(() => {
     build: {
       outDir: 'dist',
       target: 'es2022',
+      // Shopify/Cloudflare dev tunnels can refuse bursts of HTTP/2 modulepreload streams.
+      // Let the browser discover chunks from the module graph instead of preloading every vendor chunk.
+      modulePreload: false,
       assetsInlineLimit: 4096,
       // Disable sourcemaps in production for security and performance
       sourcemap: process.env.NODE_ENV !== 'production',
@@ -88,8 +94,10 @@ export default defineConfig(() => {
       },
       rollupOptions: {
         output: {
-          // Code splitting for better caching
-          manualChunks: resolveManualChunk,
+          // Code splitting for better caching. Disable with RIPX_DISABLE_MANUAL_CHUNKS=true
+          // when debugging tunnel stream limits.
+          manualChunks:
+            process.env.RIPX_DISABLE_MANUAL_CHUNKS === 'true' ? undefined : resolveManualChunk,
         },
       },
       // Optimize chunk size

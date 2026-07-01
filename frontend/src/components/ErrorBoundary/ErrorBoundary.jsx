@@ -91,8 +91,8 @@ class ErrorBoundary extends React.Component {
               alignItems: 'center',
               justifyContent: 'center',
               padding: 24,
-              background: '#f6f6f7',
-              color: '#202223',
+              background: 'var(--bg-primary, #f6f6f7)',
+              color: 'var(--text-primary, #202223)',
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
             }}
@@ -108,8 +108,9 @@ class ErrorBoundary extends React.Component {
                     margin: '0 0 16px',
                     padding: 12,
                     borderRadius: 8,
-                    background: '#ffffff',
-                    border: '1px solid #dfe3e8',
+                    background: 'var(--bg-secondary, #ffffff)',
+                    border: '1px solid var(--border-secondary, #dfe3e8)',
+                    color: 'var(--text-primary, #202223)',
                     overflow: 'auto',
                     fontSize: 12,
                     lineHeight: 1.5,
@@ -124,10 +125,10 @@ class ErrorBoundary extends React.Component {
                   type="button"
                   onClick={this.handleReset}
                   style={{
-                    border: '1px solid #c9cccf',
+                    border: '1px solid var(--border-secondary, #c9cccf)',
                     borderRadius: 8,
-                    background: '#ffffff',
-                    color: '#202223',
+                    background: 'var(--bg-secondary, #ffffff)',
+                    color: 'var(--text-primary, #202223)',
                     padding: '8px 14px',
                     cursor: 'pointer',
                     fontSize: 14,

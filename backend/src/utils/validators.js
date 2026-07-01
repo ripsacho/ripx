@@ -200,11 +200,21 @@ class Validators {
       errors.push(`Test type must be one of: ${validTypes.join(', ')}`);
     }
 
-    if (!config.variants || !Array.isArray(config.variants) || config.variants.length < 2) {
-      errors.push('At least 2 variants are required');
+    const minVariants = normalizedType === 'shipping' ? 1 : 2;
+    if (
+      !config.variants ||
+      !Array.isArray(config.variants) ||
+      config.variants.length < minVariants
+    ) {
+      errors.push(
+        minVariants === 1 ? 'At least 1 variant is required' : 'At least 2 variants are required'
+      );
     }
 
     if (config.variants) {
+      if (normalizedType === 'shipping' && config.variants.length === 1) {
+        config.variants = [{ ...config.variants[0], allocation: 100 }];
+      }
       const totalAllocation = config.variants.reduce(
         (sum, v) => sum + (Number(v.allocation) || 0),
         0

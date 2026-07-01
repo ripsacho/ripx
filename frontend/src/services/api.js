@@ -401,6 +401,15 @@ apiClient.interceptors.response.use(
       if (requestUrl.includes('/shopify/connection-status')) {
         return Promise.reject(error);
       }
+      // Scope reauthorize + OAuth start: caller handles sign-in fallback (avoid bouncing to Connect mid-click)
+      if (
+        requestUrl.includes('/shopify/reauthorize') ||
+        requestUrl.includes('/shopify/reauthorize-redirect') ||
+        requestUrl.includes('/auth/start') ||
+        requestUrl.includes('/auth/install-link')
+      ) {
+        return Promise.reject(error);
+      }
       // Targeting presets can 401 on stale/scoped auth edge-cases; avoid global redirect loop.
       // Let page-level query state handle and render recoverable UI instead.
       if (requestUrl.includes('/targeting-presets')) {
@@ -447,17 +456,8 @@ apiClient.interceptors.response.use(
         redirectToAppUrl(getConnectUrl({ shop: normalized, reason }));
         return Promise.reject(error);
       }
-      // On /app/:domain never clear auth — redirect to Connect with shop so user can connect store without losing session
-      if (isOnAppDomainRoute && shopDomain && !onPublicAuthPage) {
-        isRedirectingToLogin = true;
-        const normalized = /\.myshopify\.com$/i.test(shopDomain)
-          ? String(shopDomain).trim().toLowerCase()
-          : shopDomain;
-        clearStoreSelection();
-        const reason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
-        redirectToAppUrl(getConnectUrl({ shop: normalized, reason }));
-        return Promise.reject(error);
-      }
+      // Do not blanket-redirect every /app/:domain 401 to Connect — that breaks scope refresh and
+      // other recoverable auth edge cases while the shop OAuth session is still valid.
       // Email session or API key: clear and send to login (session invalid)
       if ((apiKey || emailToken) && !onPublicAuthPage) {
         isRedirectingToLogin = true;
@@ -897,6 +897,7 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     endpoint.startsWith('/auth/start') ||
     endpoint.startsWith('/auth/install-link') ||
     endpoint.startsWith('/shopify/connection-status') ||
+    endpoint.startsWith('/shopify/reauthorize') ||
     endpoint.startsWith('/account/stores') ||
     endpoint.startsWith('/support/') ||
     needsScopedShopForEmailSession;

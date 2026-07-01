@@ -34,6 +34,7 @@ export const DEFAULT_FORM_DATA = {
     page_rules: [],
     device_rules: [],
     audience_rules: [],
+    traffic_source_rules: [],
     traffic_ramp_percent: '',
     traffic_ramp_days: 7,
     js_targeting: { enabled: false, code: '' },

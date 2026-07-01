@@ -12,17 +12,15 @@ import { PageShell, LegalFooter } from '../Shared';
 import { ROUTES } from '../../constants';
 import {
   hasEmailSession,
-  getEmailToken,
-  getApiBaseUrl,
   apiPostPublic,
   setEmailToken,
   clearStoreSelection,
-  isEmbeddedInIframe,
   getUrlWithEmbedParams,
 } from '../../services';
 import { STORAGE_KEYS } from '../../constants';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
+import { continuePendingShopifyPermissionOAuth } from '../../utils/shopifyOAuthFlow';
 import styles from './Connect.module.css';
 
 /** Short visible text with full message in tooltip (advanced tooltip on info icon) */
@@ -183,47 +181,30 @@ function Connect() {
     };
   }, [transitionPhase]);
 
-  const signInToConnectStartHandled = useRef(false);
+  const oauthShopAutoStartHandled = useRef(false);
   useEffect(() => {
     const reason = searchParams.get('reason');
     const shop = (searchParams.get('shop') || '').trim();
-    const launch = (searchParams.get('launch') || '').trim().toLowerCase();
     const signInToConnectReason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
+    const scopeUpdateReason = ROUTES.CONNECT_REASON?.SCOPE_UPDATE || 'scope_update';
+    const autoStartReasons = new Set([signInToConnectReason, scopeUpdateReason, 'reauthorize']);
     if (
-      reason !== signInToConnectReason ||
+      !autoStartReasons.has(reason) ||
       !shop ||
       !isShopifyStoreDomain(shop) ||
       !hasEmailSession() ||
-      signInToConnectStartHandled.current
+      oauthShopAutoStartHandled.current
     )
       return;
-    signInToConnectStartHandled.current = true;
-    const token = getEmailToken();
-    if (!token) return;
+    oauthShopAutoStartHandled.current = true;
     (async () => {
       try {
-        const base = getApiBaseUrl();
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        const params = new URLSearchParams({ shop });
-        if (origin) params.set('callback_base', origin);
-        if (launch === 'discount_setup') params.set('launch', 'discount_setup');
-        const installLinkUrl = `${base}/auth/install-link?${params.toString()}`;
-        const res = await fetch(installLinkUrl, {
-          credentials: 'include',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json().catch(() => ({}));
-        const installUrl = data?.url ?? data?.data?.url;
-        if (
-          installUrl &&
-          typeof installUrl === 'string' &&
-          installUrl.includes('/api/auth/install')
-        ) {
-          if (isEmbeddedInIframe()) window.open(installUrl, '_blank', 'noopener,noreferrer');
-          else window.top.location.href = installUrl;
+        const launched = await continuePendingShopifyPermissionOAuth(searchParams);
+        if (!launched) {
+          oauthShopAutoStartHandled.current = false;
         }
       } catch (_) {
-        signInToConnectStartHandled.current = false;
+        oauthShopAutoStartHandled.current = false;
       }
     })();
   }, [searchParams]);
@@ -360,6 +341,10 @@ function Connect() {
       setEmailToken(data.token);
       clearStoreSelection();
       setIsRedirecting(true);
+      const launched = await continuePendingShopifyPermissionOAuth(searchParams);
+      if (launched) {
+        return;
+      }
       requestAnimationFrame(() => {
         setTimeout(() => {
           window.location.replace(getUrlWithEmbedParams(ROUTES.USER_PANEL));
@@ -497,6 +482,14 @@ function Connect() {
       [CONNECT_REASON?.OAUTH_EXPIRED || 'oauth_expired']: {
         short: 'Link expired or already used.',
         full: 'The connection link expired or was already used. Sign in and connect the store again from My domains.',
+      },
+      [CONNECT_REASON?.SCOPE_UPDATE || 'scope_update']: {
+        short: 'Sign in to update app permissions.',
+        full: 'Sign in with your email, then RipX will open Shopify so you can approve the updated permission list for this store.',
+      },
+      reauthorize: {
+        short: 'Updating RipX permissions…',
+        full: 'RipX will open Shopify so you can approve the updated permission list for this store.',
       },
     };
     const entry = knownReasons[reason];

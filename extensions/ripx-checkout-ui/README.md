@@ -24,9 +24,21 @@ This writes ignored local config at `src/ripxConfig.generated.js` from root `.en
 - `RIPX_CHECKOUT_UI_TEST_ID` (optional default test id)
 - `RIPX_CHECKOUT_UI_SHOP_DOMAIN` (optional default shop domain)
 
+## Before first publish (required)
+
+`network_access = true` is already in `shopify.extension.toml`, but Shopify also requires **Partner Dashboard approval** or version release fails with:
+
+`Network access must be requested and approved in order for the ripx-checkout-ui extension to be published.`
+
+1. [Partner Dashboard](https://partners.shopify.com/) → your app (same app as `shopify.app.local.toml`) → **API access**
+2. Under **Allow network access in checkout UI extensions** → **Allow network access**
+3. If grant fails, complete first + last name on your Partner profile and retry
+
+See [docs/SHOPIFY_CHECKOUT_UI_NETWORK_ACCESS.md](../../docs/SHOPIFY_CHECKOUT_UI_NETWORK_ACCESS.md).
+
 ## Deploy
 
-1. Ensure the extension is part of your app deployment (`shopify app deploy`).
+1. Ensure the extension is part of your app deployment (`shopify app deploy` or `npm run shopify:deploy:local:safe`).
 2. In Checkout Editor, add the **RipX checkout UI experiment** block.
 3. Configure checkout test targeting so checkout has a valid test id context.
 4. Verify assignment API + conversion API logs from the backend.

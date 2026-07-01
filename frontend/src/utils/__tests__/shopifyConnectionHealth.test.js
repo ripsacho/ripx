@@ -34,4 +34,14 @@ describe('shopifyConnectionHealth (frontend)', () => {
       })
     ).toBe('verify_unavailable');
   });
+
+  it('opens app when session scopes are not synced yet', () => {
+    expect(
+      shouldOpenShopifyApp({
+        connected: true,
+        connection: { code: 'SESSION_OK_UNVERIFIED_SCOPES' },
+        tokenHealth: { valid: true },
+      })
+    ).toBe(true);
+  });
 });

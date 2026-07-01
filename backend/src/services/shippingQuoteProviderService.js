@@ -1,7 +1,9 @@
 const { normalizeShippingVariantConfig } = require('./shippingTestConfigService');
+const { formatCarrierRateForCheckout } = require('./shippingCarrierRateFormatter');
+const { shouldReplaceExistingRates } = require('./shippingExecutionPlanner');
 
 function toFiniteNumber(value) {
-  const parsed = Number.parseFloat(String(value || '').trim());
+  const parsed = Number.parseFloat(String(value ?? '').trim());
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -11,6 +13,10 @@ function toNormalizedString(value) {
 
 function toLowerString(value) {
   return toNormalizedString(value).toLowerCase();
+}
+
+function firstPresent(...values) {
+  return values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
 }
 
 function parseCountryRateMap(input) {
@@ -26,6 +32,8 @@ function parseCountryRateMap(input) {
             .toUpperCase(),
           amount: toFiniteNumber(entry.amount),
           label: toNormalizedString(entry.label || ''),
+          description: toNormalizedString(entry.description || ''),
+          delivery_promise: entry.delivery_promise || entry.deliveryPromise || null,
         };
       })
       .filter(entry => entry && entry.country && Number.isFinite(entry.amount));
@@ -45,7 +53,7 @@ function parseCountryRateMap(input) {
       if (!country || !Number.isFinite(amount)) {
         return null;
       }
-      return { country, amount, label: '' };
+      return { country, amount, label: '', description: '', delivery_promise: null };
     })
     .filter(Boolean);
 }
@@ -53,6 +61,10 @@ function parseCountryRateMap(input) {
 function resolveVariantProviderConfig(variant = {}) {
   const config = normalizeShippingVariantConfig(variant?.config || {});
   const metadata = config?.metadata && typeof config.metadata === 'object' ? config.metadata : {};
+  const primaryRate =
+    Array.isArray(config.rates) && config.rates[0] && typeof config.rates[0] === 'object'
+      ? config.rates[0]
+      : null;
   const provider = toLowerString(
     metadata.quote_provider ||
       metadata.quoteProvider ||
@@ -60,11 +72,37 @@ function resolveVariantProviderConfig(variant = {}) {
       variant?.quote_provider
   );
   const amount =
-    toFiniteNumber(metadata.quote_amount || metadata.quoteAmount || metadata.amount) ??
-    toFiniteNumber(variant?.config?.amount);
+    toFiniteNumber(
+      firstPresent(
+        metadata.quote_amount,
+        metadata.quoteAmount,
+        metadata.amount,
+        primaryRate?.amount,
+        config.amount
+      )
+    ) ?? null;
   const serviceName = toNormalizedString(
-    metadata.quote_service_name || metadata.quoteServiceName || metadata.label || config.label
+    firstPresent(
+      metadata.quote_service_name,
+      metadata.quoteServiceName,
+      primaryRate?.name,
+      primaryRate?.service_name,
+      config.label
+    )
   );
+  const serviceCode = toNormalizedString(
+    firstPresent(primaryRate?.service_code, primaryRate?.serviceCode)
+  );
+  const description = toNormalizedString(
+    firstPresent(
+      metadata.quote_description,
+      metadata.quoteDescription,
+      metadata.description,
+      primaryRate?.description,
+      config.checkout_display?.default_description
+    )
+  );
+  const replaceExistingRates = shouldReplaceExistingRates(config);
   const countryRates = parseCountryRateMap(
     metadata.country_rates ||
       metadata.countryRates ||
@@ -75,17 +113,53 @@ function resolveVariantProviderConfig(variant = {}) {
     provider: provider || '',
     amount,
     service_name: serviceName,
+    service_code: serviceCode,
+    replace_existing_rates: replaceExistingRates,
+    description,
+    checkout_display: config.checkout_display,
+    delivery_promise:
+      primaryRate?.delivery_promise ||
+      primaryRate?.deliveryPromise ||
+      metadata.delivery_promise ||
+      metadata.deliveryPromise ||
+      null,
     country_rates: countryRates,
   };
 }
 
-function buildCarrierQuoteRate({ serviceName, serviceCode, amount, currency }) {
-  return {
-    service_name: serviceName,
-    service_code: serviceCode,
-    total_price: String(Math.max(0, Math.round(amount * 100))),
-    currency,
-  };
+function resolveQuoteServiceCode({ providerConfig = {}, serviceCodeBase = 'shipping' } = {}) {
+  const configured = toNormalizedString(providerConfig.service_code);
+  if (configured) {
+    return configured;
+  }
+  const base = toNormalizedString(serviceCodeBase) || 'shipping';
+  return providerConfig.replace_existing_rates ? `ripx_replace_${base}` : `ripx_quote_${base}`;
+}
+
+function buildCarrierQuoteRate({
+  serviceName,
+  serviceCode,
+  amount,
+  currency,
+  providerConfig = {},
+  deliveryPromise = null,
+}) {
+  return formatCarrierRateForCheckout({
+    rateConfig: {
+      name: serviceName,
+      service_code: serviceCode,
+      amount,
+      currency,
+      description: providerConfig.description || '',
+      delivery_promise: deliveryPromise || providerConfig.delivery_promise || null,
+    },
+    variantConfig: {
+      checkout_display: providerConfig.checkout_display || {},
+    },
+    serviceName,
+    fallbackAmount: amount,
+    fallbackCurrency: currency,
+  });
 }
 
 function resolveCarrierQuoteRates({
@@ -125,9 +199,11 @@ function resolveCarrierQuoteRates({
       rates: [
         buildCarrierQuoteRate({
           serviceName: providerConfig.service_name || serviceName,
-          serviceCode: `ripx_quote_${serviceCodeBase}`,
+          serviceCode: resolveQuoteServiceCode({ providerConfig, serviceCodeBase }),
           amount,
           currency,
+          providerConfig,
+          deliveryPromise: providerConfig.delivery_promise,
         }),
       ],
     };
@@ -159,9 +235,14 @@ function resolveCarrierQuoteRates({
       rates: [
         buildCarrierQuoteRate({
           serviceName: match.label || providerConfig.service_name || serviceName,
-          serviceCode: `ripx_quote_${serviceCodeBase}`,
+          serviceCode: resolveQuoteServiceCode({ providerConfig, serviceCodeBase }),
           amount: match.amount,
           currency,
+          providerConfig: {
+            ...providerConfig,
+            description: match.description || providerConfig.description || '',
+          },
+          deliveryPromise: match.delivery_promise || match.deliveryPromise || null,
         }),
       ],
     };

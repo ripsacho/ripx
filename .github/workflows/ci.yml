@@ -85,6 +85,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Guard committed tunnel URLs
+        run: npm run verify:committed-tunnel-urls
+
+      - name: Guard production OAuth URL alignment
+        run: npm run verify:oauth-alignment
+
       - name: Format check
         run: npm run format:check
 

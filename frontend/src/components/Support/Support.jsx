@@ -115,7 +115,7 @@ const SUPPORT_FAQS = [
     id: 'connect-store',
     question: 'How do I connect a Shopify store?',
     answer:
-      'Open Domains, choose your Shopify store, then complete the Shopify install/authentication flow. After install, return to App settings > Installation and verify the app embed or script status.',
+      'Open Domains, choose your Shopify store, then complete the Shopify install/authentication flow. After install, return to Store settings → Store setup and verify the app embed or script status.',
   },
   {
     id: 'test-not-showing',
@@ -1106,7 +1106,7 @@ function Support() {
             <span className={styles.quickLinksLabel}>Popular topics</span>
             <div className={styles.quickLinksList}>
               <a
-                href={ROUTES.DOCS}
+                href={`${ROUTES.DOCS}#support-agent`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.quickLinkPill}

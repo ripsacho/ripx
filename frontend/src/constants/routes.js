@@ -26,7 +26,8 @@ export const ROUTES = {
   appSettings: domain => `/app/${encodeURIComponent(domain)}/settings`,
   appProfile: domain => `/app/${encodeURIComponent(domain)}/profile`,
   appNotifications: domain => `/app/${encodeURIComponent(domain)}/notifications`,
-  appDocs: domain => `/app/${encodeURIComponent(domain)}/docs`,
+  // Docs are global/public, not store-scoped. Kept as a helper for legacy callers.
+  appDocs: () => '/docs',
   appTestDetail: (domain, id) => `/app/${encodeURIComponent(domain)}/tests/${id}`,
   appTestEditor: (domain, id) => `/app/${encodeURIComponent(domain)}/tests/${id}/editor`,
   appTestAnalytics: (domain, id) => `/app/${encodeURIComponent(domain)}/tests/${id}/analytics`,
@@ -64,6 +65,8 @@ export const ROUTES = {
     OAUTH_EXPIRED: 'oauth_expired',
     /** OAuth callback had different shop than started → back to Domains to retry */
     OAUTH_WRONG_STORE: 'oauth_wrong_store',
+    /** Stale Shopify scopes — re-run OAuth to grant new permissions */
+    SCOPE_UPDATE: 'scope_update',
   },
 
   // Admin panel

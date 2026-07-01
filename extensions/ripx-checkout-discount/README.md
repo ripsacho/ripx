@@ -54,7 +54,7 @@ This ensures extension config matches server `.env` and re-checks readiness with
 
 Before debugging checkout, verify the backend is configured for the Discount Function:
 
-- **RipX app UI:** **Settings → Installation** → **Checkout price test health** → **Run check** — uses `**GET /api/settings/checkout-price-diagnostics`\*\* (session auth, same JSON as the public route; avoids browser CORS when the UI is on another origin).
+- **RipX app UI:** **Store settings → Advanced** — checkout diagnostics **Run check** uses `**GET /api/settings/checkout-price-diagnostics`\*\* (session auth, same JSON as the public route; avoids browser CORS when the UI is on another origin).
 - **Config API (session auth):**
   - `**GET /api/settings/checkout-price-function-config`\*\* — returns env + extension `ripxConfig.js` snapshot, masked secret previews, and drift status.
   - `**PUT /api/settings/checkout-price-function-config**` — writes extension `ripxConfig.js` using either explicit values (`batchUrl`, `checkoutSecret`, probe flags) or `{ "syncFromEnv": true }`.

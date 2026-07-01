@@ -65,12 +65,16 @@ function normalizePriceSurfaceRole(value, fallback = 'regular') {
   return PRICE_SURFACE_ROLES.includes(key) ? key : fallback;
 }
 
-function normalizePriceSurfaceMapping(raw, index = 0) {
+function normalizePriceSurfaceMapping(raw, index = 0, options = {}) {
   if (!raw || typeof raw !== 'object') {
     return null;
   }
+  const allowEmptySelector = options.allowEmptySelector === true;
   const selector = String(raw.selector || '').trim();
-  if (!selector || selector.length > 1000) {
+  if (!allowEmptySelector && !selector) {
+    return null;
+  }
+  if (selector.length > 1000) {
     return null;
   }
   const containerSelector = String(raw.containerSelector || raw.container_selector || '').trim();
@@ -106,13 +110,13 @@ function normalizePriceSurfaceMapping(raw, index = 0) {
   };
 }
 
-function normalizePriceSurfaceMappings(input) {
+function normalizePriceSurfaceMappings(input, options = {}) {
   if (!Array.isArray(input)) {
     return [];
   }
   const out = [];
   input.forEach((raw, index) => {
-    const normalized = normalizePriceSurfaceMapping(raw, index);
+    const normalized = normalizePriceSurfaceMapping(raw, index, options);
     if (normalized) {
       out.push(normalized);
     }

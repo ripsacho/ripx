@@ -13,7 +13,6 @@ import {
   CheckCircleIcon,
   LinkIcon,
   ChevronDownIcon,
-  PlusIcon,
   ChatIcon,
 } from '@shopify/polaris-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -35,7 +34,7 @@ import {
   getShopifyConnectionUiState,
   isShopifyConnectionHealthy,
 } from '../../utils/shopifyConnectionHealth';
-import { ROUTES } from '../../constants';
+import { ROUTES, STORAGE_KEYS } from '../../constants';
 import { useAdminMe } from '../../hooks';
 import { getBreadcrumb, getAppDomainFromPath } from '../../utils/breadcrumb';
 import {
@@ -43,8 +42,10 @@ import {
   normalizeShopifyDomain,
   getShopifyStoreHandle,
 } from '../../utils/shopifyAdmin';
+import { THEME_CHANGE_EVENT, getResolvedTheme, updateTheme } from '../../utils/theme';
 import StoreSwitcher from '../StoreSwitcher/StoreSwitcher';
 import styles from './TopBar.module.css';
+import { buildDocsUrl, parseAppNavigationTarget } from '../../utils/docsLinks';
 
 const OpenInNewTabIcon = () => (
   <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -58,12 +59,48 @@ const OpenInNewTabIcon = () => (
   </svg>
 );
 
+const SunIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="10" cy="10" r="3.35" stroke="currentColor" strokeWidth="1.7" />
+    <path
+      d="M10 2.75V1.5M10 18.5v-1.25M15.13 4.87l.88-.88M3.99 16.01l.88-.88M17.25 10h1.25M1.5 10h1.25M15.13 15.13l.88.88M3.99 3.99l.88.88"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path
+      d="M16.2 12.35A6.65 6.65 0 0 1 7.65 3.8 6.82 6.82 0 1 0 16.2 12.35Z"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const NewTestIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path
+      d="M10 4.25V15.75M4.25 10H15.75"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 function TopBar({
   sidebarWidth = 280,
   sidebarCollapsed = false,
   showMobileToggle = false,
   onMobileToggle,
   inline = false,
+  userEmail: verifiedUserEmail = null,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -87,11 +124,11 @@ function TopBar({
   const { data: adminMeData, isAdmin, isLoading, role } = useAdminMe();
   const showAdminEntry = Boolean(!isLoading && isAdmin && role);
   const userEmail =
+    verifiedUserEmail ||
     adminMeData?.email ||
     (adminMeData?.adminId && String(adminMeData.adminId).includes('@')
       ? adminMeData.adminId
       : null);
-  const shopDomain = adminMeData?.shopDomain || null;
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [helpPopoverActive, setHelpPopoverActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
@@ -99,6 +136,9 @@ function TopBar({
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [contextHelpLoading, setContextHelpLoading] = useState(false);
+  const [resolvedTheme, setResolvedTheme] = useState(() =>
+    typeof window === 'undefined' ? 'light' : getResolvedTheme()
+  );
   const [contextHelp, setContextHelp] = useState({
     context_key: 'general',
     title: 'Quick help for this page',
@@ -108,13 +148,27 @@ function TopBar({
   /* Profile, Docs, Notifications: always root. Settings only exists inside a selected app. */
   const profilePath = ROUTES.PROFILE;
   const notificationsPath = ROUTES.NOTIFICATIONS;
-  const docsPath = ROUTES.DOCS;
   const supportPath = ROUTES.SUPPORT;
   const appDomain = getAppDomainFromPath(location.pathname);
-  const activeStoreLabel = appDomain || null;
-  const identityLabel = activeStoreLabel || userEmail || shopDomain || null;
-  const identityTitle = activeStoreLabel ? 'Store' : userEmail ? 'Signed in as' : 'Account';
+  const docsPath = useMemo(() => buildDocsUrl({ mode: 'feature-guides' }), []);
+  const identityLabel = userEmail || null;
+  const identityTitle = 'Signed in as';
   const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : null;
+
+  const navigateToAppPath = useCallback(
+    rawPath => {
+      if (!rawPath) return;
+      const { pathname, query, hash } = parseAppNavigationTarget(rawPath);
+      const pathParams = query ? Object.fromEntries(new URLSearchParams(query)) : null;
+      const target =
+        pathname === ROUTES.DOCS
+          ? { pathname, search: query ? `?${query}` : undefined }
+          : getNavigateToWithEmbed(pathname, pathParams);
+      if (hash) target.hash = hash;
+      navigate(target);
+    },
+    [navigate]
+  );
 
   const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
   const {
@@ -224,6 +278,21 @@ function TopBar({
   }, [notificationsActive, fetchNotifications]);
 
   useEffect(() => {
+    const syncTheme = event => {
+      if (event?.type === 'storage' && event.key !== STORAGE_KEYS.PREFERENCES) return;
+      setResolvedTheme(getResolvedTheme());
+    };
+
+    setResolvedTheme(getResolvedTheme());
+    window.addEventListener('storage', syncTheme);
+    window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
+    return () => {
+      window.removeEventListener('storage', syncTheme);
+      window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!helpPopoverActive) return;
     fetchContextHelp();
   }, [helpPopoverActive, fetchContextHelp]);
@@ -280,14 +349,14 @@ function TopBar({
         target: item.path || item.url || null,
       });
       if (item.path) {
-        navigateWithEmbed(item.path);
+        navigateToAppPath(item.path);
         return;
       }
       if (item.url) {
         window.open(item.url, '_blank', 'noopener,noreferrer');
       }
     },
-    [contextHelp?.context_key, navigateWithEmbed, trackUiEvent]
+    [contextHelp?.context_key, navigateToAppPath, trackUiEvent]
   );
 
   const handleLogout = useCallback(() => {
@@ -308,6 +377,14 @@ function TopBar({
     const query = params.toString();
     window.open(query ? base + '?' + query : base, '_blank', 'noopener,noreferrer');
   }, []);
+  const isDarkTheme = resolvedTheme === 'dark';
+  const nextTheme = isDarkTheme ? 'light' : 'dark';
+  const themeToggleLabel = isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode';
+  const handleThemeToggle = useCallback(() => {
+    const nextThemeState = updateTheme(nextTheme);
+    setResolvedTheme(nextThemeState?.resolvedTheme || getResolvedTheme());
+    trackUiEvent('topbar_theme_toggle', { theme: nextTheme });
+  }, [nextTheme, trackUiEvent]);
 
   return (
     <div
@@ -363,27 +440,43 @@ function TopBar({
       </div>
 
       <div className={styles.topBarRight}>
-        {/* 1) Store switcher + primary CTA (in app only) */}
+        {/* 1) Store switcher (in app only) */}
         {appDomain ? <StoreSwitcher /> : null}
-        {appDomain && (
-          <button
-            type="button"
-            onClick={() => {
-              trackUiEvent('topbar_new_test_click', { target: ROUTES.appCreateTest(appDomain) });
-              navigateWithEmbed(ROUTES.appCreateTest(appDomain));
-            }}
-            className={styles.newTestBtn}
-            aria-label="Create new A/B test"
-            title="Create a new A/B test"
-          >
-            <Icon source={PlusIcon} />
-            <span className={styles.newTestBtnLabel}>New Test</span>
-          </button>
-        )}
-        {/* Divider between primary actions (store + New Test) and utilities */}
+        {/* Divider between store switcher and utilities */}
         {appDomain && <span className={styles.topBarRightDivider} aria-hidden="true" />}
         {/* 2) Utilities: Help (?), Support, Open in new tab (embed only), Notifications, User menu */}
         <div className={styles.actionGroup}>
+          {appDomain && (
+            <Tooltip content="New test" preferredPosition="below">
+              <button
+                type="button"
+                onClick={() => {
+                  trackUiEvent('topbar_new_test_click', {
+                    target: ROUTES.appCreateTest(appDomain),
+                  });
+                  navigateWithEmbed(ROUTES.appCreateTest(appDomain));
+                }}
+                className={`${styles.iconBtn} ${styles.newTestIconBtn}`}
+                aria-label="Create new A/B test"
+                title="Create new A/B test"
+              >
+                <NewTestIcon />
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip content={themeToggleLabel} preferredPosition="below">
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              aria-label={themeToggleLabel}
+              className={`${styles.iconBtn} ${styles.themeToggleBtn} ${
+                isDarkTheme ? styles.themeToggleBtnDark : ''
+              }`}
+              title={themeToggleLabel}
+            >
+              {isDarkTheme ? <SunIcon /> : <MoonIcon />}
+            </button>
+          </Tooltip>
           <Popover
             active={helpPopoverActive}
             activator={
@@ -455,7 +548,7 @@ function TopBar({
                   onClick={() => {
                     setHelpPopoverActive(false);
                     trackUiEvent('topbar_help_navigate', { target: docsPath });
-                    window.open(docsPath, '_blank', 'noopener,noreferrer');
+                    navigateToAppPath(docsPath);
                   }}
                 >
                   Documentation
@@ -622,13 +715,9 @@ function TopBar({
                   </span>
                   {identityLabel && (
                     <span className={styles.userMenuTriggerLabel} title={identityLabel}>
-                      {activeStoreLabel
-                        ? activeStoreLabel
-                        : userEmail
-                          ? userEmail.length > 28
-                            ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
-                            : userEmail
-                          : shopDomain}
+                      {userEmail.length > 28
+                        ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
+                        : userEmail}
                     </span>
                   )}
                   <span className={styles.userMenuTriggerChevron} aria-hidden>
@@ -752,7 +841,7 @@ function TopBar({
                     role="menuitem"
                     onClick={() => handleUserMenuNavigate(settingsPath)}
                   >
-                    App settings
+                    Store settings
                   </button>
                 )}
                 <button

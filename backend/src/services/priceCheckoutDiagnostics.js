@@ -411,6 +411,15 @@ function pickFunctionByApiType(functionsList, matcher) {
   return ripxMatched || matched[0] || null;
 }
 
+function isShopifyAdminTokenInvalidError(message) {
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('(401)') ||
+    text.includes('invalid api key or access token') ||
+    text.includes('unrecognized login')
+  );
+}
+
 /**
  * Build diagnostics object (no I/O).
  * @param {object} [opts]
@@ -421,6 +430,7 @@ function pickFunctionByApiType(functionsList, matcher) {
  * @param {Array<{ id?: string, title?: string, apiType?: string }>} [opts.shopifyFunctions]
  * @param {Array<{ id?: string, functionId?: string, blockOnFailure?: boolean }>} [opts.shopifyCartTransforms]
  * @param {'ok'|'scope_missing'|'error'|'not_checked'} [opts.cartTransformsLookupStatus]
+ * @param {string|null} [opts.shopifyFunctionsQueryError] — Admin API error when listing shopifyFunctions
  */
 function buildCheckoutPriceDiagnostics(opts = {}) {
   const { batchUrl, appUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
@@ -578,7 +588,38 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     shopifyFunctions,
     shopifyCartTransforms,
     cartTransformsLookupStatus = 'not_checked',
+    shopifyFunctionsQueryError = null,
   } = opts;
+
+  const shopifyFunctionsQueryErrorText = String(shopifyFunctionsQueryError || '').trim() || null;
+  const shopifyAdminTokenInvalid = isShopifyAdminTokenInvalidError(shopifyFunctionsQueryErrorText);
+  const shopifyAdminApiStatus = shopifyFunctionsQueryErrorText
+    ? shopifyAdminTokenInvalid
+      ? 'auth_failed'
+      : 'error'
+    : Array.isArray(shopifyFunctions)
+      ? 'ok'
+      : 'not_checked';
+
+  if (shopifyAdminTokenInvalid) {
+    checklist.push({
+      id: 'shopify_admin_api_auth',
+      ok: false,
+      severity: 'error',
+      message:
+        'Shopify rejected the stored access token (401). Re-open RipX from Shopify Admin or reinstall the app on this store before checking discount functions.',
+    });
+    recommendations.unshift(
+      'Fix Shopify OAuth first: uninstall RipX on the store, then reinstall via Domains → install link (or Apps → RipperX). Verify with `npm run diagnose:shop -- --shop=YOUR_STORE.myshopify.com` (expect Admin API OK).'
+    );
+  } else if (shopifyFunctionsQueryErrorText) {
+    checklist.push({
+      id: 'shopify_admin_api_functions',
+      ok: false,
+      severity: 'error',
+      message: `Could not list Shopify Functions for this app: ${shopifyFunctionsQueryErrorText}`,
+    });
+  }
 
   const functionSnapshot = normalizeShopifyFunctionsSnapshot(shopifyFunctions);
   const discountFunction = pickFunctionByApiType(functionSnapshot, apiType =>
@@ -594,6 +635,23 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
   const matchedCartTransforms = normalizedCartTransforms.filter(node => {
     return String(node?.functionId || '').trim() === String(cartTransformFunction?.id || '').trim();
   });
+
+  if (functionSnapshot.length === 0 && shopifyAdminApiStatus === 'ok') {
+    checklist.push({
+      id: 'discount_function_available',
+      ok: false,
+      severity: 'warning',
+      message:
+        'No deployed Shopify discount function was found for this app on the shop. Deploy extensions (shopify app deploy) and release the app version, then run diagnostics again.',
+    });
+    checklist.push({
+      id: 'cart_transform_function_available',
+      ok: false,
+      severity: 'warning',
+      message:
+        'No deployed Shopify cart transform function was found for this app on the shop. Deploy extensions and release the app version.',
+    });
+  }
 
   if (functionSnapshot.length > 0) {
     checklist.push({
@@ -706,6 +764,8 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
         : null,
       discount_function_id: discountFunction?.id || null,
       cart_transform_function_id: cartTransformFunction?.id || null,
+      shopify_admin_api_status: shopifyAdminApiStatus,
+      shopify_functions_query_error: shopifyFunctionsQueryErrorText,
       ...infrastructureExtension,
     },
     support: {

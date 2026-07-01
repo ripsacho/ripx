@@ -230,7 +230,7 @@
   font-size: clamp(2.25rem, 5.5vw, 3.25rem);
   font-weight: 800;
   letter-spacing: -0.045em;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--bg-secondary));
   margin: 0 0 var(--space-2) 0;
   position: relative;
   z-index: 1;
@@ -552,6 +552,25 @@
   box-shadow: 0 10px 26px rgba(6, 182, 212, 0.1);
 }
 
+[data-theme='dark'] .faqQuestionButton {
+  border-color: rgba(6, 182, 212, 0.2);
+  background: var(--surface-glass);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .faqQuestionButton:hover {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: rgba(6, 182, 212, 0.15);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .faqQuestionButtonActive {
+  border-color: rgba(6, 182, 212, 0.5);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.16));
+  color: #a5f3fc;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
 .faqAnswerPanel {
   min-height: 260px;
   border: 1px solid rgba(139, 92, 246, 0.16);
@@ -564,6 +583,16 @@
     radial-gradient(circle at 0% 0%, rgba(139, 92, 246, 0.1), transparent 34%),
     rgba(255, 255, 255, 0.82);
   box-shadow: var(--surface-2);
+}
+
+[data-theme='dark'] .faqAnswerPanel {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(139, 92, 246, 0.14), transparent 34%),
+    var(--surface-scrim);
+  border-color: rgba(139, 92, 246, 0.24);
+  box-shadow:
+    0 0 0 1px rgba(139, 92, 246, 0.06) inset,
+    0 10px 24px rgba(0, 0, 0, 0.2);
 }
 
 .faqAnswerPanel h3,
@@ -704,7 +733,7 @@
 .actionCardTitle {
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--bg-secondary));
   margin: 0 0 var(--space-1) 0;
   letter-spacing: -0.025em;
   line-height: 1.28;
@@ -872,7 +901,7 @@
 }
 
 .tabStripItem:hover {
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--bg-secondary));
   background: rgba(6, 182, 212, 0.08);
 }
 
@@ -1085,7 +1114,7 @@
 .tabCardForm :global(label) {
   font-weight: 600;
   font-size: 0.9375rem;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--bg-secondary));
   margin-bottom: 8px;
   display: block;
 }
@@ -1369,10 +1398,28 @@
 .chatHeaderClear:hover:not(:disabled) {
   border-color: rgba(6, 182, 212, 0.35);
   background: #fff;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--bg-secondary));
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.9) inset,
     0 4px 12px rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .chatHeaderClear {
+  border-color: rgba(6, 182, 212, 0.24);
+  background: var(--surface-glass);
+  color: rgba(203, 213, 225, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08) inset,
+    0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .chatHeaderClear:hover:not(:disabled) {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: rgba(6, 182, 212, 0.16);
+  color: #67e8f9;
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.14) inset,
+    0 10px 22px rgba(0, 0, 0, 0.26);
 }
 
 .chatHeader :global(.Polaris-Button) {
@@ -1487,6 +1534,14 @@
     0 2px 8px rgba(0, 0, 0, 0.04),
     0 8px 24px -8px rgba(6, 182, 212, 0.1),
     0 4px 16px -8px rgba(139, 92, 246, 0.06);
+}
+
+[data-theme='dark'] .chatTypingIndicator {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.06) inset,
+    0 8px 18px rgba(0, 0, 0, 0.2);
 }
 
 .chatTypingIndicator :global([class*='Text']) {
@@ -1800,8 +1855,21 @@
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.9) inset,
     0 4px 16px rgba(6, 182, 212, 0.12);
-  color: #0f172a;
+  color: var(--text-primary);
   transform: translateY(-1px);
+}
+
+[data-theme='dark'] .stillNeedHelp :global(button),
+[data-theme='dark'] .stillNeedHelp :global(button:hover) {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .stillNeedHelp :global(button:hover) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
 }
 
 .stillNeedHelp :global(button:active) {
@@ -2263,6 +2331,19 @@
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
 }
 
+[data-theme='dark'] .bubbleChatClear {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: rgba(203, 213, 225, 0.92);
+}
+
+[data-theme='dark'] .bubbleChatClear:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+}
+
 .bubbleChatClear:focus-visible {
   outline: 2px solid var(--support-cyan, var(--futuristic-cyan));
   outline-offset: 2px;
@@ -2491,6 +2572,63 @@
 /* ----- Dark theme: Support page & bubble (vars already theme-aware) ----- */
 [data-theme='dark'] .supportPage .hero {
   border-color: var(--border-secondary);
+}
+
+[data-theme='dark'] .heroSignalGrid span,
+[data-theme='dark'] .supportPathIcon {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.14));
+  border-color: rgba(165, 243, 252, 0.22);
+  color: #a5f3fc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(6, 182, 212, 0.14);
+}
+
+[data-theme='dark'] .heroSignalGrid :global(.Polaris-Icon),
+[data-theme='dark'] .supportPathIcon :global(.Polaris-Icon) {
+  color: #a5f3fc;
+}
+
+[data-theme='dark'] .supportPage :global(.Polaris-Button) {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .supportPage :global(.Polaris-Button:hover),
+[data-theme='dark'] .supportPage :global(.Polaris-Button:focus-visible) {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.42);
+  color: #67e8f9;
+}
+
+[data-theme='dark'] .supportPage :global(.Polaris-Badge) {
+  background: var(--surface-glass);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+[data-theme='dark'] .heroMetricChip,
+[data-theme='dark'] .supportOptionCard,
+[data-theme='dark'] .faqItemButton {
+  background: var(--surface-scrim);
+  border-color: rgba(6, 182, 212, 0.18);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+[data-theme='dark'] .supportOptionCard:hover,
+[data-theme='dark'] .faqItemButton:hover {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.34);
+}
+
+[data-theme='dark'] .chatHeaderClear,
+[data-theme='dark'] .bubbleChatClear,
+[data-theme='dark'] .chatHeaderClear:hover:not(:disabled),
+[data-theme='dark'] .bubbleChatClear:hover:not(:disabled) {
+  background: var(--surface-glass);
+  border-color: rgba(6, 182, 212, 0.24);
+  color: rgba(226, 232, 240, 0.94);
 }
 
 [data-theme='dark'] .supportPage .chatComposer {

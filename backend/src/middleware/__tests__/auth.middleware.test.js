@@ -545,4 +545,24 @@ describe('authenticateShopify email access enforcement', () => {
     expect(req.shopDomain).toBe('splitter-plus.myshopify.com');
     expect(req.shopifyAccessToken).toBe('shop-token');
   });
+
+  it('allows reauthorize-redirect without shop token so handler can 302 to OAuth or /connect', async () => {
+    const req = makeReq({
+      query: { shop: 'ripx-plus.myshopify.com' },
+      path: '/api/shopify/reauthorize-redirect',
+    });
+    const res = makeRes();
+    const next = jest.fn();
+
+    mockGetShopSession.mockResolvedValue(null);
+    mockGetTenantByDomain.mockResolvedValue(null);
+    mockGetRoleAndStatus.mockResolvedValue({ status: 'accepted' });
+
+    await authenticateShopify(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.shopDomain).toBe('ripx-plus.myshopify.com');
+    expect(req.shopifyAccessToken).toBeUndefined();
+    expect(res.status).not.toHaveBeenCalled();
+  });
 });
