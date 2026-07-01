@@ -758,6 +758,9 @@ describe('shippingAutoExecutionService', () => {
     });
 
     const action = result.execution_result.actions[0];
+    expect(buildShippingCurrentSetupReport).toHaveBeenCalledWith('plus.myshopify.com', 'token');
+    expect(graphSpy).toHaveBeenCalledTimes(2);
+    expect(graphSpy.mock.calls[1][2]).toContain('deliveryProfileUpdate');
     expect(action.status).toBe('created_profile_binding_failed');
     expect(result.execution_result.summary.failed_count).toBe(1);
     expect(result.execution_result.summary.profile_binding_failed_count).toBe(1);
